@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App -->
+    <string name="app_name">Mountify</string>
+    <string name="app_description">Move and mount game data to external MicroSD without FUSE errors.</string>
+
+    <!-- Bottom Navigation -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_games">Games</string>
+    <string name="nav_storage">Storage</string>
+    <string name="nav_logs">Logs</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">Mountify</string>
+    <string name="dashboard_subtitle">Game Storage Manager</string>
+    <string name="dashboard_root_status">Root Status</string>
+    <string name="dashboard_module_status">Module Status</string>
+    <string name="dashboard_module_installed">Module Installed</string>
+    <string name="dashboard_module_not_installed">Module Not Installed</string>
+    <string name="dashboard_module_install_guide">Install the Mountify Magisk module to enable all features.</string>
+    <string name="dashboard_no_root">Root Access Not Granted</string>
+    <string name="dashboard_no_root_desc">This app requires root access to function. Please grant root permission.</string>
+    <string name="dashboard_mounted_games">Mounted Games</string>
+    <string name="dashboard_mount_all">Mount All</string>
+    <string name="dashboard_unmount_all">Unmount All</string>
+    <string name="dashboard_refresh">Refresh</string>
+    <string name="dashboard_storage_title">MicroSD Storage</string>
+    <string name="dashboard_storage_not_mounted">MicroSD Not Mounted</string>
+    <string name="dashboard_quick_actions">Quick Actions</string>
+
+    <!-- Root Solutions -->
+    <string name="root_magisk">Magisk</string>
+    <string name="root_kernelsu">KernelSU</string>
+    <string name="root_apatch">APatch</string>
+    <string name="root_none">No Root</string>
+    <string name="root_unknown">Unknown</string>
+
+    <!-- Games Screen -->
+    <string name="games_title">Games</string>
+    <string name="games_add">Add Game</string>
+    <string name="games_empty_title">No Games Added</string>
+    <string name="games_empty_desc">Tap the + button to add a game to manage.</string>
+    <string name="games_search">Search games…</string>
+    <string name="games_delete">Delete</string>
+    <string name="games_delete_confirm">Remove %1$s from the list?</string>
+    <string name="games_delete_confirm_desc">The game data on MicroSD will not be affected.</string>
+    <string name="games_deleted_undo">Game removed. Undo?</string>
+    <string name="games_undo">Undo</string>
+    <string name="games_mount">Mount</string>
+    <string name="games_unmount">Unmount</string>
+    <string name="games_move_data">Move Data</string>
+    <string name="games_edit">Edit</string>
+    <string name="games_data_size">Data size: %1$s</string>
+
+    <!-- Add Game Sheet -->
+    <string name="add_game_title">Add Game</string>
+    <string name="add_game_package_hint">Package name (e.g. com.example.game)</string>
+    <string name="add_game_browse">Browse Installed Apps</string>
+    <string name="add_game_mode_title">Mount Mode</string>
+    <string name="add_game_mode_pkg">PKG — Mount entire game folder</string>
+    <string name="add_game_mode_files">FILES — Mount only /files subfolder</string>
+    <string name="add_game_mode_pkg_desc">Recommended for most games (WuWa, PUBG, COD)</string>
+    <string name="add_game_mode_files_desc">Use for games that keep databases internal (Genshin, HSR, ZZZ)</string>
+    <string name="add_game_button">Add Game</string>
+    <string name="add_game_error_empty">Package name cannot be empty.</string>
+    <string name="add_game_error_exists">This game is already in the list.</string>
+
+    <!-- Mount Status -->
+    <string name="status_mounted">Mounted</string>
+    <string name="status_unmounted">Unmounted</string>
+    <string name="status_error">Error</string>
+    <string name="status_unknown">Unknown</string>
+    <string name="status_loading">Loading…</string>
+
+    <!-- Move Data Sheet -->
+    <string name="move_data_title">Move Game Data</string>
+    <string name="move_data_to_sd">Move to MicroSD</string>
+    <string name="move_data_to_internal">Move to Internal</string>
+    <string name="move_data_size">Size to move: %1$s</string>
+    <string name="move_data_start">Start Move</string>
+    <string name="move_data_cancel">Cancel</string>
+    <string name="move_data_progress">Moving… %1$d%%</string>
+    <string name="move_data_success">Data moved successfully!</string>
+    <string name="move_data_error">Move failed: %1$s</string>
+
+    <!-- Storage Screen -->
+    <string name="storage_title">Storage</string>
+    <string name="storage_overview">Overview</string>
+    <string name="storage_format">Format</string>
+    <string name="storage_backup">Backup &amp; Restore</string>
+    <string name="storage_block_device">Block Device</string>
+    <string name="storage_block_device_hint">e.g. /dev/block/mmcblk0p3</string>
+    <string name="storage_detect_devices">Detect Devices</string>
+    <string name="storage_mount">Mount Partition</string>
+    <string name="storage_unmount">Unmount Partition</string>
+    <string name="storage_mount_point">Mount Point</string>
+    <string name="storage_filesystem">Filesystem</string>
+    <string name="storage_total">Total</string>
+    <string name="storage_used">Used</string>
+    <string name="storage_free">Free</string>
+    <string name="storage_not_mounted">Partition not mounted</string>
+    <string name="storage_mount_success">Partition mounted successfully</string>
+    <string name="storage_unmount_success">Partition unmounted</string>
+
+    <!-- Format Partition -->
+    <string name="format_title">Format Partition</string>
+    <string name="format_warning">⚠️ Warning</string>
+    <string name="format_warning_desc">Formatting will permanently erase ALL data on the selected partition. Make sure you have backed up your game data before proceeding.</string>
+    <string name="format_filesystem">Select Filesystem</string>
+    <string name="format_f2fs">F2FS</string>
+    <string name="format_f2fs_desc">Recommended — Optimized for flash storage, faster read/write</string>
+    <string name="format_ext4">Ext4</string>
+    <string name="format_ext4_desc">Widely compatible, stable and reliable</string>
+    <string name="format_exfat">exFAT</string>
+    <string name="format_exfat_desc">Cross-platform compatible (limited Linux features)</string>
+    <string name="format_ntfs">NTFS</string>
+    <string name="format_ntfs_desc">Windows compatible (requires ntfs-3g kernel module)</string>
+    <string name="format_button">Format Partition</string>
+    <string name="format_confirm_title">Format Partition?</string>
+    <string name="format_confirm_desc">This will erase ALL data on %1$s. This action cannot be undone.</string>
+    <string name="format_confirm_button">Yes, Format</string>
+    <string name="format_in_progress">Formatting…</string>
+    <string name="format_success">Partition formatted successfully!</string>
+    <string name="format_error">Format failed: %1$s</string>
+
+    <!-- Backup & Restore -->
+    <string name="backup_title">Backup &amp; Restore</string>
+    <string name="backup_config_title">Configuration Backup</string>
+    <string name="backup_config_desc">Export your game list and settings to a JSON file.</string>
+    <string name="backup_config_export">Export Config</string>
+    <string name="backup_config_import">Import Config</string>
+    <string name="backup_data_title">Game Data Backup</string>
+    <string name="backup_data_desc">Copy game data from MicroSD to another location.</string>
+    <string name="backup_game_backup">Backup</string>
+    <string name="backup_game_restore">Restore</string>
+    <string name="backup_success">Backup saved to: %1$s</string>
+    <string name="backup_error">Backup failed: %1$s</string>
+    <string name="restore_success">Config restored successfully!</string>
+    <string name="restore_error">Restore failed: %1$s</string>
+
+    <!-- Logs Screen -->
+    <string name="logs_title">Logs</string>
+    <string name="logs_empty_title">No Logs Yet</string>
+    <string name="logs_empty_desc">Logs will appear here after mounting operations.</string>
+    <string name="logs_filter_all">All</string>
+    <string name="logs_filter_success">Success</string>
+    <string name="logs_filter_error">Error</string>
+    <string name="logs_filter_info">Info</string>
+    <string name="logs_auto_refresh">Auto-refresh</string>
+    <string name="logs_share">Share Log</string>
+    <string name="logs_clear">Clear Log</string>
+    <string name="logs_clear_confirm">Clear all log entries?</string>
+    <string name="logs_cleared">Log cleared.</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_storage">Storage</string>
+    <string name="settings_sd_base_path">SD Base Path</string>
+    <string name="settings_sd_base_path_hint">/data/sdext2</string>
+    <string name="settings_sd_block_device">Block Device (Manual)</string>
+    <string name="settings_sd_block_device_hint">/dev/block/mmcblk0p3</string>
+    <string name="settings_behavior">Behavior</string>
+    <string name="settings_auto_mount">Auto-mount on Boot</string>
+    <string name="settings_auto_mount_desc">Automatically mount all games when device boots.</string>
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_clear_log">Clear Log File</string>
+    <string name="settings_reset">Reset Settings</string>
+    <string name="settings_reset_confirm">Reset all settings to default?</string>
+    <string name="settings_reset_success">Settings reset to default.</string>
+
+    <!-- About Screen -->
+    <string name="about_title">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_build">Build %1$d</string>
+    <string name="about_github">GitHub Repository</string>
+    <string name="about_changelog">Changelog</string>
+    <string name="about_license">Open Source Licenses</string>
+    <string name="about_donate_title">Support Development</string>
+    <string name="about_donate_desc">If you find Mountify useful, consider supporting its development.</string>
+    <string name="about_kofi">Ko-fi</string>
+    <string name="about_saweria">Saweria</string>
+    <string name="about_paypal">PayPal</string>
+    <string name="about_credits">Made with ❤️ by Noir</string>
+    <string name="about_update_check">Check for Updates</string>
+    <string name="about_up_to_date">Up to date</string>
+    <string name="about_update_available">Update Available: %1$s</string>
+    <string name="about_download_update">Download</string>
+    <string name="about_checking_update">Checking…</string>
+
+    <!-- Common -->
+    <string name="common_ok">OK</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_confirm">Confirm</string>
+    <string name="common_close">Close</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_save">Save</string>
+    <string name="common_loading">Loading…</string>
+    <string name="common_error">Error</string>
+    <string name="common_success">Success</string>
+    <string name="common_unknown">Unknown</string>
+    <string name="common_bytes">%1$s B</string>
+    <string name="common_kb">%1$s KB</string>
+    <string name="common_mb">%1$s MB</string>
+    <string name="common_gb">%1$s GB</string>
+    <string name="common_recommended">Recommended</string>
+    <string name="common_internal">Internal</string>
+    <string name="common_external">MicroSD</string>
+</resources>

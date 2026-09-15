@@ -1,0 +1,25 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+*/build
+.cxx
+
+# Keystore & Signing Secrets - NEVER COMMIT
+*.jks
+*.keystore
+*.b64
+keystore.properties
+
+# Captures
+/capture
+
+# Google Services
+google-services.json

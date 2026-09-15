@@ -1,0 +1,6 @@
+﻿id=Mountify
+name=Mountify
+version=v1.0
+versionCode=1
+author=Noir
+description=Bind mounts game data subfolders from external SD partition. Companion app: Mountify.
