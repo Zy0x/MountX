@@ -41,7 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -91,12 +90,6 @@ fun ModernNavigationBar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 8.dp,
-                shape = barShape,
-                spotColor = Color.Black.copy(alpha = 0.45f),
-                ambientColor = Color.Black.copy(alpha = 0.25f)
-            )
             .border(
                 width = 1.dp,
                 color = borderColor,
