@@ -961,7 +961,7 @@ fun DashboardScreenPreview() {
             status = AppStatus(
                 rootSolution = RootSolution.MAGISK,
                 isModuleInstalled = true,
-                moduleVersion = "2.1.3",
+                moduleVersion = "2.1.4",
                 mountedGamesCount = 5,
                 totalGamesCount = 8,
                 storageInfo = StorageInfo(

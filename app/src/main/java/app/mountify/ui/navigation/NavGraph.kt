@@ -22,6 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.mountify.ui.about.AboutScreen
 import app.mountify.ui.about.AboutViewModel
+import app.mountify.ui.components.ModernNavigationBar
 import app.mountify.ui.dashboard.DashboardScreen
 import app.mountify.ui.dashboard.DashboardViewModel
 import app.mountify.ui.games.GamesScreen
@@ -47,24 +48,19 @@ fun NavGraph(
     Scaffold(
         bottomBar = {
             if (isTopLevelRoute) {
-                NavigationBar {
-                    Screen.bottomNavItems.forEach { screen ->
-                        NavigationBarItem(
-                            selected = currentRoute == screen.route,
-                            onClick = {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(imageVector = screen.icon, contentDescription = null) },
-                            label = { Text(stringResource(screen.titleRes)) }
-                        )
+                ModernNavigationBar(
+                    screens = Screen.bottomNavItems,
+                    currentRoute = currentRoute,
+                    onNavigate = { screen ->
+                        navController.navigate(screen.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
-                }
+                )
             }
         },
         modifier = modifier

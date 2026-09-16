@@ -2,24 +2,60 @@ package app.mountify.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Gamepad
+import androidx.compose.material.icons.filled.SdStorage
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.SdStorage
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SportsEsports
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.ui.graphics.vector.ImageVector
 import app.mountify.R
 
 sealed class Screen(
     val route: String,
     val titleRes: Int,
-    val icon: ImageVector
+    val icon: ImageVector,
+    val unselectedIcon: ImageVector = icon
 ) {
-    object Dashboard : Screen("dashboard", R.string.nav_dashboard, Icons.Default.Dashboard)
-    object Games : Screen("games", R.string.nav_games, Icons.Default.Gamepad)
-    object Storage : Screen("storage", R.string.nav_storage, Icons.Default.Folder)
-    object Logs : Screen("logs", R.string.nav_logs, Icons.Default.Description)
-    object Settings : Screen("settings", R.string.nav_settings, Icons.Default.Settings)
-    object About : Screen("about", R.string.about_title, Icons.Default.Settings)
+    object Dashboard : Screen(
+        route = "dashboard",
+        titleRes = R.string.nav_dashboard,
+        icon = Icons.Filled.Dashboard,
+        unselectedIcon = Icons.Outlined.Dashboard
+    )
+    object Games : Screen(
+        route = "games",
+        titleRes = R.string.nav_games,
+        icon = Icons.Filled.SportsEsports,
+        unselectedIcon = Icons.Outlined.SportsEsports
+    )
+    object Storage : Screen(
+        route = "storage",
+        titleRes = R.string.nav_storage,
+        icon = Icons.Filled.SdStorage,
+        unselectedIcon = Icons.Outlined.SdStorage
+    )
+    object Logs : Screen(
+        route = "logs",
+        titleRes = R.string.nav_logs,
+        icon = Icons.Filled.Terminal,
+        unselectedIcon = Icons.Outlined.Terminal
+    )
+    object Settings : Screen(
+        route = "settings",
+        titleRes = R.string.nav_settings,
+        icon = Icons.Filled.Settings,
+        unselectedIcon = Icons.Outlined.Settings
+    )
+    object About : Screen(
+        route = "about",
+        titleRes = R.string.about_title,
+        icon = Icons.Filled.Settings,
+        unselectedIcon = Icons.Outlined.Settings
+    )
 
     companion object {
         val bottomNavItems = listOf(Dashboard, Games, Storage, Logs, Settings)

@@ -5,6 +5,15 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.4] - 2026-09-16
+
+### Added
+- Dedicated ModernNavigationBar component featuring custom active capsule indicators, spring scale animations, and dual-tone neon indicator dots.
+- Distinct filled and outlined vector icon pairings for all top-level destinations (Dashboard, Games, Storage, Logs, Settings).
+- Haptic tactile feedback on destination selection.
+- High-contrast AMOLED glassmorphism styling with elevated surface depth and subtle outline borders.
+- Interactive vector SVG navigation dock in preview workspace with zero AI artifacts or emojis.
+
 ## [2.1.3] - 2026-09-16
 
 ### Added
