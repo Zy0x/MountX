@@ -1,5 +1,6 @@
 package app.mountify.ui.dashboard
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -22,17 +23,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.mountify.R
+import app.mountify.data.model.AppStatus
 import app.mountify.data.model.RootSolution
+import app.mountify.data.model.StorageInfo
 import app.mountify.ui.components.ErrorCard
 import app.mountify.ui.components.SectionHeader
+import app.mountify.ui.theme.MountifyTheme
 import app.mountify.ui.theme.PrimaryBlue
 import app.mountify.ui.theme.SecondaryTeal
 import app.mountify.ui.theme.StatusSuccess
 import app.mountify.util.FormatUtils
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
@@ -42,6 +46,31 @@ fun DashboardScreen(
 ) {
     val status by viewModel.appStatus.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+
+    DashboardContent(
+        status = status,
+        isRefreshing = isRefreshing,
+        onRefresh = { viewModel.refresh() },
+        onNavigateToGames = onNavigateToGames,
+        onNavigateToStorage = onNavigateToStorage,
+        onMountAll = { viewModel.mountAll() },
+        onUnmountAll = { viewModel.unmountAll() },
+        modifier = modifier
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DashboardContent(
+    status: AppStatus,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    onNavigateToGames: () -> Unit,
+    onNavigateToStorage: () -> Unit,
+    onMountAll: () -> Unit,
+    onUnmountAll: () -> Unit,
+    modifier: Modifier = Modifier
+) {
 
     Scaffold(
         topBar = {
@@ -68,7 +97,7 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.refresh() }) {
+                    IconButton(onClick = onRefresh) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = stringResource(R.string.dashboard_refresh)
@@ -271,7 +300,7 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Button(
-                        onClick = { viewModel.mountAll() },
+                        onClick = onMountAll,
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null)
@@ -280,7 +309,7 @@ fun DashboardScreen(
                     }
 
                     OutlinedButton(
-                        onClick = { viewModel.unmountAll() },
+                        onClick = onUnmountAll,
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(imageVector = Icons.Default.Stop, contentDescription = null)
@@ -296,3 +325,50 @@ fun DashboardScreen(
         }
     }
 }
+
+@Preview(
+    name = "Portrait 1080x2460",
+    device = "spec:width=1080px,height=2460px,dpi=440",
+    showBackground = true
+)
+@Preview(
+    name = "Dark Mode 1080x2460",
+    device = "spec:width=1080px,height=2460px,dpi=440",
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true
+)
+@Preview(
+    name = "Landscape 2460x1080",
+    device = "spec:width=2460px,height=1080px,dpi=440",
+    showBackground = true
+)
+@Composable
+fun DashboardScreenPreview() {
+    MountifyTheme(dynamicColor = false) {
+        DashboardContent(
+            status = AppStatus(
+                rootSolution = RootSolution.MAGISK,
+                isModuleInstalled = true,
+                moduleVersion = "2.1.2",
+                mountedGamesCount = 5,
+                totalGamesCount = 8,
+                storageInfo = StorageInfo(
+                    blockDevice = "/dev/block/mmcblk1p2",
+                    mountPoint = "/data/media/0/Android/obb",
+                    filesystem = "ext4",
+                    totalBytes = 128L * 1024 * 1024 * 1024,
+                    usedBytes = 80L * 1024 * 1024 * 1024,
+                    freeBytes = 48L * 1024 * 1024 * 1024,
+                    isMounted = true
+                )
+            ),
+            isRefreshing = false,
+            onRefresh = {},
+            onNavigateToGames = {},
+            onNavigateToStorage = {},
+            onMountAll = {},
+            onUnmountAll = {}
+        )
+    }
+}
+
