@@ -7,9 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
@@ -29,12 +29,8 @@ import app.mountify.data.model.MountStatus
 import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
 import app.mountify.ui.components.StatusChip
-import app.mountify.ui.theme.CoralError
-import app.mountify.ui.theme.ElectricCyan
-import app.mountify.ui.theme.EmeraldActive
-import app.mountify.ui.theme.ObsidianBg
-import app.mountify.ui.theme.ObsidianBorder
-import app.mountify.ui.theme.ObsidianCard
+import app.mountify.ui.theme.CyberEmerald
+import app.mountify.ui.theme.NeonCrimson
 import app.mountify.util.FormatUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -130,11 +126,11 @@ fun GamesContent(
                 subtitle = "${games.count { it.mountStatus == MountStatus.MOUNTED }}/${games.size} " + stringResource(R.string.dashboard_mounted_games)
             )
         },
-        containerColor = ObsidianBg,
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onAddClick,
-                containerColor = ElectricCyan,
+                containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.size(48.dp)
@@ -178,10 +174,10 @@ fun GamesContent(
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = ObsidianCard,
-                    unfocusedContainerColor = ObsidianCard,
-                    focusedBorderColor = ElectricCyan,
-                    unfocusedBorderColor = ObsidianBorder
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
                 )
             )
 
@@ -240,10 +236,10 @@ fun GameCard(
 
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (isMounted) EmeraldActive.copy(alpha = 0.35f) else ObsidianBorder
+            if (isMounted) CyberEmerald.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -281,14 +277,14 @@ fun GameCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF192030),
-                        border = BorderStroke(1.dp, Color(0xFF28344C))
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Text(
                             text = game.mode.name,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             fontWeight = FontWeight.SemiBold,
-                            color = ElectricCyan,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -296,8 +292,8 @@ fun GameCard(
                     if (game.dataSizeBytes > 0) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFF161B26),
-                            border = BorderStroke(1.dp, ObsidianBorder)
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Text(
                                 text = FormatUtils.formatBytes(game.dataSizeBytes),
@@ -315,9 +311,9 @@ fun GameCard(
                         modifier = Modifier.size(34.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.DriveFileMove,
+                            imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
                             contentDescription = stringResource(R.string.games_move_data),
-                            tint = ElectricCyan,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -329,7 +325,7 @@ fun GameCard(
                         Icon(
                             imageVector = if (isMounted) Icons.Default.Stop else Icons.Default.PlayArrow,
                             contentDescription = if (isMounted) stringResource(R.string.games_unmount) else stringResource(R.string.games_mount),
-                            tint = if (isMounted) CoralError else EmeraldActive,
+                            tint = if (isMounted) NeonCrimson else CyberEmerald,
                             modifier = Modifier.size(16.dp)
                         )
                     }

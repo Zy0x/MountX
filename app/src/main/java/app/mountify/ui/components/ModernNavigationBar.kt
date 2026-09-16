@@ -12,6 +12,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -57,6 +58,8 @@ import app.mountify.ui.theme.FigmaNavBlue
 import app.mountify.ui.theme.FigmaNavBorder
 import app.mountify.ui.theme.FigmaNavInactive
 import app.mountify.ui.theme.FigmaNavSurface
+import app.mountify.ui.theme.HyperCyan
+import app.mountify.ui.theme.HyperCyanBright
 import app.mountify.ui.theme.MountifyTheme
 
 /**
@@ -80,8 +83,8 @@ fun ModernNavigationBar(
     val haptic = LocalHapticFeedback.current
     val isDark = isSystemInDarkTheme()
 
-    val surfaceColor = if (isDark) FigmaNavSurface else MaterialTheme.colorScheme.surface
-    val borderColor = if (isDark) FigmaNavBorder else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val borderColor = MaterialTheme.colorScheme.outline
     val topCornerRadius = 18.dp
     val barShape = RoundedCornerShape(topStart = topCornerRadius, topEnd = topCornerRadius)
 
@@ -141,8 +144,15 @@ private fun FigmaNavItem(
     val interactionSource = remember { MutableInteractionSource() }
     val isDark = isSystemInDarkTheme()
 
-    val activeColor = if (isDark) FigmaNavBlue else MaterialTheme.colorScheme.primary
-    val inactiveColor = if (isDark) FigmaNavInactive else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+    val activeColor = if (isDark) HyperCyanBright else MaterialTheme.colorScheme.primary
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+    val activeIndicatorBg = if (isDark) HyperCyan.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) activeIndicatorBg else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "figmaNavContainerColor"
+    )
 
     val iconColor by animateColorAsState(
         targetValue = if (selected) activeColor else inactiveColor,
@@ -180,7 +190,8 @@ private fun FigmaNavItem(
                         stiffness = Spring.StiffnessMedium
                     )
                 )
-                .padding(vertical = 2.dp),
+                .background(containerColor, RoundedCornerShape(12.dp))
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -215,13 +226,14 @@ private fun FigmaNavItem(
                 Text(
                     text = stringResource(screen.titleRes),
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Medium,
-                        letterSpacing = 0.1.sp
+                        letterSpacing = 0.sp
                     ),
                     color = activeColor,
                     maxLines = 1,
-                    modifier = Modifier.padding(top = 2.dp)
+                    softWrap = false,
+                    modifier = Modifier.padding(top = 1.dp)
                 )
             }
         }

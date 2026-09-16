@@ -19,11 +19,7 @@ import app.mountify.R
 import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
 import app.mountify.ui.components.SectionHeader
-import app.mountify.ui.theme.CoralError
-import app.mountify.ui.theme.ElectricCyan
-import app.mountify.ui.theme.ObsidianBg
-import app.mountify.ui.theme.ObsidianBorder
-import app.mountify.ui.theme.ObsidianCard
+import app.mountify.ui.theme.NeonCrimson
 import app.mountify.util.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,7 +56,7 @@ fun SettingsScreen(
                 }
             )
         },
-        containerColor = ObsidianBg,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier
     ) { paddingValues ->
         LazyColumn(
@@ -75,8 +71,8 @@ fun SettingsScreen(
                 SectionHeader(title = stringResource(R.string.settings_appearance))
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-                    border = BorderStroke(1.dp, ObsidianBorder),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -150,8 +146,8 @@ fun SettingsScreen(
                 SectionHeader(title = stringResource(R.string.settings_storage))
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-                    border = BorderStroke(1.dp, ObsidianBorder),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -163,10 +159,10 @@ fun SettingsScreen(
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = ObsidianCard,
-                                unfocusedContainerColor = ObsidianCard,
-                                focusedBorderColor = ElectricCyan,
-                                unfocusedBorderColor = ObsidianBorder
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
                             )
                         )
                         Spacer(modifier = Modifier.height(10.dp))
@@ -178,10 +174,10 @@ fun SettingsScreen(
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = ObsidianCard,
-                                unfocusedContainerColor = ObsidianCard,
-                                focusedBorderColor = ElectricCyan,
-                                unfocusedBorderColor = ObsidianBorder
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
                             )
                         )
                     }
@@ -193,8 +189,8 @@ fun SettingsScreen(
                 SectionHeader(title = stringResource(R.string.settings_behavior))
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-                    border = BorderStroke(1.dp, ObsidianBorder),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -236,8 +232,8 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .heightIn(min = 42.dp, max = 46.dp),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, CoralError.copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CoralError)
+                    border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.5f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson)
                 ) {
                     Text(
                         stringResource(R.string.settings_reset),

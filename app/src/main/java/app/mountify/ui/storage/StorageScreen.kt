@@ -24,14 +24,8 @@ import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
 import app.mountify.ui.components.ErrorCard
 import app.mountify.ui.components.SectionHeader
-import app.mountify.ui.theme.CoralError
-import app.mountify.ui.theme.ElectricCyan
-import app.mountify.ui.theme.EmeraldActive
-import app.mountify.ui.theme.ObsidianBg
-import app.mountify.ui.theme.ObsidianBorder
-import app.mountify.ui.theme.ObsidianCard
-import app.mountify.ui.theme.SecondaryTeal
-import app.mountify.ui.theme.StatusSuccess
+import app.mountify.ui.theme.CyberEmerald
+import app.mountify.ui.theme.NeonCrimson
 import app.mountify.util.FormatUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,7 +125,7 @@ fun StorageContent(
                 }
             )
         },
-        containerColor = ObsidianBg,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier
     ) { paddingValues ->
         LazyColumn(
@@ -145,8 +139,8 @@ fun StorageContent(
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-                    border = BorderStroke(1.dp, ObsidianBorder),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -175,13 +169,13 @@ fun StorageContent(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = ElectricCyan
+                                color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             LinearProgressIndicator(
                                 progress = { storage!!.usedPercent },
-                                color = ElectricCyan,
-                                trackColor = Color(0xFF1C2230),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(6.dp)
@@ -198,7 +192,7 @@ fun StorageContent(
                                 Text(
                                     text = "Free: ${FormatUtils.formatBytes(storage!!.freeBytes)}",
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    color = EmeraldActive,
+                                    color = CyberEmerald,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
@@ -210,7 +204,7 @@ fun StorageContent(
                             Text(
                                 text = stringResource(R.string.storage_not_mounted),
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                color = CoralError
+                                color = NeonCrimson
                             )
                         }
                     }
@@ -222,8 +216,8 @@ fun StorageContent(
                 SectionHeader(title = stringResource(R.string.storage_block_device))
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-                    border = BorderStroke(1.dp, ObsidianBorder),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -236,10 +230,10 @@ fun StorageContent(
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = ObsidianCard,
-                                unfocusedContainerColor = ObsidianCard,
-                                focusedBorderColor = ElectricCyan,
-                                unfocusedBorderColor = ObsidianBorder
+                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
                             )
                         )
 
@@ -274,7 +268,7 @@ fun StorageContent(
                                 enabled = selectedDevice.isNotBlank(),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = ElectricCyan,
+                                    containerColor = MaterialTheme.colorScheme.primary,
                                     contentColor = Color.White
                                 ),
                                 modifier = Modifier
@@ -292,12 +286,12 @@ fun StorageContent(
                             OutlinedButton(
                                 onClick = onUnmountPartition,
                                 shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, ObsidianBorder),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                 modifier = Modifier
                                     .weight(1f)
                                     .heightIn(min = 42.dp, max = 46.dp)
                             ) {
-                                Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(16.dp), tint = CoralError)
+                                Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(16.dp), tint = NeonCrimson)
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     stringResource(R.string.storage_unmount),
@@ -314,15 +308,15 @@ fun StorageContent(
                 SectionHeader(title = stringResource(R.string.format_title))
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-                    border = BorderStroke(1.dp, ObsidianBorder),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = stringResource(R.string.format_warning_desc),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                            color = CoralError
+                            color = NeonCrimson
                         )
                         Spacer(modifier = Modifier.height(10.dp))
 
@@ -348,11 +342,12 @@ fun StorageContent(
                                         Text(text = fs.label, fontWeight = FontWeight.Medium, fontSize = 12.sp)
                                         if (fs.isRecommended) {
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Badge(containerColor = EmeraldActive) {
+                                            Badge(containerColor = CyberEmerald) {
                                                 Text(
                                                     text = stringResource(R.string.common_recommended),
                                                     modifier = Modifier.padding(horizontal = 4.dp),
-                                                    fontSize = 10.sp
+                                                    fontSize = 10.sp,
+                                                    color = Color.Black
                                                 )
                                             }
                                         }
@@ -365,7 +360,10 @@ fun StorageContent(
 
                         Button(
                             onClick = onFormatClick,
-                            colors = ButtonDefaults.buttonColors(containerColor = CoralError),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = NeonCrimson,
+                                contentColor = Color.White
+                            ),
                             enabled = selectedDevice.isNotBlank() && !isFormatting,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
@@ -390,8 +388,8 @@ fun StorageContent(
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF131926)),
-                    border = BorderStroke(1.dp, Color(0xFF222E46)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onNavigateToBackup
                 ) {
@@ -402,7 +400,7 @@ fun StorageContent(
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = ElectricCyan
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(

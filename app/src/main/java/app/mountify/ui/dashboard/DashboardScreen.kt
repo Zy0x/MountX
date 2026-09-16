@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,15 +74,24 @@ import app.mountify.data.model.MountMode
 import app.mountify.data.model.MountStatus
 import app.mountify.data.model.RootSolution
 import app.mountify.data.model.StorageInfo
+import app.mountify.ui.theme.AmberGlow
 import app.mountify.ui.theme.AmberWarn
+import app.mountify.ui.theme.AuroraGradientBrush
+import app.mountify.ui.theme.AuroraGradientBrushLight
 import app.mountify.ui.theme.CoralError
+import app.mountify.ui.theme.CrimsonGlow
+import app.mountify.ui.theme.CyberEmerald
 import app.mountify.ui.theme.ElectricCyan
 import app.mountify.ui.theme.ElectricCyanBright
+import app.mountify.ui.theme.ElectricIndigo
 import app.mountify.ui.theme.EmeraldActive
+import app.mountify.ui.theme.EmeraldGlow
+import app.mountify.ui.theme.HyperCyan
+import app.mountify.ui.theme.HyperCyanBright
 import app.mountify.ui.theme.MountifyTheme
-import app.mountify.ui.theme.ObsidianBg
-import app.mountify.ui.theme.ObsidianBorder
-import app.mountify.ui.theme.ObsidianCard
+import app.mountify.ui.theme.NeonCrimson
+import app.mountify.ui.theme.StorageGradientBrush
+import app.mountify.ui.theme.SunsetAmber
 import app.mountify.util.FormatUtils
 
 @Composable
@@ -135,7 +145,7 @@ fun DashboardContent(
                 onRefresh = onRefresh
             )
         },
-        containerColor = ObsidianBg,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier.fillMaxSize()
     ) { paddingValues ->
         if (isLandscape) {
@@ -251,15 +261,15 @@ private fun SleekCompactHeader(
         ) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = Color(0xFF191E2C),
-                border = BorderStroke(1.dp, Color(0xFF283248)),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.size(28.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.SdStorage,
                         contentDescription = null,
-                        tint = ElectricCyan,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(15.dp)
                     )
                 }
@@ -280,17 +290,17 @@ private fun SleekCompactHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            val (ledColor, engineLabel) = when (status.rootSolution) {
-                RootSolution.MAGISK -> Pair(EmeraldActive, stringResource(R.string.root_magisk))
-                RootSolution.KERNELSU -> Pair(EmeraldActive, stringResource(R.string.root_kernelsu))
-                RootSolution.APATCH -> Pair(EmeraldActive, stringResource(R.string.root_apatch))
-                RootSolution.NONE -> Pair(CoralError, stringResource(R.string.root_none))
+            val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
+                RootSolution.MAGISK -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_magisk))
+                RootSolution.KERNELSU -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_kernelsu))
+                RootSolution.APATCH -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_apatch))
+                RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
             }
 
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF161A25),
-                border = BorderStroke(1.dp, Color(0xFF222B3D)),
+                color = ledGlow,
+                border = BorderStroke(1.dp, ledColor.copy(alpha = 0.45f)),
                 modifier = Modifier.height(28.dp)
             ) {
                 Row(
@@ -307,7 +317,7 @@ private fun SleekCompactHeader(
                         text = engineLabel,
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = ledColor
                     )
                 }
             }
@@ -339,9 +349,9 @@ private fun ContextualAlertBanner(status: AppStatus) {
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF2B1214)
+                    containerColor = CrimsonGlow
                 ),
-                border = BorderStroke(1.dp, CoralError.copy(alpha = 0.4f)),
+                border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -350,14 +360,14 @@ private fun ContextualAlertBanner(status: AppStatus) {
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = CoralError.copy(alpha = 0.15f),
+                        color = NeonCrimson.copy(alpha = 0.18f),
                         modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = CoralError,
+                                tint = NeonCrimson,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -370,13 +380,13 @@ private fun ContextualAlertBanner(status: AppStatus) {
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = Color(0xFFFF8A80)
+                            color = NeonCrimson
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.dashboard_no_root_desc),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                            color = Color(0xFFFFCDD2).copy(alpha = 0.85f)
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
                         )
                     }
                 }
@@ -387,9 +397,9 @@ private fun ContextualAlertBanner(status: AppStatus) {
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF2B2212)
+                    containerColor = AmberGlow
                 ),
-                border = BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.4f)),
+                border = BorderStroke(1.dp, SunsetAmber.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -398,14 +408,14 @@ private fun ContextualAlertBanner(status: AppStatus) {
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = Color(0xFFFFB300).copy(alpha = 0.15f),
+                        color = SunsetAmber.copy(alpha = 0.18f),
                         modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = Color(0xFFFFB300),
+                                tint = SunsetAmber,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -418,13 +428,13 @@ private fun ContextualAlertBanner(status: AppStatus) {
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = Color(0xFFFFE082)
+                            color = SunsetAmber
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.dashboard_module_install_guide),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                            color = Color(0xFFFFF8E1).copy(alpha = 0.85f)
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
                         )
                     }
                 }
@@ -474,10 +484,10 @@ private fun SmartMasterControlCard(
 
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (allMounted) EmeraldActive.copy(alpha = 0.35f) else ObsidianBorder
+            if (allMounted) CyberEmerald.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -492,23 +502,23 @@ private fun SmartMasterControlCard(
                     text = stringResource(R.string.dashboard_master_control).uppercase(),
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     fontWeight = FontWeight.Bold,
-                    color = ElectricCyan,
+                    color = MaterialTheme.colorScheme.primary,
                     letterSpacing = 0.8.sp
                 )
 
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = when {
-                        totalCount == 0 -> Color(0xFF1C2230)
-                        allMounted -> EmeraldActive.copy(alpha = 0.15f)
-                        else -> ElectricCyan.copy(alpha = 0.15f)
+                        totalCount == 0 -> MaterialTheme.colorScheme.surfaceVariant
+                        allMounted -> CyberEmerald.copy(alpha = 0.15f)
+                        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                     },
                     border = BorderStroke(
                         1.dp,
                         when {
-                            totalCount == 0 -> Color(0xFF283248)
-                            allMounted -> EmeraldActive.copy(alpha = 0.3f)
-                            else -> ElectricCyan.copy(alpha = 0.3f)
+                            totalCount == 0 -> MaterialTheme.colorScheme.outlineVariant
+                            allMounted -> CyberEmerald.copy(alpha = 0.4f)
+                            else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                         }
                     )
                 ) {
@@ -522,7 +532,7 @@ private fun SmartMasterControlCard(
                                 modifier = Modifier
                                     .size(5.dp)
                                     .scale(pulseScale)
-                                    .background(EmeraldActive.copy(alpha = pulseAlpha), CircleShape)
+                                    .background(CyberEmerald.copy(alpha = pulseAlpha), CircleShape)
                             )
                         }
                         Text(
@@ -535,8 +545,8 @@ private fun SmartMasterControlCard(
                             fontWeight = FontWeight.Bold,
                             color = when {
                                 totalCount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
-                                allMounted -> EmeraldActive
-                                else -> ElectricCyan
+                                allMounted -> CyberEmerald
+                                else -> MaterialTheme.colorScheme.primary
                             }
                         )
                     }
@@ -576,34 +586,45 @@ private fun SmartMasterControlCard(
             // Adaptive Master Button
             when {
                 totalCount == 0 -> {
-                    FilledTonalButton(
+                    Button(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onNavigateToGames()
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 42.dp, max = 46.dp),
+                            .heightIn(min = 42.dp, max = 46.dp)
+                            .background(
+                                brush = AuroraGradientBrush,
+                                shape = RoundedCornerShape(12.dp)
+                            ),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0xFF1A2130),
-                            contentColor = ElectricCyan
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = Color.White
                         ),
-                        border = BorderStroke(1.dp, Color(0xFF28344C))
+                        contentPadding = PaddingValues(0.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = stringResource(R.string.dashboard_hero_add_game_cta),
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
                             )
-                        )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.dashboard_hero_add_game_cta),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.White
+                            )
+                        }
                     }
                 }
 
@@ -618,16 +639,16 @@ private fun SmartMasterControlCard(
                             .heightIn(min = 42.dp, max = 46.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Color(0xFF1D2230),
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
                             contentColor = MaterialTheme.colorScheme.onSurface
                         ),
-                        border = BorderStroke(1.dp, Color(0xFF2B344A))
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Stop,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = CoralError
+                            tint = NeonCrimson
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -641,6 +662,8 @@ private fun SmartMasterControlCard(
                 }
 
                 else -> {
+                    val isDark = isSystemInDarkTheme()
+                    val gradient = if (isDark) AuroraGradientBrush else AuroraGradientBrushLight
                     Button(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -648,10 +671,11 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 42.dp, max = 46.dp),
+                            .heightIn(min = 42.dp, max = 46.dp)
+                            .background(gradient, RoundedCornerShape(12.dp)),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = ElectricCyan,
+                            containerColor = Color.Transparent,
                             contentColor = Color.White
                         )
                     ) {
@@ -684,8 +708,8 @@ private fun M3StorageCard(
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-        border = BorderStroke(1.dp, ObsidianBorder),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onNavigateToStorage)
@@ -697,15 +721,15 @@ private fun M3StorageCard(
             ) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = ElectricCyan.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.25f)),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
                     modifier = Modifier.size(34.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.SdStorage,
                             contentDescription = null,
-                            tint = ElectricCyan,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -731,14 +755,14 @@ private fun M3StorageCard(
                 if (storage != null && storage.isMounted && storage.filesystem.isNotBlank()) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF1A2234),
-                        border = BorderStroke(1.dp, Color(0xFF28344E))
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Text(
                             text = storage.filesystem.uppercase(),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             fontWeight = FontWeight.Bold,
-                            color = ElectricCyan,
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -750,24 +774,20 @@ private fun M3StorageCard(
             if (storage != null && storage.isMounted && storage.totalBytes > 0L) {
                 val usedRatio = (storage.usedBytes.toFloat() / storage.totalBytes.toFloat()).coerceIn(0f, 1f)
 
-                // Electric Cyan-to-Blue Gradient Gauge
+                // Cyber Aurora Gradient Storage Gauge
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(Color(0xFF1C2230))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(fraction = usedRatio)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(3.dp))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(ElectricCyan, ElectricCyanBright)
-                                )
-                            )
+                            .background(StorageGradientBrush)
                     )
                 }
 
@@ -793,8 +813,8 @@ private fun M3StorageCard(
                             FormatUtils.formatBytes(storage.freeBytes)
                         ),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = ElectricCyan
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             } else {
@@ -817,12 +837,12 @@ private fun M3StorageCard(
                             text = stringResource(R.string.dashboard_manage_storage),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             fontWeight = FontWeight.Bold,
-                            color = ElectricCyan
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
                             contentDescription = null,
-                            tint = ElectricCyan,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -832,7 +852,7 @@ private fun M3StorageCard(
     }
 }
 
-// ── 5. Telemetry Metrics Row (Side-by-Side Rounded Obsidian Tiles) ──
+// ── 5. Telemetry Metrics Row (Side-by-Side Rounded Cyber Surface Tiles) ──
 
 @Composable
 private fun DashboardMetricsRow(
@@ -850,22 +870,22 @@ private fun DashboardMetricsRow(
         // Tile 1: Offloaded Data
         Card(
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-            border = BorderStroke(1.dp, ObsidianBorder),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             modifier = Modifier.weight(1f)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Surface(
                     shape = CircleShape,
-                    color = ElectricCyan.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.3f)),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
                     modifier = Modifier.size(28.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Storage,
                             contentDescription = null,
-                            tint = ElectricCyan,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -890,17 +910,17 @@ private fun DashboardMetricsRow(
         // Tile 2: Runtime Namespaces
         Card(
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-            border = BorderStroke(1.dp, ObsidianBorder),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             modifier = Modifier.weight(1f)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Surface(
                     shape = CircleShape,
-                    color = if (mountedCount > 0) EmeraldActive.copy(alpha = 0.15f) else Color(0xFF1E2432),
+                    color = if (mountedCount > 0) CyberEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
                     border = BorderStroke(
                         1.dp,
-                        if (mountedCount > 0) EmeraldActive.copy(alpha = 0.3f) else Color(0xFF2A3448)
+                        if (mountedCount > 0) CyberEmerald.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant
                     ),
                     modifier = Modifier.size(28.dp)
                 ) {
@@ -908,7 +928,7 @@ private fun DashboardMetricsRow(
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = if (mountedCount > 0) EmeraldActive else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = if (mountedCount > 0) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(14.dp)
                         )
                     }

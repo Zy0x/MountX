@@ -18,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.mountify.ui.theme.ObsidianBg
 
 /**
  * Standardized compact screen header providing consistent ~46dp height with status bar padding
@@ -33,7 +32,7 @@ fun CompactScreenHeader(
     actions: (@Composable RowScope.() -> Unit)? = null
 ) {
     Surface(
-        color = ObsidianBg,
+        color = MaterialTheme.colorScheme.background,
         modifier = modifier.fillMaxWidth()
     ) {
         Row(

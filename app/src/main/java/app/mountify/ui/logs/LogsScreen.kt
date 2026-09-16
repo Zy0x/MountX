@@ -28,12 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountify.R
 import app.mountify.ui.components.CompactScreenHeader
-import app.mountify.ui.theme.ElectricCyan
-import app.mountify.ui.theme.EmeraldActive
-import app.mountify.ui.theme.CoralError
-import app.mountify.ui.theme.ObsidianBg
-import app.mountify.ui.theme.ObsidianBorder
-import app.mountify.ui.theme.ObsidianCard
+import app.mountify.ui.theme.CyberEmerald
+import app.mountify.ui.theme.NeonCrimson
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,7 +89,7 @@ fun LogsScreen(
                 }
             )
         },
-        containerColor = ObsidianBg,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier
     ) { paddingValues ->
         Column(
@@ -105,8 +101,8 @@ fun LogsScreen(
             // Auto Refresh Toggle Card
             Card(
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-                border = BorderStroke(1.dp, ObsidianBorder),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp)
@@ -158,8 +154,8 @@ fun LogsScreen(
                         .fillMaxSize()
                         .padding(bottom = 12.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(ObsidianCard)
-                        .border(1.dp, ObsidianBorder, RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
                         .padding(10.dp)
                 ) {
                     LazyColumn(
@@ -171,10 +167,10 @@ fun LogsScreen(
                     ) {
                         items(logLines) { line ->
                             val textColor = when (line.level) {
-                                LogLevel.ERROR -> CoralError
-                                LogLevel.SUCCESS -> EmeraldActive
-                                LogLevel.DEBUG -> Color.Gray
-                                LogLevel.INFO -> Color(0xFFDDDDDD)
+                                LogLevel.ERROR -> NeonCrimson
+                                LogLevel.SUCCESS -> CyberEmerald
+                                LogLevel.DEBUG -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                LogLevel.INFO -> MaterialTheme.colorScheme.onSurface
                             }
                             Text(
                                 text = line.rawText,

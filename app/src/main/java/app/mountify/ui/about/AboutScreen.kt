@@ -26,14 +26,8 @@ import app.mountify.BuildConfig
 import app.mountify.R
 import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.SectionHeader
-import app.mountify.ui.theme.ElectricCyan
-import app.mountify.ui.theme.EmeraldActive
-import app.mountify.ui.theme.ObsidianBg
-import app.mountify.ui.theme.ObsidianBorder
-import app.mountify.ui.theme.ObsidianCard
-import app.mountify.ui.theme.PrimaryBlue
-import app.mountify.ui.theme.SecondaryTeal
-import app.mountify.ui.theme.StatusSuccess
+import app.mountify.ui.theme.CyberEmerald
+import app.mountify.ui.theme.NeonCrimson
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,7 +63,7 @@ fun AboutScreen(
                 }
             )
         },
-        containerColor = ObsidianBg,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier
     ) { paddingValues ->
         LazyColumn(
@@ -86,7 +80,7 @@ fun AboutScreen(
                 Icon(
                     painter = painterResource(id = R.drawable.ic_launcher_foreground),
                     contentDescription = null,
-                    tint = ElectricCyan,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(64.dp)
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -112,8 +106,8 @@ fun AboutScreen(
             item {
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
-                    border = BorderStroke(1.dp, ObsidianBorder),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -130,7 +124,7 @@ fun AboutScreen(
                                 )
                             )
                             if (isChecking) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = ElectricCyan)
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.primary)
                             }
                         }
 
@@ -141,7 +135,7 @@ fun AboutScreen(
                                 Text(
                                     text = stringResource(R.string.about_update_available, updateInfo!!.latestVersion),
                                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                                    color = ElectricCyan,
+                                    color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -151,7 +145,7 @@ fun AboutScreen(
                                         context.startActivity(intent)
                                     },
                                     shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan, contentColor = Color.White),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 42.dp, max = 46.dp)
@@ -162,7 +156,7 @@ fun AboutScreen(
                                 Text(
                                     text = stringResource(R.string.about_up_to_date),
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                    color = EmeraldActive
+                                    color = CyberEmerald
                                 )
                             }
                         } else if (checkError != null) {
@@ -178,7 +172,7 @@ fun AboutScreen(
                             onClick = { viewModel.checkForUpdate() },
                             enabled = !isChecking,
                             shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, ObsidianBorder),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 42.dp, max = 46.dp)
@@ -196,7 +190,9 @@ fun AboutScreen(
                 SectionHeader(title = "Resources")
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column {
                         ListItem(
@@ -204,14 +200,14 @@ fun AboutScreen(
                             supportingContent = { Text("https://github.com/Zy0x/Mountify") },
                             trailingContent = { Icon(Icons.Default.OpenInBrowser, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                             shadowElevation = 0.dp
                         )
                         HorizontalDivider()
                         ListItem(
                             headlineContent = { Text(stringResource(R.string.about_changelog)) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                             trailingContent = {
                                 TextButton(onClick = { showChangelogDialog = true }) {
                                     Text("View")
@@ -222,7 +218,7 @@ fun AboutScreen(
                         ListItem(
                             headlineContent = { Text(stringResource(R.string.about_license)) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                             trailingContent = {
                                 TextButton(onClick = { showLicenseDialog = true }) {
                                     Text("MIT")
@@ -238,7 +234,9 @@ fun AboutScreen(
                 SectionHeader(title = stringResource(R.string.about_donate_title))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
