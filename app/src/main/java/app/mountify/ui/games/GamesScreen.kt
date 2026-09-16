@@ -1,9 +1,11 @@
 package app.mountify.ui.games
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -15,15 +17,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.mountify.R
 import app.mountify.data.model.GameEntry
 import app.mountify.data.model.MountMode
 import app.mountify.data.model.MountStatus
+import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
 import app.mountify.ui.components.StatusChip
+import app.mountify.ui.theme.CoralError
+import app.mountify.ui.theme.ElectricCyan
+import app.mountify.ui.theme.EmeraldActive
+import app.mountify.ui.theme.ObsidianBg
+import app.mountify.ui.theme.ObsidianBorder
+import app.mountify.ui.theme.ObsidianCard
 import app.mountify.util.FormatUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -114,13 +125,25 @@ fun GamesContent(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.games_title), fontWeight = FontWeight.Bold) }
+            CompactScreenHeader(
+                title = stringResource(R.string.games_title),
+                subtitle = "${games.count { it.mountStatus == MountStatus.MOUNTED }}/${games.size} " + stringResource(R.string.dashboard_mounted_games)
             )
         },
+        containerColor = ObsidianBg,
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddClick) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = stringResource(R.string.games_add))
+            FloatingActionButton(
+                onClick = onAddClick,
+                containerColor = ElectricCyan,
+                contentColor = Color.White,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(R.string.games_add),
+                    modifier = Modifier.size(20.dp)
+                )
             }
         },
         modifier = modifier
@@ -129,18 +152,37 @@ fun GamesContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 14.dp)
         ) {
             // Search Bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
-                placeholder = { Text(stringResource(R.string.games_search)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = {
+                    Text(
+                        stringResource(R.string.games_search),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                singleLine = true
+                    .padding(bottom = 10.dp),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = ObsidianCard,
+                    unfocusedContainerColor = ObsidianCard,
+                    focusedBorderColor = ElectricCyan,
+                    unfocusedBorderColor = ObsidianBorder
+                )
             )
 
             if (filteredGames.isEmpty()) {
@@ -151,14 +193,17 @@ fun GamesContent(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = stringResource(R.string.games_empty_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = stringResource(R.string.games_empty_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 }
@@ -184,7 +229,6 @@ fun GamesContent(
     }
 }
 
-
 @Composable
 fun GameCard(
     game: GameEntry,
@@ -192,11 +236,18 @@ fun GameCard(
     onMoveData: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val isMounted = game.mountStatus == MountStatus.MOUNTED
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+        border = BorderStroke(
+            1.dp,
+            if (isMounted) EmeraldActive.copy(alpha = 0.35f) else ObsidianBorder
+        ),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -205,12 +256,15 @@ fun GameCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = game.displayName.ifBlank { game.packageName },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = game.packageName,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
@@ -224,41 +278,71 @@ fun GameCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(text = game.mode.name, style = MaterialTheme.typography.labelSmall) }
-                    )
-                    if (game.dataSizeBytes > 0) {
-                        SuggestionChip(
-                            onClick = {},
-                            label = { Text(text = FormatUtils.formatBytes(game.dataSizeBytes), style = MaterialTheme.typography.labelSmall) }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF192030),
+                        border = BorderStroke(1.dp, Color(0xFF28344C))
+                    ) {
+                        Text(
+                            text = game.mode.name,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.SemiBold,
+                            color = ElectricCyan,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
+                    }
+
+                    if (game.dataSizeBytes > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF161B26),
+                            border = BorderStroke(1.dp, ObsidianBorder)
+                        ) {
+                            Text(
+                                text = FormatUtils.formatBytes(game.dataSizeBytes),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    IconButton(onClick = onMoveData) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    IconButton(
+                        onClick = onMoveData,
+                        modifier = Modifier.size(34.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.DriveFileMove,
                             contentDescription = stringResource(R.string.games_move_data),
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = ElectricCyan,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    IconButton(onClick = onToggleMount) {
+                    IconButton(
+                        onClick = onToggleMount,
+                        modifier = Modifier.size(34.dp)
+                    ) {
                         Icon(
-                            imageVector = if (game.mountStatus == MountStatus.MOUNTED) Icons.Default.Stop else Icons.Default.PlayArrow,
-                            contentDescription = if (game.mountStatus == MountStatus.MOUNTED) stringResource(R.string.games_unmount) else stringResource(R.string.games_mount),
-                            tint = if (game.mountStatus == MountStatus.MOUNTED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            imageVector = if (isMounted) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = if (isMounted) stringResource(R.string.games_unmount) else stringResource(R.string.games_mount),
+                            tint = if (isMounted) CoralError else EmeraldActive,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    IconButton(onClick = onDelete) {
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(34.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = stringResource(R.string.games_delete),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }

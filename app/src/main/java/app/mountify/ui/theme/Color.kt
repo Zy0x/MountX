@@ -42,3 +42,13 @@ val FigmaNavBlue = Color(0xFF539DF3)
 val FigmaNavInactive = Color(0xFF676D75)
 val FigmaNavBorder = Color(0xFF2E323D)
 
+// Obsidian & Electric Modern Design System
+val ObsidianBg = Color(0xFF0C0F17)
+val ObsidianCard = Color(0xFF131722)
+val ObsidianBorder = Color(0xFF1F2637)
+val ElectricCyan = Color(0xFF539DF3)
+val ElectricCyanBright = Color(0xFF00D2FF)
+val EmeraldActive = Color(0xFF10B981)
+val AmberWarn = Color(0xFFF59E0B)
+val CoralError = Color(0xFFEF4444)
+

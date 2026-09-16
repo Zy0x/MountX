@@ -1,7 +1,9 @@
 package app.mountify.ui.storage
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.PlayArrow
@@ -11,14 +13,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.mountify.R
 import app.mountify.data.model.FilesystemType
+import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
 import app.mountify.ui.components.ErrorCard
 import app.mountify.ui.components.SectionHeader
+import app.mountify.ui.theme.CoralError
+import app.mountify.ui.theme.ElectricCyan
+import app.mountify.ui.theme.EmeraldActive
+import app.mountify.ui.theme.ObsidianBg
+import app.mountify.ui.theme.ObsidianBorder
+import app.mountify.ui.theme.ObsidianCard
 import app.mountify.ui.theme.SecondaryTeal
 import app.mountify.ui.theme.StatusSuccess
 import app.mountify.util.FormatUtils
@@ -98,59 +109,82 @@ fun StorageContent(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.storage_title), fontWeight = FontWeight.Bold) },
+            CompactScreenHeader(
+                title = stringResource(R.string.storage_title),
+                subtitle = if (storage != null && storage!!.isMounted) {
+                    "${storage!!.filesystem.uppercase()} • ${storage!!.mountPoint}"
+                } else {
+                    stringResource(R.string.storage_not_mounted)
+                },
                 actions = {
-                    IconButton(onClick = onRefreshDevices) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.storage_detect_devices))
+                    IconButton(
+                        onClick = onRefreshDevices,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.storage_detect_devices),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
             )
         },
+        containerColor = ObsidianBg,
         modifier = modifier
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(paddingValues),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // Storage Statistics Card
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = stringResource(R.string.storage_overview),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         if (storage != null && storage!!.isMounted) {
                             Text(
                                 text = "Device: ${storage!!.blockDevice}",
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                             )
                             Text(
                                 text = "Mount Point: ${storage!!.mountPoint}",
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                             )
                             Text(
                                 text = "Filesystem: ${storage!!.filesystem.uppercase()}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = ElectricCyan
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             LinearProgressIndicator(
                                 progress = { storage!!.usedPercent },
+                                color = ElectricCyan,
+                                trackColor = Color(0xFF1C2230),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(10.dp)
+                                    .height(6.dp)
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(
@@ -159,23 +193,24 @@ fun StorageContent(
                             ) {
                                 Text(
                                     text = "Used: ${FormatUtils.formatBytes(storage!!.usedBytes)}",
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
                                 )
                                 Text(
                                     text = "Free: ${FormatUtils.formatBytes(storage!!.freeBytes)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = SecondaryTeal
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = EmeraldActive,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     text = "Total: ${FormatUtils.formatBytes(storage!!.totalBytes)}",
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
                                 )
                             }
                         } else {
                             Text(
                                 text = stringResource(R.string.storage_not_mounted),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.error
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                color = CoralError
                             )
                         }
                     }
@@ -186,62 +221,88 @@ fun StorageContent(
             item {
                 SectionHeader(title = stringResource(R.string.storage_block_device))
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         OutlinedTextField(
                             value = selectedDevice,
                             onValueChange = onSelectedDeviceChange,
-                            label = { Text(stringResource(R.string.storage_block_device)) },
-                            placeholder = { Text(stringResource(R.string.storage_block_device_hint)) },
+                            label = { Text(stringResource(R.string.storage_block_device), fontSize = 12.sp) },
+                            placeholder = { Text(stringResource(R.string.storage_block_device_hint), fontSize = 12.sp) },
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = ObsidianCard,
+                                unfocusedContainerColor = ObsidianCard,
+                                focusedBorderColor = ElectricCyan,
+                                unfocusedBorderColor = ObsidianBorder
+                            )
                         )
 
                         if (devices.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "Detected devices:",
-                                style = MaterialTheme.typography.labelSmall
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
                             )
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier.padding(top = 4.dp)
                             ) {
                                 devices.forEach { dev ->
                                     FilterChip(
                                         selected = selectedDevice == dev,
                                         onClick = { onSelectedDeviceChange(dev) },
-                                        label = { Text(dev.substringAfterLast("/")) }
+                                        label = { Text(dev.substringAfterLast("/"), fontSize = 11.sp) }
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Button(
                                 onClick = { onMountPartition(selectedDevice, selectedFs) },
                                 enabled = selectedDevice.isNotBlank(),
-                                modifier = Modifier.weight(1f)
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ElectricCyan,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 42.dp, max = 46.dp)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(stringResource(R.string.storage_mount))
+                                Text(
+                                    stringResource(R.string.storage_mount),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                )
                             }
 
                             OutlinedButton(
                                 onClick = onUnmountPartition,
-                                modifier = Modifier.weight(1f)
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, ObsidianBorder),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 42.dp, max = 46.dp)
                             ) {
-                                Icon(Icons.Default.Stop, contentDescription = null)
+                                Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(16.dp), tint = CoralError)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(stringResource(R.string.storage_unmount))
+                                Text(
+                                    stringResource(R.string.storage_unmount),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                )
                             }
                         }
                     }
@@ -252,23 +313,25 @@ fun StorageContent(
             item {
                 SectionHeader(title = stringResource(R.string.format_title))
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = stringResource(R.string.format_warning_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = CoralError
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
                             text = stringResource(R.string.format_filesystem),
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
                             fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
 
                         FilesystemType.values().forEach { fs ->
                             Row(
@@ -279,16 +342,17 @@ fun StorageContent(
                                     selected = selectedFs == fs,
                                     onClick = { onSelectedFsChange(fs) }
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Column {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(text = fs.label, fontWeight = FontWeight.Medium)
+                                        Text(text = fs.label, fontWeight = FontWeight.Medium, fontSize = 12.sp)
                                         if (fs.isRecommended) {
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Badge(containerColor = StatusSuccess) {
+                                            Badge(containerColor = EmeraldActive) {
                                                 Text(
                                                     text = stringResource(R.string.common_recommended),
-                                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                                    modifier = Modifier.padding(horizontal = 4.dp),
+                                                    fontSize = 10.sp
                                                 )
                                             }
                                         }
@@ -297,21 +361,25 @@ fun StorageContent(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         Button(
                             onClick = onFormatClick,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            colors = ButtonDefaults.buttonColors(containerColor = CoralError),
                             enabled = selectedDevice.isNotBlank() && !isFormatting,
-                            modifier = Modifier.fillMaxWidth()
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 42.dp, max = 46.dp)
                         ) {
-                            Icon(Icons.Default.Build, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 if (isFormatting)
                                     stringResource(R.string.format_in_progress)
                                 else
-                                    stringResource(R.string.format_button)
+                                    stringResource(R.string.format_button),
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             )
                         }
                     }
@@ -321,21 +389,26 @@ fun StorageContent(
             // Backup & Restore Shortcut Card
             item {
                 Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF131926)),
+                    border = BorderStroke(1.dp, Color(0xFF222E46)),
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                     onClick = onNavigateToBackup
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = stringResource(R.string.storage_backup),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = ElectricCyan
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.backup_config_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
                     }
                 }

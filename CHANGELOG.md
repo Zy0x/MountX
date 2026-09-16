@@ -5,6 +5,21 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.10] - 2026-09-16
+
+### Added
+- App-wide Compact Modern visual scaling reducing bulky containers, oversized cards, and inflated buttons.
+- Reusable `CompactScreenHeader` component (~46-48dp) with inline status indicators and seamless `.statusBarsPadding()`.
+- Unified Obsidian design tokens (`ObsidianBg`, `ObsidianCard`, `ObsidianBorder`, `ElectricCyan`) across Games, Storage, Settings, Logs, and About screens.
+- Standardized 16dp card corner radius with sleek 12–14dp inner padding replacing bulky 24dp containers.
+
+### Changed
+- Streamlined `ModernNavigationBar` height to 56dp with 20dp icons and 10sp captions while preserving mandatory 48×48dp touch targets.
+- Scaled primary action buttons to 42–46dp for balanced touch density without visual bulk.
+
+### Fixed
+- Replaced deprecated `Icons.Default.ArrowBack` with `Icons.AutoMirrored.Filled.ArrowBack` in AboutScreen.
+
 ## [2.1.9] - 2026-09-16
 
 ### Added

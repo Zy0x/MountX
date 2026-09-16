@@ -1,19 +1,29 @@
 package app.mountify.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.mountify.R
+import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
 import app.mountify.ui.components.SectionHeader
+import app.mountify.ui.theme.CoralError
+import app.mountify.ui.theme.ElectricCyan
+import app.mountify.ui.theme.ObsidianBg
+import app.mountify.ui.theme.ObsidianBorder
+import app.mountify.ui.theme.ObsidianCard
 import app.mountify.util.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,84 +43,101 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_title), fontWeight = FontWeight.Bold) },
+            CompactScreenHeader(
+                title = stringResource(R.string.settings_title),
                 actions = {
-                    IconButton(onClick = onNavigateToAbout) {
-                        Icon(Icons.Default.Info, contentDescription = stringResource(R.string.about_title))
+                    IconButton(
+                        onClick = onNavigateToAbout,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = stringResource(R.string.about_title),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
             )
         },
+        containerColor = ObsidianBg,
         modifier = modifier
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(paddingValues),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // Appearance
             item {
                 SectionHeader(title = stringResource(R.string.settings_appearance))
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text(
                             text = stringResource(R.string.settings_theme),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             FilterChip(
                                 selected = themeMode == ThemeMode.LIGHT,
                                 onClick = { viewModel.setThemeMode(ThemeMode.LIGHT) },
-                                label = { Text(stringResource(R.string.settings_theme_light)) },
+                                label = { Text(stringResource(R.string.settings_theme_light), fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = themeMode == ThemeMode.DARK,
                                 onClick = { viewModel.setThemeMode(ThemeMode.DARK) },
-                                label = { Text(stringResource(R.string.settings_theme_dark)) },
+                                label = { Text(stringResource(R.string.settings_theme_dark), fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = themeMode == ThemeMode.SYSTEM,
                                 onClick = { viewModel.setThemeMode(ThemeMode.SYSTEM) },
-                                label = { Text(stringResource(R.string.settings_theme_system)) },
+                                label = { Text(stringResource(R.string.settings_theme_system), fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         Text(
                             text = stringResource(R.string.settings_language),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             FilterChip(
                                 selected = language == "en",
                                 onClick = { viewModel.setLanguage("en") },
-                                label = { Text("English (EN)") },
+                                label = { Text("English (EN)", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = language == "id",
                                 onClick = { viewModel.setLanguage("id") },
-                                label = { Text("Indonesia (ID)") },
+                                label = { Text("Indonesia (ID)", fontSize = 11.sp) },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -122,24 +149,40 @@ fun SettingsScreen(
             item {
                 SectionHeader(title = stringResource(R.string.settings_storage))
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         OutlinedTextField(
                             value = sdBasePath,
                             onValueChange = { viewModel.setSdBasePath(it) },
-                            label = { Text(stringResource(R.string.settings_sd_base_path)) },
+                            label = { Text(stringResource(R.string.settings_sd_base_path), fontSize = 12.sp) },
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = ObsidianCard,
+                                unfocusedContainerColor = ObsidianCard,
+                                focusedBorderColor = ElectricCyan,
+                                unfocusedBorderColor = ObsidianBorder
+                            )
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         OutlinedTextField(
                             value = sdBlockDevice,
                             onValueChange = { viewModel.setSdBlockDevice(it) },
-                            label = { Text(stringResource(R.string.settings_sd_block_device)) },
+                            label = { Text(stringResource(R.string.settings_sd_block_device), fontSize = 12.sp) },
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = ObsidianCard,
+                                unfocusedContainerColor = ObsidianCard,
+                                focusedBorderColor = ElectricCyan,
+                                unfocusedBorderColor = ObsidianBorder
+                            )
                         )
                     }
                 }
@@ -149,25 +192,30 @@ fun SettingsScreen(
             item {
                 SectionHeader(title = stringResource(R.string.settings_behavior))
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = stringResource(R.string.settings_auto_mount),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = stringResource(R.string.settings_auto_mount_desc),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                         }
@@ -184,10 +232,17 @@ fun SettingsScreen(
                 SectionHeader(title = stringResource(R.string.settings_advanced))
                 OutlinedButton(
                     onClick = { showResetDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 42.dp, max = 46.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, CoralError.copy(alpha = 0.5f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CoralError)
                 ) {
-                    Text(stringResource(R.string.settings_reset))
+                    Text(
+                        stringResource(R.string.settings_reset),
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    )
                 }
             }
 

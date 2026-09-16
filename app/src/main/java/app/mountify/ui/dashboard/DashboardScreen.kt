@@ -46,6 +46,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,17 +73,16 @@ import app.mountify.data.model.MountMode
 import app.mountify.data.model.MountStatus
 import app.mountify.data.model.RootSolution
 import app.mountify.data.model.StorageInfo
+import app.mountify.ui.theme.AmberWarn
+import app.mountify.ui.theme.CoralError
+import app.mountify.ui.theme.ElectricCyan
+import app.mountify.ui.theme.ElectricCyanBright
+import app.mountify.ui.theme.EmeraldActive
 import app.mountify.ui.theme.MountifyTheme
+import app.mountify.ui.theme.ObsidianBg
+import app.mountify.ui.theme.ObsidianBorder
+import app.mountify.ui.theme.ObsidianCard
 import app.mountify.util.FormatUtils
-
-// ── Obsidian & Electric Theme Tokens ──
-private val ObsidianBackground = Color(0xFF0C0F17)
-private val ObsidianCard = Color(0xFF131722)
-private val ObsidianBorder = Color(0xFF1F2637)
-private val ElectricCyan = Color(0xFF539DF3)
-private val ElectricCyanBright = Color(0xFF00D2FF)
-private val EmeraldActive = Color(0xFF00E676)
-private val CoralError = Color(0xFFFF5252)
 
 @Composable
 fun DashboardScreen(
@@ -128,30 +128,30 @@ fun DashboardContent(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(ObsidianBackground)
-    ) {
-        // 1. Sleek Compact Header Bar (Tight under status bar, zero empty gap)
-        SleekCompactHeader(
-            status = status,
-            onRefresh = onRefresh
-        )
-
+    Scaffold(
+        topBar = {
+            SleekCompactHeader(
+                status = status,
+                onRefresh = onRefresh
+            )
+        },
+        containerColor = ObsidianBg,
+        modifier = modifier.fillMaxSize()
+    ) { paddingValues ->
         if (isLandscape) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(paddingValues)
+                    .padding(horizontal = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 20.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     item {
                         ContextualAlertBanner(status = status)
@@ -172,8 +172,8 @@ fun DashboardContent(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 20.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     item {
                         M3StorageCard(
@@ -193,9 +193,9 @@ fun DashboardContent(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(top = 4.dp, bottom = 20.dp)
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
                     ContextualAlertBanner(status = status)
@@ -240,44 +240,45 @@ private fun SleekCompactHeader(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Left: Minimalist Brand Mark & Title
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(8.dp),
                 color = Color(0xFF191E2C),
                 border = BorderStroke(1.dp, Color(0xFF283248)),
-                modifier = Modifier.size(34.dp)
+                modifier = Modifier.size(28.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.SdStorage,
                         contentDescription = null,
                         tint = ElectricCyan,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                 }
             }
 
             Text(
                 text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 18.sp
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
 
         // Right: Micro Status Pill & Tactile Refresh Action
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             val (ledColor, engineLabel) = when (status.rootSolution) {
                 RootSolution.MAGISK -> Pair(EmeraldActive, stringResource(R.string.root_magisk))
@@ -287,24 +288,24 @@ private fun SleekCompactHeader(
             }
 
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = Color(0xFF161A25),
                 border = BorderStroke(1.dp, Color(0xFF222B3D)),
-                modifier = Modifier.height(32.dp)
+                modifier = Modifier.height(28.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
+                            .size(6.dp)
                             .background(ledColor, CircleShape)
                     )
                     Text(
                         text = engineLabel,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -316,13 +317,13 @@ private fun SleekCompactHeader(
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onRefresh()
                 },
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(32.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = stringResource(R.string.dashboard_refresh),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -336,7 +337,7 @@ private fun ContextualAlertBanner(status: AppStatus) {
     when {
         status.rootSolution == RootSolution.NONE -> {
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF2B1214)
                 ),
@@ -344,37 +345,38 @@ private fun ContextualAlertBanner(status: AppStatus) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         shape = CircleShape,
                         color = CoralError.copy(alpha = 0.15f),
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
                                 tint = CoralError,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.dashboard_no_root),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
                             color = Color(0xFFFF8A80)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.dashboard_no_root_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFFFCDD2).copy(alpha = 0.85f),
-                            fontSize = 11.sp
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Color(0xFFFFCDD2).copy(alpha = 0.85f)
                         )
                     }
                 }
@@ -383,7 +385,7 @@ private fun ContextualAlertBanner(status: AppStatus) {
 
         !status.isModuleInstalled -> {
             Card(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF2B2212)
                 ),
@@ -391,37 +393,38 @@ private fun ContextualAlertBanner(status: AppStatus) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         shape = CircleShape,
                         color = Color(0xFFFFB300).copy(alpha = 0.15f),
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
                                 tint = Color(0xFFFFB300),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.dashboard_module_not_installed),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
                             color = Color(0xFFFFE082)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.dashboard_module_install_guide),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFFFFF8E1).copy(alpha = 0.85f),
-                            fontSize = 11.sp
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Color(0xFFFFF8E1).copy(alpha = 0.85f)
                         )
                     }
                 }
@@ -470,7 +473,7 @@ private fun SmartMasterControlCard(
     )
 
     Card(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = ObsidianCard),
         border = BorderStroke(
             1.dp,
@@ -478,7 +481,7 @@ private fun SmartMasterControlCard(
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             // Header: Category label + Status Pill Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -487,14 +490,14 @@ private fun SmartMasterControlCard(
             ) {
                 Text(
                     text = stringResource(R.string.dashboard_master_control).uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     fontWeight = FontWeight.Bold,
                     color = ElectricCyan,
-                    letterSpacing = 1.sp
+                    letterSpacing = 0.8.sp
                 )
 
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = when {
                         totalCount == 0 -> Color(0xFF1C2230)
                         allMounted -> EmeraldActive.copy(alpha = 0.15f)
@@ -510,14 +513,14 @@ private fun SmartMasterControlCard(
                     )
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         if (allMounted) {
                             Box(
                                 modifier = Modifier
-                                    .size(6.dp)
+                                    .size(5.dp)
                                     .scale(pulseScale)
                                     .background(EmeraldActive.copy(alpha = pulseAlpha), CircleShape)
                             )
@@ -528,7 +531,7 @@ private fun SmartMasterControlCard(
                                 allMounted -> "$mountedCount / $totalCount Active"
                                 else -> "$mountedCount / $totalCount Mounted"
                             },
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             fontWeight = FontWeight.Bold,
                             color = when {
                                 totalCount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -540,7 +543,7 @@ private fun SmartMasterControlCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Headline & Description
             Text(
@@ -549,12 +552,14 @@ private fun SmartMasterControlCard(
                     allMounted -> stringResource(R.string.dashboard_hero_all_mounted)
                     else -> stringResource(R.string.dashboard_mounted_games)
                 },
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                ),
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
             Text(
                 text = when {
@@ -562,11 +567,11 @@ private fun SmartMasterControlCard(
                     allMounted -> stringResource(R.string.dashboard_hero_all_mounted_desc)
                     else -> stringResource(R.string.dashboard_hero_unmounted_desc, mountedCount, totalCount)
                 },
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Adaptive Master Button
             when {
@@ -578,8 +583,8 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 50.dp),
-                        shape = RoundedCornerShape(16.dp),
+                            .heightIn(min = 42.dp, max = 46.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = Color(0xFF1A2130),
                             contentColor = ElectricCyan
@@ -589,12 +594,15 @@ private fun SmartMasterControlCard(
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = stringResource(R.string.dashboard_hero_add_game_cta),
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
                     }
                 }
@@ -607,8 +615,8 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 50.dp),
-                        shape = RoundedCornerShape(16.dp),
+                            .heightIn(min = 42.dp, max = 46.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = Color(0xFF1D2230),
                             contentColor = MaterialTheme.colorScheme.onSurface
@@ -618,13 +626,16 @@ private fun SmartMasterControlCard(
                         Icon(
                             imageVector = Icons.Default.Stop,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(16.dp),
                             tint = CoralError
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = stringResource(R.string.dashboard_hero_unmount_all_cta),
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
                     }
                 }
@@ -637,8 +648,8 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 50.dp),
-                        shape = RoundedCornerShape(16.dp),
+                            .heightIn(min = 42.dp, max = 46.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = ElectricCyan,
                             contentColor = Color.White
@@ -647,12 +658,15 @@ private fun SmartMasterControlCard(
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = stringResource(R.string.dashboard_hero_mount_all_cta),
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
                     }
                 }
@@ -669,67 +683,69 @@ private fun M3StorageCard(
     onNavigateToStorage: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = ObsidianCard),
         border = BorderStroke(1.dp, ObsidianBorder),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onNavigateToStorage)
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = ElectricCyan.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.25f)),
-                    modifier = Modifier.size(42.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.SdStorage,
                             contentDescription = null,
                             tint = ElectricCyan,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.dashboard_storage_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     )
                     Text(
                         text = if (storage != null && storage.isMounted) storage.mountPoint else stringResource(R.string.dashboard_storage_not_mounted),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                     )
                 }
 
                 if (storage != null && storage.isMounted && storage.filesystem.isNotBlank()) {
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = Color(0xFF1A2234),
                         border = BorderStroke(1.dp, Color(0xFF28344E))
                     ) {
                         Text(
                             text = storage.filesystem.uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             fontWeight = FontWeight.Bold,
                             color = ElectricCyan,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             if (storage != null && storage.isMounted && storage.totalBytes > 0L) {
                 val usedRatio = (storage.usedBytes.toFloat() / storage.totalBytes.toFloat()).coerceIn(0f, 1f)
@@ -738,15 +754,15 @@ private fun M3StorageCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
                         .background(Color(0xFF1C2230))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(fraction = usedRatio)
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(3.dp))
                             .background(
                                 Brush.horizontalGradient(
                                     listOf(ElectricCyan, ElectricCyanBright)
@@ -755,7 +771,7 @@ private fun M3StorageCard(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -768,7 +784,7 @@ private fun M3StorageCard(
                             FormatUtils.formatBytes(storage.usedBytes),
                             FormatUtils.formatBytes(storage.totalBytes)
                         ),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
                     Text(
@@ -776,7 +792,7 @@ private fun M3StorageCard(
                             R.string.dashboard_storage_free_format,
                             FormatUtils.formatBytes(storage.freeBytes)
                         ),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         fontWeight = FontWeight.Bold,
                         color = ElectricCyan
                     )
@@ -789,17 +805,17 @@ private fun M3StorageCard(
                 ) {
                     Text(
                         text = stringResource(R.string.storage_not_mounted),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.dashboard_manage_storage),
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             fontWeight = FontWeight.Bold,
                             color = ElectricCyan
                         )
@@ -807,7 +823,7 @@ private fun M3StorageCard(
                             imageVector = Icons.Default.ChevronRight,
                             contentDescription = null,
                             tint = ElectricCyan,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
@@ -829,41 +845,43 @@ private fun DashboardMetricsRow(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         // Tile 1: Offloaded Data
         Card(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = ObsidianCard),
             border = BorderStroke(1.dp, ObsidianBorder),
             modifier = Modifier.weight(1f)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(12.dp)) {
                 Surface(
                     shape = CircleShape,
                     color = ElectricCyan.copy(alpha = 0.15f),
                     border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.3f)),
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(28.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Storage,
                             contentDescription = null,
                             tint = ElectricCyan,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = if (totalOffloadedBytes > 0) FormatUtils.formatBytes(totalOffloadedBytes) else "0 B",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = stringResource(R.string.dashboard_metric_offloaded),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
             }
@@ -871,12 +889,12 @@ private fun DashboardMetricsRow(
 
         // Tile 2: Runtime Namespaces
         Card(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = ObsidianCard),
             border = BorderStroke(1.dp, ObsidianBorder),
             modifier = Modifier.weight(1f)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(12.dp)) {
                 Surface(
                     shape = CircleShape,
                     color = if (mountedCount > 0) EmeraldActive.copy(alpha = 0.15f) else Color(0xFF1E2432),
@@ -884,31 +902,33 @@ private fun DashboardMetricsRow(
                         1.dp,
                         if (mountedCount > 0) EmeraldActive.copy(alpha = 0.3f) else Color(0xFF2A3448)
                     ),
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(28.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
                             tint = if (mountedCount > 0) EmeraldActive else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = if (mountedCount > 0) {
                         stringResource(R.string.dashboard_metric_namespaces_active)
                     } else {
                         stringResource(R.string.dashboard_metric_namespaces_idle)
                     },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = stringResource(R.string.dashboard_metric_namespaces),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
             }

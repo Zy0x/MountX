@@ -82,17 +82,17 @@ fun ModernNavigationBar(
 
     val surfaceColor = if (isDark) FigmaNavSurface else MaterialTheme.colorScheme.surface
     val borderColor = if (isDark) FigmaNavBorder else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-    val topCornerRadius = 24.dp
+    val topCornerRadius = 18.dp
     val barShape = RoundedCornerShape(topStart = topCornerRadius, topEnd = topCornerRadius)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 12.dp,
+                elevation = 8.dp,
                 shape = barShape,
-                spotColor = Color.Black.copy(alpha = 0.5f),
-                ambientColor = Color.Black.copy(alpha = 0.3f)
+                spotColor = Color.Black.copy(alpha = 0.45f),
+                ambientColor = Color.Black.copy(alpha = 0.25f)
             )
             .border(
                 width = 1.dp,
@@ -107,7 +107,7 @@ fun ModernNavigationBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .height(68.dp)
+                .height(56.dp)
                 .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
@@ -151,7 +151,7 @@ private fun FigmaNavItem(
     )
 
     val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.10f else 1.0f,
+        targetValue = if (selected) 1.06f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
@@ -163,10 +163,10 @@ private fun FigmaNavItem(
         modifier = modifier
             .fillMaxHeight()
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable(
                 interactionSource = interactionSource,
-                indication = ripple(bounded = false, radius = 26.dp),
+                indication = ripple(bounded = false, radius = 24.dp),
                 role = Role.Tab,
                 onClick = onClick
             ),
@@ -180,7 +180,7 @@ private fun FigmaNavItem(
                         stiffness = Spring.StiffnessMedium
                     )
                 )
-                .padding(vertical = 4.dp),
+                .padding(vertical = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -189,7 +189,7 @@ private fun FigmaNavItem(
                 contentDescription = stringResource(screen.titleRes),
                 tint = iconColor,
                 modifier = Modifier
-                    .size(24.dp)
+                    .size(20.dp)
                     .scale(iconScale)
             )
 
@@ -215,13 +215,13 @@ private fun FigmaNavItem(
                 Text(
                     text = stringResource(screen.titleRes),
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        letterSpacing = 0.2.sp
+                        letterSpacing = 0.1.sp
                     ),
                     color = activeColor,
                     maxLines = 1,
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }

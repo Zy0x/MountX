@@ -2,25 +2,35 @@ package app.mountify.ui.about
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.mountify.BuildConfig
 import app.mountify.R
+import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.SectionHeader
+import app.mountify.ui.theme.ElectricCyan
+import app.mountify.ui.theme.EmeraldActive
+import app.mountify.ui.theme.ObsidianBg
+import app.mountify.ui.theme.ObsidianBorder
+import app.mountify.ui.theme.ObsidianCard
 import app.mountify.ui.theme.PrimaryBlue
 import app.mountify.ui.theme.SecondaryTeal
 import app.mountify.ui.theme.StatusSuccess
@@ -42,49 +52,58 @@ fun AboutScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.about_title), fontWeight = FontWeight.Bold) },
+            CompactScreenHeader(
+                title = stringResource(R.string.about_title),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = null)
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             )
         },
+        containerColor = ObsidianBg,
         modifier = modifier
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
+                .padding(paddingValues),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // App Header & Logo
             item {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Icon(
                     painter = painterResource(id = R.drawable.ic_launcher_foreground),
                     contentDescription = null,
-                    tint = PrimaryBlue,
-                    modifier = Modifier.size(80.dp)
+                    tint = ElectricCyan,
+                    modifier = Modifier.size(64.dp)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp),
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = stringResource(R.string.about_version, BuildConfig.VERSION_NAME),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = stringResource(R.string.app_description),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }
@@ -92,10 +111,12 @@ fun AboutScreen(
             // Update Checker Card
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -103,22 +124,24 @@ fun AboutScreen(
                         ) {
                             Text(
                                 text = "Software Updates",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             )
                             if (isChecking) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = ElectricCyan)
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         if (updateInfo != null) {
                             if (updateInfo!!.isUpdateAvailable) {
                                 Text(
                                     text = stringResource(R.string.about_update_available, updateInfo!!.latestVersion),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                                    color = ElectricCyan,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -127,34 +150,42 @@ fun AboutScreen(
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo!!.downloadUrl))
                                         context.startActivity(intent)
                                     },
-                                    modifier = Modifier.fillMaxWidth()
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan, contentColor = Color.White),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 42.dp, max = 46.dp)
                                 ) {
-                                    Text(stringResource(R.string.about_download_update))
+                                    Text(stringResource(R.string.about_download_update), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             } else {
                                 Text(
                                     text = stringResource(R.string.about_up_to_date),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = StatusSuccess
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                    color = EmeraldActive
                                 )
                             }
                         } else if (checkError != null) {
                             Text(
                                 text = checkError!!,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = { viewModel.checkForUpdate() },
                             enabled = !isChecking,
-                            modifier = Modifier.fillMaxWidth()
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, ObsidianBorder),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 42.dp, max = 46.dp)
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null)
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.about_update_check))
+                            Text(stringResource(R.string.about_update_check), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
