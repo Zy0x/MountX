@@ -13,11 +13,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -186,74 +187,132 @@ fun GamesContent(
                 title = stringResource(R.string.games_title),
                 subtitle = "$mountedCount/${games.size} " + stringResource(R.string.dashboard_mounted_games),
                 actions = {
-                    if (games.isNotEmpty()) {
-                        // Mount All Action
-                        IconButton(
-                            onClick = onMountAll,
-                            modifier = Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = stringResource(R.string.games_batch_mount_all),
-                                tint = CyberEmerald,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        // Unmount All Action
-                        IconButton(
-                            onClick = onUnmountAll,
-                            modifier = Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Stop,
-                                contentDescription = stringResource(R.string.games_batch_unmount_all),
-                                tint = NeonCrimson,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        // Sort Menu Action
-                        Box {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (games.isNotEmpty()) {
+                            // Mount All Action
                             IconButton(
-                                onClick = { showSortMenu = true },
-                                modifier = Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
+                                onClick = onMountAll,
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Sort,
-                                    contentDescription = stringResource(R.string.games_sort_title),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(
+                                            color = CyberEmerald.copy(alpha = 0.12f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = stringResource(R.string.games_batch_mount_all),
+                                        tint = CyberEmerald,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
 
-                            DropdownMenu(
-                                expanded = showSortMenu,
-                                onDismissRequest = { showSortMenu = false }
+                            // Unmount All Action
+                            IconButton(
+                                onClick = onUnmountAll,
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(R.string.games_sort_size_desc),
-                                            fontWeight = if (sortOption == GameSortOption.SIZE_DESC) FontWeight.Bold else FontWeight.Normal
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(
+                                            color = NeonCrimson.copy(alpha = 0.12f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Stop,
+                                        contentDescription = stringResource(R.string.games_batch_unmount_all),
+                                        tint = NeonCrimson,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            // Sort Menu Action
+                            Box {
+                                IconButton(
+                                    onClick = { showSortMenu = true },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(
+                                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                                shape = RoundedCornerShape(8.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Sort,
+                                            contentDescription = stringResource(R.string.games_sort_title),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
                                         )
-                                    },
-                                    onClick = {
-                                        onSortOptionChange(GameSortOption.SIZE_DESC)
-                                        showSortMenu = false
                                     }
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(R.string.games_sort_name_asc),
-                                            fontWeight = if (sortOption == GameSortOption.NAME_ASC) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    },
-                                    onClick = {
-                                        onSortOptionChange(GameSortOption.NAME_ASC)
-                                        showSortMenu = false
-                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = showSortMenu,
+                                    onDismissRequest = { showSortMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(R.string.games_sort_size_desc),
+                                                fontWeight = if (sortOption == GameSortOption.SIZE_DESC) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        onClick = {
+                                            onSortOptionChange(GameSortOption.SIZE_DESC)
+                                            showSortMenu = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(R.string.games_sort_name_asc),
+                                                fontWeight = if (sortOption == GameSortOption.NAME_ASC) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        onClick = {
+                                            onSortOptionChange(GameSortOption.NAME_ASC)
+                                            showSortMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Add Game Action (Always accessible, replaces bottom FAB)
+                        IconButton(
+                            onClick = onAddClick,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(8.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = stringResource(R.string.games_add),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
@@ -262,23 +321,6 @@ fun GamesContent(
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            if (games.isNotEmpty()) {
-                FloatingActionButton(
-                    onClick = onAddClick,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = Color.White,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(R.string.games_add),
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-        },
         modifier = modifier
     ) { paddingValues ->
         Column(
@@ -361,41 +403,74 @@ fun GamesContent(
                     }
                 }
             } else {
-                // ── SEARCH BAR ──
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchQueryChange,
-                    placeholder = {
-                        Text(
-                            stringResource(R.string.games_search),
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
-                        )
-                    },
-                    leadingIcon = {
+                // ── COMPACT NATURAL SEARCH BAR ──
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
-                            Icons.Default.Search,
+                            imageVector = Icons.Default.Search,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                            modifier = Modifier.size(16.dp)
                         )
-                    },
-                    trailingIcon = {
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.games_search),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                                    ),
+                                    maxLines = 1
+                                )
+                            }
+
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = onSearchQueryChange,
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
                         if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { onSearchQueryChange("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            IconButton(
+                                onClick = { onSearchQueryChange("") },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
                             }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                    )
-                )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -467,7 +542,7 @@ fun GamesContent(
                             )
                         }
                         item {
-                            Spacer(modifier = Modifier.height(80.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
@@ -496,7 +571,7 @@ fun ModernGameCard(
             .clickable(onClick = onCardClick)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Row 1: App Icon, Titles, and More Details Action
+            // Row 1: App Icon, Titles, and Status Chip (replaces redundant MoreVert button)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -525,17 +600,7 @@ fun ModernGameCard(
                     )
                 }
 
-                IconButton(
-                    onClick = onCardClick,
-                    modifier = Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = stringResource(R.string.game_detail_title),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                StatusChip(status = game.mountStatus)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -546,7 +611,7 @@ fun ModernGameCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Badges
+                // Badges (Mode & Size)
                 Row(
                     modifier = Modifier.weight(1f, fill = false),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -582,9 +647,6 @@ fun ModernGameCard(
                             )
                         }
                     }
-
-                    // Status Chip
-                    StatusChip(status = game.mountStatus)
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -593,8 +655,8 @@ fun ModernGameCard(
                 if (isMounted) {
                     FilledTonalButton(
                         onClick = onToggleMount,
-                        modifier = Modifier.heightIn(min = 36.dp, max = 38.dp),
-                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.heightIn(min = 34.dp, max = 36.dp),
+                        shape = RoundedCornerShape(9.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = NeonCrimson.copy(alpha = 0.12f),
                             contentColor = NeonCrimson
@@ -605,7 +667,7 @@ fun ModernGameCard(
                         Icon(
                             imageVector = Icons.Default.Stop,
                             contentDescription = null,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(13.dp),
                             tint = NeonCrimson
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -621,8 +683,8 @@ fun ModernGameCard(
                 } else {
                     Button(
                         onClick = onToggleMount,
-                        modifier = Modifier.heightIn(min = 36.dp, max = 38.dp),
-                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.heightIn(min = 34.dp, max = 36.dp),
+                        shape = RoundedCornerShape(9.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = CyberEmerald.copy(alpha = 0.15f),
                             contentColor = CyberEmerald
@@ -633,7 +695,7 @@ fun ModernGameCard(
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = null,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(13.dp),
                             tint = CyberEmerald
                         )
                         Spacer(modifier = Modifier.width(4.dp))

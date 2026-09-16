@@ -22,3 +22,6 @@ google-services.json
 # Kotlin compiler daemon cache
 .kotlin/
 
+# Local isolated build cache & emulator
+.build-cache/
+
