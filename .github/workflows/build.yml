@@ -62,6 +62,7 @@ jobs:
         with:
           name: Mountify-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
 
       - name: Upload Release APK Artifact
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
@@ -69,12 +70,14 @@ jobs:
         with:
           name: Mountify-Release-APK
           path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: ignore
 
       - name: Upload Magisk Module Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Mountify-Magisk-Module
           path: mountify-magisk-module.zip
+          if-no-files-found: ignore
 
   release:
     name: Create GitHub Release

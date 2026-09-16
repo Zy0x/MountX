@@ -32,18 +32,21 @@ android {
 
     signingConfigs {
         create("release") {
+            val keystoreFile = layout.buildDirectory.file("release.jks").get().asFile
             val keystoreBase64 = System.getenv("KEYSTORE_BASE64")
-            if (keystoreBase64 != null) {
-                // CI/CD: decode keystore from env
-                val keystoreFile = File(buildDir, "release.jks")
-                keystoreFile.parentFile.mkdirs()
-                keystoreFile.writeBytes(android.util.Base64.decode(keystoreBase64, android.util.Base64.DEFAULT))
+            if (!keystoreBase64.isNullOrBlank()) {
+                keystoreFile.parentFile?.mkdirs()
+                keystoreFile.writeBytes(java.util.Base64.getDecoder().decode(keystoreBase64.trim()))
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            } else if (keystoreFile.exists()) {
                 storeFile = keystoreFile
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
             } else if (keystorePropertiesFile.exists()) {
-                // Local: load from keystore.properties
                 storeFile = file(keystoreProperties["storeFile"] as String)
                 storePassword = keystoreProperties["storePassword"] as String
                 keyAlias = keystoreProperties["keyAlias"] as String
@@ -60,7 +63,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null && releaseSigning.storeFile!!.exists()) {
+                signingConfig = releaseSigning
+            }
         }
         debug {
             applicationIdSuffix = ".debug"
