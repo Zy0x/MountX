@@ -147,6 +147,20 @@
     <string name="storage_not_mounted">Partisi belum di-mount</string>
     <string name="storage_mount_success">Partisi berhasil di-mount</string>
     <string name="storage_unmount_success">Partisi di-unmount</string>
+    <string name="storage_specs">Telemetri Partisi</string>
+    <string name="storage_detected_count">%1$d perangkat terdeteksi</string>
+    <string name="storage_no_devices_detected">Tidak ada perangkat blok terdeteksi</string>
+    <string name="storage_device_label">Perangkat Target</string>
+    <string name="storage_custom_path">Jalur Perangkat Kustom</string>
+    <string name="storage_active_target">Target Mount Aktif</string>
+    <string name="storage_capacity_format">%1$s / %2$s (%3$d%%)</string>
+    <string name="storage_quick_actions">Aksi Partisi</string>
+    <string name="storage_danger_zone">Zona Berbahaya</string>
+    <string name="storage_backup_quick">Portabilitas Konfigurasi</string>
+    <string name="storage_backup_export_sub">Simpan registri game ke format JSON</string>
+    <string name="storage_backup_import_sub">Pulihkan registri game dari berkas JSON</string>
+    <string name="storage_unmounted_hint">Mount partisi sekunder MicroSD untuk mengaktifkan pengalihan data game secara transparan.</string>
+    <string name="storage_active_mount">Mount Aktif</string>
 
     <string name="format_title">Format Partisi</string>
     <string name="format_warning">Peringatan</string>
@@ -175,6 +189,7 @@
     <string name="backup_config_import">Impor Konfigurasi</string>
     <string name="backup_data_title">Backup Data Game</string>
     <string name="backup_data_desc">Salin data game dari MicroSD ke lokasi lain.</string>
+    <string name="backup_data_hint">Untuk mencadangkan atau memindahkan data fisik game, buka tab Game lalu pilih Pindahkan Data pada kartu game.</string>
     <string name="backup_game_backup">Backup</string>
     <string name="backup_game_restore">Restore</string>
     <string name="backup_success">Backup disimpan di: %1$s</string>

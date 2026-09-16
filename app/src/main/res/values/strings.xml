@@ -157,6 +157,21 @@
     <string name="storage_mount_success">Partition mounted successfully</string>
     <string name="storage_unmount_success">Partition unmounted</string>
 
+    <string name="storage_specs">Partition Telemetry</string>
+    <string name="storage_detected_count">%1$d devices detected</string>
+    <string name="storage_no_devices_detected">No block devices detected</string>
+    <string name="storage_device_label">Target Device</string>
+    <string name="storage_custom_path">Custom Device Path</string>
+    <string name="storage_active_target">Active Mount Target</string>
+    <string name="storage_capacity_format">%1$s / %2$s (%3$d%%)</string>
+    <string name="storage_quick_actions">Partition Actions</string>
+    <string name="storage_danger_zone">Danger Zone</string>
+    <string name="storage_backup_quick">Configuration Portability</string>
+    <string name="storage_backup_export_sub">Save game registry to JSON</string>
+    <string name="storage_backup_import_sub">Restore game registry from JSON</string>
+    <string name="storage_unmounted_hint">Mount the MicroSD secondary partition to enable transparent data redirection.</string>
+    <string name="storage_active_mount">Active Mount</string>
+
     <!-- Format Partition -->
     <string name="format_title">Format Partition</string>
     <string name="format_warning">Warning</string>
@@ -186,6 +201,7 @@
     <string name="backup_config_import">Import Config</string>
     <string name="backup_data_title">Game Data Backup</string>
     <string name="backup_data_desc">Copy game data from MicroSD to another location.</string>
+    <string name="backup_data_hint">To backup or migrate physical game data, open the Games tab and select Move Data on any game card.</string>
     <string name="backup_game_backup">Backup</string>
     <string name="backup_game_restore">Restore</string>
     <string name="backup_success">Backup saved to: %1$s</string>
