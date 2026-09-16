@@ -559,18 +559,19 @@ private fun MicroSdStorageCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CheckCircle,
+                        imageVector = if (storage?.isMounted == true) Icons.Default.CheckCircle else Icons.Default.Warning,
                         contentDescription = null,
-                        tint = StatusSuccess,
+                        tint = if (storage?.isMounted == true) StatusSuccess else MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = "Partition active & healthy",
+                        text = if (storage?.isMounted == true) "Partition active" else "Storage unmounted",
                         style = MaterialTheme.typography.labelSmall,
-                        color = StatusSuccess
+                        color = if (storage?.isMounted == true) StatusSuccess else MaterialTheme.colorScheme.error
                     )
                 }
 
@@ -579,7 +580,7 @@ private fun MicroSdStorageCard(
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = "Manage Partitions",
+                        text = "Manage",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryBlue
@@ -961,7 +962,7 @@ fun DashboardScreenPreview() {
             status = AppStatus(
                 rootSolution = RootSolution.MAGISK,
                 isModuleInstalled = true,
-                moduleVersion = "2.1.4",
+                moduleVersion = "2.1.5",
                 mountedGamesCount = 5,
                 totalGamesCount = 8,
                 storageInfo = StorageInfo(

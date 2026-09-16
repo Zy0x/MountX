@@ -5,6 +5,15 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.5] - 2026-09-16
+
+### Added
+- One-click launcher and installer script (`Pasang_ke_Emulator.bat`) automating device connection verification, APK installation, and activity startup.
+
+### Fixed
+- Resolved activity launch target resolution by configuring explicit `app.mountify.debug` debug application package identifiers.
+- Enhanced storage card footer responsiveness and dynamic unmounted state indicators on narrow viewports.
+
 ## [2.1.4] - 2026-09-16
 
 ### Added
