@@ -99,4 +99,16 @@ class DashboardViewModel @Inject constructor(
             refresh()
         }
     }
+
+    fun toggleMount(game: GameEntry) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            if (game.mountStatus == MountStatus.MOUNTED) {
+                gameRepository.unmountGame(game)
+            } else {
+                gameRepository.mountGame(game, sdBase)
+            }
+            refresh()
+        }
+    }
 }

@@ -107,7 +107,8 @@ fun NavGraph(
                 DashboardScreen(
                     viewModel = vm,
                     onNavigateToGames = { navController.navigate(Screen.Games.route) },
-                    onNavigateToStorage = { navController.navigate(Screen.Storage.route) }
+                    onNavigateToStorage = { navController.navigate(Screen.Storage.route) },
+                    onNavigateToLogs = { navController.navigate(Screen.Logs.route) }
                 )
             }
 

@@ -5,6 +5,16 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.3] - 2026-09-16
+
+### Added
+- Modern high-tech AMOLED UI dashboard layout compliant with PRD and WCAG AAA standards.
+- Real-time telemetry KPI metric indicators for root engine provider, SELinux enforcement status, and active mount ratios.
+- Dual-gradient capacity gauge and storage device telemetry cards.
+- Quick action batch execution controls with haptic-ready states.
+- Live embedded terminal activity monitor with status indicators and monospaced diagnostic streams.
+- Multi-breakpoint adaptive layout support for high-density ultra-tall portrait (1080x2460) and wide landscape (2460x1080) viewports.
+
 ## [2.1.2] - 2026-09-16
 
 ### Added
