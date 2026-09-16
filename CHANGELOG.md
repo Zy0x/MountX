@@ -5,6 +5,16 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.8] - 2026-09-16
+
+### Added
+- Pure Master Control Hub architecture on Dashboard eliminating redundant game lists and duplicate log tiles.
+- `SmartMasterControlCard` featuring adaptive action logic (`Mount All Games` when unmounted, `Unmount All` when operational, `Add Game` when empty).
+- Dynamic status pill indicator calculating active mounts ratio with contextual Material 3 tonal styling.
+- Compact side-by-side telemetry tiles (`DashboardMetricsRow`) for total data offloaded to MicroSD and runtime namespace states.
+- Contextual error and warning banner appearing strictly on missing root or missing module conditions, leaving zero clutter when operating normally.
+- Full bilingual localization keys for Master Control CTA actions and telemetry units.
+
 ## [2.1.7] - 2026-09-16
 
 ### Added

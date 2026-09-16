@@ -33,6 +33,18 @@
     <string name="dashboard_system_ready_desc">Namespace bind-mount dan sandbox root beroperasi normal.</string>
     <string name="dashboard_recent_activity">Aktivitas Sistem</string>
     <string name="dashboard_recent_activity_desc">Stream log bind-mount dan diagnostik sistem</string>
+    <string name="dashboard_master_control">Kontrol Utama</string>
+    <string name="dashboard_hero_all_mounted">Semua Game Ter-mount</string>
+    <string name="dashboard_hero_all_mounted_desc">Seluruh direktori data game telah dialihkan ke penyimpanan MicroSD.</string>
+    <string name="dashboard_hero_unmounted_desc">%1$d dari %2$d game ter-mount ke MicroSD.</string>
+    <string name="dashboard_hero_mount_all_cta">Mount Semua Game</string>
+    <string name="dashboard_hero_unmount_all_cta">Unmount Semua</string>
+    <string name="dashboard_hero_no_games_desc">Belum ada game yang dikonfigurasi. Tambahkan game untuk mulai mengalihkan data.</string>
+    <string name="dashboard_hero_add_game_cta">Tambah Game</string>
+    <string name="dashboard_metric_offloaded">Data Dialihkan</string>
+    <string name="dashboard_metric_namespaces">Namespace</string>
+    <string name="dashboard_metric_namespaces_active">7 Aktif</string>
+    <string name="dashboard_metric_namespaces_idle">Siaga</string>
 
     <string name="root_magisk">Magisk</string>
     <string name="root_kernelsu">KernelSU</string>

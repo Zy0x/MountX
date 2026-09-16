@@ -36,6 +36,18 @@
     <string name="dashboard_system_ready_desc">Bind-mount namespaces and root sandbox are operational.</string>
     <string name="dashboard_recent_activity">System Activity</string>
     <string name="dashboard_recent_activity_desc">Live bind-mount stream and diagnostic logs</string>
+    <string name="dashboard_master_control">Master Control</string>
+    <string name="dashboard_hero_all_mounted">All Games Mounted</string>
+    <string name="dashboard_hero_all_mounted_desc">All game data directories are bound to external storage.</string>
+    <string name="dashboard_hero_unmounted_desc">%1$d of %2$d games mounted to MicroSD.</string>
+    <string name="dashboard_hero_mount_all_cta">Mount All Games</string>
+    <string name="dashboard_hero_unmount_all_cta">Unmount All</string>
+    <string name="dashboard_hero_no_games_desc">No games configured yet. Add a game to begin offloading data.</string>
+    <string name="dashboard_hero_add_game_cta">Add Game</string>
+    <string name="dashboard_metric_offloaded">Offloaded Data</string>
+    <string name="dashboard_metric_namespaces">Namespaces</string>
+    <string name="dashboard_metric_namespaces_active">7 Active</string>
+    <string name="dashboard_metric_namespaces_idle">Standby</string>
 
     <!-- Root Solutions -->
     <string name="root_magisk">Magisk</string>
