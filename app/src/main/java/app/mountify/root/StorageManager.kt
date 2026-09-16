@@ -203,6 +203,7 @@ class StorageManager {
                     RootShell.exec("rm -rf \"$sdPath\"")
                 }
             }
+            Unit
         }
     }
 }

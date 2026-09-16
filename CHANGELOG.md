@@ -1,40 +1,26 @@
 # Changelog
 
-Semua perubahan penting pada proyek **Mountify** akan didokumentasikan dalam berkas ini.
+All notable changes to Mountify will be documented in this file.
 
-Format changelog ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/) dan menganut [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to Semantic Versioning.
 
----
+## [2.1.1] - 2026-09-16
 
-## [1.0.0] - 2026-09-16
+### Added
+- Zero-C drive isolated environment configuration targeting storage on secondary drive toolchains.
+- Dedicated isolated Android Studio launcher script (`Buka_Studio.bat`) and automated setup workflow.
+- Standalone Android Emulator execution script (`Jalankan_Emulator.bat`) with isolated AVD and cache directories.
+- Interactive HTML/JS design and responsive testing dashboard (`preview.html`) supporting portrait, landscape, and tablet breakpoints.
+- Adaptive round application icon resources (`ic_launcher_round.xml`).
+- Global Gradle properties configuring AndroidX and build performance optimizations.
 
-### Ditambahkan
-- **Aplikasi Native Android (Jetpack Compose & Material You)**
-  - Tampilan modern dengan Dynamic Color (Android 12+) serta mode terang dan gelap.
-  - Dukungan multi-bahasa: Bahasa Indonesia (ID) dan English (EN).
-  - Navigasi interaktif berbasis animasi transisi halus dengan 5 seksi utama: Beranda, Game, Penyimpanan, Log, dan Pengaturan.
-- **Dukungan Universal Root Solution**
-  - Kompatibel penuh dengan Magisk, KernelSU, dan APatch melalui integrasi `libsu`.
-  - Pengecekan status root dan keberadaan modul secara real-time di layar Beranda.
-- **Manajemen Game & Bind Mount**
-  - Pengelolaan daftar game dengan dua mode: `PKG` (seluruh folder) dan `FILES` (subfolder files untuk game berbasis basis data internal).
-  - Pilihan cepat untuk memilih aplikasi terpasang dari sistem.
-  - Kontrol manual untuk mount dan unmount per game atau sekaligus (*mount all* / *unmount all*).
-  - Fitur perpindahan data fisik game antara penyimpanan internal dan partisi MicroSD eksternal.
-- **Manajemen Partisi MicroSD & Format**
-  - Deteksi otomatis perangkat blok MicroSD (`mmcblk*`, `sd*`) dengan opsi penyesuaian manual.
-  - Fitur format partisi dengan pilihan sistem berkas **F2FS** (Direkomendasikan untuk memori flash) dan **Ext4** disertai konfirmasi bertingkat.
-  - Indikator penggunaan kapasitas penyimpanan MicroSD interaktif.
-- **Pemantau Log Real-time**
-  - Pembaca log aktivitas mount secara live (`tail` otomatis).
-  - Pewarnaan baris berdasarkan level (Info, Sukses, Error, Debug) dan opsi ekspor/berbagi log.
-- **Pencadangan & Pemulihan (Backup & Restore)**
-  - Ekspor dan impor konfigurasi daftar game dalam format JSON.
-- **Pembaruan & Tentang**
-  - Integrasi pemeriksaan pembaruan versi langsung dari GitHub Releases.
-  - Informasi lisensi, tautan repositori, dan tautan dukungan pengembangan.
-- **Modul Magisk / KernelSU Mountify**
-  - Skrip `service.sh` dinamis membaca berkas `gamelist.conf` dan `config.conf`.
-  - Dukungan pemasangan otomatis saat perangkat selesai melakukan proses *booting*.
-- **CI/CD Otomatis**
-  - Alur kerja GitHub Actions untuk kompilasi otomatis APK rilis (*signed*) dan pengemasan modul zip.
+### Changed
+- Refactored entire codebase namespace and application package identifier to `app.mountify`.
+- Upgraded Dagger Hilt to 2.55 for complete compatibility with Kotlin 2.1 compiler metadata.
+- Upgraded target compilation SDK to Android API 35 to fulfill modern AndroidX runtime dependencies.
+- Standardized root theme definition to use platform `NoActionBar` parent styles.
+
+### Fixed
+- Resolved return type discrepancies in root storage and mount management routines (`unmountAll`, `moveGameData`).
+- Resolved Java keystore Base64 decoding syntax compatibility in Gradle build script.

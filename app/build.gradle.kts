@@ -17,14 +17,14 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "app.mountify"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "app.mountify"
         minSdk = 29
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 35
+        versionCode = 20101
+        versionName = "2.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

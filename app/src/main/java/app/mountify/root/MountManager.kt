@@ -105,6 +105,7 @@ class MountManager {
                     done
                 """.trimIndent()
                 RootShell.execScript(script)
+                Unit
             }
         }
 
