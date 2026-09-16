@@ -105,7 +105,7 @@
 
     <!-- Format Partition -->
     <string name="format_title">Format Partition</string>
-    <string name="format_warning">⚠️ Warning</string>
+    <string name="format_warning">Warning</string>
     <string name="format_warning_desc">Formatting will permanently erase ALL data on the selected partition. Make sure you have backed up your game data before proceeding.</string>
     <string name="format_filesystem">Select Filesystem</string>
     <string name="format_f2fs">F2FS</string>
@@ -187,7 +187,7 @@
     <string name="about_kofi">Ko-fi</string>
     <string name="about_saweria">Saweria</string>
     <string name="about_paypal">PayPal</string>
-    <string name="about_credits">Made with ❤️ by Noir</string>
+    <string name="about_credits">Developed by Noir</string>
     <string name="about_update_check">Check for Updates</string>
     <string name="about_up_to_date">Up to date</string>
     <string name="about_update_available">Update Available: %1$s</string>

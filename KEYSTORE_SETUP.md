@@ -1,4 +1,4 @@
-# 🔐 Panduan Setup Signing Keystore untuk GitHub Actions CI/CD
+# Panduan Setup Signing Keystore untuk GitHub Actions CI/CD
 
 Panduan ini menjelaskan cara membuat release keystore dan mengonfigurasikannya ke **GitHub Secrets** agar GitHub Actions dapat menandatangani file APK rilis (*signed release APK*) secara otomatis saat tag versi dibuat atau push ke branch `main`.
 
@@ -18,9 +18,8 @@ keytool -genkey -v \
     -dname "CN=Noir, OU=Mountify, O=Zy0x, L=ID, ST=ID, C=ID"
 ```
 
-> ⚠️ **PENTING**:
-> - Masukkan password yang kuat dan catat password tersebut!
-> - File `mountify-release.jks` **JANGAN PERNAH** di-commit atau di-upload ke repository publik! File ini sudah otomatis dimasukkan ke `.gitignore`.
+> [!IMPORTANT]
+> Simpan password yang dimasukkan dengan aman. Berkas `mountify-release.jks` dilindungi pada `.gitignore` dan dilarang di-commit ke repositori publik.
 
 ---
 
@@ -43,7 +42,7 @@ base64 -w 0 mountify-release.jks > keystore-base64.txt
 ## 3. Tambahkan ke GitHub Secrets
 
 1. Buka repositori GitHub:
-   👉 **https://github.com/Zy0x/Mountify/settings/secrets/actions**
+   `https://github.com/Zy0x/Mountify/settings/secrets/actions`
 2. Klik tombol **New repository secret**.
 3. Tambahkan 4 secrets berikut satu per satu:
 

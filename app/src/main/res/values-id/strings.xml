@@ -95,7 +95,7 @@
     <string name="storage_unmount_success">Partisi di-unmount</string>
 
     <string name="format_title">Format Partisi</string>
-    <string name="format_warning">⚠️ Peringatan</string>
+    <string name="format_warning">Peringatan</string>
     <string name="format_warning_desc">Format akan menghapus SEMUA data di partisi yang dipilih secara permanen. Pastikan Anda sudah mem-backup data game sebelum melanjutkan.</string>
     <string name="format_filesystem">Pilih Sistem Berkas</string>
     <string name="format_f2fs">F2FS</string>
@@ -173,7 +173,7 @@
     <string name="about_kofi">Ko-fi</string>
     <string name="about_saweria">Saweria</string>
     <string name="about_paypal">PayPal</string>
-    <string name="about_credits">Dibuat dengan ❤️ oleh Noir</string>
+    <string name="about_credits">Dikembangkan oleh Noir</string>
     <string name="about_update_check">Cek Pembaruan</string>
     <string name="about_up_to_date">Sudah terbaru</string>
     <string name="about_update_available">Pembaruan Tersedia: %1$s</string>
