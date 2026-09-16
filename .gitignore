@@ -18,3 +18,7 @@ keystore.properties
 
 # Google Services
 google-services.json
+
+# Kotlin compiler daemon cache
+.kotlin/
+

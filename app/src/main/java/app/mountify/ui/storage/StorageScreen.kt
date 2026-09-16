@@ -45,12 +45,63 @@ fun StorageScreen(
         }
     }
 
+    StorageContent(
+        storage = storage,
+        devices = devices,
+        isFormatting = isFormatting,
+        statusMessage = statusMessage,
+        selectedDevice = selectedDevice,
+        selectedFs = selectedFs,
+        onSelectedDeviceChange = { selectedDevice = it },
+        onSelectedFsChange = { selectedFs = it },
+        onRefreshDevices = { viewModel.detectDevices() },
+        onMountPartition = { dev, fs -> viewModel.mountPartition(dev, fs) },
+        onUnmountPartition = { viewModel.unmountPartition() },
+        onFormatClick = { showFormatDialog = true },
+        onNavigateToBackup = onNavigateToBackup,
+        modifier = modifier
+    )
+
+    // Format Confirmation Dialog
+    if (showFormatDialog) {
+        ConfirmDialog(
+            title = stringResource(R.string.format_confirm_title),
+            message = stringResource(R.string.format_confirm_desc, selectedDevice),
+            confirmText = stringResource(R.string.format_confirm_button),
+            isDestructive = true,
+            onConfirm = {
+                showFormatDialog = false
+                viewModel.formatPartition(selectedDevice, selectedFs)
+            },
+            onDismiss = { showFormatDialog = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StorageContent(
+    storage: app.mountify.data.model.StorageInfo?,
+    devices: List<String>,
+    isFormatting: Boolean,
+    statusMessage: String?,
+    selectedDevice: String,
+    selectedFs: FilesystemType,
+    onSelectedDeviceChange: (String) -> Unit,
+    onSelectedFsChange: (FilesystemType) -> Unit,
+    onRefreshDevices: () -> Unit,
+    onMountPartition: (String, FilesystemType) -> Unit,
+    onUnmountPartition: () -> Unit,
+    onFormatClick: () -> Unit,
+    onNavigateToBackup: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.storage_title), fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { viewModel.detectDevices() }) {
+                    IconButton(onClick = onRefreshDevices) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.storage_detect_devices))
                     }
                 }
@@ -141,7 +192,7 @@ fun StorageScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         OutlinedTextField(
                             value = selectedDevice,
-                            onValueChange = { selectedDevice = it },
+                            onValueChange = onSelectedDeviceChange,
                             label = { Text(stringResource(R.string.storage_block_device)) },
                             placeholder = { Text(stringResource(R.string.storage_block_device_hint)) },
                             modifier = Modifier.fillMaxWidth(),
@@ -161,7 +212,7 @@ fun StorageScreen(
                                 devices.forEach { dev ->
                                     FilterChip(
                                         selected = selectedDevice == dev,
-                                        onClick = { selectedDevice = dev },
+                                        onClick = { onSelectedDeviceChange(dev) },
                                         label = { Text(dev.substringAfterLast("/")) }
                                     )
                                 }
@@ -175,7 +226,7 @@ fun StorageScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Button(
-                                onClick = { viewModel.mountPartition(selectedDevice, selectedFs) },
+                                onClick = { onMountPartition(selectedDevice, selectedFs) },
                                 enabled = selectedDevice.isNotBlank(),
                                 modifier = Modifier.weight(1f)
                             ) {
@@ -185,7 +236,7 @@ fun StorageScreen(
                             }
 
                             OutlinedButton(
-                                onClick = { viewModel.unmountPartition() },
+                                onClick = onUnmountPartition,
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.Stop, contentDescription = null)
@@ -226,7 +277,7 @@ fun StorageScreen(
                             ) {
                                 RadioButton(
                                     selected = selectedFs == fs,
-                                    onClick = { selectedFs = fs }
+                                    onClick = { onSelectedFsChange(fs) }
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
@@ -249,7 +300,7 @@ fun StorageScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
-                            onClick = { showFormatDialog = true },
+                            onClick = onFormatClick,
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                             enabled = selectedDevice.isNotBlank() && !isFormatting,
                             modifier = Modifier.fillMaxWidth()
@@ -295,19 +346,34 @@ fun StorageScreen(
             }
         }
     }
+}
 
-    // Format Confirmation Dialog
-    if (showFormatDialog) {
-        ConfirmDialog(
-            title = stringResource(R.string.format_confirm_title),
-            message = stringResource(R.string.format_confirm_desc, selectedDevice),
-            confirmText = stringResource(R.string.format_confirm_button),
-            isDestructive = true,
-            onConfirm = {
-                showFormatDialog = false
-                viewModel.formatPartition(selectedDevice, selectedFs)
-            },
-            onDismiss = { showFormatDialog = false }
+@androidx.compose.ui.tooling.preview.Preview(name = "Storage Screen - Dark Theme", showBackground = true)
+@Composable
+private fun StorageScreenPreviewDark() {
+    app.mountify.ui.theme.MountifyTheme(dynamicColor = false) {
+        StorageContent(
+            storage = app.mountify.data.model.StorageInfo(
+                blockDevice = "/dev/block/mmcblk0p2",
+                mountPoint = "/data/sdext2",
+                filesystem = "f2fs",
+                totalBytes = 64_000_000_000L,
+                usedBytes = 28_000_000_000L,
+                freeBytes = 36_000_000_000L,
+                isMounted = true
+            ),
+            devices = listOf("/dev/block/mmcblk0p1", "/dev/block/mmcblk0p2"),
+            isFormatting = false,
+            statusMessage = null,
+            selectedDevice = "/dev/block/mmcblk0p2",
+            selectedFs = FilesystemType.F2FS,
+            onSelectedDeviceChange = {},
+            onSelectedFsChange = {},
+            onRefreshDevices = {},
+            onMountPartition = { _, _ -> },
+            onUnmountPartition = {},
+            onFormatClick = {},
+            onNavigateToBackup = {}
         )
     }
 }

@@ -39,86 +39,19 @@ fun GamesScreen(
     var gameToMove by remember { mutableStateOf<GameEntry?>(null) }
     var gameToDelete by remember { mutableStateOf<GameEntry?>(null) }
 
-    val filteredGames = games.filter {
-        it.packageName.contains(searchQuery, ignoreCase = true) ||
-        it.displayName.contains(searchQuery, ignoreCase = true)
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.games_title), fontWeight = FontWeight.Bold) }
-            )
+    GamesContent(
+        games = games,
+        searchQuery = searchQuery,
+        onSearchQueryChange = { viewModel.setSearchQuery(it) },
+        onAddClick = {
+            viewModel.loadInstalledApps()
+            showAddSheet = true
         },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    viewModel.loadInstalledApps()
-                    showAddSheet = true
-                }
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = stringResource(R.string.games_add))
-            }
-        },
+        onToggleMount = { viewModel.toggleMount(it) },
+        onMoveData = { gameToMove = it },
+        onDelete = { gameToDelete = it },
         modifier = modifier
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp)
-        ) {
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.setSearchQuery(it) },
-                placeholder = { Text(stringResource(R.string.games_search)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                singleLine = true
-            )
-
-            if (filteredGames.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = stringResource(R.string.games_empty_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = stringResource(R.string.games_empty_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(filteredGames, key = { it.packageName }) { game ->
-                        GameCard(
-                            game = game,
-                            onToggleMount = { viewModel.toggleMount(game) },
-                            onMoveData = { gameToMove = game },
-                            onDelete = { gameToDelete = game }
-                        )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(80.dp))
-                    }
-                }
-            }
-        }
-    }
+    )
 
     // Add Game Sheet
     if (showAddSheet) {
@@ -161,6 +94,96 @@ fun GamesScreen(
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GamesContent(
+    games: List<GameEntry>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onAddClick: () -> Unit,
+    onToggleMount: (GameEntry) -> Unit,
+    onMoveData: (GameEntry) -> Unit,
+    onDelete: (GameEntry) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val filteredGames = games.filter {
+        it.packageName.contains(searchQuery, ignoreCase = true) ||
+        it.displayName.contains(searchQuery, ignoreCase = true)
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.games_title), fontWeight = FontWeight.Bold) }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = onAddClick) {
+                Icon(imageVector = Icons.Default.Add, contentDescription = stringResource(R.string.games_add))
+            }
+        },
+        modifier = modifier
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
+        ) {
+            // Search Bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                placeholder = { Text(stringResource(R.string.games_search)) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                singleLine = true
+            )
+
+            if (filteredGames.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = stringResource(R.string.games_empty_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.games_empty_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(filteredGames, key = { it.packageName }) { game ->
+                        GameCard(
+                            game = game,
+                            onToggleMount = { onToggleMount(game) },
+                            onMoveData = { onMoveData(game) },
+                            onDelete = { onDelete(game) }
+                        )
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(80.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun GameCard(
@@ -243,3 +266,35 @@ fun GameCard(
         }
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview(name = "Games Screen - Dark Theme", showBackground = true)
+@Composable
+private fun GamesScreenPreviewDark() {
+    app.mountify.ui.theme.MountifyTheme(dynamicColor = false) {
+        GamesContent(
+            games = listOf(
+                GameEntry(
+                    packageName = "com.kurogame.wutheringwaves.global",
+                    displayName = "Wuthering Waves",
+                    mode = MountMode.PKG,
+                    mountStatus = MountStatus.MOUNTED,
+                    dataSizeBytes = 25_400_000_000L
+                ),
+                GameEntry(
+                    packageName = "com.miHoYo.GenshinImpact",
+                    displayName = "Genshin Impact",
+                    mode = MountMode.FILES,
+                    mountStatus = MountStatus.UNMOUNTED,
+                    dataSizeBytes = 32_100_000_000L
+                )
+            ),
+            searchQuery = "",
+            onSearchQueryChange = {},
+            onAddClick = {},
+            onToggleMount = {},
+            onMoveData = {},
+            onDelete = {}
+        )
+    }
+}
+
