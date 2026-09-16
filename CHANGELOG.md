@@ -5,6 +5,18 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.7] - 2026-09-16
+
+### Added
+- Clean, refined Material You 3 layout architecture for Dashboard screen replacing cluttered telemetry panels.
+- Expressive M3 top bar with title, system subtitle, and tonal root solution AssistChip.
+- Re-architected system status banner with high-contrast tonal feedback for unrooted, non-module, and operational states.
+- Unified `M3StorageCard` with 24dp elevated container, dual-layer storage bar, and direct navigation action.
+- Streamlined 52dp quick action action buttons (`Mount All` / `Unmount All`) with rounded 16dp corners and haptic feedback.
+- Clean `M3GamesLibraryCard` featuring initial avatars, mode badges, data size chips, and quick mount toggles.
+- Replaced fake terminal streaming box with modern `M3ActivityCard` navigating to full Logs screen.
+- Full localization keys in `strings.xml` and `values-id/strings.xml` for all new Material You 3 dashboard elements.
+
 ## [2.1.6] - 2026-09-16
 
 ### Added

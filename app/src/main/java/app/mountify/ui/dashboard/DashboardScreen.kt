@@ -2,37 +2,82 @@ package app.mountify.ui.dashboard
 
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SdStorage
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountify.R
-import app.mountify.data.model.*
-import app.mountify.ui.components.ErrorCard
-import app.mountify.ui.components.SectionHeader
-import app.mountify.ui.theme.*
+import app.mountify.data.model.AppStatus
+import app.mountify.data.model.GameEntry
+import app.mountify.data.model.MountMode
+import app.mountify.data.model.MountStatus
+import app.mountify.data.model.RootSolution
+import app.mountify.data.model.StorageInfo
+import app.mountify.ui.theme.MountifyTheme
 import app.mountify.util.FormatUtils
 
 @Composable
@@ -79,57 +124,63 @@ fun DashboardContent(
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val haptic = LocalHapticFeedback.current
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                    Column {
                         Text(
                             text = stringResource(R.string.app_name),
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 0.5.sp
+                            fontWeight = FontWeight.Bold
                         )
-
-                        // Engine Status Pill
-                        val (engineColor, engineText) = when {
-                            status.rootSolution == RootSolution.NONE -> Pair(MaterialTheme.colorScheme.error, stringResource(R.string.root_none))
-                            status.isModuleInstalled -> Pair(SecondaryTeal, if (status.moduleVersion.isNotBlank()) "v${status.moduleVersion}" else "Active")
-                            else -> Pair(StatusWarning, "No Module")
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = engineColor.copy(alpha = 0.15f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, engineColor.copy(alpha = 0.35f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(7.dp)
-                                        .background(engineColor, CircleShape)
-                                )
-                                Text(
-                                    text = engineText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = engineColor,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
+                        Text(
+                            text = stringResource(R.string.dashboard_subtitle),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
                     }
                 },
                 actions = {
+                    // Root engine chip badge in TopBar
+                    val (engineIcon, engineColor) = when (status.rootSolution) {
+                        RootSolution.NONE -> Pair(Icons.Default.Warning, MaterialTheme.colorScheme.error)
+                        else -> Pair(Icons.Default.Security, MaterialTheme.colorScheme.primary)
+                    }
+                    val engineLabel = when (status.rootSolution) {
+                        RootSolution.MAGISK -> stringResource(R.string.root_magisk)
+                        RootSolution.KERNELSU -> stringResource(R.string.root_kernelsu)
+                        RootSolution.APATCH -> stringResource(R.string.root_apatch)
+                        RootSolution.NONE -> stringResource(R.string.root_none)
+                    }
+
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(engineLabel, style = MaterialTheme.typography.labelSmall) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = engineIcon,
+                                contentDescription = null,
+                                tint = engineColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            labelColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        border = null
+                    )
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
                     IconButton(
-                        onClick = onRefresh,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onRefresh()
+                        },
                         modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                     ) {
                         Icon(
@@ -147,7 +198,6 @@ fun DashboardContent(
         modifier = modifier
     ) { paddingValues ->
         if (isLandscape) {
-            // Two-column layout for wide displays
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -155,284 +205,265 @@ fun DashboardContent(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Left Column: Telemetry, Storage & Quick Actions
+                // Left Column: System Status, Storage & Quick Actions
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    if (status.rootSolution == RootSolution.NONE) {
-                        item {
-                            ErrorCard(
-                                title = stringResource(R.string.dashboard_no_root),
-                                description = stringResource(R.string.dashboard_no_root_desc)
-                            )
-                        }
-                    }
-
                     item {
-                        TelemetryCards(status = status)
+                        SystemStatusHeroBanner(status = status)
                     }
-
                     item {
-                        MicroSdStorageCard(
+                        M3StorageCard(
                             storage = status.storageInfo,
                             onNavigateToStorage = onNavigateToStorage
                         )
                     }
-
                     item {
-                        QuickActionControls(
+                        M3QuickActions(
                             onMountAll = onMountAll,
                             onUnmountAll = onUnmountAll
                         )
                     }
                 }
 
-                // Right Column: Managed Games & Engine Log Preview
+                // Right Column: Games Library & Activity
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
                     item {
-                        ManagedGamesSection(
+                        M3GamesLibraryCard(
                             games = games,
+                            mountedCount = status.mountedGamesCount,
+                            totalCount = status.totalGamesCount,
                             onNavigateToGames = onNavigateToGames,
-                            onToggleGameMount = onToggleGameMount
+                            onToggleMount = onToggleGameMount
                         )
                     }
-
                     item {
-                        EngineLogTerminalBox(onNavigateToLogs = onNavigateToLogs)
+                        M3ActivityCard(onNavigateToLogs = onNavigateToLogs)
                     }
                 }
             }
         } else {
-            // Single-column mobile-first vertical layout
+            // Portrait Mobile Layout: Clean vertical flow
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
             ) {
-                // Root Alert Banner
-                if (status.rootSolution == RootSolution.NONE) {
-                    item {
-                        ErrorCard(
-                            title = stringResource(R.string.dashboard_no_root),
-                            description = stringResource(R.string.dashboard_no_root_desc)
-                        )
-                    }
-                }
-
-                // Module Alert Banner
-                if (!status.isModuleInstalled && status.rootSolution != RootSolution.NONE) {
-                    item {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = SecondaryTeal,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = stringResource(R.string.dashboard_module_not_installed),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.dashboard_module_install_guide),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Section 1: KPI Telemetry Grid
+                // 1. Hero Status Card
                 item {
-                    TelemetryCards(status = status)
+                    SystemStatusHeroBanner(status = status)
                 }
 
-                // Section 2: Storage Gauge Card
+                // 2. MicroSD Storage Card
                 item {
-                    MicroSdStorageCard(
+                    M3StorageCard(
                         storage = status.storageInfo,
                         onNavigateToStorage = onNavigateToStorage
                     )
                 }
 
-                // Section 3: Quick Action Command Center
+                // 3. Quick Action Controls
                 item {
-                    QuickActionControls(
+                    M3QuickActions(
                         onMountAll = onMountAll,
                         onUnmountAll = onUnmountAll
                     )
                 }
 
-                // Section 4: Managed Games Summary
+                // 4. Game Library Summary
                 item {
-                    ManagedGamesSection(
+                    M3GamesLibraryCard(
                         games = games,
+                        mountedCount = status.mountedGamesCount,
+                        totalCount = status.totalGamesCount,
                         onNavigateToGames = onNavigateToGames,
-                        onToggleGameMount = onToggleGameMount
+                        onToggleMount = onToggleGameMount
                     )
                 }
 
-                // Section 5: Engine Activity Log Preview
+                // 5. System Activity Shortcut
                 item {
-                    EngineLogTerminalBox(onNavigateToLogs = onNavigateToLogs)
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(20.dp))
+                    M3ActivityCard(onNavigateToLogs = onNavigateToLogs)
                 }
             }
         }
     }
 }
 
-// ── Component: Telemetry Cards ──
+// ── 1. System Status Hero Banner (Material You 3 Container Card) ──
 
 @Composable
-private fun TelemetryCards(status: AppStatus) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Root Engine Card
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-            modifier = Modifier.weight(1f)
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+private fun SystemStatusHeroBanner(status: AppStatus) {
+    when {
+        status.rootSolution == RootSolution.NONE -> {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "ROOT ENGINE",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        letterSpacing = 0.8.sp
-                    )
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = PrimaryBlue
-                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.dashboard_no_root),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.dashboard_no_root_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                val rootText = when (status.rootSolution) {
-                    RootSolution.MAGISK -> stringResource(R.string.root_magisk)
-                    RootSolution.KERNELSU -> stringResource(R.string.root_kernelsu)
-                    RootSolution.APATCH -> stringResource(R.string.root_apatch)
-                    RootSolution.NONE -> stringResource(R.string.root_none)
-                }
-                Text(
-                    text = rootText,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (status.rootSolution != RootSolution.NONE) PrimaryBlue else MaterialTheme.colorScheme.error
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (status.rootSolution != RootSolution.NONE) "SELinux: Enforcing" else "Access Restricted",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 11.sp,
-                    color = if (status.rootSolution != RootSolution.NONE) SecondaryTeal else MaterialTheme.colorScheme.error
-                )
             }
         }
 
-        // Active Mounts Card
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-            modifier = Modifier.weight(1f)
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+        !status.isModuleInstalled -> {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "ACTIVE MOUNTS",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        letterSpacing = 0.8.sp
-                    )
-                    Icon(
-                        imageVector = Icons.Default.SportsEsports,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = SecondaryTeal
-                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.dashboard_module_not_installed),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.dashboard_module_install_guide),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "${status.mountedGamesCount} / ${status.totalGamesCount}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = SecondaryTeal
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                val percentage = if (status.totalGamesCount > 0) {
-                    (status.mountedGamesCount * 100) / status.totalGamesCount
-                } else 0
-                Text(
-                    text = "$percentage% of library bound",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
+            }
+        }
+
+        else -> {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.VerifiedUser,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.dashboard_system_ready),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = stringResource(R.string.dashboard_system_ready_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-// ── Component: MicroSD Storage Card ──
+// ── 2. MicroSD Storage Card (Elevated Material 3 Card) ──
 
 @Composable
-private fun MicroSdStorageCard(
+private fun M3StorageCard(
     storage: StorageInfo?,
     onNavigateToStorage: () -> Unit
 ) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+    ElevatedCard(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onNavigateToStorage)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Header Row
+        Column(modifier = Modifier.padding(20.dp)) {
+            // Header Row: Icon + Title + FS Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -440,14 +471,23 @@ private fun MicroSdStorageCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Storage,
-                        contentDescription = null,
-                        tint = PrimaryBlue,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.SdStorage,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
                     Text(
                         text = stringResource(R.string.dashboard_storage_title),
                         style = MaterialTheme.typography.titleMedium,
@@ -458,86 +498,91 @@ private fun MicroSdStorageCard(
                 if (storage != null && storage.isMounted) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = SecondaryTeal.copy(alpha = 0.15f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryTeal.copy(alpha = 0.4f))
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                     ) {
                         Text(
                             text = storage.filesystem.uppercase(),
                             style = MaterialTheme.typography.labelSmall,
-                            color = SecondaryTeal,
+                            color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             if (storage != null && storage.isMounted) {
-                // Device Paths Chip
-                Text(
-                    text = "${storage.blockDevice}  ->  ${storage.mountPoint}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                // Capacity Progress Bar
+                LinearProgressIndicator(
+                    progress = { storage.usedPercent },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp)),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // High-precision Gauge Bar
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                // Stats Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(storage.usedPercent.coerceIn(0f, 1f))
-                            .fillMaxHeight()
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(PrimaryBlue, SecondaryTeal)
-                                )
-                            )
+                    Text(
+                        text = stringResource(
+                            R.string.dashboard_storage_used_format,
+                            FormatUtils.formatBytes(storage.usedBytes),
+                            FormatUtils.formatBytes(storage.totalBytes)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = stringResource(
+                            R.string.dashboard_storage_free_format,
+                            FormatUtils.formatBytes(storage.freeBytes)
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // Usage Metrics Breakdown
+                // Mount Point Path & Manage Action
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Text(
+                        text = storage.mountPoint,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
                         Text(
-                            text = "Used: ${FormatUtils.formatBytes(storage.usedBytes)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold
+                            text = stringResource(R.string.dashboard_manage_storage),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            text = "${(storage.usedPercent * 100).toInt()}% Capacity",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "Free: ${FormatUtils.formatBytes(storage.freeBytes)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = SecondaryTeal
-                        )
-                        Text(
-                            text = "Total: ${FormatUtils.formatBytes(storage.totalBytes)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -545,51 +590,24 @@ private fun MicroSdStorageCard(
                 Text(
                     text = stringResource(R.string.dashboard_storage_not_mounted),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Footer Link
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    Icon(
-                        imageVector = if (storage?.isMounted == true) Icons.Default.CheckCircle else Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = if (storage?.isMounted == true) StatusSuccess else MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = if (storage?.isMounted == true) "Partition active" else "Storage unmounted",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (storage?.isMounted == true) StatusSuccess else MaterialTheme.colorScheme.error
-                    )
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
                     Text(
-                        text = "Manage",
+                        text = stringResource(R.string.dashboard_manage_storage),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = PrimaryBlue
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Icon(
                         imageVector = Icons.Default.ChevronRight,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = PrimaryBlue
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -597,29 +615,40 @@ private fun MicroSdStorageCard(
     }
 }
 
-// ── Component: Quick Action Controls ──
+// ── 3. Quick Action Controls (Material 3 Cohesive Buttons) ──
 
 @Composable
-private fun QuickActionControls(
+private fun M3QuickActions(
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Column {
-        SectionHeader(title = stringResource(R.string.dashboard_quick_actions))
-        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.dashboard_quick_actions),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Button(
-                onClick = onMountAll,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onMountAll()
+                },
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 50.dp),
-                shape = RoundedCornerShape(14.dp),
+                    .heightIn(min = 52.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = PrimaryBlue,
-                    contentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 )
             ) {
                 Icon(
@@ -627,312 +656,301 @@ private fun QuickActionControls(
                     contentDescription = null,
                     modifier = Modifier.size(20.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.dashboard_mount_all),
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            OutlinedButton(
-                onClick = onUnmountAll,
+            FilledTonalButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onUnmountAll()
+                },
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 50.dp),
-                shape = RoundedCornerShape(14.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                    .heightIn(min = 52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
             ) {
                 Icon(
                     imageVector = Icons.Default.Stop,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.dashboard_unmount_all),
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
     }
 }
 
-// ── Component: Managed Games Section ──
+// ── 4. Games Library Card (Clean Unified List Container) ──
 
 @Composable
-private fun ManagedGamesSection(
+private fun M3GamesLibraryCard(
     games: List<GameEntry>,
+    mountedCount: Int,
+    totalCount: Int,
     onNavigateToGames: () -> Unit,
-    onToggleGameMount: (GameEntry) -> Unit
+    onToggleMount: (GameEntry) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Column {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SectionHeader(title = "Managed Game Mounts")
-            TextButton(
-                onClick = onNavigateToGames,
-                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "View All (${games.size})",
+                    text = stringResource(R.string.dashboard_mounted_games),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = "$mountedCount / $totalCount",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            TextButton(
+                onClick = onNavigateToGames,
+                modifier = Modifier.sizeIn(minHeight = 44.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.dashboard_view_all_games),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = PrimaryBlue
+                    color = MaterialTheme.colorScheme.primary
                 )
-                Spacer(modifier = Modifier.width(2.dp))
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = PrimaryBlue
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        if (games.isEmpty()) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onNavigateToGames)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (games.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.SportsEsports,
                         contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(36.dp)
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "No Games Registered",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Tap here to browse installed games and set up bind mounts",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.games_empty_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.games_empty_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            } else {
+                val previewList = games.take(3)
+                previewList.forEachIndexed { index, game ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Game initial avatar
+                        Surface(
+                            shape = CircleShape,
+                            color = if (game.mountStatus == MountStatus.MOUNTED) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHighest
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = (game.displayName.ifBlank { game.packageName }).take(1).uppercase(),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (game.mountStatus == MountStatus.MOUNTED) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = game.displayName.ifBlank { game.packageName },
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = game.mode.name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                )
+                                if (game.dataSizeBytes > 0) {
+                                    Text(
+                                        text = "• ${FormatUtils.formatBytes(game.dataSizeBytes)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Toggle mount action button
+                        FilledTonalIconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onToggleMount(game)
+                            },
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = if (game.mountStatus == MountStatus.MOUNTED) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                contentColor = if (game.mountStatus == MountStatus.MOUNTED) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            ),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (game.mountStatus == MountStatus.MOUNTED) {
+                                    Icons.Default.Stop
+                                } else {
+                                    Icons.Default.PlayArrow
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    if (index < previewList.size - 1) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                         )
                     }
-                }
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Show top 3 games in summary
-                games.take(3).forEach { game ->
-                    GameMountSummaryItem(
-                        game = game,
-                        onToggle = { onToggleGameMount(game) }
-                    )
                 }
             }
         }
     }
 }
 
-@Composable
-private fun GameMountSummaryItem(
-    game: GameEntry,
-    onToggle: () -> Unit
-) {
-    val isMounted = game.mountStatus == MountStatus.MOUNTED
+// ── 5. System Activity Shortcut (Clean Tonal Tile) ──
 
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isMounted) SecondaryTeal.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+@Composable
+private fun M3ActivityCard(onNavigateToLogs: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onNavigateToLogs)
     ) {
         Row(
-            modifier = Modifier
-                .padding(12.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Game Initial Avatar Badge
-            val initial = game.displayName.firstOrNull()?.uppercase() ?: "G"
-            val badgeGradient = when (game.mode) {
-                MountMode.FILES -> Brush.linearGradient(listOf(SecondaryTeal, PrimaryBlue))
-                MountMode.PKG -> Brush.linearGradient(listOf(PrimaryBlue, PrimaryBlueDark))
-            }
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(badgeGradient, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                modifier = Modifier.size(40.dp)
             ) {
-                Text(
-                    text = initial,
-                    color = Color.White,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 17.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // Game Meta
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = game.displayName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Mode Tag
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = if (game.mode == MountMode.FILES) SecondaryTeal.copy(alpha = 0.15f) else PrimaryBlue.copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = game.mode.name,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (game.mode == MountMode.FILES) SecondaryTeal else PrimaryBlue,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                        )
-                    }
-
-                    if (game.dataSizeBytes > 0) {
-                        Text(
-                            text = FormatUtils.formatBytes(game.dataSizeBytes),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                        )
-                    }
-                }
-            }
-
-            // Mount Switch Toggle
-            Switch(
-                checked = isMounted,
-                onCheckedChange = { onToggle() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = SecondaryTeal,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                ),
-                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            )
-        }
-    }
-}
-
-// ── Component: Engine Activity Log Terminal ──
-
-@Composable
-private fun EngineLogTerminalBox(onNavigateToLogs: () -> Unit) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SectionHeader(title = "Engine Activity Log")
-            TextButton(
-                onClick = onNavigateToLogs,
-                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            ) {
-                Text(
-                    text = "View Logs",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = PrimaryBlue
-                )
-                Spacer(modifier = Modifier.width(2.dp))
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = PrimaryBlue
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = Color(0xFF0A0D15),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E2336)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onNavigateToLogs)
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                // Console Top Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(modifier = Modifier.size(8.dp).background(Color(0xFFFF5F56), CircleShape))
-                        Box(modifier = Modifier.size(8.dp).background(Color(0xFFFFBD2E), CircleShape))
-                        Box(modifier = Modifier.size(8.dp).background(Color(0xFF27C93F), CircleShape))
-                    }
-                    Text(
-                        text = "mountify.log - live stream",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
-                        color = Color(0xFF6B7280)
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Terminal,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
+            }
 
-                Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
-                // Console Output Lines
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "[12:00:15] [INFO] Ext4 storage mounted on /data/sdext2",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    color = Color(0xFF60A5FA)
+                    text = stringResource(R.string.dashboard_recent_activity),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "[12:00:16] [SUCCESS] Bind mounted com.kurogame.wutheringwaves.global (PKG)",
+                    text = stringResource(R.string.dashboard_recent_activity_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    color = Color(0xFF34D399)
-                )
-                Text(
-                    text = "[12:00:17] [SUCCESS] SELinux context applied: u:object_r:media_rw_data_file:s0",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    color = Color(0xFF34D399)
-                )
-                Text(
-                    text = "[12:00:18] [READY] 5 game namespaces active and ready",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    color = Color(0xFFA78BFA)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
             }
+
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

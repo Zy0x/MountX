@@ -25,6 +25,14 @@
     <string name="dashboard_storage_title">Penyimpanan MicroSD</string>
     <string name="dashboard_storage_not_mounted">MicroSD Belum Di-mount</string>
     <string name="dashboard_quick_actions">Aksi Cepat</string>
+    <string name="dashboard_manage_storage">Kelola</string>
+    <string name="dashboard_view_all_games">Lihat Semua</string>
+    <string name="dashboard_storage_free_format">%1$s Tersedia</string>
+    <string name="dashboard_storage_used_format">%1$s dari %2$s terpakai</string>
+    <string name="dashboard_system_ready">Sistem Siap</string>
+    <string name="dashboard_system_ready_desc">Namespace bind-mount dan sandbox root beroperasi normal.</string>
+    <string name="dashboard_recent_activity">Aktivitas Sistem</string>
+    <string name="dashboard_recent_activity_desc">Stream log bind-mount dan diagnostik sistem</string>
 
     <string name="root_magisk">Magisk</string>
     <string name="root_kernelsu">KernelSU</string>

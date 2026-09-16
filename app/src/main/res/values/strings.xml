@@ -28,6 +28,14 @@
     <string name="dashboard_storage_title">MicroSD Storage</string>
     <string name="dashboard_storage_not_mounted">MicroSD Not Mounted</string>
     <string name="dashboard_quick_actions">Quick Actions</string>
+    <string name="dashboard_manage_storage">Manage</string>
+    <string name="dashboard_view_all_games">View All</string>
+    <string name="dashboard_storage_free_format">%1$s Free</string>
+    <string name="dashboard_storage_used_format">%1$s of %2$s used</string>
+    <string name="dashboard_system_ready">System Ready</string>
+    <string name="dashboard_system_ready_desc">Bind-mount namespaces and root sandbox are operational.</string>
+    <string name="dashboard_recent_activity">System Activity</string>
+    <string name="dashboard_recent_activity_desc">Live bind-mount stream and diagnostic logs</string>
 
     <!-- Root Solutions -->
     <string name="root_magisk">Magisk</string>
