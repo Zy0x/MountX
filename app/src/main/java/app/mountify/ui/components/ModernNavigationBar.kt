@@ -1,16 +1,32 @@
 package app.mountify.ui.components
 
+import android.content.res.Configuration
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -24,7 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -35,13 +51,25 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountify.ui.navigation.Screen
-import app.mountify.ui.theme.DarkOutline
+import app.mountify.ui.theme.DarkBackground
 import app.mountify.ui.theme.DarkSurface
+import app.mountify.ui.theme.FigmaNavBlue
+import app.mountify.ui.theme.FigmaNavBorder
+import app.mountify.ui.theme.FigmaNavInactive
+import app.mountify.ui.theme.FigmaNavSurface
 import app.mountify.ui.theme.MountifyTheme
-import app.mountify.ui.theme.PrimaryBlue
-import app.mountify.ui.theme.PrimaryBlueLight
-import app.mountify.ui.theme.SecondaryTeal
 
+/**
+ * ModernNavigationBar replicating the exact Figma mobile design specification (Bottom Nav.png).
+ *
+ * Features:
+ * - 24dp rounded top corners with subtle top stroke border.
+ * - Dynamic animated expanding labels exclusively for the active destination.
+ * - Minimalist outline icons for inactive destinations.
+ * - Spring-bouncy icon scale transition on selection.
+ * - High-contrast Figma OLED theme tokens (#1D1F24 surface, #539DF3 active blue).
+ * - Accessible 48x48 dp minimum touch targets with native haptic vibration feedback.
+ */
 @Composable
 fun ModernNavigationBar(
     screens: List<Screen>,
@@ -50,31 +78,44 @@ fun ModernNavigationBar(
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
+    val isDark = isSystemInDarkTheme()
+
+    val surfaceColor = if (isDark) FigmaNavSurface else MaterialTheme.colorScheme.surface
+    val borderColor = if (isDark) FigmaNavBorder else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+    val topCornerRadius = 24.dp
+    val barShape = RoundedCornerShape(topStart = topCornerRadius, topEnd = topCornerRadius)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = barShape,
+                spotColor = Color.Black.copy(alpha = 0.5f),
+                ambientColor = Color.Black.copy(alpha = 0.3f)
+            )
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                color = borderColor,
+                shape = barShape
             ),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp
+        shape = barShape,
+        color = surfaceColor,
+        tonalElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .height(68.dp)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
             screens.forEach { screen ->
                 val selected = currentRoute == screen.route
 
-                ModernNavItem(
+                FigmaNavItem(
                     screen = screen,
                     selected = selected,
                     onClick = {
@@ -91,139 +132,113 @@ fun ModernNavigationBar(
 }
 
 @Composable
-private fun ModernNavItem(
+private fun FigmaNavItem(
     screen: Screen,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val isDark = isSystemInDarkTheme()
 
-    val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.08f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "navIconScale"
-    )
+    val activeColor = if (isDark) FigmaNavBlue else MaterialTheme.colorScheme.primary
+    val inactiveColor = if (isDark) FigmaNavInactive else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
 
     val iconColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
-        },
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "navIconColor"
+        targetValue = if (selected) activeColor else inactiveColor,
+        animationSpec = tween(durationMillis = 220),
+        label = "figmaNavIconColor"
     )
 
-    val labelColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
-        },
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "navLabelColor"
-    )
-
-    val pillWidth by animateDpAsState(
-        targetValue = if (selected) 16.dp else 0.dp,
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.10f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
+            stiffness = Spring.StiffnessMedium
         ),
-        label = "navIndicatorWidth"
+        label = "figmaNavIconScale"
     )
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxHeight()
-            .sizeIn(minWidth = 52.dp, minHeight = 48.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .clip(RoundedCornerShape(16.dp))
             .clickable(
                 interactionSource = interactionSource,
-                indication = ripple(bounded = false, radius = 24.dp),
+                indication = ripple(bounded = false, radius = 26.dp),
                 role = Role.Tab,
                 onClick = onClick
             ),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        contentAlignment = Alignment.Center
     ) {
-        // Icon capsule container
-        Box(
+        Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(
-                    if (selected) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                    } else {
-                        Color.Transparent
-                    }
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
                 )
-                .then(
-                    if (selected) {
-                        Modifier.border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.40f),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
-                .padding(horizontal = 14.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center
+                .padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = if (selected) screen.icon else screen.unselectedIcon,
                 contentDescription = stringResource(screen.titleRes),
                 tint = iconColor,
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(24.dp)
                     .scale(iconScale)
             )
-        }
 
-        Spacer(modifier = Modifier.height(2.dp))
-
-        // Label
-        Text(
-            text = stringResource(screen.titleRes),
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-            ),
-            color = labelColor,
-            maxLines = 1
-        )
-
-        Spacer(modifier = Modifier.height(2.dp))
-
-        // Active indicator neon dot / pill
-        Box(
-            modifier = Modifier
-                .height(2.5.dp)
-                .width(pillWidth)
-                .clip(CircleShape)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(PrimaryBlue, SecondaryTeal)
+            AnimatedVisibility(
+                visible = selected,
+                enter = fadeIn(animationSpec = tween(180, delayMillis = 40)) +
+                    expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        expandFrom = Alignment.Top
+                    ),
+                exit = fadeOut(animationSpec = tween(120)) +
+                    shrinkVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        shrinkTowards = Alignment.Top
                     )
+            ) {
+                Text(
+                    text = stringResource(screen.titleRes),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.2.sp
+                    ),
+                    color = activeColor,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
-        )
+            }
+        }
     }
 }
 
-@Preview(name = "Modern Nav Bar - Dark Theme", showBackground = true)
+// ── Jetpack Compose Previews ──
+
+@Preview(name = "Figma Nav Bar - Dark Theme (Dashboard Active)", showBackground = true)
 @Composable
-private fun ModernNavigationBarPreviewDark() {
+private fun FigmaNavigationBarPreviewDarkDashboard() {
     MountifyTheme(dynamicColor = false) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(DarkSurface)
+                .height(140.dp),
+            contentAlignment = Alignment.BottomCenter
         ) {
             ModernNavigationBar(
                 screens = Screen.bottomNavItems,
@@ -234,14 +249,65 @@ private fun ModernNavigationBarPreviewDark() {
     }
 }
 
-@Preview(name = "Modern Nav Bar - Light Theme", showBackground = true)
+@Preview(name = "Figma Nav Bar - Dark Theme (Storage Active)", showBackground = true)
 @Composable
-private fun ModernNavigationBarPreviewLight() {
+private fun FigmaNavigationBarPreviewDarkStorage() {
     MountifyTheme(dynamicColor = false) {
-        ModernNavigationBar(
-            screens = Screen.bottomNavItems,
-            currentRoute = Screen.Games.route,
-            onNavigate = {}
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            ModernNavigationBar(
+                screens = Screen.bottomNavItems,
+                currentRoute = Screen.Storage.route,
+                onNavigate = {}
+            )
+        }
     }
 }
+
+@Preview(name = "Figma Nav Bar - Light Theme", showBackground = true)
+@Composable
+private fun FigmaNavigationBarPreviewLight() {
+    MountifyTheme(dynamicColor = false) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            ModernNavigationBar(
+                screens = Screen.bottomNavItems,
+                currentRoute = Screen.Games.route,
+                onNavigate = {}
+            )
+        }
+    }
+}
+
+@Preview(
+    name = "Figma Nav Bar - Ultra Tall Screen (1080x2460)",
+    device = "spec:width=1080px,height=2460px,dpi=420",
+    showBackground = true,
+    uiMode = Configuration.UI_MODE_NIGHT_YES
+)
+@Composable
+private fun FigmaNavigationBarPreviewUltraTall() {
+    MountifyTheme(dynamicColor = false) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            ModernNavigationBar(
+                screens = Screen.bottomNavItems,
+                currentRoute = Screen.Logs.route,
+                onNavigate = {}
+            )
+        }
+    }
+}
+

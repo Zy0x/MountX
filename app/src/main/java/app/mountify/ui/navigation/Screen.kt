@@ -1,12 +1,12 @@
 package app.mountify.ui.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.SdStorage
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SportsEsports
@@ -23,8 +23,8 @@ sealed class Screen(
     object Dashboard : Screen(
         route = "dashboard",
         titleRes = R.string.nav_dashboard,
-        icon = Icons.Filled.Dashboard,
-        unselectedIcon = Icons.Outlined.Dashboard
+        icon = Icons.Filled.Home,
+        unselectedIcon = Icons.Outlined.Home
     )
     object Games : Screen(
         route = "games",

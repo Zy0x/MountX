@@ -5,6 +5,15 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.6] - 2026-09-16
+
+### Added
+- Replicated Figma mobile navigation bar (`Bottom Nav.png`) with 24dp rounded top corners and subtle stroke boundary.
+- Dynamic expanding active labels with smooth `expandVertically` and `fadeIn` transitions while collapsing inactive labels.
+- Fluid spring bounce icon scale animations (`Spring.DampingRatioMediumBouncy`) on tab selection.
+- High-contrast OLED dark theme tokens (`FigmaNavSurface` `#1D1F24`, `FigmaNavBlue` `#539DF3`, `FigmaNavBorder` `#2E323D`, `FigmaNavInactive` `#676D75`).
+- Multi-breakpoint Jetpack Compose previews including ultra-tall 1080x2460 display profile.
+
 ## [2.1.5] - 2026-09-16
 
 ### Added

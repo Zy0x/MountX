@@ -35,3 +35,10 @@ val LightSurfaceVariant = Color(0xFFEDF2F7)
 val LightOutline = Color(0xFFCED4DA)
 val LightOnBackground = Color(0xFF1A1D24)
 val LightOnSurface = Color(0xFF212529)
+
+// Figma Navigation Bar Design Tokens
+val FigmaNavSurface = Color(0xFF1D1F24)
+val FigmaNavBlue = Color(0xFF539DF3)
+val FigmaNavInactive = Color(0xFF676D75)
+val FigmaNavBorder = Color(0xFF2E323D)
+
