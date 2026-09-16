@@ -16,11 +16,11 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "app.mihon"
+    namespace = "app.mountify"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.mihon"
+        applicationId = "app.mountify"
         minSdk = 29
         targetSdk = 35
         versionCode = 1

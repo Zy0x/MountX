@@ -1,0 +1,82 @@
+package app.mountify.util
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "mountify_settings")
+
+enum class ThemeMode { LIGHT, DARK, SYSTEM }
+
+@Singleton
+class AppPreferences @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+    companion object {
+        val KEY_THEME = stringPreferencesKey("theme_mode")
+        val KEY_LANGUAGE = stringPreferencesKey("language")
+        val KEY_SD_BASE_PATH = stringPreferencesKey("sd_base_path")
+        val KEY_SD_BLOCK_DEVICE = stringPreferencesKey("sd_block_device")
+        val KEY_AUTO_MOUNT = booleanPreferencesKey("auto_mount_on_boot")
+    }
+
+    val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
+        val name = prefs[KEY_THEME] ?: ThemeMode.SYSTEM.name
+        try {
+            ThemeMode.valueOf(name)
+        } catch (e: Exception) {
+            ThemeMode.SYSTEM
+        }
+    }
+
+    val language: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LANGUAGE] ?: "en"
+    }
+
+    val sdBasePath: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_SD_BASE_PATH] ?: "/data/sdext2"
+    }
+
+    val sdBlockDevice: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_SD_BLOCK_DEVICE] ?: "/dev/block/mmcblk0p3"
+    }
+
+    val autoMountOnBoot: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_AUTO_MOUNT] ?: true
+    }
+
+    suspend fun setThemeMode(mode: ThemeMode) {
+        context.dataStore.edit { it[KEY_THEME] = mode.name }
+    }
+
+    suspend fun setLanguage(lang: String) {
+        context.dataStore.edit { it[KEY_LANGUAGE] = lang }
+    }
+
+    suspend fun setSdBasePath(path: String) {
+        context.dataStore.edit { it[KEY_SD_BASE_PATH] = path }
+    }
+
+    suspend fun setSdBlockDevice(device: String) {
+        context.dataStore.edit { it[KEY_SD_BLOCK_DEVICE] = device }
+    }
+
+    suspend fun setAutoMountOnBoot(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_AUTO_MOUNT] = enabled }
+    }
+
+    suspend fun resetDefaults() {
+        context.dataStore.edit { prefs ->
+            prefs.clear()
+        }
+    }
+}

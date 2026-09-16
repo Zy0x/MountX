@@ -56,7 +56,7 @@ Mountify adalah aplikasi Android native dan modul root untuk memindahkan dan mel
 Mountify/
 ├── app/                  # Aplikasi Android Native (Kotlin, Jetpack Compose, Hilt, Room, libsu)
 │   ├── src/main/
-│   │   ├── java/app/mihon/
+│   │   ├── java/app/mountify/
 │   │   │   ├── data/     # Room Database, Data Models, Repositories
 │   │   │   ├── di/       # Hilt Dependency Injection Modules
 │   │   │   ├── root/     # Engine Shell libsu, Mount & Storage Manager
