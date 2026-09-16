@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -8,7 +9,6 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// Load signing properties from local.properties or env vars
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 if (keystorePropertiesFile.exists()) {
@@ -17,12 +17,12 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "app.mountify"
-    compileSdk = 35
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "app.mountify"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
 
@@ -36,7 +36,7 @@ android {
             val keystoreBase64 = System.getenv("KEYSTORE_BASE64")
             if (!keystoreBase64.isNullOrBlank()) {
                 keystoreFile.parentFile?.mkdirs()
-                keystoreFile.writeBytes(java.util.Base64.getDecoder().decode(keystoreBase64.trim()))
+                keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreBase64.trim()))
                 storeFile = keystoreFile
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
