@@ -32,7 +32,7 @@ log() {
     local ts
     ts=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[${ts}] [${level}] ${msg}" >> "${LOG_FILE}"
-    echo "[${ts}] [${level}] ${msg}" >> "/storage/emulated/0/ExtGameStorage.log" 2>/dev/null
+    echo "[${ts}] [${level}] ${msg}" >> "/storage/emulated/0/mountify.log" 2>/dev/null
 }
 
 log_info()  { log "INFO " "$@"; }

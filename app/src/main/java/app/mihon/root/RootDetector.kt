@@ -45,28 +45,21 @@ object RootDetector {
      * @return true if module directory exists and is not disabled
      */
     suspend fun isModuleInstalled(): Boolean = withContext(Dispatchers.IO) {
-        val paths = listOf(
-            "/data/adb/modules/Mountify",
-            "/data/adb/modules/ExtGameStorage"
-        )
-        paths.any { path ->
-            RootShell.exists(path) &&
-                !RootShell.exists("$path/disable") &&
-                !RootShell.exists("$path/remove")
-        }
+        val path = "/data/adb/modules/Mountify"
+        RootShell.exists(path) &&
+            !RootShell.exists("$path/disable") &&
+            !RootShell.exists("$path/remove")
     }
 
     /**
      * Get the installed module version from module.prop
      */
     suspend fun getModuleVersion(): String = withContext(Dispatchers.IO) {
-        val paths = listOf("/data/adb/modules/Mountify", "/data/adb/modules/ExtGameStorage")
-        for (path in paths) {
-            if (RootShell.exists("$path/module.prop")) {
-                val result = RootShell.exec("grep '^version=' $path/module.prop")
-                if (result.isSuccess) {
-                    return@withContext result.output.removePrefix("version=").trim()
-                }
+        val path = "/data/adb/modules/Mountify"
+        if (RootShell.exists("$path/module.prop")) {
+            val result = RootShell.exec("grep '^version=' $path/module.prop")
+            if (result.isSuccess) {
+                return@withContext result.output.removePrefix("version=").trim()
             }
         }
         ""

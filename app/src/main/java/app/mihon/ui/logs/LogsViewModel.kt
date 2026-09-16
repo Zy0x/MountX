@@ -23,7 +23,7 @@ class LogsViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        const val LOG_PATH = "/storage/emulated/0/ExtGameStorage.log"
+        const val LOG_PATH = "/storage/emulated/0/mountify.log"
     }
 
     private val _logLines = MutableStateFlow<List<LogLine>>(emptyList())
