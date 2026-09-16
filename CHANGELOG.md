@@ -5,6 +5,15 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.2] - 2026-09-16
+
+### Added
+- Persistent isolated storage environment routing for build caches, temporary directories, and SDK paths.
+- Explicit Gradle service directory configuration and toolchain resolution definitions.
+
+### Changed
+- Configured Gradle daemon properties for isolated compilation runs.
+
 ## [2.1.1] - 2026-09-16
 
 ### Added
