@@ -5,6 +5,17 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.9] - 2026-09-16
+
+### Added
+- Ultra-modern minimalist Master Control Hub styling with Deep Obsidian (`#131722`) cards and subtle 1px borders (`#1F2637`).
+- Electric Cyan (`#539DF3`) accents and breathing glow pulse animation for active root mount status.
+- Custom Electric Cyan-to-Blue horizontal gradient capacity gauge for external storage.
+- Compact tactile header bar (`SleekCompactHeader`) with integrated live status pill and haptic refresh action.
+
+### Fixed
+- Fixed top bar layout gap caused by duplicate WindowInsets consumption between `NavGraph` outer `Scaffold` and `DashboardScreen`.
+
 ## [2.1.8] - 2026-09-16
 
 ### Added

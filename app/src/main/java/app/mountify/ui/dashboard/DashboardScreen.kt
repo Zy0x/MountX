@@ -1,7 +1,14 @@
 package app.mountify.ui.dashboard
 
 import android.content.res.Configuration
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,7 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -28,40 +35,33 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SdStorage
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,6 +74,15 @@ import app.mountify.data.model.RootSolution
 import app.mountify.data.model.StorageInfo
 import app.mountify.ui.theme.MountifyTheme
 import app.mountify.util.FormatUtils
+
+// ── Obsidian & Electric Theme Tokens ──
+private val ObsidianBackground = Color(0xFF0C0F17)
+private val ObsidianCard = Color(0xFF131722)
+private val ObsidianBorder = Color(0xFF1F2637)
+private val ElectricCyan = Color(0xFF539DF3)
+private val ElectricCyanBright = Color(0xFF00D2FF)
+private val EmeraldActive = Color(0xFF00E676)
+private val CoralError = Color(0xFFFF5252)
 
 @Composable
 fun DashboardScreen(
@@ -102,7 +111,6 @@ fun DashboardScreen(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardContent(
     status: AppStatus,
@@ -119,94 +127,31 @@ fun DashboardContent(
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val haptic = LocalHapticFeedback.current
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = stringResource(R.string.dashboard_subtitle),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                        )
-                    }
-                },
-                actions = {
-                    // Root engine chip badge in TopBar
-                    val (engineIcon, engineColor) = when (status.rootSolution) {
-                        RootSolution.NONE -> Pair(Icons.Default.Warning, MaterialTheme.colorScheme.error)
-                        else -> Pair(Icons.Default.Security, MaterialTheme.colorScheme.primary)
-                    }
-                    val engineLabel = when (status.rootSolution) {
-                        RootSolution.MAGISK -> stringResource(R.string.root_magisk)
-                        RootSolution.KERNELSU -> stringResource(R.string.root_kernelsu)
-                        RootSolution.APATCH -> stringResource(R.string.root_apatch)
-                        RootSolution.NONE -> stringResource(R.string.root_none)
-                    }
-
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(engineLabel, style = MaterialTheme.typography.labelSmall) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = engineIcon,
-                                contentDescription = null,
-                                tint = engineColor,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            labelColor = MaterialTheme.colorScheme.onSurface
-                        ),
-                        border = null
-                    )
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    IconButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onRefresh()
-                        },
-                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.dashboard_refresh),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
+    Column(
         modifier = modifier
-    ) { paddingValues ->
+            .fillMaxSize()
+            .background(ObsidianBackground)
+    ) {
+        // 1. Sleek Compact Header Bar (Tight under status bar, zero empty gap)
+        SleekCompactHeader(
+            status = status,
+            onRefresh = onRefresh
+        )
+
         if (isLandscape) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Left Column: Alert & Master Control
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 20.dp)
                 ) {
                     item {
                         ContextualAlertBanner(status = status)
@@ -223,13 +168,12 @@ fun DashboardContent(
                     }
                 }
 
-                // Right Column: Storage & Telemetry Metrics
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 20.dp)
                 ) {
                     item {
                         M3StorageCard(
@@ -246,21 +190,16 @@ fun DashboardContent(
                 }
             }
         } else {
-            // Portrait Mobile Layout: Clean vertical hierarchy
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 20.dp)
             ) {
-                // Contextual alert banner (only displayed when there is an issue)
                 item {
                     ContextualAlertBanner(status = status)
                 }
-
-                // 1. Smart Adaptive Master Control Hero Card
                 item {
                     SmartMasterControlCard(
                         games = games,
@@ -271,16 +210,12 @@ fun DashboardContent(
                         onNavigateToGames = onNavigateToGames
                     )
                 }
-
-                // 2. MicroSD Storage Card
                 item {
                     M3StorageCard(
                         storage = status.storageInfo,
                         onNavigateToStorage = onNavigateToStorage
                     )
                 }
-
-                // 3. Compact Metrics Row
                 item {
                     DashboardMetricsRow(
                         games = games,
@@ -292,7 +227,109 @@ fun DashboardContent(
     }
 }
 
-// ── Contextual Warning / Error Banner (Zero clutter on normal state) ──
+// ── 1. Sleek Compact Header Bar (~48dp height directly under status bar) ──
+
+@Composable
+private fun SleekCompactHeader(
+    status: AppStatus,
+    onRefresh: () -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Left: Minimalist Brand Mark & Title
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFF191E2C),
+                border = BorderStroke(1.dp, Color(0xFF283248)),
+                modifier = Modifier.size(34.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.SdStorage,
+                        contentDescription = null,
+                        tint = ElectricCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 18.sp
+            )
+        }
+
+        // Right: Micro Status Pill & Tactile Refresh Action
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val (ledColor, engineLabel) = when (status.rootSolution) {
+                RootSolution.MAGISK -> Pair(EmeraldActive, stringResource(R.string.root_magisk))
+                RootSolution.KERNELSU -> Pair(EmeraldActive, stringResource(R.string.root_kernelsu))
+                RootSolution.APATCH -> Pair(EmeraldActive, stringResource(R.string.root_apatch))
+                RootSolution.NONE -> Pair(CoralError, stringResource(R.string.root_none))
+            }
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xFF161A25),
+                border = BorderStroke(1.dp, Color(0xFF222B3D)),
+                modifier = Modifier.height(32.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(ledColor, CircleShape)
+                    )
+                    Text(
+                        text = engineLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onRefresh()
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = stringResource(R.string.dashboard_refresh),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+// ── 2. Contextual Warning / Error Banner (Zero clutter on normal state) ──
 
 @Composable
 private fun ContextualAlertBanner(status: AppStatus) {
@@ -301,41 +338,43 @@ private fun ContextualAlertBanner(status: AppStatus) {
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    containerColor = Color(0xFF2B1214)
                 ),
+                border = BorderStroke(1.dp, CoralError.copy(alpha = 0.4f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
-                        modifier = Modifier.size(44.dp)
+                        color = CoralError.copy(alpha = 0.15f),
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(24.dp)
+                                tint = CoralError,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(14.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.dashboard_no_root),
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFF8A80)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.dashboard_no_root_desc),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f)
+                            color = Color(0xFFFFCDD2).copy(alpha = 0.85f),
+                            fontSize = 11.sp
                         )
                     }
                 }
@@ -346,41 +385,43 @@ private fun ContextualAlertBanner(status: AppStatus) {
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    containerColor = Color(0xFF2B2212)
                 ),
+                border = BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.4f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
-                        modifier = Modifier.size(44.dp)
+                        color = Color(0xFFFFB300).copy(alpha = 0.15f),
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.size(24.dp)
+                                tint = Color(0xFFFFB300),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(14.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.dashboard_module_not_installed),
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFFE082)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = stringResource(R.string.dashboard_module_install_guide),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                            color = Color(0xFFFFF8E1).copy(alpha = 0.85f),
+                            fontSize = 11.sp
                         )
                     }
                 }
@@ -388,12 +429,12 @@ private fun ContextualAlertBanner(status: AppStatus) {
         }
 
         else -> {
-            // Operational happy path: zero banner shown to eliminate clutter
+            // Normal happy path: zero banner clutter
         }
     }
 }
 
-// ── 1. Smart Adaptive Master Control Hero Card ──
+// ── 3. Smart Adaptive Master Control Hero Card (Breathing Glow Pulse) ──
 
 @Composable
 private fun SmartMasterControlCard(
@@ -407,55 +448,99 @@ private fun SmartMasterControlCard(
     val haptic = LocalHapticFeedback.current
     val allMounted = totalCount > 0 && mountedCount == totalCount
 
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    // Breathing pulse transition for active status LED
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+        label = "pulseAlpha"
+    )
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+        border = BorderStroke(
+            1.dp,
+            if (allMounted) EmeraldActive.copy(alpha = 0.35f) else ObsidianBorder
+        ),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            // Header: Section label + Status Pill Badge
+        Column(modifier = Modifier.padding(18.dp)) {
+            // Header: Category label + Status Pill Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = stringResource(R.string.dashboard_master_control),
-                    style = MaterialTheme.typography.labelLarge,
+                    text = stringResource(R.string.dashboard_master_control).uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = ElectricCyan,
+                    letterSpacing = 1.sp
                 )
 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = when {
-                        totalCount == 0 -> MaterialTheme.colorScheme.surfaceContainerHighest
-                        allMounted -> MaterialTheme.colorScheme.primaryContainer
-                        else -> MaterialTheme.colorScheme.tertiaryContainer
-                    }
-                ) {
-                    Text(
-                        text = when {
-                            totalCount == 0 -> "0 / 0"
-                            allMounted -> "$mountedCount / $totalCount Active"
-                            else -> "$mountedCount / $totalCount Mounted"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = when {
-                            totalCount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
-                            allMounted -> MaterialTheme.colorScheme.onPrimaryContainer
-                            else -> MaterialTheme.colorScheme.onTertiaryContainer
-                        },
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        totalCount == 0 -> Color(0xFF1C2230)
+                        allMounted -> EmeraldActive.copy(alpha = 0.15f)
+                        else -> ElectricCyan.copy(alpha = 0.15f)
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        when {
+                            totalCount == 0 -> Color(0xFF283248)
+                            allMounted -> EmeraldActive.copy(alpha = 0.3f)
+                            else -> ElectricCyan.copy(alpha = 0.3f)
+                        }
                     )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (allMounted) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .scale(pulseScale)
+                                    .background(EmeraldActive.copy(alpha = pulseAlpha), CircleShape)
+                            )
+                        }
+                        Text(
+                            text = when {
+                                totalCount == 0 -> "0 / 0"
+                                allMounted -> "$mountedCount / $totalCount Active"
+                                else -> "$mountedCount / $totalCount Mounted"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = when {
+                                totalCount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
+                                allMounted -> EmeraldActive
+                                else -> ElectricCyan
+                            }
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Headline & Description
             Text(
@@ -481,9 +566,9 @@ private fun SmartMasterControlCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // Adaptive Master Action Button
+            // Adaptive Master Button
             when {
                 totalCount == 0 -> {
                     FilledTonalButton(
@@ -493,17 +578,18 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 52.dp),
+                            .heightIn(min = 50.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
+                            containerColor = Color(0xFF1A2130),
+                            contentColor = ElectricCyan
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFF28344C))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -521,18 +607,19 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 52.dp),
+                            .heightIn(min = 50.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            containerColor = Color(0xFF1D2230),
                             contentColor = MaterialTheme.colorScheme.onSurface
-                        )
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFF2B344A))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Stop,
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.error
+                            modifier = Modifier.size(18.dp),
+                            tint = CoralError
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -550,17 +637,17 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 52.dp),
+                            .heightIn(min = 50.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
+                            containerColor = ElectricCyan,
+                            contentColor = Color.White
                         )
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -574,40 +661,38 @@ private fun SmartMasterControlCard(
     }
 }
 
-// ── 2. MicroSD Storage Telemetry Card (Elevated Material 3 Card) ──
+// ── 4. MicroSD Storage Card (Electric Gradient Gauge) ──
 
 @Composable
 private fun M3StorageCard(
     storage: StorageInfo?,
     onNavigateToStorage: () -> Unit
 ) {
-    ElevatedCard(
+    Card(
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+        border = BorderStroke(1.dp, ObsidianBorder),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onNavigateToStorage)
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            // Header: Icon + Filesystem Chip + Title
+        Column(modifier = Modifier.padding(18.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    modifier = Modifier.size(44.dp)
+                    color = ElectricCyan.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.25f)),
+                    modifier = Modifier.size(42.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.SdStorage,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
+                            tint = ElectricCyan,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -630,33 +715,45 @@ private fun M3StorageCard(
                 if (storage != null && storage.isMounted && storage.filesystem.isNotBlank()) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer
+                        color = Color(0xFF1A2234),
+                        border = BorderStroke(1.dp, Color(0xFF28344E))
                     ) {
                         Text(
                             text = storage.filesystem.uppercase(),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            color = ElectricCyan,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             if (storage != null && storage.isMounted && storage.totalBytes > 0L) {
                 val usedRatio = (storage.usedBytes.toFloat() / storage.totalBytes.toFloat()).coerceIn(0f, 1f)
 
-                LinearProgressIndicator(
-                    progress = { usedRatio },
+                // Electric Cyan-to-Blue Gradient Gauge
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-                )
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF1C2230))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(fraction = usedRatio)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(ElectricCyan, ElectricCyanBright)
+                                )
+                            )
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -681,7 +778,7 @@ private fun M3StorageCard(
                         ),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = ElectricCyan
                     )
                 }
             } else {
@@ -704,12 +801,12 @@ private fun M3StorageCard(
                             text = stringResource(R.string.dashboard_manage_storage),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = ElectricCyan
                         )
                         Icon(
                             imageVector = Icons.Default.ChevronRight,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = ElectricCyan,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -719,7 +816,7 @@ private fun M3StorageCard(
     }
 }
 
-// ── 3. Quick Telemetry Metrics Row (Compact Side-by-side Tiles) ──
+// ── 5. Telemetry Metrics Row (Side-by-Side Rounded Obsidian Tiles) ──
 
 @Composable
 private fun DashboardMetricsRow(
@@ -737,27 +834,27 @@ private fun DashboardMetricsRow(
         // Tile 1: Offloaded Data
         Card(
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
+            colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+            border = BorderStroke(1.dp, ObsidianBorder),
             modifier = Modifier.weight(1f)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(36.dp)
+                    color = ElectricCyan.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.3f)),
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Storage,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(18.dp)
+                            tint = ElectricCyan,
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = if (totalOffloadedBytes > 0) FormatUtils.formatBytes(totalOffloadedBytes) else "0 B",
                     style = MaterialTheme.typography.titleMedium,
@@ -767,7 +864,7 @@ private fun DashboardMetricsRow(
                 Text(
                     text = stringResource(R.string.dashboard_metric_offloaded),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
             }
         }
@@ -775,35 +872,30 @@ private fun DashboardMetricsRow(
         // Tile 2: Runtime Namespaces
         Card(
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
+            colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+            border = BorderStroke(1.dp, ObsidianBorder),
             modifier = Modifier.weight(1f)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Surface(
                     shape = CircleShape,
-                    color = if (mountedCount > 0) {
-                        MaterialTheme.colorScheme.tertiaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerHighest
-                    },
-                    modifier = Modifier.size(36.dp)
+                    color = if (mountedCount > 0) EmeraldActive.copy(alpha = 0.15f) else Color(0xFF1E2432),
+                    border = BorderStroke(
+                        1.dp,
+                        if (mountedCount > 0) EmeraldActive.copy(alpha = 0.3f) else Color(0xFF2A3448)
+                    ),
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = if (mountedCount > 0) {
-                                MaterialTheme.colorScheme.onTertiaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            modifier = Modifier.size(18.dp)
+                            tint = if (mountedCount > 0) EmeraldActive else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = if (mountedCount > 0) {
                         stringResource(R.string.dashboard_metric_namespaces_active)
@@ -817,7 +909,7 @@ private fun DashboardMetricsRow(
                 Text(
                     text = stringResource(R.string.dashboard_metric_namespaces),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
             }
         }
@@ -849,7 +941,7 @@ fun DashboardScreenPreview() {
             status = AppStatus(
                 rootSolution = RootSolution.MAGISK,
                 isModuleInstalled = true,
-                moduleVersion = "2.1.8",
+                moduleVersion = "2.1.9",
                 mountedGamesCount = 5,
                 totalGamesCount = 8,
                 storageInfo = StorageInfo(
