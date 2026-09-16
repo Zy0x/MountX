@@ -33,3 +33,12 @@ data class GameEntry(
     val isEnabled: Boolean = true,
     val addedAt: Long = System.currentTimeMillis()
 )
+
+/**
+ * Metadata for installed application item shown in AddGameSheet.
+ */
+data class InstalledAppInfo(
+    val packageName: String,
+    val displayName: String,
+    val isGame: Boolean = false
+)

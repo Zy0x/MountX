@@ -30,6 +30,9 @@ interface GameDao {
     @Query("UPDATE games SET dataSizeBytes = :size WHERE packageName = :pkg")
     suspend fun updateDataSize(pkg: String, size: Long)
 
+    @Query("UPDATE games SET mode = :mode WHERE packageName = :pkg")
+    suspend fun updateMode(pkg: String, mode: app.mountify.data.model.MountMode)
+
     @Query("SELECT COUNT(*) FROM games WHERE mountStatus = 'MOUNTED'")
     fun getMountedCount(): Flow<Int>
 

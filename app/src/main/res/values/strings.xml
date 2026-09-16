@@ -61,6 +61,7 @@
     <string name="games_add">Add Game</string>
     <string name="games_empty_title">No Games Added</string>
     <string name="games_empty_desc">Tap the + button to add a game to manage.</string>
+    <string name="games_empty_cta">+ Add Your First Game</string>
     <string name="games_search">Search games…</string>
     <string name="games_delete">Delete</string>
     <string name="games_delete_confirm">Remove %1$s from the list?</string>
@@ -72,11 +73,29 @@
     <string name="games_move_data">Move Data</string>
     <string name="games_edit">Edit</string>
     <string name="games_data_size">Data size: %1$s</string>
+    <string name="games_filter_all">All</string>
+    <string name="games_filter_mounted">Mounted</string>
+    <string name="games_filter_unmounted">Unmounted</string>
+    <string name="games_sort_title">Sort Games</string>
+    <string name="games_sort_size_desc">Largest Size</string>
+    <string name="games_sort_name_asc">Name (A-Z)</string>
+    <string name="games_batch_mount_all">Mount All</string>
+    <string name="games_batch_unmount_all">Unmount All</string>
 
     <!-- Add Game Sheet -->
     <string name="add_game_title">Add Game</string>
     <string name="add_game_package_hint">Package name (e.g. com.example.game)</string>
+    <string name="add_game_package_label">Package Name</string>
+    <string name="add_game_name_label">Display Name</string>
     <string name="add_game_browse">Browse Installed Apps</string>
+    <string name="add_game_manual_mode">Manual Input</string>
+    <string name="add_game_browse_mode">Installed Apps</string>
+    <string name="add_game_filter_all_apps">All Apps</string>
+    <string name="add_game_filter_games_only">Games Only</string>
+    <string name="add_game_smart_preset">Smart Recommendation</string>
+    <string name="add_game_select_app_title">Select Application</string>
+    <string name="add_game_configure_title">Configure Mount</string>
+    <string name="add_game_no_apps_found">No applications found matching your search</string>
     <string name="add_game_mode_title">Mount Mode</string>
     <string name="add_game_mode_pkg">PKG — Mount entire game folder</string>
     <string name="add_game_mode_files">FILES — Mount only /files subfolder</string>
@@ -92,6 +111,21 @@
     <string name="status_error">Error</string>
     <string name="status_unknown">Unknown</string>
     <string name="status_loading">Loading…</string>
+
+    <!-- Game Detail & Storage Sheet -->
+    <string name="game_detail_title">Game Details &amp; Storage</string>
+    <string name="game_detail_storage_breakdown">Storage Breakdown</string>
+    <string name="game_detail_internal_storage">Internal Storage</string>
+    <string name="game_detail_microsd_storage">MicroSD Storage</string>
+    <string name="game_detail_mode_title">Mount Mode</string>
+    <string name="game_detail_mode_switch_desc">Switching mode updates configuration instantly without re-adding the game.</string>
+    <string name="game_detail_move_title">Physical Data Transfer</string>
+    <string name="game_detail_move_warning">Zero data-loss verified: source data is preserved if transfer fails.</string>
+    <string name="game_detail_move_to_sd">Move to MicroSD</string>
+    <string name="game_detail_move_to_internal">Restore to Internal</string>
+    <string name="game_detail_delete_action">Remove Game</string>
+    <string name="game_detail_status_mounted">Active &amp; Mounted</string>
+    <string name="game_detail_status_unmounted">Standby (Unmounted)</string>
 
     <!-- Move Data Sheet -->
     <string name="move_data_title">Move Game Data</string>

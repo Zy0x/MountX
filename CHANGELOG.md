@@ -5,6 +5,22 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.12] - 2026-09-16
+
+### Added
+- Complete UI/UX overhaul of the Games module focusing on effortless operation and modern visual hierarchy.
+- Native Android app icon rendering with asynchronous background loading (`AppIconImage`) and in-memory LRU caching.
+- Direct Visual App Picker in `AddGameSheet` featuring instant search, "Games Only" / "All Apps" category filtering, and manual package input fallback.
+- `SmartGamePresets` engine providing automatic mount mode detection (PKG vs FILES) with dedicated "Smart Recommendation" badges for popular games (Genshin Impact, Honkai: Star Rail, Zenless Zone Zero, Wuthering Waves, PUBG Mobile, Call of Duty Mobile, Mobile Legends, Free Fire).
+- `GameDetailSheet` integrated management sheet showing physical storage distribution (Internal vs MicroSD), instant mount mode switcher without re-adding, verified data migration, and deletion controls.
+- Fast status filter chips (`All`, `Mounted`, `Unmounted`) and sorting menu (`Largest Size`, `Name A-Z`) on GamesScreen.
+- Batch action controls (`Mount All` and `Unmount All`) accessible directly from the Games header.
+- Welcoming empty state with Aurora gradient "+ Add Your First Game" call-to-action.
+
+### Changed
+- Promoted Mount/Unmount action on game cards to a large, tactile button preventing accidental deletion or data-move misclicks.
+- Removed obsolete `MoveDataSheet` in favor of the rich `GameDetailSheet`.
+
 ## [2.1.11] - 2026-09-16
 
 ### Added

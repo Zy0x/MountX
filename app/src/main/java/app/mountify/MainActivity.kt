@@ -197,11 +197,16 @@ fun FullAppPreviewLayout(
                             )
                         ),
                         searchQuery = "",
+                        filterStatus = app.mountify.ui.games.GameFilterStatus.ALL,
+                        sortOption = app.mountify.ui.games.GameSortOption.SIZE_DESC,
                         onSearchQueryChange = {},
+                        onFilterStatusChange = {},
+                        onSortOptionChange = {},
                         onAddClick = {},
                         onToggleMount = {},
-                        onMoveData = {},
-                        onDelete = {}
+                        onMountAll = {},
+                        onUnmountAll = {},
+                        onSelectGameForDetail = {}
                     )
                 }
                 Screen.Storage.route -> {

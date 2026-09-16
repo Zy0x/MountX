@@ -5,8 +5,10 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import app.mountify.data.db.GameDao
 import app.mountify.data.model.GameEntry
+import app.mountify.data.model.InstalledAppInfo
 import app.mountify.data.model.MountMode
 import app.mountify.data.model.MountStatus
+import app.mountify.data.model.SmartGamePresets
 import app.mountify.root.MountManager
 import app.mountify.root.RootShell
 import kotlinx.coroutines.Dispatchers
@@ -141,15 +143,37 @@ class GameRepository @Inject constructor(
             sizeBytes
         }
 
-    fun getInstalledApps(context: Context): List<Pair<String, String>> {
+    suspend fun updateGameMode(packageName: String, mode: MountMode) = withContext(Dispatchers.IO) {
+        gameDao.updateMode(packageName, mode)
+    }
+
+    suspend fun getInternalAndSdSizes(packageName: String, sdBase: String = "/data/sdext2"): Pair<Long, Long> =
+        withContext(Dispatchers.IO) {
+            val internalPath = "/data/media/0/Android/data/$packageName"
+            val sdPath = "$sdBase/Android/data/$packageName"
+
+            val internalKb = if (RootShell.exists(internalPath)) {
+                RootShell.exec("du -sk \"$internalPath\" 2>/dev/null | cut -f1").output.trim().toLongOrNull() ?: 0L
+            } else 0L
+
+            val sdKb = if (RootShell.exists(sdPath)) {
+                RootShell.exec("du -sk \"$sdPath\" 2>/dev/null | cut -f1").output.trim().toLongOrNull() ?: 0L
+            } else 0L
+
+            Pair(internalKb * 1024L, sdKb * 1024L)
+        }
+
+    fun getInstalledApps(context: Context): List<InstalledAppInfo> {
         val pm = context.packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
         return apps
             .filter { app -> (app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 } // exclude system apps
             .map { app ->
                 val label = pm.getApplicationLabel(app).toString()
-                Pair(app.packageName, label)
+                val isGame = (app.category == ApplicationInfo.CATEGORY_GAME) ||
+                    (SmartGamePresets.findPreset(app.packageName) != null)
+                InstalledAppInfo(app.packageName, label, isGame)
             }
-            .sortedBy { it.second.lowercase() }
+            .sortedWith(compareByDescending<InstalledAppInfo> { it.isGame }.thenBy { it.displayName.lowercase() })
     }
 }

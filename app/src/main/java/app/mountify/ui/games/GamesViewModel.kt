@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mountify.data.model.GameEntry
+import app.mountify.data.model.InstalledAppInfo
 import app.mountify.data.model.MountMode
 import app.mountify.data.model.MoveDirection
 import app.mountify.data.repository.GameRepository
@@ -20,6 +21,17 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class GameFilterStatus {
+    ALL,
+    MOUNTED,
+    UNMOUNTED
+}
+
+enum class GameSortOption {
+    SIZE_DESC,
+    NAME_ASC
+}
+
 @HiltViewModel
 class GamesViewModel @Inject constructor(
     private val gameRepository: GameRepository,
@@ -34,8 +46,14 @@ class GamesViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _installedApps = MutableStateFlow<List<Pair<String, String>>>(emptyList())
-    val installedApps: StateFlow<List<Pair<String, String>>> = _installedApps.asStateFlow()
+    private val _filterStatus = MutableStateFlow(GameFilterStatus.ALL)
+    val filterStatus: StateFlow<GameFilterStatus> = _filterStatus.asStateFlow()
+
+    private val _sortOption = MutableStateFlow(GameSortOption.SIZE_DESC)
+    val sortOption: StateFlow<GameSortOption> = _sortOption.asStateFlow()
+
+    private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
+    val installedApps: StateFlow<List<InstalledAppInfo>> = _installedApps.asStateFlow()
 
     private val _isMovingData = MutableStateFlow(false)
     val isMovingData: StateFlow<Boolean> = _isMovingData.asStateFlow()
@@ -43,13 +61,37 @@ class GamesViewModel @Inject constructor(
     private val _moveMessage = MutableStateFlow<String?>(null)
     val moveMessage: StateFlow<String?> = _moveMessage.asStateFlow()
 
+    private val _storageBreakdown = MutableStateFlow<Pair<Long, Long>>(Pair(0L, 0L))
+    val storageBreakdown: StateFlow<Pair<Long, Long>> = _storageBreakdown.asStateFlow()
+
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+    }
+
+    fun setFilterStatus(status: GameFilterStatus) {
+        _filterStatus.value = status
+    }
+
+    fun setSortOption(option: GameSortOption) {
+        _sortOption.value = option
     }
 
     fun loadInstalledApps() {
         viewModelScope.launch {
             _installedApps.value = gameRepository.getInstalledApps(context)
+        }
+    }
+
+    fun loadStorageBreakdown(packageName: String) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            _storageBreakdown.value = gameRepository.getInternalAndSdSizes(packageName, sdBase)
+        }
+    }
+
+    fun updateGameMode(packageName: String, mode: MountMode) {
+        viewModelScope.launch {
+            gameRepository.updateGameMode(packageName, mode)
         }
     }
 
@@ -78,6 +120,20 @@ class GamesViewModel @Inject constructor(
         }
     }
 
+    fun mountAllGames() {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            gameRepository.mountAll(sdBase)
+        }
+    }
+
+    fun unmountAllGames() {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            gameRepository.unmountAll(sdBase)
+        }
+    }
+
     fun refreshSizes() {
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
@@ -97,6 +153,7 @@ class GamesViewModel @Inject constructor(
             if (result.isSuccess) {
                 _moveMessage.value = "SUCCESS"
                 gameRepository.calculateDataSize(packageName, sdBase)
+                _storageBreakdown.value = gameRepository.getInternalAndSdSizes(packageName, sdBase)
             } else {
                 _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
             }

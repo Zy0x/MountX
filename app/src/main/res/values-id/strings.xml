@@ -56,6 +56,7 @@
     <string name="games_add">Tambah Game</string>
     <string name="games_empty_title">Belum Ada Game</string>
     <string name="games_empty_desc">Ketuk tombol + untuk menambahkan game.</string>
+    <string name="games_empty_cta">+ Tambah Game Pertama Anda</string>
     <string name="games_search">Cari game…</string>
     <string name="games_delete">Hapus</string>
     <string name="games_delete_confirm">Hapus %1$s dari daftar?</string>
@@ -67,10 +68,28 @@
     <string name="games_move_data">Pindah Data</string>
     <string name="games_edit">Edit</string>
     <string name="games_data_size">Ukuran data: %1$s</string>
+    <string name="games_filter_all">Semua</string>
+    <string name="games_filter_mounted">Ter-mount</string>
+    <string name="games_filter_unmounted">Belum Mount</string>
+    <string name="games_sort_title">Urutkan Game</string>
+    <string name="games_sort_size_desc">Ukuran Terbesar</string>
+    <string name="games_sort_name_asc">Nama (A-Z)</string>
+    <string name="games_batch_mount_all">Mount Semua</string>
+    <string name="games_batch_unmount_all">Unmount Semua</string>
 
     <string name="add_game_title">Tambah Game</string>
     <string name="add_game_package_hint">Nama paket (mis. com.contoh.game)</string>
+    <string name="add_game_package_label">Nama Paket</string>
+    <string name="add_game_name_label">Nama Tampilan</string>
     <string name="add_game_browse">Telusuri App Terinstall</string>
+    <string name="add_game_manual_mode">Input Manual</string>
+    <string name="add_game_browse_mode">Aplikasi Terpasang</string>
+    <string name="add_game_filter_all_apps">Semua Aplikasi</string>
+    <string name="add_game_filter_games_only">Khusus Game</string>
+    <string name="add_game_smart_preset">Rekomendasi Pintar</string>
+    <string name="add_game_select_app_title">Pilih Aplikasi</string>
+    <string name="add_game_configure_title">Konfigurasi Mount</string>
+    <string name="add_game_no_apps_found">Tidak ada aplikasi yang cocok dengan pencarian</string>
     <string name="add_game_mode_title">Mode Mount</string>
     <string name="add_game_mode_pkg">PKG — Mount seluruh folder game</string>
     <string name="add_game_mode_files">FILES — Mount hanya subfolder /files</string>
@@ -85,6 +104,21 @@
     <string name="status_error">Error</string>
     <string name="status_unknown">Tidak Diketahui</string>
     <string name="status_loading">Memuat…</string>
+
+    <!-- Game Detail & Storage Sheet -->
+    <string name="game_detail_title">Detail Game &amp; Penyimpanan</string>
+    <string name="game_detail_storage_breakdown">Rincian Penyimpanan</string>
+    <string name="game_detail_internal_storage">Penyimpanan Internal</string>
+    <string name="game_detail_microsd_storage">Penyimpanan MicroSD</string>
+    <string name="game_detail_mode_title">Mode Mount</string>
+    <string name="game_detail_mode_switch_desc">Mengubah mode memperbarui konfigurasi langsung tanpa menambah ulang game.</string>
+    <string name="game_detail_move_title">Pemindahan Data Fisik</string>
+    <string name="game_detail_move_warning">Terverifikasi tanpa kehilangan data: data asal tetap utuh jika transfer gagal.</string>
+    <string name="game_detail_move_to_sd">Pindah ke MicroSD</string>
+    <string name="game_detail_move_to_internal">Kembalikan ke Internal</string>
+    <string name="game_detail_delete_action">Hapus Game</string>
+    <string name="game_detail_status_mounted">Aktif &amp; Ter-mount</string>
+    <string name="game_detail_status_unmounted">Siaga (Belum Mount)</string>
 
     <string name="move_data_title">Pindah Data Game</string>
     <string name="move_data_to_sd">Pindah ke MicroSD</string>
