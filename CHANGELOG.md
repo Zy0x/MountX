@@ -5,6 +5,16 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.35] - 2026-09-17
+
+### Changed
+- **Sleek Micro-Pro App Detail UI Refactor**:
+  - Compacted Concentric Donut Chart diameter from 176dp to 82dp with 6.5dp stroke, 7.5dp outer ring text, and 7dp inner text, fitting side-by-side with the 3-tier legend and reducing vertical consumption by over 50%.
+  - Merged the separate Storage Chart and Breakdown cards into a **Single Unified Storage Card** with thin horizontal separator.
+  - Implemented **Smart Dimming** in the 7-row breakdown table: rows with zero bytes are subtly dimmed (`alpha = 0.42f`), visually emphasizing active data categories without losing information.
+  - Redesigned Mount Mode Selector into a compact 28dp **Segmented Pill Switch** (`PKG Mode` / `FILES Mode`) with a 1-line dynamic description, replacing oversized cards and eliminating screen clutter.
+  - Preserved full touch target ergonomics and WCAG contrast compliance while delivering a dense, professional power-user interface.
+
 ## [2.1.34] - 2026-09-17
 
 ### Added

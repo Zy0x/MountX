@@ -244,118 +244,7 @@ fun GameDetailView(
                     modifier = Modifier.padding(bottom = 2.dp)
                 )
 
-                // ── CONCENTRIC PIE / DONUT CHART & 3-TIER LEGEND ──
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    ConcentricStorageChart(
-                        breakdown = breakdown,
-                        modifier = Modifier.size(176.dp)
-                    )
-
-                    // 3-Tier Legend (Internal, Ext 1, Ext 2, Total)
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
-                    ) {
-                        // Internal
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FloppyDiskIcon(
-                                tint = Color(0xFFDF4006),
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Text(
-                                text = FormatUtils.formatLegendBytes(breakdown.internalBytes),
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = Color(0xFFDF4006)
-                            )
-                        }
-
-                        // Ext 1 (Media)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Smartphone,
-                                contentDescription = null,
-                                tint = Color(0xFF3149FF),
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Text(
-                                text = FormatUtils.formatLegendBytes(breakdown.ext1Bytes),
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = Color(0xFF3149FF)
-                            )
-                        }
-
-                        // Ext 2 (MicroSD)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SdCard,
-                                contentDescription = null,
-                                tint = Color(0xFF3BA71A),
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Text(
-                                text = FormatUtils.formatLegendBytes(breakdown.ext2Bytes),
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = Color(0xFF3BA71A)
-                            )
-                        }
-
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                            modifier = Modifier
-                                .width(85.dp)
-                                .padding(vertical = 1.dp)
-                        )
-
-                        // Total (Σ)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Σ",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = FormatUtils.formatLegendBytes(breakdown.totalBytes),
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-
-                // ── 7-ROW DETAILED BREAKDOWN CARD (App2SD Pro Exact Table) ──
+                // ── SINGLE UNIFIED STORAGE CARD (Chart + Legend + Breakdown) ──
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -365,167 +254,309 @@ fun GameDetailView(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        BreakdownRow(
-                            label = stringResource(R.string.game_detail_cat_apk),
-                            labelColor = Color(0xFFE91E63),
-                            sizeText = FormatUtils.formatExactBytes(breakdown.apkBytes),
-                            isDisk = true,
-                            customIconTint = Color(0xFFDF4006)
+                        // Upper section: Compact Concentric Donut Chart (82dp) & 3-Tier Legend
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            ConcentricStorageChart(
+                                breakdown = breakdown,
+                                modifier = Modifier.size(82.dp)
+                            )
+
+                            // 3-Tier Legend (Internal, Ext 1, Ext 2, Total)
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                // Internal
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    FloppyDiskIcon(
+                                        tint = Color(0xFFDF4006),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = FormatUtils.formatLegendBytes(breakdown.internalBytes),
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color(0xFFDF4006)
+                                    )
+                                }
+
+                                // Ext 1 (Media)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Smartphone,
+                                        contentDescription = null,
+                                        tint = Color(0xFF3149FF),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = FormatUtils.formatLegendBytes(breakdown.ext1Bytes),
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color(0xFF3149FF)
+                                    )
+                                }
+
+                                // Ext 2 (MicroSD)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SdCard,
+                                        contentDescription = null,
+                                        tint = Color(0xFF3BA71A),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = FormatUtils.formatLegendBytes(breakdown.ext2Bytes),
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = Color(0xFF3BA71A)
+                                    )
+                                }
+
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                    modifier = Modifier
+                                        .width(75.dp)
+                                        .padding(vertical = 1.dp)
+                                )
+
+                                // Total (Σ)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Σ",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = FormatUtils.formatLegendBytes(breakdown.totalBytes),
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.padding(vertical = 2.dp)
                         )
-                        BreakdownRow(
-                            label = stringResource(R.string.game_detail_cat_dex),
-                            labelColor = Color(0xFF00ACC1),
-                            sizeText = FormatUtils.formatExactBytes(breakdown.dexBytes),
-                            isDisk = true,
-                            customIconTint = Color(0xFFDF4006)
-                        )
-                        BreakdownRow(
-                            label = stringResource(R.string.game_detail_cat_lib),
-                            labelColor = Color(0xFFFB8C00),
-                            sizeText = FormatUtils.formatExactBytes(breakdown.libBytes),
-                            isDisk = true,
-                            customIconTint = Color(0xFFDF4006)
-                        )
-                        BreakdownRow(
-                            label = stringResource(R.string.game_detail_cat_data),
-                            labelColor = Color(0xFF00897B),
-                            sizeText = FormatUtils.formatExactBytes(breakdown.dataBytes),
-                            isDisk = true,
-                            customIconTint = Color(0xFFDF4006)
-                        )
-                        BreakdownRow(
-                            label = stringResource(R.string.game_detail_cat_cache),
-                            labelColor = Color(0xFFE57373),
-                            sizeText = FormatUtils.formatExactBytes(breakdown.cacheBytes),
-                            isDisk = true,
-                            customIconTint = Color(0xFFDF4006)
-                        )
-                        BreakdownRow(
-                            label = stringResource(R.string.game_detail_cat_ext1),
-                            labelColor = Color(0xFF5C6BC0),
-                            sizeText = FormatUtils.formatExactBytes(breakdown.ext1Bytes),
-                            vectorIcon = Icons.Default.Smartphone,
-                            customIconTint = Color(0xFF3149FF)
-                        )
-                        BreakdownRow(
-                            label = stringResource(R.string.game_detail_cat_ext2),
-                            labelColor = Color(0xFF43A047),
-                            sizeText = FormatUtils.formatExactBytes(breakdown.ext2Bytes),
-                            vectorIcon = Icons.Default.SdCard,
-                            customIconTint = Color(0xFF3BA71A)
-                        )
+
+                        // Lower section: 7-Row Breakdown Table with Smart Dimming
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            BreakdownRow(
+                                label = stringResource(R.string.game_detail_cat_apk),
+                                labelColor = Color(0xFFE91E63),
+                                sizeText = FormatUtils.formatExactBytes(breakdown.apkBytes),
+                                bytes = breakdown.apkBytes,
+                                isDisk = true,
+                                customIconTint = Color(0xFFDF4006)
+                            )
+                            BreakdownRow(
+                                label = stringResource(R.string.game_detail_cat_dex),
+                                labelColor = Color(0xFF00ACC1),
+                                sizeText = FormatUtils.formatExactBytes(breakdown.dexBytes),
+                                bytes = breakdown.dexBytes,
+                                isDisk = true,
+                                customIconTint = Color(0xFFDF4006)
+                            )
+                            BreakdownRow(
+                                label = stringResource(R.string.game_detail_cat_lib),
+                                labelColor = Color(0xFFFB8C00),
+                                sizeText = FormatUtils.formatExactBytes(breakdown.libBytes),
+                                bytes = breakdown.libBytes,
+                                isDisk = true,
+                                customIconTint = Color(0xFFDF4006)
+                            )
+                            BreakdownRow(
+                                label = stringResource(R.string.game_detail_cat_data),
+                                labelColor = Color(0xFF00897B),
+                                sizeText = FormatUtils.formatExactBytes(breakdown.dataBytes),
+                                bytes = breakdown.dataBytes,
+                                isDisk = true,
+                                customIconTint = Color(0xFFDF4006)
+                            )
+                            BreakdownRow(
+                                label = stringResource(R.string.game_detail_cat_cache),
+                                labelColor = Color(0xFFE57373),
+                                sizeText = FormatUtils.formatExactBytes(breakdown.cacheBytes),
+                                bytes = breakdown.cacheBytes,
+                                isDisk = true,
+                                customIconTint = Color(0xFFDF4006)
+                            )
+                            BreakdownRow(
+                                label = stringResource(R.string.game_detail_cat_ext1),
+                                labelColor = Color(0xFF5C6BC0),
+                                sizeText = FormatUtils.formatExactBytes(breakdown.ext1Bytes),
+                                bytes = breakdown.ext1Bytes,
+                                vectorIcon = Icons.Default.Smartphone,
+                                customIconTint = Color(0xFF3149FF)
+                            )
+                            BreakdownRow(
+                                label = stringResource(R.string.game_detail_cat_ext2),
+                                labelColor = Color(0xFF43A047),
+                                sizeText = FormatUtils.formatExactBytes(breakdown.ext2Bytes),
+                                bytes = breakdown.ext2Bytes,
+                                vectorIcon = Icons.Default.SdCard,
+                                customIconTint = Color(0xFF3BA71A)
+                            )
+                        }
                     }
                 }
 
-                // ── MOUNT MODE SELECTOR CARD ──
+                // ── MOUNT MODE SELECTOR (Segmented Pill Switch) ──
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = stringResource(R.string.game_detail_mode_title),
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // PKG Option
+                            Text(
+                                text = stringResource(R.string.game_detail_mode_title),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            Text(
+                                text = if (currentMode == MountMode.PKG) "Full Package" else "Files Only",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+
+                        // Segmented Pill Row (height 28dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(28.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // PKG Mode Pill
+                            val isPkg = currentMode == MountMode.PKG
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (currentMode == MountMode.PKG)
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                else
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isPkg) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                 border = BorderStroke(
                                     1.dp,
-                                    if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    if (isPkg) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                                 ),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .fillMaxHeight()
                                     .clickable {
                                         currentMode = MountMode.PKG
                                         onUpdateMode(MountMode.PKG)
                                     }
                             ) {
-                                Column(modifier = Modifier.padding(9.dp)) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         text = "PKG Mode",
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isPkg) FontWeight.Bold else FontWeight.Medium
                                         ),
-                                        color = if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = stringResource(R.string.add_game_mode_pkg_desc),
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 9.5.sp,
-                                            lineHeight = 12.sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                        color = if (isPkg) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
 
-                            // FILES Option
+                            // FILES Mode Pill
+                            val isFiles = currentMode == MountMode.FILES
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (currentMode == MountMode.FILES)
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                else
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isFiles) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                                 border = BorderStroke(
                                     1.dp,
-                                    if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    if (isFiles) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                                 ),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .fillMaxHeight()
                                     .clickable {
                                         currentMode = MountMode.FILES
                                         onUpdateMode(MountMode.FILES)
                                     }
                             ) {
-                                Column(modifier = Modifier.padding(9.dp)) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         text = "FILES Mode",
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isFiles) FontWeight.Bold else FontWeight.Medium
                                         ),
-                                        color = if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = stringResource(R.string.add_game_mode_files_desc),
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 9.5.sp,
-                                            lineHeight = 12.sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                        color = if (isFiles) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                         }
+
+                        // Concise description line
+                        Text(
+                            text = if (currentMode == MountMode.PKG)
+                                stringResource(R.string.add_game_mode_pkg_desc)
+                            else
+                                stringResource(R.string.add_game_mode_files_desc),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 9.5.sp,
+                                lineHeight = 12.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
 
@@ -812,7 +843,7 @@ fun ConcentricStorageChart(
                 color = neutralTrack,
                 radius = diameter * 0.45f,
                 center = center,
-                style = Stroke(width = diameter * 0.16f)
+                style = Stroke(width = 6.5.dp.toPx())
             )
             drawCircle(
                 color = neutralTrack.copy(alpha = 0.5f),
@@ -824,14 +855,14 @@ fun ConcentricStorageChart(
 
         // 1. Draw Outer Donut Ring
         val outerRadius = diameter * 0.48f
-        val innerRadius = diameter * 0.33f
-        val strokeWidth = outerRadius - innerRadius
+        val innerRadius = diameter * 0.32f
+        val strokeWidth = 6.5.dp.toPx()
         val ringCenterRadius = (outerRadius + innerRadius) / 2f
 
         var currentAngle = -90f
         val textPaint = android.graphics.Paint().apply {
             color = android.graphics.Color.WHITE
-            textSize = 10.dp.toPx()
+            textSize = 7.5.dp.toPx()
             textAlign = android.graphics.Paint.Align.CENTER
             isFakeBoldText = true
             isAntiAlias = true
@@ -853,7 +884,7 @@ fun ConcentricStorageChart(
                     style = Stroke(width = strokeWidth)
                 )
 
-                if (pct >= 4) {
+                if (pct >= 10) {
                     val midAngleRad = Math.toRadians((currentAngle + sweep / 2f).toDouble())
                     val textX = center.x + (ringCenterRadius * cos(midAngleRad)).toFloat()
                     val textY = center.y + (ringCenterRadius * sin(midAngleRad)).toFloat() + (textPaint.textSize / 3f)
@@ -871,7 +902,7 @@ fun ConcentricStorageChart(
         }
 
         // 2. Draw Inner Circle (Internal vs External)
-        val centerCircleRadius = innerRadius - 3.dp.toPx()
+        val centerCircleRadius = innerRadius - 2.5.dp.toPx()
         val internalPct = breakdown.internalPercent
         val extPct = breakdown.externalPercent
 
@@ -904,8 +935,8 @@ fun ConcentricStorageChart(
         // Dotted divider vertical line
         val dashPaint = android.graphics.Paint().apply {
             color = android.graphics.Color.argb(170, 255, 255, 255)
-            this.strokeWidth = 1.5.dp.toPx()
-            pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f, 4f), 0f)
+            this.strokeWidth = 1.2.dp.toPx()
+            pathEffect = android.graphics.DashPathEffect(floatArrayOf(4f, 3f), 0f)
             style = android.graphics.Paint.Style.STROKE
             isAntiAlias = true
         }
@@ -920,7 +951,7 @@ fun ConcentricStorageChart(
         // Percentage text inside inner circle
         val centerTextPaint = android.graphics.Paint().apply {
             color = android.graphics.Color.WHITE
-            textSize = 9.5.dp.toPx()
+            textSize = 7.dp.toPx()
             textAlign = android.graphics.Paint.Align.CENTER
             isFakeBoldText = true
             isAntiAlias = true
@@ -939,45 +970,49 @@ private fun BreakdownRow(
     label: String,
     labelColor: Color,
     sizeText: String,
+    bytes: Long = 0L,
     isDisk: Boolean = false,
     vectorIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     customIconTint: Color = Color.Unspecified
 ) {
+    val hasData = bytes > 0L
+    val contentAlpha = if (hasData) 1.0f else 0.42f
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = 11.5.sp,
+                fontWeight = if (hasData) FontWeight.SemiBold else FontWeight.Normal
             ),
-            color = labelColor,
+            color = labelColor.copy(alpha = contentAlpha),
             modifier = Modifier.weight(1f)
         )
         Text(
             text = sizeText,
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.Medium
+                fontSize = 11.5.sp,
+                fontWeight = if (hasData) FontWeight.SemiBold else FontWeight.Normal
             ),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(end = 16.dp)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+            modifier = Modifier.padding(end = 12.dp)
         )
         if (isDisk) {
             FloppyDiskIcon(
-                tint = customIconTint,
-                modifier = Modifier.size(16.dp)
+                tint = customIconTint.copy(alpha = contentAlpha),
+                modifier = Modifier.size(13.dp)
             )
         } else if (vectorIcon != null) {
             Icon(
                 imageVector = vectorIcon,
                 contentDescription = null,
-                tint = customIconTint,
-                modifier = Modifier.size(16.dp)
+                tint = customIconTint.copy(alpha = contentAlpha),
+                modifier = Modifier.size(13.dp)
             )
         }
     }
