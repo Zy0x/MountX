@@ -5,6 +5,19 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.19] - 2026-09-17
+
+### Added
+- Dedicated Full-Screen Application Picker (`AddAppPicker`) replacing the cramped bottom sheet with a spacious, distraction-free app selection surface.
+- Unrestricted package discovery via `android.permission.QUERY_ALL_PACKAGES` and system app flag evaluation, ensuring 100% comprehensive detection across all installed user apps, games, and system packages.
+- Real-time instant filtering supporting dual search across application display names and reverse domain package identifiers.
+- Distinct package identifier subtext displayed in clean monospace typography beneath application titles for unambiguous recognition.
+- Categorization filter chips with dynamic count badges: Games, User Apps, System, and All.
+- System Application Safety Gate featuring an explicit risk confirmation dialog alerting users to force-close, UI freeze, or bootloop risks before redirecting system app data.
+
+### Changed
+- Replaced constrained bottom-sheet container with full edge-to-edge dialog scaffolding with contextual back navigation handling.
+
 ## [2.1.18] - 2026-09-17
 
 ### Added

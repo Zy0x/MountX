@@ -99,6 +99,22 @@
     <string name="add_game_error_empty">Nama paket tidak boleh kosong.</string>
     <string name="add_game_error_exists">Game ini sudah ada di daftar.</string>
 
+    <!-- Full-Screen App Picker -->
+    <string name="add_app_title">Pilih Aplikasi</string>
+    <string name="add_app_search_hint">Cari nama atau paket aplikasi…</string>
+    <string name="add_app_tab_games">Game (%1$d)</string>
+    <string name="add_app_tab_user">Pengguna (%1$d)</string>
+    <string name="add_app_tab_system">Sistem (%1$d)</string>
+    <string name="add_app_tab_all">Semua (%1$d)</string>
+    <string name="add_app_tag_system">SISTEM</string>
+    <string name="add_app_tag_game">GAME</string>
+    <string name="add_app_tag_user">PENGGUNA</string>
+    <string name="add_app_system_warning_title">Peringatan Aplikasi Sistem</string>
+    <string name="add_app_system_warning_desc">\"%1$s\" adalah paket sistem Android (%2$s).\n\nMengalihkan direktori data aplikasi sistem ke MicroSD dapat memicu force close berulang, antarmuka berhenti merespons, atau kegagalan boot (bootloop) jika penyimpanan tidak terbaca saat booting.\n\nApakah Anda yakin ingin melanjutkan?</string>
+    <string name="add_app_system_warning_confirm">Tetap Lanjutkan</string>
+    <string name="add_app_configure_title">Konfigurasi Mount: %1$s</string>
+    <string name="add_app_manual_title">Input Paket Manual</string>
+
     <string name="status_mounted">Ter-mount</string>
     <string name="status_unmounted">Tidak Di-mount</string>
     <string name="status_error">Error</string>

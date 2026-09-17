@@ -40,5 +40,6 @@ data class GameEntry(
 data class InstalledAppInfo(
     val packageName: String,
     val displayName: String,
-    val isGame: Boolean = false
+    val isGame: Boolean = false,
+    val isSystemApp: Boolean = false
 )

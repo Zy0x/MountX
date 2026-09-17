@@ -29,6 +29,10 @@
     <!-- Install packages (for update feature) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Query all packages (Android 11+ visibility for accurate app management) -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <application
         android:name=".MountifyApp"
         android:allowBackup="false"

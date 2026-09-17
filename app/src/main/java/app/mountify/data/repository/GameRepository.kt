@@ -167,13 +167,23 @@ class GameRepository @Inject constructor(
         val pm = context.packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
         return apps
-            .filter { app -> (app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 } // exclude system apps
             .map { app ->
                 val label = pm.getApplicationLabel(app).toString()
+                val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                    (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
                 val isGame = (app.category == ApplicationInfo.CATEGORY_GAME) ||
                     (SmartGamePresets.findPreset(app.packageName) != null)
-                InstalledAppInfo(app.packageName, label, isGame)
+                InstalledAppInfo(
+                    packageName = app.packageName,
+                    displayName = label.ifBlank { app.packageName },
+                    isGame = isGame,
+                    isSystemApp = isSystem
+                )
             }
-            .sortedWith(compareByDescending<InstalledAppInfo> { it.isGame }.thenBy { it.displayName.lowercase() })
+            .sortedWith(
+                compareByDescending<InstalledAppInfo> { it.isGame }
+                    .thenBy { it.isSystemApp }
+                    .thenBy { it.displayName.lowercase() }
+            )
     }
 }
