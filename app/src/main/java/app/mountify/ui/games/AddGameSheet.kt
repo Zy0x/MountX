@@ -63,6 +63,8 @@ fun AddAppPicker(
     onAdd: (packageName: String, displayName: String, mode: MountMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    BackHandler(onBack = onDismiss)
+
     var isManualMode by remember { mutableStateOf(false) }
     var selectedApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
     var pendingSystemApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
@@ -121,10 +123,13 @@ fun AddAppPicker(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        val contentModifier = if (pendingSystemApp != null && blurRadius > 0.dp) {
+            Modifier.fillMaxSize().blur(blurRadius)
+        } else {
+            Modifier.fillMaxSize()
+        }
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(blurRadius)
+            modifier = contentModifier
         ) {
         // Standard Compact Screen Header
         CompactScreenHeader(

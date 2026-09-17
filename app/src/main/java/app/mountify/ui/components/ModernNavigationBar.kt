@@ -1,17 +1,6 @@
 package app.mountify.ui.components
 
 import android.content.res.Configuration
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -141,23 +130,8 @@ private fun FigmaNavItem(
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
     val activeIndicatorBg = if (isDark) HyperCyan.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
 
-    val containerColor by animateColorAsState(
-        targetValue = if (selected) activeIndicatorBg else Color.Transparent,
-        animationSpec = tween(durationMillis = 120),
-        label = "figmaNavContainerColor"
-    )
-
-    val iconColor by animateColorAsState(
-        targetValue = if (selected) activeColor else inactiveColor,
-        animationSpec = tween(durationMillis = 120),
-        label = "figmaNavIconColor"
-    )
-
-    val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.05f else 1.0f,
-        animationSpec = tween(durationMillis = 120),
-        label = "figmaNavIconScale"
-    )
+    val containerColor = if (selected) activeIndicatorBg else Color.Transparent
+    val iconColor = if (selected) activeColor else inactiveColor
 
     Box(
         modifier = modifier
@@ -183,16 +157,10 @@ private fun FigmaNavItem(
                 imageVector = if (selected) screen.icon else screen.unselectedIcon,
                 contentDescription = stringResource(screen.titleRes),
                 tint = iconColor,
-                modifier = Modifier
-                    .size(20.dp)
-                    .scale(iconScale)
+                modifier = Modifier.size(20.dp)
             )
 
-            AnimatedVisibility(
-                visible = selected,
-                enter = fadeIn(animationSpec = tween(100)),
-                exit = fadeOut(animationSpec = tween(80))
-            ) {
+            if (selected) {
                 Text(
                     text = stringResource(screen.titleRes),
                     style = MaterialTheme.typography.labelSmall.copy(

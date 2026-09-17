@@ -130,6 +130,12 @@ class MountManager {
      * Get all currently mounted paths from /proc/mounts.
      */
     suspend fun getMountedPaths(): List<String> = withContext(Dispatchers.IO) {
+        try {
+            val procMounts = java.io.File("/proc/mounts")
+            if (procMounts.exists() && procMounts.canRead()) {
+                return@withContext procMounts.readLines().mapNotNull { line -> line.split(" ").getOrNull(1) }
+            }
+        } catch (_: Exception) {}
         RootShell.exec("cat /proc/mounts 2>/dev/null")
             .stdout
             .mapNotNull { line -> line.split(" ").getOrNull(1) }

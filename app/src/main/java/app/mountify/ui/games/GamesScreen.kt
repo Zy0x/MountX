@@ -53,7 +53,8 @@ import app.mountify.util.FormatUtils
 @Composable
 fun GamesScreen(
     viewModel: GamesViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPagerScrollEnabled: (Boolean) -> Unit = {}
 ) {
     val games by viewModel.games.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -67,6 +68,10 @@ fun GamesScreen(
     var showAddSheet by remember { mutableStateOf(false) }
     var selectedGameForDetail by remember { mutableStateOf<GameEntry?>(null) }
     var gameToDelete by remember { mutableStateOf<GameEntry?>(null) }
+
+    LaunchedEffect(showAddSheet, selectedGameForDetail) {
+        onPagerScrollEnabled(!showAddSheet && selectedGameForDetail == null)
+    }
 
     if (showAddSheet) {
         AddAppPicker(

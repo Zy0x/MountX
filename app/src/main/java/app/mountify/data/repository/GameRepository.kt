@@ -197,10 +197,12 @@ class GameRepository @Inject constructor(
         var apkBytes = 0L
         var dexBytes = 0L
         var libBytes = 0L
-        var dataBytes = 0L
+        var rawPrivateDataBytes = 0L
         var cacheBytes = 0L
-        var ext1Bytes = 0L
-        var ext2Bytes = 0L
+        var ext1DataBytes = 0L
+        var ext1ObbBytes = 0L
+        var ext2DataBytes = 0L
+        var ext2ObbBytes = 0L
 
         val appInfo = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -216,97 +218,67 @@ class GameRepository @Inject constructor(
         val sourceDir = appInfo?.sourceDir ?: ""
         val libDir = appInfo?.nativeLibraryDir ?: ""
 
-        val script = buildString {
-            append("PKG=\"$packageName\"\n")
-            append("SRC=\"$sourceDir\"\n")
-            append("LIB=\"$libDir\"\n")
-            append("SDBASE=\"$sdBase\"\n")
-            append("if [ -z \"\$SRC\" ]; then SRC=\$(pm path \"\$PKG\" 2>/dev/null | head -n1 | sed 's/^package://'); fi\n")
-            append("if [ -z \"\$LIB\" ] && [ -n \"\$SRC\" ]; then LIB=\$(dirname \"\$SRC\")/lib/arm64; fi\n")
-
-            append("if [ -n \"\$SRC\" ] && [ -e \"\$SRC\" ]; then\n")
-            append("  APP_DIR=\$(dirname \"\$SRC\")\n")
-            append("  APK_KB=\$(du -sck \"\$APP_DIR\"/*.apk 2>/dev/null | tail -n1 | cut -f1)\n")
-            append("  echo \"APK:\${APK_KB:-0}\"\n")
-            append("  DEX_KB=\$(du -sk \"\$APP_DIR/oat\" 2>/dev/null | cut -f1)\n")
-            append("  echo \"DEX:\${DEX_KB:-0}\"\n")
-            append("else\n")
-            append("  echo \"APK:0\"\n")
-            append("  echo \"DEX:0\"\n")
-            append("fi\n")
-
-            append("if [ -n \"\$LIB\" ] && [ -d \"\$LIB\" ]; then\n")
-            append("  LIB_KB=\$(du -sk \"\$LIB\" 2>/dev/null | cut -f1)\n")
-            append("  echo \"LIB:\${LIB_KB:-0}\"\n")
-            append("else\n")
-            append("  echo \"LIB:0\"\n")
-            append("fi\n")
-
-            append("if [ -d \"/data/data/\$PKG\" ]; then\n")
-            append("  DATA_TOT=\$(du -sk \"/data/data/\$PKG\" 2>/dev/null | cut -f1)\n")
-            append("  CACHE1=\$(du -sk \"/data/data/\$PKG/cache\" 2>/dev/null | cut -f1)\n")
-            append("  CACHE2=\$(du -sk \"/data/data/\$PKG/code_cache\" 2>/dev/null | cut -f1)\n")
-            append("  C1=\${CACHE1:-0}\n")
-            append("  C2=\${CACHE2:-0}\n")
-            append("  CACHE_TOT=\$(( C1 + C2 ))\n")
-            append("  DT=\${DATA_TOT:-0}\n")
-            append("  DATA_NET=\$(( DT - CACHE_TOT ))\n")
-            append("  if [ \"\$DATA_NET\" -lt 0 ]; then DATA_NET=0; fi\n")
-            append("  echo \"DATA:\$DATA_NET\"\n")
-            append("  echo \"CACHE:\$CACHE_TOT\"\n")
-            append("else\n")
-            append("  echo \"DATA:0\"\n")
-            append("  echo \"CACHE:0\"\n")
-            append("fi\n")
-
-            append("EXT1_DATA=\"/data/media/0/Android/data/\$PKG\"\n")
-            append("EXT1_OBB=\"/data/media/0/Android/obb/\$PKG\"\n")
-            append("EXT1_DATA_KB=\$(du -sk \"\$EXT1_DATA\" 2>/dev/null | cut -f1)\n")
-            append("EXT1_OBB_KB=\$(du -sk \"\$EXT1_OBB\" 2>/dev/null | cut -f1)\n")
-            append("echo \"EXT1_DATA:\${EXT1_DATA_KB:-0}\"\n")
-            append("echo \"EXT1_OBB:\${EXT1_OBB_KB:-0}\"\n")
-
-            append("EXT2_DATA=\"\$SDBASE/Android/data/\$PKG\"\n")
-            append("EXT2_OBB=\"\$SDBASE/Android/obb/\$PKG\"\n")
-            append("EXT2_DATA_KB=\$(du -sk \"\$EXT2_DATA\" 2>/dev/null | cut -f1)\n")
-            append("EXT2_OBB_KB=\$(du -sk \"\$EXT2_OBB\" 2>/dev/null | cut -f1)\n")
-            append("echo \"EXT2_DATA:\${EXT2_DATA_KB:-0}\"\n")
-            append("echo \"EXT2_OBB:\${EXT2_OBB_KB:-0}\"\n")
+        // Fast native file calculation for APK
+        if (sourceDir.isNotBlank()) {
+            try {
+                val srcFile = java.io.File(sourceDir)
+                val parent = srcFile.parentFile
+                if (parent != null && parent.exists() && parent.canRead()) {
+                    val apkFiles = parent.listFiles { f -> f.extension.equals("apk", ignoreCase = true) }
+                    apkBytes = apkFiles?.sumOf { it.length() } ?: srcFile.length()
+                } else if (srcFile.exists()) {
+                    apkBytes = srcFile.length()
+                }
+            } catch (_: Exception) {}
         }
 
-        var ext1DataBytes = 0L
-        var ext1ObbBytes = 0L
-        var ext2DataBytes = 0L
-        var ext2ObbBytes = 0L
+        // Fast native file calculation for Lib
+        if (libDir.isNotBlank()) {
+            try {
+                val libFile = java.io.File(libDir)
+                if (libFile.exists() && libFile.canRead()) {
+                    libBytes = libFile.listFiles()?.sumOf { it.length() } ?: 0L
+                }
+            } catch (_: Exception) {}
+        }
 
-        val res = RootShell.exec(script)
-        res.stdout.forEach { line ->
-            val trimmed = line.trim()
-            when {
-                trimmed.startsWith("APK:") -> apkBytes = (trimmed.substringAfter("APK:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("DEX:") -> dexBytes = (trimmed.substringAfter("DEX:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("LIB:") -> libBytes = (trimmed.substringAfter("LIB:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("DATA:") -> dataBytes = (trimmed.substringAfter("DATA:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("CACHE:") -> cacheBytes = (trimmed.substringAfter("CACHE:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("EXT1_DATA:") -> ext1DataBytes = (trimmed.substringAfter("EXT1_DATA:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("EXT1_OBB:") -> ext1ObbBytes = (trimmed.substringAfter("EXT1_OBB:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("EXT2_DATA:") -> ext2DataBytes = (trimmed.substringAfter("EXT2_DATA:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("EXT2_OBB:") -> ext2ObbBytes = (trimmed.substringAfter("EXT2_OBB:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("EXT1:") -> ext1Bytes = (trimmed.substringAfter("EXT1:").toLongOrNull() ?: 0L) * 1024L
-                trimmed.startsWith("EXT2:") -> ext2Bytes = (trimmed.substringAfter("EXT2:").toLongOrNull() ?: 0L) * 1024L
+        val oatDir = if (sourceDir.isNotBlank()) "${java.io.File(sourceDir).parent}/oat" else ""
+        val dataDir = "/data/data/$packageName"
+        val cacheDir = "/data/data/$packageName/cache"
+        val codeCacheDir = "/data/data/$packageName/code_cache"
+        val ext1Data = "/data/media/0/Android/data/$packageName"
+        val ext1Obb = "/data/media/0/Android/obb/$packageName"
+        val ext2Data = "$sdBase/Android/data/$packageName"
+        val ext2Obb = "$sdBase/Android/obb/$packageName"
+
+        // Single batch du invocation for all remaining directories
+        val targets = listOf(oatDir, dataDir, cacheDir, codeCacheDir, ext1Data, ext1Obb, ext2Data, ext2Obb)
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { "\"$it\"" }
+
+        val res = RootShell.exec("du -sk $targets 2>/dev/null")
+        for (line in res.stdout) {
+            val parts = line.trim().split(Regex("\\s+"), limit = 2)
+            if (parts.size >= 2) {
+                val kb = parts[0].toLongOrNull() ?: continue
+                val path = parts[1]
+                val bytes = kb * 1024L
+
+                when {
+                    path.endsWith("/oat") || path.contains("/oat/") -> dexBytes = bytes
+                    path.endsWith("/cache") || path.endsWith("/code_cache") -> cacheBytes += bytes
+                    path == dataDir -> rawPrivateDataBytes = bytes
+                    path == ext1Data -> ext1DataBytes = bytes
+                    path == ext1Obb -> ext1ObbBytes = bytes
+                    path == ext2Data -> ext2DataBytes = bytes
+                    path == ext2Obb -> ext2ObbBytes = bytes
+                }
             }
         }
 
-        ext1Bytes = ext1DataBytes + ext1ObbBytes
-        ext2Bytes = ext2DataBytes + ext2ObbBytes
-
-        // Fallback for APK if root returned 0 but appInfo file exists
-        if (apkBytes == 0L && sourceDir.isNotBlank()) {
-            val srcFile = java.io.File(sourceDir)
-            if (srcFile.exists()) {
-                apkBytes = srcFile.length()
-            }
-        }
+        val dataBytes = (rawPrivateDataBytes - cacheBytes).coerceAtLeast(0L)
+        val ext1Bytes = ext1DataBytes + ext1ObbBytes
+        val ext2Bytes = ext2DataBytes + ext2ObbBytes
 
         AppStorageBreakdown(
             apkBytes = apkBytes,

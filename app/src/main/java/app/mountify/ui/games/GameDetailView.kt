@@ -260,7 +260,7 @@ fun GameDetailView(
 
                 // Capsule Tab Row (Storage vs Manage)
                 DetailCapsuleTabRow(
-                    selectedTabIndex = pagerState.currentPage,
+                    selectedTabIndex = pagerState.targetPage,
                     onTabSelected = { index ->
                         coroutineScope.launch {
                             pagerState.animateScrollToPage(index)
@@ -272,6 +272,7 @@ fun GameDetailView(
             // ── SWIPEABLE HORIZONTAL PAGER CONTENT ──
             HorizontalPager(
                 state = pagerState,
+                beyondViewportPageCount = 1,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)

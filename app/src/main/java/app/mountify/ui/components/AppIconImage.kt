@@ -94,11 +94,15 @@ fun AppIconImage(
 
 private fun drawableToImageBitmap(drawable: Drawable): ImageBitmap {
     if (drawable is BitmapDrawable && drawable.bitmap != null) {
-        return drawable.bitmap.asImageBitmap()
+        val bmp = drawable.bitmap
+        if (bmp.width <= 128 && bmp.height <= 128) {
+            return bmp.asImageBitmap()
+        }
+        return Bitmap.createScaledBitmap(bmp, 128, 128, true).asImageBitmap()
     }
 
-    val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
-    val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
+    val width = minOf(if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96, 128)
+    val height = minOf(if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96, 128)
 
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)

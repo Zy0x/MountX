@@ -43,7 +43,7 @@ fun LogsScreen(
 
     LaunchedEffect(logLines.size) {
         if (logLines.isNotEmpty()) {
-            listState.animateScrollToItem(logLines.size - 1)
+            listState.scrollToItem(logLines.size - 1)
         }
     }
 
@@ -160,12 +160,11 @@ fun LogsScreen(
                 ) {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
-                        items(logLines) { line ->
+                        items(logLines.size, key = { it }) { index ->
+                            val line = logLines[index]
                             val textColor = when (line.level) {
                                 LogLevel.ERROR -> NeonCrimson
                                 LogLevel.SUCCESS -> CyberEmerald

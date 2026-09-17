@@ -5,6 +5,25 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.42] - 2026-09-18
+
+### Performance
+- **Persistent Pager Navigation & Native Gesture Swiping**:
+  - Replaced `NavHost` bottom destination teardown/recomposition with a persistent `HorizontalPager` with `beyondViewportPageCount = 2`. All 5 main screens (Dashboard, Games, Storage, Logs, Settings) remain preserved in memory, eliminating layout tearing, initialization lag, and blank flashes during tab changes.
+  - Enabled native hardware-accelerated horizontal swiping between screens with fluid 60/120 FPS physics.
+  - Bottom bar tab selection highlights instantaneously on touch (`targetPage`), animating adjacent tab transitions and instantly jumping distant tabs.
+  - Added natural Android Back gesture behavior returning to the Dashboard tab before exiting.
+- **Dedicated Subview Gesture Isolation & Sub-Pager Pre-warming**:
+  - Implemented `onPagerScrollEnabled` coordination between `MainTabsScreen` and `GamesScreen` so outer pager horizontal drag is safely disabled while viewing `GameDetailView` or `AddAppPicker`, preventing accidental tab switching.
+  - Inner `HorizontalPager` in `GameDetailView` configured with `beyondViewportPageCount = 1` for zero-stutter swiping between the Concentric Storage Breakdown chart and the Manage/Transfer hub.
+  - Updated `DetailCapsuleTabRow` to track `targetPage` for instant visual response upon tapping capsule tabs.
+  - Added Android `BackHandler` inside `AddAppPicker` for seamless back-navigation.
+- **Render Pipeline & Shell Execution Optimization**:
+  - Made `Modifier.blur()` in `AddGameSheet` strictly conditional (`pendingSystemApp != null && blurRadius > 0.dp`), eliminating permanent full-screen offscreen GPU buffer allocations on Android's Skia OpenGL render pipeline.
+  - Capped `AppIconImage` bitmap allocations to maximum 128x128 pixels via `Bitmap.createScaledBitmap`, eliminating giant bitmap textures and GPU upload stalls during list scrolling.
+  - Optimized `GameRepository.getDetailedStorageBreakdown`: computes APK and native library sizes using native `java.io.File.length()` in ~0.1ms, and batches all remaining folder calculations into a single `du -sk` invocation.
+  - Switched `MountManager.getMountedPaths()` to read `/proc/mounts` directly via native `File` I/O, avoiding process spawn overhead.
+
 ## [2.1.41] - 2026-09-17
 
 ### Performance

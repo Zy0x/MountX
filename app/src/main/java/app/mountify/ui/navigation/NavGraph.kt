@@ -1,27 +1,26 @@
 package app.mountify.ui.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.mountify.ui.about.AboutScreen
 import app.mountify.ui.about.AboutViewModel
@@ -37,148 +36,193 @@ import app.mountify.ui.settings.SettingsViewModel
 import app.mountify.ui.storage.BackupRestoreScreen
 import app.mountify.ui.storage.StorageScreen
 import app.mountify.ui.storage.StorageViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun NavGraph(
     modifier: Modifier = Modifier
 ) {
     val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
 
-    val isTopLevelRoute = Screen.bottomNavItems.any { it.route == currentRoute }
+    NavHost(
+        navController = navController,
+        startDestination = "main_tabs",
+        modifier = modifier
+    ) {
+        composable("main_tabs") {
+            MainTabsScreen(
+                onNavigateToBackup = { navController.navigate("backup_restore") },
+                onNavigateToAbout = { navController.navigate("about") }
+            )
+        }
 
-    val navigateToTab: (String) -> Unit = { route ->
-        navController.navigate(route) {
-            popUpTo(navController.graph.findStartDestination().id) {
-                saveState = true
+        composable(
+            route = "backup_restore",
+            enterTransition = {
+                fadeIn(animationSpec = tween(150)) +
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(150)
+                    )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(150)) +
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(150)
+                    )
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(150)) +
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(150)
+                    )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(150)) +
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(150)
+                    )
             }
-            launchSingleTop = true
-            restoreState = true
+        ) {
+            val vm = hiltViewModel<StorageViewModel>()
+            BackupRestoreScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = "about",
+            enterTransition = {
+                fadeIn(animationSpec = tween(150)) +
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(150)
+                    )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(150)) +
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(150)
+                    )
+            },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(150)) +
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(150)
+                    )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(150)) +
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(150)
+                    )
+            }
+        ) {
+            val vm = hiltViewModel<AboutViewModel>()
+            AboutScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() }
+            )
+        }
+    }
+}
+
+@Composable
+fun MainTabsScreen(
+    onNavigateToBackup: () -> Unit,
+    onNavigateToAbout: () -> Unit
+) {
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { 5 })
+    val coroutineScope = rememberCoroutineScope()
+    val screens = Screen.bottomNavItems
+
+    val activeIndex = pagerState.targetPage
+    val currentRoute = screens.getOrNull(activeIndex)?.route ?: Screen.Dashboard.route
+
+    var isOuterPagerScrollEnabled by remember { mutableStateOf(true) }
+
+    // Natural Android back gesture returns to Dashboard tab first
+    BackHandler(enabled = pagerState.currentPage != 0 && isOuterPagerScrollEnabled) {
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(0)
         }
     }
 
+    val dashboardVm = hiltViewModel<DashboardViewModel>()
+    val gamesVm = hiltViewModel<GamesViewModel>()
+    val storageVm = hiltViewModel<StorageViewModel>()
+    val logsVm = hiltViewModel<LogsViewModel>()
+    val settingsVm = hiltViewModel<SettingsViewModel>()
+
     Scaffold(
         bottomBar = {
-            if (isTopLevelRoute) {
-                ModernNavigationBar(
-                    screens = Screen.bottomNavItems,
-                    currentRoute = currentRoute,
-                    onNavigate = { screen -> navigateToTab(screen.route) }
-                )
-            }
+            ModernNavigationBar(
+                screens = screens,
+                currentRoute = currentRoute,
+                onNavigate = { screen ->
+                    val targetIndex = screens.indexOf(screen)
+                    if (targetIndex >= 0) {
+                        coroutineScope.launch {
+                            if (kotlin.math.abs(pagerState.currentPage - targetIndex) <= 1) {
+                                pagerState.animateScrollToPage(targetIndex)
+                            } else {
+                                pagerState.scrollToPage(targetIndex)
+                            }
+                        }
+                    }
+                }
+            )
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        modifier = modifier
+        modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Dashboard.route,
-            modifier = Modifier.padding(innerPadding),
-            enterTransition = {
-                val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
-                val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
-                if (isTargetBottom && isInitialBottom) {
-                    EnterTransition.None
-                } else {
-                    fadeIn(animationSpec = tween(150)) +
-                        slideIntoContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = tween(150)
-                        )
+        HorizontalPager(
+            state = pagerState,
+            beyondViewportPageCount = 2,
+            userScrollEnabled = isOuterPagerScrollEnabled,
+            key = { it },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) { page ->
+            when (page) {
+                0 -> {
+                    DashboardScreen(
+                        viewModel = dashboardVm,
+                        onNavigateToGames = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
+                        onNavigateToStorage = { coroutineScope.launch { pagerState.animateScrollToPage(2) } },
+                        onNavigateToLogs = { coroutineScope.launch { pagerState.animateScrollToPage(3) } }
+                    )
                 }
-            },
-            exitTransition = {
-                val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
-                val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
-                if (isTargetBottom && isInitialBottom) {
-                    ExitTransition.None
-                } else {
-                    fadeOut(animationSpec = tween(150)) +
-                        slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = tween(150)
-                        )
+                1 -> {
+                    GamesScreen(
+                        viewModel = gamesVm,
+                        onPagerScrollEnabled = { isOuterPagerScrollEnabled = it }
+                    )
                 }
-            },
-            popEnterTransition = {
-                val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
-                val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
-                if (isTargetBottom && isInitialBottom) {
-                    EnterTransition.None
-                } else {
-                    fadeIn(animationSpec = tween(150)) +
-                        slideIntoContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = tween(150)
-                        )
+                2 -> {
+                    StorageScreen(
+                        viewModel = storageVm,
+                        onNavigateToBackup = onNavigateToBackup,
+                        onNavigateToGames = { coroutineScope.launch { pagerState.animateScrollToPage(1) } }
+                    )
                 }
-            },
-            popExitTransition = {
-                val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
-                val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
-                if (isTargetBottom && isInitialBottom) {
-                    ExitTransition.None
-                } else {
-                    fadeOut(animationSpec = tween(150)) +
-                        slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = tween(150)
-                        )
+                3 -> {
+                    LogsScreen(viewModel = logsVm)
                 }
-            }
-        ) {
-            composable(Screen.Dashboard.route) {
-                val vm = hiltViewModel<DashboardViewModel>()
-                DashboardScreen(
-                    viewModel = vm,
-                    onNavigateToGames = { navigateToTab(Screen.Games.route) },
-                    onNavigateToStorage = { navigateToTab(Screen.Storage.route) },
-                    onNavigateToLogs = { navigateToTab(Screen.Logs.route) }
-                )
-            }
-
-            composable(Screen.Games.route) {
-                val vm = hiltViewModel<GamesViewModel>()
-                GamesScreen(viewModel = vm)
-            }
-
-            composable(Screen.Storage.route) {
-                val vm = hiltViewModel<StorageViewModel>()
-                StorageScreen(
-                    viewModel = vm,
-                    onNavigateToBackup = { navController.navigate("backup_restore") },
-                    onNavigateToGames = { navigateToTab(Screen.Games.route) }
-                )
-            }
-
-            composable("backup_restore") {
-                val vm = hiltViewModel<StorageViewModel>()
-                BackupRestoreScreen(
-                    viewModel = vm,
-                    onBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(Screen.Logs.route) {
-                val vm = hiltViewModel<LogsViewModel>()
-                LogsScreen(viewModel = vm)
-            }
-
-            composable(Screen.Settings.route) {
-                val vm = hiltViewModel<SettingsViewModel>()
-                SettingsScreen(
-                    viewModel = vm,
-                    onNavigateToAbout = { navController.navigate(Screen.About.route) }
-                )
-            }
-
-            composable(Screen.About.route) {
-                val vm = hiltViewModel<AboutViewModel>()
-                AboutScreen(
-                    viewModel = vm,
-                    onBack = { navController.popBackStack() }
-                )
+                4 -> {
+                    SettingsScreen(
+                        viewModel = settingsVm,
+                        onNavigateToAbout = onNavigateToAbout
+                    )
+                }
             }
         }
     }
