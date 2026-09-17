@@ -123,8 +123,13 @@
     <string name="status_unknown">Tidak Diketahui</string>
     <string name="status_loading">Memuat…</string>
 
-    <!-- Game Detail & Storage Sheet -->
+    <!-- Game Detail & Storage Screen -->
     <string name="game_detail_title">Detail Game &amp; Penyimpanan</string>
+    <string name="game_detail_app_title">Detail Aplikasi</string>
+    <string name="game_detail_version">versi: %1$s (kode: %2$s)</string>
+    <string name="game_detail_install_time">waktu instal: %1$s</string>
+    <string name="game_detail_total_storage">Total Data</string>
+    <string name="game_detail_system_info">Info Aplikasi</string>
     <string name="game_detail_storage_breakdown">Rincian Penyimpanan</string>
     <string name="game_detail_internal_storage">Penyimpanan Internal</string>
     <string name="game_detail_microsd_storage">Penyimpanan MicroSD</string>
@@ -271,6 +276,7 @@
     <string name="common_cancel">Batal</string>
     <string name="common_confirm">Konfirmasi</string>
     <string name="common_close">Tutup</string>
+    <string name="common_back">Kembali</string>
     <string name="common_retry">Coba Lagi</string>
     <string name="common_save">Simpan</string>
     <string name="common_loading">Memuat…</string>

@@ -24,4 +24,5 @@ google-services.json
 
 # Local isolated build cache & emulator
 .build-cache/
+*.apk
 

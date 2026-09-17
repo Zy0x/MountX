@@ -78,6 +78,27 @@ fun GamesScreen(
             },
             modifier = modifier
         )
+    } else if (selectedGameForDetail != null) {
+        val game = selectedGameForDetail!!
+        val updatedGame = games.firstOrNull { it.packageName == game.packageName } ?: game
+
+        GameDetailView(
+            game = updatedGame,
+            storageBreakdown = storageBreakdown,
+            isMoving = isMovingData,
+            moveMessage = moveMessage,
+            onDismiss = {
+                viewModel.clearMoveMessage()
+                selectedGameForDetail = null
+            },
+            onMove = { dir -> viewModel.moveData(updatedGame.packageName, dir) },
+            onUpdateMode = { newMode -> viewModel.updateGameMode(updatedGame.packageName, newMode) },
+            onDelete = {
+                gameToDelete = updatedGame
+                selectedGameForDetail = null
+            },
+            modifier = modifier
+        )
     } else {
         GamesContent(
             games = games,
@@ -99,29 +120,6 @@ fun GamesScreen(
                 viewModel.loadStorageBreakdown(game.packageName)
             },
             modifier = modifier
-        )
-    }
-
-    // Integrated Game Detail & Storage Sheet
-    selectedGameForDetail?.let { game ->
-        // Keep selected game reference in sync with Room state
-        val updatedGame = games.firstOrNull { it.packageName == game.packageName } ?: game
-
-        GameDetailSheet(
-            game = updatedGame,
-            storageBreakdown = storageBreakdown,
-            isMoving = isMovingData,
-            moveMessage = moveMessage,
-            onDismiss = {
-                viewModel.clearMoveMessage()
-                selectedGameForDetail = null
-            },
-            onMove = { dir -> viewModel.moveData(updatedGame.packageName, dir) },
-            onUpdateMode = { newMode -> viewModel.updateGameMode(updatedGame.packageName, newMode) },
-            onDelete = {
-                gameToDelete = updatedGame
-                selectedGameForDetail = null
-            }
         )
     }
 
