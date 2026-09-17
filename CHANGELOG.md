@@ -5,6 +5,15 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.22] - 2026-09-17
+
+### Added
+- Standardized Dropdown Menu & Popup specifications (Section 3.5 item 7 in `AGENTS.md`) enforcing 30–34dp item heights, 10–12dp horizontal padding, and anti-bloat proportions.
+
+### Changed
+- Replaced oversized Material 3 `DropdownMenuItem` with a compact, custom-padded 30dp menu row, eliminating excessive whitespace.
+- Dropdown menu now dismisses automatically upon selection while immediately toggling system app visibility.
+
 ## [2.1.21] - 2026-09-17
 
 ### Added
