@@ -115,7 +115,7 @@ class MountManager {
         withContext(Dispatchers.IO) {
             runCatching {
                 val script = """
-                    for m in $(grep "$sdBase" /proc/mounts 2>/dev/null | awk '{print $2}'); do
+                    for m in $(grep "$sdBase" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
                         if [ "${'$'}m" != "$sdBase" ]; then
                             umount -f -l "${'$'}m" 2>/dev/null
                         fi

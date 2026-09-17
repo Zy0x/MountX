@@ -161,7 +161,7 @@ class GameRepository @Inject constructor(
             val targetData = if (RootShell.exists(sdData)) sdData else internalData
             val targetObb = if (RootShell.exists(sdObb)) sdObb else internalObb
 
-            val res = RootShell.exec("du -sk \"$targetData\" \"$targetObb\" 2>/dev/null | awk '{sum+=\$1} END {print sum}'")
+            val res = RootShell.exec("du -sck \"$targetData\" \"$targetObb\" 2>/dev/null | tail -n1 | cut -f1")
             val sizeKb = res.output.trim().toLongOrNull() ?: 0L
             val sizeBytes = sizeKb * 1024L
             gameDao.updateDataSize(packageName, sizeBytes)
@@ -180,10 +180,10 @@ class GameRepository @Inject constructor(
             val sdData = "$sdBase/Android/data/$packageName"
             val sdObb = "$sdBase/Android/obb/$packageName"
 
-            val internalRes = RootShell.exec("du -sk \"$internalData\" \"$internalObb\" 2>/dev/null | awk '{sum+=\$1} END {print sum}'")
+            val internalRes = RootShell.exec("du -sck \"$internalData\" \"$internalObb\" 2>/dev/null | tail -n1 | cut -f1")
             val internalKb = internalRes.output.trim().toLongOrNull() ?: 0L
 
-            val sdRes = RootShell.exec("du -sk \"$sdData\" \"$sdObb\" 2>/dev/null | awk '{sum+=\$1} END {print sum}'")
+            val sdRes = RootShell.exec("du -sck \"$sdData\" \"$sdObb\" 2>/dev/null | tail -n1 | cut -f1")
             val sdKb = sdRes.output.trim().toLongOrNull() ?: 0L
 
             Pair(internalKb * 1024L, sdKb * 1024L)
@@ -221,12 +221,14 @@ class GameRepository @Inject constructor(
             append("SRC=\"$sourceDir\"\n")
             append("LIB=\"$libDir\"\n")
             append("SDBASE=\"$sdBase\"\n")
+            append("if [ -z \"\$SRC\" ]; then SRC=\$(pm path \"\$PKG\" 2>/dev/null | head -n1 | sed 's/^package://'); fi\n")
+            append("if [ -z \"\$LIB\" ] && [ -n \"\$SRC\" ]; then LIB=\$(dirname \"\$SRC\")/lib/arm64; fi\n")
 
             append("if [ -n \"\$SRC\" ] && [ -e \"\$SRC\" ]; then\n")
             append("  APP_DIR=\$(dirname \"\$SRC\")\n")
-            append("  APK_KB=\$(du -sk \"\$APP_DIR\"/*.apk 2>/dev/null | awk '{sum+=\$1} END {print sum}')\n")
+            append("  APK_KB=\$(du -sck \"\$APP_DIR\"/*.apk 2>/dev/null | tail -n1 | cut -f1)\n")
             append("  echo \"APK:\${APK_KB:-0}\"\n")
-            append("  DEX_KB=\$(du -sk \"\$APP_DIR/oat\" 2>/dev/null | awk '{print \$1}')\n")
+            append("  DEX_KB=\$(du -sk \"\$APP_DIR/oat\" 2>/dev/null | cut -f1)\n")
             append("  echo \"DEX:\${DEX_KB:-0}\"\n")
             append("else\n")
             append("  echo \"APK:0\"\n")
@@ -234,16 +236,16 @@ class GameRepository @Inject constructor(
             append("fi\n")
 
             append("if [ -n \"\$LIB\" ] && [ -d \"\$LIB\" ]; then\n")
-            append("  LIB_KB=\$(du -sk \"\$LIB\" 2>/dev/null | awk '{print \$1}')\n")
+            append("  LIB_KB=\$(du -sk \"\$LIB\" 2>/dev/null | cut -f1)\n")
             append("  echo \"LIB:\${LIB_KB:-0}\"\n")
             append("else\n")
             append("  echo \"LIB:0\"\n")
             append("fi\n")
 
             append("if [ -d \"/data/data/\$PKG\" ]; then\n")
-            append("  DATA_TOT=\$(du -sk \"/data/data/\$PKG\" 2>/dev/null | awk '{print \$1}')\n")
-            append("  CACHE1=\$(du -sk \"/data/data/\$PKG/cache\" 2>/dev/null | awk '{print \$1}')\n")
-            append("  CACHE2=\$(du -sk \"/data/data/\$PKG/code_cache\" 2>/dev/null | awk '{print \$1}')\n")
+            append("  DATA_TOT=\$(du -sk \"/data/data/\$PKG\" 2>/dev/null | cut -f1)\n")
+            append("  CACHE1=\$(du -sk \"/data/data/\$PKG/cache\" 2>/dev/null | cut -f1)\n")
+            append("  CACHE2=\$(du -sk \"/data/data/\$PKG/code_cache\" 2>/dev/null | cut -f1)\n")
             append("  C1=\${CACHE1:-0}\n")
             append("  C2=\${CACHE2:-0}\n")
             append("  CACHE_TOT=\$(( C1 + C2 ))\n")
@@ -259,15 +261,15 @@ class GameRepository @Inject constructor(
 
             append("EXT1_DATA=\"/data/media/0/Android/data/\$PKG\"\n")
             append("EXT1_OBB=\"/data/media/0/Android/obb/\$PKG\"\n")
-            append("EXT1_DATA_KB=\$(du -sk \"\$EXT1_DATA\" 2>/dev/null | awk '{print \$1}')\n")
-            append("EXT1_OBB_KB=\$(du -sk \"\$EXT1_OBB\" 2>/dev/null | awk '{print \$1}')\n")
+            append("EXT1_DATA_KB=\$(du -sk \"\$EXT1_DATA\" 2>/dev/null | cut -f1)\n")
+            append("EXT1_OBB_KB=\$(du -sk \"\$EXT1_OBB\" 2>/dev/null | cut -f1)\n")
             append("echo \"EXT1_DATA:\${EXT1_DATA_KB:-0}\"\n")
             append("echo \"EXT1_OBB:\${EXT1_OBB_KB:-0}\"\n")
 
             append("EXT2_DATA=\"\$SDBASE/Android/data/\$PKG\"\n")
             append("EXT2_OBB=\"\$SDBASE/Android/obb/\$PKG\"\n")
-            append("EXT2_DATA_KB=\$(du -sk \"\$EXT2_DATA\" 2>/dev/null | awk '{print \$1}')\n")
-            append("EXT2_OBB_KB=\$(du -sk \"\$EXT2_OBB\" 2>/dev/null | awk '{print \$1}')\n")
+            append("EXT2_DATA_KB=\$(du -sk \"\$EXT2_DATA\" 2>/dev/null | cut -f1)\n")
+            append("EXT2_OBB_KB=\$(du -sk \"\$EXT2_OBB\" 2>/dev/null | cut -f1)\n")
             append("echo \"EXT2_DATA:\${EXT2_DATA_KB:-0}\"\n")
             append("echo \"EXT2_OBB:\${EXT2_OBB_KB:-0}\"\n")
         }

@@ -149,10 +149,13 @@
     <string name="game_detail_cat_ext2_sub">Android/data &amp; obb di kartu MicroSD</string>
     <string name="game_detail_section_system">Penyimpanan Sistem &amp; Privat</string>
     <string name="game_detail_section_shared">Penyimpanan Bersama (Target Mountify)</string>
-    <string name="game_detail_legend_internal_sys">Sistem (Internal)</string>
-    <string name="game_detail_legend_internal_shared">Bersama (Internal)</string>
-    <string name="game_detail_legend_microsd">MicroSD (SDEXT2)</string>
+    <string name="game_detail_legend_phone">Memori HP</string>
+    <string name="game_detail_legend_internal_sys">Sistem</string>
+    <string name="game_detail_legend_internal_shared">Bersama</string>
+    <string name="game_detail_legend_microsd">Kartu MicroSD</string>
     <string name="game_detail_legend_total">Total</string>
+    <string name="game_detail_chart_all_internal">100% Memori HP</string>
+    <string name="game_detail_chart_all_microsd">100% MicroSD</string>
     <string name="game_detail_badge_mounted">TER-MOUNT</string>
     <string name="game_detail_mode_title">Mode Mount</string>
     <string name="game_detail_mode_switch_desc">Mengubah mode memperbarui konfigurasi langsung tanpa menambah ulang aplikasi.</string>

@@ -72,32 +72,56 @@ fun NavGraph(
             startDestination = Screen.Dashboard.route,
             modifier = Modifier.padding(innerPadding),
             enterTransition = {
-                fadeIn(animationSpec = tween(250)) +
-                    slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                        animationSpec = tween(250)
-                    )
+                val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
+                val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
+                if (isTargetBottom && isInitialBottom) {
+                    fadeIn(animationSpec = tween(140))
+                } else {
+                    fadeIn(animationSpec = tween(200)) +
+                        slideIntoContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                            animationSpec = tween(200)
+                        )
+                }
             },
             exitTransition = {
-                fadeOut(animationSpec = tween(250)) +
-                    slideOutOfContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                        animationSpec = tween(250)
-                    )
+                val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
+                val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
+                if (isTargetBottom && isInitialBottom) {
+                    fadeOut(animationSpec = tween(140))
+                } else {
+                    fadeOut(animationSpec = tween(200)) +
+                        slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                            animationSpec = tween(200)
+                        )
+                }
             },
             popEnterTransition = {
-                fadeIn(animationSpec = tween(250)) +
-                    slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.End,
-                        animationSpec = tween(250)
-                    )
+                val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
+                val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
+                if (isTargetBottom && isInitialBottom) {
+                    fadeIn(animationSpec = tween(140))
+                } else {
+                    fadeIn(animationSpec = tween(200)) +
+                        slideIntoContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.End,
+                            animationSpec = tween(200)
+                        )
+                }
             },
             popExitTransition = {
-                fadeOut(animationSpec = tween(250)) +
-                    slideOutOfContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.End,
-                        animationSpec = tween(250)
-                    )
+                val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
+                val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
+                if (isTargetBottom && isInitialBottom) {
+                    fadeOut(animationSpec = tween(140))
+                } else {
+                    fadeOut(animationSpec = tween(200)) +
+                        slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.End,
+                            animationSpec = tween(200)
+                        )
+                }
             }
         ) {
             composable(Screen.Dashboard.route) {

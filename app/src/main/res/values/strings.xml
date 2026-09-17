@@ -157,10 +157,13 @@
     <string name="game_detail_cat_ext2_sub">Android/data &amp; obb on SD card</string>
     <string name="game_detail_section_system">System &amp; Private Storage</string>
     <string name="game_detail_section_shared">Shared Storage (Mountify Target)</string>
-    <string name="game_detail_legend_internal_sys">System (Internal)</string>
-    <string name="game_detail_legend_internal_shared">Shared (Internal)</string>
-    <string name="game_detail_legend_microsd">MicroSD (SDEXT2)</string>
+    <string name="game_detail_legend_phone">Phone Memory</string>
+    <string name="game_detail_legend_internal_sys">System</string>
+    <string name="game_detail_legend_internal_shared">Shared</string>
+    <string name="game_detail_legend_microsd">MicroSD Card</string>
     <string name="game_detail_legend_total">Total</string>
+    <string name="game_detail_chart_all_internal">100% Phone</string>
+    <string name="game_detail_chart_all_microsd">100% MicroSD</string>
     <string name="game_detail_badge_mounted">MOUNTED</string>
     <string name="game_detail_mode_title">Mount Mode</string>
     <string name="game_detail_mode_switch_desc">Switching mode updates configuration instantly without re-adding the app.</string>

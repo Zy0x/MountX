@@ -82,6 +82,10 @@ fun GamesScreen(
         val game = selectedGameForDetail!!
         val updatedGame = games.firstOrNull { it.packageName == game.packageName } ?: game
 
+        LaunchedEffect(updatedGame.packageName) {
+            viewModel.loadStorageBreakdown(updatedGame.packageName)
+        }
+
         GameDetailView(
             game = updatedGame,
             breakdown = detailedStorage,

@@ -5,6 +5,28 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.40] - 2026-09-17
+
+### Fixed
+- **Storage Breakdown Metrics Calculation Engine**:
+  - **Native Disk Usage Pipeline**: Replaced fragile `awk '{sum+=$1}'` and `awk '{print $1}'` commands in `GameRepository` with POSIX-standard `du -sck ... | tail -n1 | cut -f1`. This eliminates shell positional parameter interpolation failures under Android toybox/mksh, enabling accurate, instant size computation for APK, DEX, native libraries, private data, cache, and shared storage.
+  - **Automatic Detail Breakdown Loading**: Added a reactive `LaunchedEffect` keyed to the active package name in `GamesScreen` so storage breakdown calculations are always triggered seamlessly upon viewing an app's detail screen.
+  - **Full 7-Component Donut Ring Representation**: Added compiled Dalvik/ART code (`Dex`) to `ConcentricStorageChart`'s outer slice list so all storage facets are properly visualized.
+  - **Robust Namespace Unmount Parsing**: Updated `MountManager` to extract mount paths using `cut -d' ' -f2` instead of `awk` for unmount operations.
+
+## [2.1.39] - 2026-09-17
+
+### Fixed
+- **Accurate Storage Chart & Legend Alignment**:
+  - **Correct Physical Storage Partitioning**: Fixed conceptual flaw in `AppStorageBreakdown` where shared internal storage (`/data/media/0/Android/data`) was incorrectly grouped into external storage. Internal phone memory now accurately comprises all system binaries, private data, and internal shared folders.
+  - **Dynamic Concentric Inner Donut Ring**: Fixed misleading 50:50 dotted dividing line when 100% of data resides in phone internal memory or MicroSD. Inner circle now renders a solid single sector with a clean centered percentage badge, only drawing dividing lines and split sectors when data is genuinely distributed between phone and MicroSD.
+  - **Clean & Un-cramped Storage Legend**: Restructured the 3-tier legend into clear, human-readable rows (`Phone Memory`, `MicroSD Card`, and `Grand Total Σ`), completely removing outdated technical jargon `(SDEXT2)` and eliminating text line-wrapping glitches.
+
+### Performance
+- **Zero-Jank Bottom Navigation & Fluidity**:
+  - **Smooth Crossfade Tab Transitions**: Replaced heavy full-screen horizontal slide transitions (`slideIntoContainer`) on the bottom navigation bar with lightweight, ultra-smooth crossfades (`fadeIn` / `fadeOut` at 140ms), eliminating frame drops and layout hitches across mobile devices.
+  - **Optimized Navigation Bar Layout**: Removed redundant nested `animateContentSize` on navigation tab items to prevent continuous remeasurement passes and jitter during tab switching.
+
 ## [2.1.38] - 2026-09-17
 
 ### Added

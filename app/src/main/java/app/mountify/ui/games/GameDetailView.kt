@@ -388,40 +388,13 @@ private fun StorageTabContent(
                     modifier = Modifier.size(152.dp)
                 )
 
-                // 3-Tier Legend (Internal System, Internal Shared, MicroSD, Total)
+                // Storage Distribution Legend (Phone Memory, MicroSD, Total)
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    // Internal System
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            FloppyDiskIcon(
-                                tint = Color(0xFFDF4006),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.game_detail_legend_internal_sys),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = FormatUtils.formatLegendBytes(breakdown.internalBytes),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = Color(0xFFDF4006),
-                            modifier = Modifier.padding(start = 18.dp)
-                        )
-                    }
-
-                    // Ext 1 (Internal Shared)
-                    Column {
+                    // 1. Phone Memory (Internal)
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -429,28 +402,31 @@ private fun StorageTabContent(
                             Icon(
                                 imageVector = Icons.Default.Smartphone,
                                 contentDescription = null,
-                                tint = Color(0xFF3149FF),
+                                tint = Color(0xFFDF4006),
                                 modifier = Modifier.size(13.dp)
                             )
                             Text(
-                                text = stringResource(R.string.game_detail_legend_internal_shared),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                text = stringResource(R.string.game_detail_legend_phone),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Text(
-                            text = FormatUtils.formatLegendBytes(breakdown.ext1Bytes),
+                            text = FormatUtils.formatLegendBytes(breakdown.phoneInternalBytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 12.5.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = Color(0xFF3149FF),
+                            color = Color(0xFFDF4006),
                             modifier = Modifier.padding(start = 18.dp)
                         )
                     }
 
-                    // Ext 2 (MicroSD)
-                    Column {
+                    // 2. MicroSD Card
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -463,14 +439,17 @@ private fun StorageTabContent(
                             )
                             Text(
                                 text = stringResource(R.string.game_detail_legend_microsd),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Text(
-                            text = FormatUtils.formatLegendBytes(breakdown.ext2Bytes),
+                            text = FormatUtils.formatLegendBytes(breakdown.microSdBytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 12.5.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             ),
                             color = Color(0xFF3BA71A),
@@ -485,7 +464,7 @@ private fun StorageTabContent(
                             .padding(vertical = 1.dp)
                     )
 
-                    // Total (Σ)
+                    // 3. Grand Total (Σ)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -501,7 +480,7 @@ private fun StorageTabContent(
                         Text(
                             text = FormatUtils.formatLegendBytes(breakdown.totalBytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 12.5.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             ),
                             color = MaterialTheme.colorScheme.onSurface
@@ -1182,6 +1161,7 @@ fun ConcentricStorageChart(
 
     val slices = remember(breakdown) {
         listOf(
+            ChartSlice("Dex", breakdown.dexBytes, Color(0xFFAB47BC)),
             ChartSlice("Lib", breakdown.libBytes, Color(0xFFFB8C00)),
             ChartSlice("Data", breakdown.dataBytes, Color(0xFF00ACC1)),
             ChartSlice("Cache", breakdown.cacheBytes, Color(0xFFE57373)),
@@ -1262,18 +1242,47 @@ fun ConcentricStorageChart(
             }
         }
 
-        // 2. Draw Inner Circle (Internal vs External)
+        // 2. Draw Inner Circle (Phone Internal vs MicroSD)
         val centerCircleRadius = innerRadius - 3.dp.toPx()
         val internalPct = breakdown.internalPercent
         val extPct = breakdown.externalPercent
 
+        val centerTextPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 9.5.dp.toPx()
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+
         if (extPct == 0) {
+            // 100% on Phone Internal Memory
             drawCircle(
                 color = internalColor,
                 radius = centerCircleRadius,
                 center = center
             )
+            drawContext.canvas.nativeCanvas.drawText(
+                "$internalPct%",
+                center.x,
+                center.y + (centerTextPaint.textSize / 3f),
+                centerTextPaint
+            )
+        } else if (internalPct == 0) {
+            // 100% on MicroSD Card
+            drawCircle(
+                color = extColor,
+                radius = centerCircleRadius,
+                center = center
+            )
+            drawContext.canvas.nativeCanvas.drawText(
+                "$extPct%",
+                center.x,
+                center.y + (centerTextPaint.textSize / 3f),
+                centerTextPaint
+            )
         } else {
+            // Split between Phone Internal and MicroSD
             val internalSweep = (internalPct / 100f) * 360f
             drawArc(
                 color = internalColor,
@@ -1291,38 +1300,30 @@ fun ConcentricStorageChart(
                 topLeft = Offset(center.x - centerCircleRadius, center.y - centerCircleRadius),
                 size = Size(centerCircleRadius * 2f, centerCircleRadius * 2f)
             )
-        }
 
-        // Dotted divider vertical line
-        val dashPaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.argb(170, 255, 255, 255)
-            this.strokeWidth = 1.4.dp.toPx()
-            pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f, 4f), 0f)
-            style = android.graphics.Paint.Style.STROKE
-            isAntiAlias = true
-        }
-        drawContext.canvas.nativeCanvas.drawLine(
-            center.x,
-            center.y - centerCircleRadius * 0.65f,
-            center.x,
-            center.y + centerCircleRadius * 0.65f,
-            dashPaint
-        )
+            // Dotted divider vertical line between sectors
+            val dashPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.argb(180, 255, 255, 255)
+                this.strokeWidth = 1.4.dp.toPx()
+                pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f, 4f), 0f)
+                style = android.graphics.Paint.Style.STROKE
+                isAntiAlias = true
+            }
+            drawContext.canvas.nativeCanvas.drawLine(
+                center.x,
+                center.y - centerCircleRadius * 0.65f,
+                center.x,
+                center.y + centerCircleRadius * 0.65f,
+                dashPaint
+            )
 
-        // Percentage text inside inner circle
-        val centerTextPaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
-            textSize = 9.dp.toPx()
-            textAlign = android.graphics.Paint.Align.CENTER
-            isFakeBoldText = true
-            isAntiAlias = true
-        }
-        val textY = center.y + (centerTextPaint.textSize / 3f)
-        val leftX = center.x - centerCircleRadius * 0.48f
-        val rightX = center.x + centerCircleRadius * 0.48f
+            val textY = center.y + (centerTextPaint.textSize / 3f)
+            val leftX = center.x - centerCircleRadius * 0.45f
+            val rightX = center.x + centerCircleRadius * 0.45f
 
-        drawContext.canvas.nativeCanvas.drawText("$internalPct %", leftX, textY, centerTextPaint)
-        drawContext.canvas.nativeCanvas.drawText("$extPct %", rightX, textY, centerTextPaint)
+            drawContext.canvas.nativeCanvas.drawText("$internalPct%", leftX, textY, centerTextPaint)
+            drawContext.canvas.nativeCanvas.drawText("$extPct%", rightX, textY, centerTextPaint)
+        }
     }
 }
 

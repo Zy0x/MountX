@@ -25,23 +25,31 @@ data class AppStorageBreakdown(
     val ext2DataBytes: Long = 0L,
     val ext2ObbBytes: Long = 0L
 ) {
-    /** Total internal storage (Apk + Dex + Lib + Data + Cache) */
+    /** System & private storage (/data/app + /data/data) */
     val internalBytes: Long
         get() = apkBytes + dexBytes + libBytes + dataBytes + cacheBytes
 
-    /** Total external storage (Ext 1 + Ext 2) */
+    /** Total data residing physically on phone internal memory (System + Shared /data/media/0) */
+    val phoneInternalBytes: Long
+        get() = internalBytes + ext1Bytes
+
+    /** Total data residing physically on secondary MicroSD partition */
+    val microSdBytes: Long
+        get() = ext2Bytes
+
+    /** Total external MicroSD storage (Ext 2) */
     val externalBytes: Long
-        get() = ext1Bytes + ext2Bytes
+        get() = ext2Bytes
 
-    /** Grand total storage (Internal + Ext 1 + Ext 2) */
+    /** Grand total storage (Phone Internal + MicroSD) */
     val totalBytes: Long
-        get() = internalBytes + externalBytes
+        get() = phoneInternalBytes + microSdBytes
 
-    /** Percentage of internal storage over total (0 - 100) */
+    /** Percentage of phone internal storage over total (0 - 100) */
     val internalPercent: Int
-        get() = if (totalBytes > 0) ((internalBytes.toDouble() / totalBytes) * 100).roundToInt() else 0
+        get() = if (totalBytes > 0) ((phoneInternalBytes.toDouble() / totalBytes) * 100).roundToInt() else 0
 
-    /** Percentage of external storage over total (0 - 100) */
+    /** Percentage of MicroSD storage over total (0 - 100) */
     val externalPercent: Int
         get() = if (totalBytes > 0) 100 - internalPercent else 0
 

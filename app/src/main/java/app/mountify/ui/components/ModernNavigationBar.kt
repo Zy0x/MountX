@@ -177,12 +177,6 @@ private fun FigmaNavItem(
     ) {
         Column(
             modifier = Modifier
-                .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                )
                 .background(containerColor, RoundedCornerShape(12.dp))
                 .padding(horizontal = 4.dp, vertical = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
