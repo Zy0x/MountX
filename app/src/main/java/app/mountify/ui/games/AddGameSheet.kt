@@ -303,46 +303,46 @@ fun AddAppPicker(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) {},
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
                 shadowElevation = 8.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Header with Warning Icon
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
-                                .background(NeonCrimson.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+                                .size(28.dp)
+                                .background(NeonCrimson.copy(alpha = 0.12f), RoundedCornerShape(7.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
                                 tint = NeonCrimson,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                         }
                         Text(
                             text = stringResource(R.string.add_app_system_warning_compact_title),
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontSize = 14.5.sp,
+                                fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
-                    // Selected App Preview Mini Card
+                    // Selected App Preview Mini Card (Full-width title for maximum readability)
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(9.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
@@ -350,53 +350,37 @@ fun AddAppPicker(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                .padding(horizontal = 9.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(9.dp)
                         ) {
                             AppIconImage(
                                 packageName = sysApp.packageName,
-                                size = 36.dp
+                                size = 32.dp
                             )
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = sysApp.displayName,
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = NeonCrimson.copy(alpha = 0.14f),
-                                        border = BorderStroke(0.5.dp, NeonCrimson.copy(alpha = 0.35f))
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.add_app_tag_system),
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = NeonCrimson,
-                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(2.dp))
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = sysApp.displayName,
+                                    style = MaterialTheme.typography.titleSmall.copy(
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(1.dp))
                                 Text(
                                     text = sysApp.packageName,
                                     style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 10.5.sp,
+                                        fontSize = 9.5.sp,
                                         fontFamily = FontFamily.Monospace
                                     ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -406,19 +390,19 @@ fun AddAppPicker(
 
                     // Risk Alert Callout Box
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(9.dp),
                         color = NeonCrimson.copy(alpha = 0.08f),
-                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.22f)),
+                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.2f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = stringResource(R.string.add_app_system_warning_callout_desc),
                             style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 11.5.sp,
-                                lineHeight = 16.5.sp
+                                fontSize = 10.5.sp,
+                                lineHeight = 14.5.sp
                             ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
                         )
                     }
 
@@ -430,15 +414,15 @@ fun AddAppPicker(
                     ) {
                         OutlinedButton(
                             onClick = { pendingSystemApp = null },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(7.dp),
                             modifier = Modifier
-                                .height(38.dp)
-                                .defaultMinSize(minWidth = 72.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                                .height(34.dp)
+                                .defaultMinSize(minWidth = 68.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                         ) {
                             Text(
                                 text = stringResource(R.string.common_cancel),
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -452,15 +436,15 @@ fun AddAppPicker(
                                 pendingSystemApp = null
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(7.dp),
                             modifier = Modifier
-                                .height(38.dp)
-                                .defaultMinSize(minWidth = 80.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+                                .height(34.dp)
+                                .defaultMinSize(minWidth = 72.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
                         ) {
                             Text(
                                 text = stringResource(R.string.add_app_system_warning_proceed),
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )

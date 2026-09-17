@@ -108,7 +108,7 @@
     <string name="add_app_tag_user">PENGGUNA</string>
     <string name="add_app_system_warning_compact_title">Peringatan Paket Sistem</string>
     <string name="add_app_system_warning_compact_desc">Mengalihkan data \"%1$s\" (%2$s) ke MicroSD berisiko memicu force close atau bootloop jika mount gagal. Tetap lanjutkan?</string>
-    <string name="add_app_system_warning_callout_desc">Mengalihkan data aplikasi sistem ke MicroSD dapat memicu force close berulang, antarmuka macet, atau bootloop jika proses mount gagal saat booting.</string>
+    <string name="add_app_system_warning_callout_desc">Mengalihkan data aplikasi sistem ke MicroSD dapat memicu force close berulang atau bootloop jika mount gagal saat booting.</string>
     <string name="add_app_system_warning_proceed">Lanjutkan</string>
     <string name="add_app_system_warning_title">Peringatan Aplikasi Sistem</string>
     <string name="add_app_system_warning_desc">\"%1$s\" adalah paket sistem Android (%2$s).\n\nMengalihkan direktori data aplikasi sistem ke MicroSD dapat memicu force close berulang, antarmuka berhenti merespons, atau kegagalan boot (bootloop) jika penyimpanan tidak terbaca saat booting.\n\nApakah Anda yakin ingin melanjutkan?</string>

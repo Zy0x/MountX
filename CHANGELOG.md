@@ -5,6 +5,13 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.26] - 2026-09-17
+
+### Changed
+- Refined System Package Warning dialog proportions to a compact, non-bloated scale (inner padding 14dp, header icon 28dp, buttons 34dp).
+- Allocated 100% horizontal width to the application title by removing the redundant in-card tag, preventing premature title truncation.
+- Streamlined callout copy to reduce vertical footprint from 4 lines to 2–3 lines.
+
 ## [2.1.25] - 2026-09-17
 
 ### Added
