@@ -293,32 +293,35 @@ fun GamesContent(
                                 }
                             }
                         }
-
-                        // Add Game Action (Always accessible, replaces bottom FAB)
-                        IconButton(
-                            onClick = onAddClick,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(8.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = stringResource(R.string.games_add),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onAddClick,
+                modifier = Modifier
+                    .padding(end = 4.dp, bottom = 4.dp)
+                    .size(46.dp),
+                shape = CircleShape,
+                containerColor = Color.Transparent,
+                contentColor = Color.White,
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(brush = AuroraGradientBrush, shape = CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.games_add),
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
         },
         containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier
@@ -330,7 +333,7 @@ fun GamesContent(
                 .padding(horizontal = 14.dp)
         ) {
             if (games.isEmpty()) {
-                // ── WELCOMING EMPTY STATE WITH AURORA CTA ──
+                // ── CLEAN EMPTY STATE WITH GUIDANCE TEXT ──
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -372,34 +375,6 @@ fun GamesContent(
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                         )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Button(
-                            onClick = onAddClick,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 44.dp, max = 48.dp)
-                                .background(
-                                    brush = AuroraGradientBrush,
-                                    shape = RoundedCornerShape(14.dp)
-                                ),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.Transparent,
-                                contentColor = Color.White
-                            ),
-                            contentPadding = PaddingValues(0.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.games_empty_cta),
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = Color.White
-                            )
-                        }
                     }
                 }
             } else {
@@ -542,7 +517,7 @@ fun GamesContent(
                             )
                         }
                         item {
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(76.dp))
                         }
                     }
                 }

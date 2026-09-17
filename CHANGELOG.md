@@ -5,6 +5,16 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.24] - 2026-09-17
+
+### Added
+- Compact Floating Action Button (FAB 46dp, Aurora gradient, plus icon) as the unified entry point for adding games on the Games screen.
+
+### Changed
+- Removed redundant header add button from `CompactScreenHeader` to keep the top navigation clean and uncluttered.
+- Removed duplicated "+ Add Your First Game" button from the empty state, directing user focus clearly to the bottom-right FAB.
+- Adjusted list bottom clearance to 76dp ensuring game cards are never obscured by the FAB.
+
 ## [2.1.23] - 2026-09-17
 
 ### Added
