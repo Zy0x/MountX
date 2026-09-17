@@ -129,6 +129,8 @@
     <string name="game_detail_version">versi: %1$s (kode: %2$s)</string>
     <string name="game_detail_install_time">waktu instal: %1$s</string>
     <string name="game_detail_total_storage">Total Data</string>
+    <string name="game_detail_tab_storage">Penyimpanan</string>
+    <string name="game_detail_tab_manage">Kelola</string>
     <string name="game_detail_system_info">Info Aplikasi</string>
     <string name="game_detail_storage_breakdown">Rincian Penyimpanan</string>
     <string name="game_detail_internal_storage">Penyimpanan Internal</string>
@@ -195,6 +197,34 @@
     <string name="storage_backup_import_sub">Pulihkan registri game dari berkas JSON</string>
     <string name="storage_unmounted_hint">Mount partisi sekunder MicroSD untuk mengaktifkan pengalihan data game secara transparan.</string>
     <string name="storage_active_mount">Mount Aktif</string>
+    <string name="storage_internal_title">Penyimpanan Internal (/data)</string>
+    <string name="storage_microsd_title">Partisi App2SD MicroSD</string>
+    <string name="storage_offloaded_summary">%1$d game dialihkan • %2$s dihemat di internal</string>
+    <string name="storage_partitions_title">Disk &amp; Partisi</string>
+    <string name="storage_partitions_desc">Pilih partisi untuk diinspeksi, di-mount untuk App2SD, atau diformat.</string>
+    <string name="storage_partition_primary_sd">SD Utama</string>
+    <string name="storage_partition_app2sd_target">Target App2SD</string>
+    <string name="storage_partition_suitable">Siap App2SD</string>
+    <string name="storage_partition_unmounted">Tidak Di-mount</string>
+    <string name="storage_partition_no_partitions">Tidak ada partisi eksternal terdeteksi. Masukkan kartu SD atau periksa akses root.</string>
+    <string name="storage_scanning">Memindai partisi…</string>
+    <string name="storage_selected_partition">Partisi Terpilih</string>
+    <string name="storage_app2sd_hub">Pusat App2SD &amp; Mount</string>
+    <string name="storage_app2sd_readiness">Kesiapan App2SD</string>
+    <string name="storage_app2sd_step_root">Akses Root</string>
+    <string name="storage_app2sd_step_partition">Partisi Linux (F2FS/Ext4)</string>
+    <string name="storage_app2sd_step_mounted">Ter-mount di SD Base</string>
+    <string name="storage_app2sd_ready">Siap untuk App2SD</string>
+    <string name="storage_app2sd_not_ready">Perlu Konfigurasi</string>
+    <string name="storage_label_field">Label Partisi</string>
+    <string name="storage_label_hint">mis. sdext2</string>
+    <string name="storage_fsck_button">Periksa Sistem Berkas</string>
+    <string name="storage_fsck_checking">Memeriksa Sistem Berkas…</string>
+    <string name="storage_fsck_desc">Verifikasi dan perbaiki integritas partisi saat unmounted.</string>
+    <string name="storage_fsck_result_title">Hasil Pemeriksaan Sistem Berkas</string>
+    <string name="storage_fsck_mounted_warning">Partisi harus di-unmount terlebih dahulu sebelum menjalankan pemeriksaan.</string>
+    <string name="storage_view_games">Lihat Game</string>
+
 
     <string name="format_title">Format Partisi</string>
     <string name="format_warning">Peringatan</string>

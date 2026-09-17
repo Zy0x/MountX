@@ -119,7 +119,8 @@ fun NavGraph(
                 val vm = hiltViewModel<StorageViewModel>()
                 StorageScreen(
                     viewModel = vm,
-                    onNavigateToBackup = { navController.navigate("backup_restore") }
+                    onNavigateToBackup = { navController.navigate("backup_restore") },
+                    onNavigateToGames = { navController.navigate(Screen.Games.route) }
                 )
             }
 

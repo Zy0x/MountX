@@ -137,6 +137,8 @@
     <string name="game_detail_version">version: %1$s (code: %2$s)</string>
     <string name="game_detail_install_time">install time: %1$s</string>
     <string name="game_detail_total_storage">Total Data</string>
+    <string name="game_detail_tab_storage">Storage</string>
+    <string name="game_detail_tab_manage">Manage</string>
     <string name="game_detail_system_info">App Info</string>
     <string name="game_detail_storage_breakdown">Storage Breakdown</string>
     <string name="game_detail_internal_storage">Internal Storage</string>
@@ -206,6 +208,34 @@
     <string name="storage_backup_import_sub">Restore game registry from JSON</string>
     <string name="storage_unmounted_hint">Mount the MicroSD secondary partition to enable transparent data redirection.</string>
     <string name="storage_active_mount">Active Mount</string>
+    <string name="storage_internal_title">Internal Storage (/data)</string>
+    <string name="storage_microsd_title">MicroSD App2SD Partition</string>
+    <string name="storage_offloaded_summary">%1$d games offloaded • %2$s saved on internal</string>
+    <string name="storage_partitions_title">Disks &amp; Partitions</string>
+    <string name="storage_partitions_desc">Select a partition to inspect, mount for App2SD, or format.</string>
+    <string name="storage_partition_primary_sd">Primary SD</string>
+    <string name="storage_partition_app2sd_target">App2SD Target</string>
+    <string name="storage_partition_suitable">App2SD Ready</string>
+    <string name="storage_partition_unmounted">Unmounted</string>
+    <string name="storage_partition_no_partitions">No external partitions detected. Insert an SD card or check root access.</string>
+    <string name="storage_scanning">Scanning partitions…</string>
+    <string name="storage_selected_partition">Selected Partition</string>
+    <string name="storage_app2sd_hub">App2SD &amp; Mount Hub</string>
+    <string name="storage_app2sd_readiness">App2SD Readiness</string>
+    <string name="storage_app2sd_step_root">Root Access</string>
+    <string name="storage_app2sd_step_partition">Linux Partition (F2FS/Ext4)</string>
+    <string name="storage_app2sd_step_mounted">Mounted on SD Base</string>
+    <string name="storage_app2sd_ready">Ready for App2SD</string>
+    <string name="storage_app2sd_not_ready">Setup Required</string>
+    <string name="storage_label_field">Partition Label</string>
+    <string name="storage_label_hint">e.g. sdext2</string>
+    <string name="storage_fsck_button">Check Filesystem</string>
+    <string name="storage_fsck_checking">Checking Filesystem…</string>
+    <string name="storage_fsck_desc">Verify filesystem integrity while unmounted.</string>
+    <string name="storage_fsck_result_title">Filesystem Check Result</string>
+    <string name="storage_fsck_mounted_warning">Partition must be unmounted before running a filesystem check.</string>
+    <string name="storage_view_games">View Games</string>
+
 
     <!-- Format Partition -->
     <string name="format_title">Format Partition</string>

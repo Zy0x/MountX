@@ -44,6 +44,32 @@ data class StorageInfo(
         if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
 }
 
+/** Internal device storage telemetry (/data) */
+data class InternalStorageInfo(
+    val totalBytes: Long = 0L,
+    val usedBytes: Long = 0L,
+    val freeBytes: Long = 0L
+) {
+    val usedPercent: Float
+        get() = if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
+}
+
+/** Detailed partition metadata from /proc/partitions, blkid, and /proc/mounts */
+data class PartitionInfo(
+    val path: String,
+    val name: String,
+    val diskName: String,
+    val partitionNumber: Int = 0,
+    val sizeBytes: Long = 0L,
+    val fsType: String = "",
+    val mountPoint: String? = null,
+    val label: String? = null,
+    val uuid: String? = null,
+    val isMounted: Boolean = false,
+    val isTargetMount: Boolean = false,
+    val isSuitableForApp2sd: Boolean = false
+)
+
 /** Overall app status shown on Dashboard */
 data class AppStatus(
     val rootSolution: RootSolution = RootSolution.NONE,

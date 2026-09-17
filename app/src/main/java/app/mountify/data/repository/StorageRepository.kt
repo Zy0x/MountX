@@ -1,8 +1,10 @@
 package app.mountify.data.repository
 
 import app.mountify.data.model.FilesystemType
+import app.mountify.data.model.InternalStorageInfo
 import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MoveDirection
+import app.mountify.data.model.PartitionInfo
 import app.mountify.data.model.StorageInfo
 import app.mountify.root.StorageManager
 import kotlinx.coroutines.Dispatchers
@@ -29,14 +31,39 @@ class StorageRepository @Inject constructor(
         }
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * Poll internal device storage (/data) every 5 seconds.
+     */
+    fun observeInternalStorage(): Flow<InternalStorageInfo?> = flow {
+        while (true) {
+            emit(storageManager.getInternalStorageInfo())
+            delay(5000L)
+        }
+    }.flowOn(Dispatchers.IO)
+
     suspend fun getStorageInfo(mountPoint: String = "/data/sdext2"): StorageInfo? =
         withContext(Dispatchers.IO) {
             storageManager.getStorageInfo(mountPoint)
         }
 
+    suspend fun getInternalStorageInfo(): InternalStorageInfo? =
+        withContext(Dispatchers.IO) {
+            storageManager.getInternalStorageInfo()
+        }
+
     suspend fun detectBlockDevices(): List<String> = withContext(Dispatchers.IO) {
         storageManager.detectBlockDevices()
     }
+
+    suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> =
+        withContext(Dispatchers.IO) {
+            storageManager.detectPartitions(targetMountPoint)
+        }
+
+    suspend fun checkFilesystem(blockDevice: String, fsType: String = ""): Result<String> =
+        withContext(Dispatchers.IO) {
+            storageManager.checkFilesystem(blockDevice, fsType)
+        }
 
     suspend fun mountSdPartition(
         blockDevice: String,

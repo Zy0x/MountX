@@ -5,6 +5,23 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.36] - 2026-09-17
+
+### Added
+- **Storage Screen Overhaul for Partition & App2SD Ecosystem**:
+  - **Dual Storage Telemetry**: Added side-by-side internal storage (`/data`) and MicroSD (`/data/sdext2`) space gauges with gradient progress bars and an offloaded data savings banner (`X games offloaded • Y GB saved`).
+  - **Partition Scanner & Inspector**: Built engine parsing `/proc/partitions`, `/proc/mounts`, and `blkid` to detect block devices, parent disks, capacities (in GB/MB), filesystems (F2FS, Ext4, exFAT, VFAT), mount status, and volume labels.
+  - **App2SD & Mount Control Hub**: Added interactive App2SD Readiness Checklist (Root sandbox, Linux F2FS/Ext4 filesystem, target mountpoint), one-tap Mount/Unmount actions, and unmounted partition Filesystem Check (`fsck.f2fs` / `e2fsck`) with terminal output dialog.
+  - **Filesystem Formatter Hub**: Modernized Danger Zone with interactive F2FS (Recommended for Flash) and Ext4 selection cards, customizable partition label input (default `sdext2`), and 2-step confirmation dialog with explicit device path.
+  - Standardized `BackupRestoreScreen` top header with `CompactScreenHeader` in full compliance with `AGENTS.md` rules.
+  - Added complete bilingual string resources across `values/strings.xml` and `values-id/strings.xml`.
+- **App Detail Tabbed Architecture (Storage & Manage)**:
+  - Redesigned `GameDetailView` into a modern **Tabbed View** with `HorizontalPager`, supporting both tap navigation and smooth left/right swipe gestures.
+  - Pinned the App Hero Metadata profile header at the top, accompanied by a 36dp **Capsule / Pill Tab Bar** (`Storage` and `Manage`).
+  - **Storage Tab**: Restored the large, comfortable Concentric Donut Chart (~152dp) with full slice percentage labels and 3-tier legend beside/below the chart, paired with a dedicated 7-row storage breakdown card featuring *Smart Dimming* (`alpha = 0.42f` for 0 KB rows).
+  - **Manage Tab**: Dedicated control surface featuring spacious, descriptive Mount Mode configuration cards (`PKG Mode` vs `FILES Mode`), granular Physical Data Transfer cards (`All`, `Data Only`, `OBB Only`), and one-tap Game Removal.
+  - Added localized strings for tab navigation in English and Indonesian (`values/strings.xml`, `values-id/strings.xml`).
+
 ## [2.1.35] - 2026-09-17
 
 ### Changed
