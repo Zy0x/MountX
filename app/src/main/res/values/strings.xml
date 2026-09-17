@@ -97,10 +97,10 @@
     <string name="add_game_configure_title">Configure Mount</string>
     <string name="add_game_no_apps_found">No applications found matching your search</string>
     <string name="add_game_mode_title">Mount Mode</string>
-    <string name="add_game_mode_pkg">PKG — Mount entire game folder</string>
+    <string name="add_game_mode_pkg">PKG — Mount entire package folder</string>
     <string name="add_game_mode_files">FILES — Mount only /files subfolder</string>
-    <string name="add_game_mode_pkg_desc">Recommended for most games (WuWa, PUBG, COD)</string>
-    <string name="add_game_mode_files_desc">Use for games that keep databases internal (Genshin, HSR, ZZZ)</string>
+    <string name="add_game_mode_pkg_desc">Recommended for most apps &amp; games (WuWa, PUBG, CapCut, maps)</string>
+    <string name="add_game_mode_files_desc">Use for apps that keep databases internal (Genshin, HSR, ZZZ)</string>
     <string name="add_game_button">Add Game</string>
     <string name="add_game_error_empty">Package name cannot be empty.</string>
     <string name="add_game_error_exists">This game is already in the list.</string>
@@ -132,7 +132,7 @@
     <string name="status_loading">Loading…</string>
 
     <!-- Game Detail & Storage Screen -->
-    <string name="game_detail_title">Game Details &amp; Storage</string>
+    <string name="game_detail_title">App Details &amp; Storage</string>
     <string name="game_detail_app_title">App Detail</string>
     <string name="game_detail_version">version: %1$s (code: %2$s)</string>
     <string name="game_detail_install_time">install time: %1$s</string>
@@ -143,15 +143,27 @@
     <string name="game_detail_storage_breakdown">Storage Breakdown</string>
     <string name="game_detail_internal_storage">Internal Storage</string>
     <string name="game_detail_microsd_storage">MicroSD Storage</string>
-    <string name="game_detail_cat_apk">Apk</string>
-    <string name="game_detail_cat_dex">Dex</string>
-    <string name="game_detail_cat_lib">Lib</string>
-    <string name="game_detail_cat_data">Data</string>
-    <string name="game_detail_cat_cache">Cache</string>
-    <string name="game_detail_cat_ext1">Data(Ext) 1</string>
-    <string name="game_detail_cat_ext2">Data(Ext) 2</string>
+    <string name="game_detail_cat_apk">App Package (APK)</string>
+    <string name="game_detail_cat_apk_sub">Installation files &amp; binaries (/data/app)</string>
+    <string name="game_detail_cat_lib">Native Libraries (Lib)</string>
+    <string name="game_detail_cat_lib_sub">Dynamic link libraries (.so)</string>
+    <string name="game_detail_cat_data">Private Data</string>
+    <string name="game_detail_cat_data_sub">Databases &amp; preferences (/data/data)</string>
+    <string name="game_detail_cat_cache">Temporary Cache</string>
+    <string name="game_detail_cat_cache_sub">App cache &amp; temporary files</string>
+    <string name="game_detail_cat_ext1">Shared Storage (Internal)</string>
+    <string name="game_detail_cat_ext1_sub">Android/data &amp; obb on phone memory</string>
+    <string name="game_detail_cat_ext2">Shared Storage (MicroSD)</string>
+    <string name="game_detail_cat_ext2_sub">Android/data &amp; obb on SD card</string>
+    <string name="game_detail_section_system">System &amp; Private Storage</string>
+    <string name="game_detail_section_shared">Shared Storage (Mountify Target)</string>
+    <string name="game_detail_legend_internal_sys">System (Internal)</string>
+    <string name="game_detail_legend_internal_shared">Shared (Internal)</string>
+    <string name="game_detail_legend_microsd">MicroSD (SDEXT2)</string>
+    <string name="game_detail_legend_total">Total</string>
+    <string name="game_detail_badge_mounted">MOUNTED</string>
     <string name="game_detail_mode_title">Mount Mode</string>
-    <string name="game_detail_mode_switch_desc">Switching mode updates configuration instantly without re-adding the game.</string>
+    <string name="game_detail_mode_switch_desc">Switching mode updates configuration instantly without re-adding the app.</string>
     <string name="game_detail_move_title">Physical Data Transfer</string>
     <string name="game_detail_target_scope">Transfer Scope</string>
     <string name="game_detail_target_all">All (Data+OBB)</string>
@@ -160,12 +172,12 @@
     <string name="game_detail_move_warning">Zero data-loss verified: source data is preserved if transfer fails.</string>
     <string name="game_detail_move_to_sd">Move to MicroSD</string>
     <string name="game_detail_move_to_internal">Restore to Internal</string>
-    <string name="game_detail_delete_action">Remove Game</string>
+    <string name="game_detail_delete_action">Remove from Mountify</string>
     <string name="game_detail_status_mounted">Active &amp; Mounted</string>
     <string name="game_detail_status_unmounted">Standby (Unmounted)</string>
 
     <!-- Move Data Sheet -->
-    <string name="move_data_title">Move Game Data</string>
+    <string name="move_data_title">Move App Data</string>
     <string name="move_data_to_sd">Move to MicroSD</string>
     <string name="move_data_to_internal">Move to Internal</string>
     <string name="move_data_size">Size to move: %1$s</string>

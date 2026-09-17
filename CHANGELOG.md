@@ -5,6 +5,20 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.37] - 2026-09-17
+
+### Changed
+- **Storage Breakdown Clarity & Neutral App Terminology**:
+  - **Eliminated Ambiguous Storage Labels**: Replaced legacy, cryptic App2SD categories (`Data`, `Data(Ext) 1`, `Data(Ext) 2`) with clear, human-readable labels:
+    - `Data` ➔ **Private Data** (`/data/data` databases, preferences, and private files).
+    - `Data(Ext) 1` ➔ **Shared Storage (Internal)** (`Android/data & obb` on phone storage).
+    - `Data(Ext) 2` ➔ **Shared Storage (MicroSD)** (`Android/data & obb` on secondary SD card partition).
+  - **Organized Storage Hierarchy**: Structured the Breakdown Card into two clear zones: *System & Private Storage* (Internal) and *Shared Storage (Mountify Target)* with path descriptions and active `[ MOUNTED ]` badges.
+  - **De-cluttered Binary Metrics**: Removed redundant `Dex: 0.00 KB` entry caused by modern ART/OAT compiler architecture, and integrated `Lib` cleanly.
+  - **Neutral App-First Terminology**: Replaced all game-specific descriptions across detail screens with universal app-neutral phrasing, ensuring perfect relevance for utilities, emulators, offline navigation, and media tools.
+  - **Descriptive Telemetry Legend**: Enhanced 3-tier donut chart legend with clear category labels (`System (Internal)`, `Shared (Internal)`, `MicroSD (SDEXT2)`, and `Total`).
+  - Added comprehensive multi-language strings in `values/strings.xml` and `values-id/strings.xml`.
+
 ## [2.1.36] - 2026-09-17
 
 ### Added

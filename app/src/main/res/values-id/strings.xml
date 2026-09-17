@@ -91,10 +91,10 @@
     <string name="add_game_configure_title">Konfigurasi Mount</string>
     <string name="add_game_no_apps_found">Tidak ada aplikasi yang cocok dengan pencarian</string>
     <string name="add_game_mode_title">Mode Mount</string>
-    <string name="add_game_mode_pkg">PKG — Mount seluruh folder game</string>
+    <string name="add_game_mode_pkg">PKG — Mount seluruh folder paket</string>
     <string name="add_game_mode_files">FILES — Mount hanya subfolder /files</string>
-    <string name="add_game_mode_pkg_desc">Disarankan untuk kebanyakan game (WuWa, PUBG, COD)</string>
-    <string name="add_game_mode_files_desc">Untuk game yang menyimpan database di internal (Genshin, HSR, ZZZ)</string>
+    <string name="add_game_mode_pkg_desc">Disarankan untuk mayoritas aplikasi &amp; game (WuWa, PUBG, CapCut, peta)</string>
+    <string name="add_game_mode_files_desc">Untuk aplikasi yang menyimpan database di internal (Genshin, HSR, ZZZ)</string>
     <string name="add_game_button">Tambah Game</string>
     <string name="add_game_error_empty">Nama paket tidak boleh kosong.</string>
     <string name="add_game_error_exists">Game ini sudah ada di daftar.</string>
@@ -124,7 +124,7 @@
     <string name="status_loading">Memuat…</string>
 
     <!-- Game Detail & Storage Screen -->
-    <string name="game_detail_title">Detail Game &amp; Penyimpanan</string>
+    <string name="game_detail_title">Detail Aplikasi &amp; Penyimpanan</string>
     <string name="game_detail_app_title">Detail Aplikasi</string>
     <string name="game_detail_version">versi: %1$s (kode: %2$s)</string>
     <string name="game_detail_install_time">waktu instal: %1$s</string>
@@ -135,15 +135,27 @@
     <string name="game_detail_storage_breakdown">Rincian Penyimpanan</string>
     <string name="game_detail_internal_storage">Penyimpanan Internal</string>
     <string name="game_detail_microsd_storage">Penyimpanan MicroSD</string>
-    <string name="game_detail_cat_apk">Apk</string>
-    <string name="game_detail_cat_dex">Dex</string>
-    <string name="game_detail_cat_lib">Lib</string>
-    <string name="game_detail_cat_data">Data</string>
-    <string name="game_detail_cat_cache">Cache</string>
-    <string name="game_detail_cat_ext1">Data(Ext) 1</string>
-    <string name="game_detail_cat_ext2">Data(Ext) 2</string>
+    <string name="game_detail_cat_apk">Paket Aplikasi (APK)</string>
+    <string name="game_detail_cat_apk_sub">Berkas instalasi &amp; biner (/data/app)</string>
+    <string name="game_detail_cat_lib">Pustaka Asli (Lib)</string>
+    <string name="game_detail_cat_lib_sub">Pustaka dinamis (.so)</string>
+    <string name="game_detail_cat_data">Data Privat</string>
+    <string name="game_detail_cat_data_sub">Basis data &amp; pengaturan (/data/data)</string>
+    <string name="game_detail_cat_cache">Cache Sementara</string>
+    <string name="game_detail_cat_cache_sub">Berkas sementara &amp; cache aplikasi</string>
+    <string name="game_detail_cat_ext1">Penyimpanan Bersama (Internal)</string>
+    <string name="game_detail_cat_ext1_sub">Android/data &amp; obb di memori telepon</string>
+    <string name="game_detail_cat_ext2">Penyimpanan Bersama (MicroSD)</string>
+    <string name="game_detail_cat_ext2_sub">Android/data &amp; obb di kartu MicroSD</string>
+    <string name="game_detail_section_system">Penyimpanan Sistem &amp; Privat</string>
+    <string name="game_detail_section_shared">Penyimpanan Bersama (Target Mountify)</string>
+    <string name="game_detail_legend_internal_sys">Sistem (Internal)</string>
+    <string name="game_detail_legend_internal_shared">Bersama (Internal)</string>
+    <string name="game_detail_legend_microsd">MicroSD (SDEXT2)</string>
+    <string name="game_detail_legend_total">Total</string>
+    <string name="game_detail_badge_mounted">TER-MOUNT</string>
     <string name="game_detail_mode_title">Mode Mount</string>
-    <string name="game_detail_mode_switch_desc">Mengubah mode memperbarui konfigurasi langsung tanpa menambah ulang game.</string>
+    <string name="game_detail_mode_switch_desc">Mengubah mode memperbarui konfigurasi langsung tanpa menambah ulang aplikasi.</string>
     <string name="game_detail_move_title">Pemindahan Data Fisik</string>
     <string name="game_detail_target_scope">Cakupan Transfer</string>
     <string name="game_detail_target_all">Semua (Data+OBB)</string>
@@ -152,11 +164,11 @@
     <string name="game_detail_move_warning">Terverifikasi tanpa kehilangan data: data asal tetap utuh jika transfer gagal.</string>
     <string name="game_detail_move_to_sd">Pindah ke MicroSD</string>
     <string name="game_detail_move_to_internal">Kembalikan ke Internal</string>
-    <string name="game_detail_delete_action">Hapus Game</string>
+    <string name="game_detail_delete_action">Hapus dari Mountify</string>
     <string name="game_detail_status_mounted">Aktif &amp; Ter-mount</string>
     <string name="game_detail_status_unmounted">Siaga (Belum Mount)</string>
 
-    <string name="move_data_title">Pindah Data Game</string>
+    <string name="move_data_title">Pindah Data Aplikasi</string>
     <string name="move_data_to_sd">Pindah ke MicroSD</string>
     <string name="move_data_to_internal">Pindah ke Internal</string>
     <string name="move_data_size">Ukuran yang dipindah: %1$s</string>

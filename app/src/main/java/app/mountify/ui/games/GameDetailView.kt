@@ -379,88 +379,112 @@ private fun StorageTabContent(
                     modifier = Modifier.size(152.dp)
                 )
 
-                // 3-Tier Legend (Internal, Ext 1, Ext 2, Total)
+                // 3-Tier Legend (Internal System, Internal Shared, MicroSD, Total)
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Internal
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FloppyDiskIcon(
-                            tint = Color(0xFFDF4006),
-                            modifier = Modifier.size(16.dp)
-                        )
+                    // Internal System
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            FloppyDiskIcon(
+                                tint = Color(0xFFDF4006),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.game_detail_legend_internal_sys),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
                             text = FormatUtils.formatLegendBytes(breakdown.internalBytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = Color(0xFFDF4006)
+                            color = Color(0xFFDF4006),
+                            modifier = Modifier.padding(start = 18.dp)
                         )
                     }
 
-                    // Ext 1 (Media)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Smartphone,
-                            contentDescription = null,
-                            tint = Color(0xFF3149FF),
-                            modifier = Modifier.size(16.dp)
-                        )
+                    // Ext 1 (Internal Shared)
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Smartphone,
+                                contentDescription = null,
+                                tint = Color(0xFF3149FF),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.game_detail_legend_internal_shared),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
                             text = FormatUtils.formatLegendBytes(breakdown.ext1Bytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = Color(0xFF3149FF)
+                            color = Color(0xFF3149FF),
+                            modifier = Modifier.padding(start = 18.dp)
                         )
                     }
 
                     // Ext 2 (MicroSD)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SdCard,
-                            contentDescription = null,
-                            tint = Color(0xFF3BA71A),
-                            modifier = Modifier.size(16.dp)
-                        )
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SdCard,
+                                contentDescription = null,
+                                tint = Color(0xFF3BA71A),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.game_detail_legend_microsd),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
                             text = FormatUtils.formatLegendBytes(breakdown.ext2Bytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = Color(0xFF3BA71A)
+                            color = Color(0xFF3BA71A),
+                            modifier = Modifier.padding(start = 18.dp)
                         )
                     }
 
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                         modifier = Modifier
-                            .width(85.dp)
+                            .fillMaxWidth(0.9f)
                             .padding(vertical = 1.dp)
                     )
 
                     // Total (Σ)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = "Σ",
                             style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 15.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             ),
                             color = MaterialTheme.colorScheme.onSurface
@@ -468,7 +492,7 @@ private fun StorageTabContent(
                         Text(
                             text = FormatUtils.formatLegendBytes(breakdown.totalBytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
                             color = MaterialTheme.colorScheme.onSurface
@@ -478,7 +502,7 @@ private fun StorageTabContent(
             }
         }
 
-        // ── DETAILED 7-ROW STORAGE BREAKDOWN CARD (WITH SMART DIMMING) ──
+        // ── DETAILED STORAGE BREAKDOWN CARD (WITH SMART DIMMING & GROUPING) ──
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -489,63 +513,98 @@ private fun StorageTabContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                // Section 1 Header: System & Private Storage
+                Text(
+                    text = stringResource(R.string.game_detail_section_system).uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+
                 BreakdownRow(
                     label = stringResource(R.string.game_detail_cat_apk),
+                    subLabel = stringResource(R.string.game_detail_cat_apk_sub),
                     labelColor = Color(0xFFE91E63),
                     sizeText = FormatUtils.formatExactBytes(breakdown.apkBytes),
                     bytes = breakdown.apkBytes,
                     isDisk = true,
                     customIconTint = Color(0xFFDF4006)
                 )
-                BreakdownRow(
-                    label = stringResource(R.string.game_detail_cat_dex),
-                    labelColor = Color(0xFF00ACC1),
-                    sizeText = FormatUtils.formatExactBytes(breakdown.dexBytes),
-                    bytes = breakdown.dexBytes,
-                    isDisk = true,
-                    customIconTint = Color(0xFFDF4006)
-                )
-                BreakdownRow(
-                    label = stringResource(R.string.game_detail_cat_lib),
-                    labelColor = Color(0xFFFB8C00),
-                    sizeText = FormatUtils.formatExactBytes(breakdown.libBytes),
-                    bytes = breakdown.libBytes,
-                    isDisk = true,
-                    customIconTint = Color(0xFFDF4006)
-                )
+
+                if (breakdown.libBytes > 0L) {
+                    BreakdownRow(
+                        label = stringResource(R.string.game_detail_cat_lib),
+                        subLabel = stringResource(R.string.game_detail_cat_lib_sub),
+                        labelColor = Color(0xFFFB8C00),
+                        sizeText = FormatUtils.formatExactBytes(breakdown.libBytes),
+                        bytes = breakdown.libBytes,
+                        isDisk = true,
+                        customIconTint = Color(0xFFDF4006)
+                    )
+                }
+
                 BreakdownRow(
                     label = stringResource(R.string.game_detail_cat_data),
+                    subLabel = stringResource(R.string.game_detail_cat_data_sub),
                     labelColor = Color(0xFF00897B),
                     sizeText = FormatUtils.formatExactBytes(breakdown.dataBytes),
                     bytes = breakdown.dataBytes,
                     isDisk = true,
                     customIconTint = Color(0xFFDF4006)
                 )
+
                 BreakdownRow(
                     label = stringResource(R.string.game_detail_cat_cache),
+                    subLabel = stringResource(R.string.game_detail_cat_cache_sub),
                     labelColor = Color(0xFFE57373),
                     sizeText = FormatUtils.formatExactBytes(breakdown.cacheBytes),
                     bytes = breakdown.cacheBytes,
                     isDisk = true,
                     customIconTint = Color(0xFFDF4006)
                 )
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                // Section 2 Header: Shared Storage (Mountify Target)
+                Text(
+                    text = stringResource(R.string.game_detail_section_shared).uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+
                 BreakdownRow(
                     label = stringResource(R.string.game_detail_cat_ext1),
+                    subLabel = stringResource(R.string.game_detail_cat_ext1_sub),
                     labelColor = Color(0xFF5C6BC0),
                     sizeText = FormatUtils.formatExactBytes(breakdown.ext1Bytes),
                     bytes = breakdown.ext1Bytes,
                     vectorIcon = Icons.Default.Smartphone,
                     customIconTint = Color(0xFF3149FF)
                 )
+
                 BreakdownRow(
                     label = stringResource(R.string.game_detail_cat_ext2),
+                    subLabel = stringResource(R.string.game_detail_cat_ext2_sub),
                     labelColor = Color(0xFF43A047),
                     sizeText = FormatUtils.formatExactBytes(breakdown.ext2Bytes),
                     bytes = breakdown.ext2Bytes,
                     vectorIcon = Icons.Default.SdCard,
-                    customIconTint = Color(0xFF3BA71A)
+                    customIconTint = Color(0xFF3BA71A),
+                    statusBadge = if (breakdown.ext2Bytes > 0L) stringResource(R.string.game_detail_badge_mounted) else null
                 )
             }
         }
@@ -946,11 +1005,10 @@ fun ConcentricStorageChart(
 
     val slices = remember(breakdown) {
         listOf(
-            ChartSlice("Dex", breakdown.dexBytes, Color(0xFF64D8D2)),
             ChartSlice("Lib", breakdown.libBytes, Color(0xFFFB8C00)),
             ChartSlice("Data", breakdown.dataBytes, Color(0xFF00ACC1)),
             ChartSlice("Cache", breakdown.cacheBytes, Color(0xFFE57373)),
-            ChartSlice("Ext1", breakdown.ext1Bytes, Color(0xFF5C6BC0)),
+            ChartSlice("Ext1", breakdown.ext1Bytes, Color(0xFF3149FF)),
             ChartSlice("Ext2", breakdown.ext2Bytes, Color(0xFF43A047)),
             ChartSlice("Apk", breakdown.apkBytes, Color(0xFFE91E63))
         )
@@ -1095,11 +1153,13 @@ fun ConcentricStorageChart(
 private fun BreakdownRow(
     label: String,
     labelColor: Color,
+    subLabel: String? = null,
     sizeText: String,
     bytes: Long = 0L,
     isDisk: Boolean = false,
     vectorIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
-    customIconTint: Color = Color.Unspecified
+    customIconTint: Color = Color.Unspecified,
+    statusBadge: String? = null
 ) {
     val hasData = bytes > 0L
     val contentAlpha = if (hasData) 1.0f else 0.42f
@@ -1110,23 +1170,56 @@ private fun BreakdownRow(
             .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 12.5.sp,
-                fontWeight = if (hasData) FontWeight.SemiBold else FontWeight.Normal
-            ),
-            color = labelColor.copy(alpha = contentAlpha),
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 12.sp,
+                        fontWeight = if (hasData) FontWeight.SemiBold else FontWeight.Normal
+                    ),
+                    color = labelColor.copy(alpha = contentAlpha)
+                )
+                if (statusBadge != null) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = CyberEmerald.copy(alpha = 0.15f),
+                        border = BorderStroke(0.5.dp, CyberEmerald.copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = statusBadge,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = CyberEmerald,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
+            if (!subLabel.isNullOrBlank()) {
+                Text(
+                    text = subLabel,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 9.5.sp,
+                        lineHeight = 12.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (hasData) 0.65f else 0.35f)
+                )
+            }
+        }
         Text(
             text = sizeText,
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 12.5.sp,
-                fontWeight = if (hasData) FontWeight.SemiBold else FontWeight.Normal
+                fontSize = 12.sp,
+                fontWeight = if (hasData) FontWeight.Bold else FontWeight.Normal
             ),
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
-            modifier = Modifier.padding(end = 14.dp)
+            modifier = Modifier.padding(end = 10.dp)
         )
         if (isDisk) {
             FloppyDiskIcon(
