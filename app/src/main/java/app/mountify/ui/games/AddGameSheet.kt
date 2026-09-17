@@ -1,10 +1,14 @@
 package app.mountify.ui.games
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -105,11 +109,22 @@ fun AddAppPicker(
 
     BackHandler(onBack = handleBackPress)
 
-    Column(
+    val blurRadius by animateDpAsState(
+        targetValue = if (pendingSystemApp != null) 16.dp else 0.dp,
+        animationSpec = tween(durationMillis = 200),
+        label = "dialog_blur"
+    )
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(blurRadius)
+        ) {
         // Standard Compact Screen Header
         CompactScreenHeader(
             title = when {
@@ -265,83 +280,121 @@ fun AddAppPicker(
         }
     }
 
-    // Ultra-Minimalist System App Warning Dialog
+    // Modern Glassmorphism / Blurred Backdrop System App Warning Dialog
     if (pendingSystemApp != null) {
         val sysApp = pendingSystemApp!!
-        AlertDialog(
-            onDismissRequest = { pendingSystemApp = null },
-            shape = RoundedCornerShape(12.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = NeonCrimson,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    pendingSystemApp = null
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {},
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .background(NeonCrimson.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = NeonCrimson,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.add_app_system_warning_compact_title),
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
                     Text(
-                        text = stringResource(R.string.add_app_system_warning_compact_title),
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
+                        text = stringResource(
+                            R.string.add_app_system_warning_compact_desc,
+                            sysApp.displayName,
+                            sysApp.packageName
                         ),
-                        color = MaterialTheme.colorScheme.onSurface
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-            },
-            text = {
-                Text(
-                    text = stringResource(
-                        R.string.add_app_system_warning_compact_desc,
-                        sysApp.displayName,
-                        sysApp.packageName
-                    ),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.5.sp,
-                        lineHeight = 16.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        selectedApp = sysApp
-                        pendingSystemApp = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.height(34.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.add_app_system_warning_proceed),
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            },
-            dismissButton = {
-                OutlinedButton(
-                    onClick = { pendingSystemApp = null },
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.height(34.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.common_cancel),
-                        fontSize = 11.5.sp
-                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = { pendingSystemApp = null },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(34.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_cancel),
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Button(
+                            onClick = {
+                                selectedApp = sysApp
+                                pendingSystemApp = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(34.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.add_app_system_warning_proceed),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
                 }
             }
-        )
+        }
     }
+}
 }
 
 /**

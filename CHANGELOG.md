@@ -5,6 +5,16 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.23] - 2026-09-17
+
+### Added
+- Real-time animated backdrop blur (`16.dp`) on screen background during dialog presentation for modern glassmorphism depth.
+- Standardized Dialog Horizontal Margin rules (Section 3.5 item 8 in `AGENTS.md`) enforcing 24–28dp breathing room from device screen edges.
+
+### Changed
+- Converted System Package Warning dialog from windowed `AlertDialog` to in-tree blurred backdrop overlay, eliminating claustrophobic edge-to-edge stretching.
+- Enhanced warning icon presentation with a rounded crimson accent container (30dp) and balanced typography hierarchy.
+
 ## [2.1.22] - 2026-09-17
 
 ### Added
