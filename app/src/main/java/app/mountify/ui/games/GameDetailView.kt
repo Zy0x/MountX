@@ -320,13 +320,13 @@ private fun DetailCapsuleTabRow(
             tabs.forEachIndexed { index, title ->
                 val isSelected = selectedTabIndex == index
                 Surface(
+                    onClick = { onTabSelected(index) },
                     shape = RoundedCornerShape(8.dp),
                     color = if (isSelected) MaterialTheme.colorScheme.primary
                             else Color.Transparent,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clickable { onTabSelected(index) }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(

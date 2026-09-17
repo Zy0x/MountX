@@ -220,18 +220,17 @@ fun FullAppPreviewLayout(
                             freeBytes = 36_000_000_000L,
                             isMounted = true
                         ),
-                        devices = listOf("/dev/block/mmcblk0p1", "/dev/block/mmcblk0p2"),
+                        internalStorage = null,
+                        partitions = emptyList(),
+                        selectedPartition = null,
+                        configuredSdBase = "/data/sdext2",
+                        isScanning = false,
                         isFormatting = false,
-                        statusMessage = null,
-                        selectedDevice = "/dev/block/mmcblk0p2",
+                        isCheckingFs = false,
+                        partitionLabel = "",
                         selectedFs = app.mountify.data.model.FilesystemType.F2FS,
-                        onSelectedDeviceChange = {},
-                        onSelectedFsChange = {},
-                        onRefreshDevices = {},
-                        onMountPartition = { _, _ -> },
-                        onUnmountPartition = {},
-                        onFormatClick = {},
-                        onNavigateToBackup = {}
+                        statusMessage = null,
+                        offloadedStats = 0 to 0L
                     )
                 }
                 else -> {
