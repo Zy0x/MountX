@@ -23,6 +23,13 @@ enum class FilesystemType(
 /** Direction for moving game data */
 enum class MoveDirection { TO_SD, TO_INTERNAL }
 
+/** Target scope for migrating game storage */
+enum class MigrationTarget {
+    ALL,
+    DATA_ONLY,
+    OBB_ONLY
+}
+
 /** Information about the MicroSD storage partition */
 data class StorageInfo(
     val blockDevice: String,

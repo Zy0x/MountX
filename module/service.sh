@@ -248,49 +248,48 @@ process_game() {
     ts=$(date '+%Y-%m-%d %H:%M:%S')
     log_info "── Processing [${pkg}] mode=${mode} at ${ts}"
 
-    # Internal (system) data path
-    local int_base="/data/media/0/Android/data/${pkg}"
-    # External SD source path
-    local sd_base="${SD_BASE}/Android/data/${pkg}"
+    # Internal (system) data and obb paths
+    local int_data="/data/media/0/Android/data/${pkg}"
+    local int_obb="/data/media/0/Android/obb/${pkg}"
+    # External SD source data and obb paths
+    local sd_data="${SD_BASE}/Android/data/${pkg}"
+    local sd_obb="${SD_BASE}/Android/obb/${pkg}"
 
-    # Determine source and destination sub-paths based on mode
-    local src dst
+    # Determine data source and destination sub-paths based on mode
+    local src_data dst_data
     case "${mode}" in
         pkg)
-            src="${sd_base}"
-            dst="${int_base}"
+            src_data="${sd_data}"
+            dst_data="${int_data}"
             ;;
         files)
-            src="${sd_base}/files"
-            dst="${int_base}/files"
+            src_data="${sd_data}/files"
+            dst_data="${int_data}/files"
             ;;
     esac
 
-    # Validate source directory exists on SD
-    if [ ! -d "${src}" ]; then
-        log_warn "  [${pkg}] Source not found on SD: ${src}. Creating skeleton directory."
-        mkdir -p "${src}" || {
-            log_error "  [${pkg}] Could not create source directory; skipping."
-            return
-        }
+    # 1. Mount Data if present on SD
+    if [ -d "${src_data}" ]; then
+        if [ ! -d "${dst_data}" ]; then
+            mkdir -p "${dst_data}" || log_warn "  [${pkg}] Could not create destination data dir"
+        fi
+        umount_stale "${dst_data}"
+        apply_permissions "${pkg}" "${src_data}"
+        bind_mount_all_ns "${src_data}" "${dst_data}" "${pkg}"
+    else
+        log_warn "  [${pkg}] Data source not found on SD: ${src_data}"
     fi
 
-    # Ensure destination directory exists
-    if [ ! -d "${dst}" ]; then
-        mkdir -p "${dst}" || {
-            log_error "  [${pkg}] Could not create destination directory; skipping."
-            return
-        }
+    # 2. Mount OBB if present on SD
+    if [ -d "${sd_obb}" ]; then
+        log_info "  [${pkg}] OBB directory detected on SD: ${sd_obb}"
+        if [ ! -d "${int_obb}" ]; then
+            mkdir -p "${int_obb}" || log_warn "  [${pkg}] Could not create destination obb dir"
+        fi
+        umount_stale "${int_obb}"
+        apply_permissions "${pkg}" "${sd_obb}"
+        bind_mount_all_ns "${sd_obb}" "${int_obb}" "${pkg}"
     fi
-
-    # Remove any stale existing bind-mounts on destination
-    umount_stale "${dst}"
-
-    # Apply ownership/permissions/SELinux on the SD source
-    apply_permissions "${pkg}" "${src}"
-
-    # Bind-mount into all namespaces
-    bind_mount_all_ns "${src}" "${dst}" "${pkg}"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

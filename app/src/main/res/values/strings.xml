@@ -151,6 +151,10 @@
     <string name="game_detail_mode_title">Mount Mode</string>
     <string name="game_detail_mode_switch_desc">Switching mode updates configuration instantly without re-adding the game.</string>
     <string name="game_detail_move_title">Physical Data Transfer</string>
+    <string name="game_detail_target_scope">Transfer Scope</string>
+    <string name="game_detail_target_all">All (Data+OBB)</string>
+    <string name="game_detail_target_data">Data Only</string>
+    <string name="game_detail_target_obb">OBB Only</string>
     <string name="game_detail_move_warning">Zero data-loss verified: source data is preserved if transfer fails.</string>
     <string name="game_detail_move_to_sd">Move to MicroSD</string>
     <string name="game_detail_move_to_internal">Restore to Internal</string>

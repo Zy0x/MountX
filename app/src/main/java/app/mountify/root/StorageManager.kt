@@ -1,6 +1,7 @@
 package app.mountify.root
 
 import app.mountify.data.model.FilesystemType
+import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MoveDirection
 import app.mountify.data.model.StorageInfo
 import kotlinx.coroutines.Dispatchers
@@ -148,59 +149,105 @@ class StorageManager {
     /**
      * Migrate physical game data between Internal Storage and MicroSD.
      * Handles directory creation, cp/mv, permission restoration, and cleanup.
+     * Supports granular migration target: ALL, DATA_ONLY, OBB_ONLY.
      */
     suspend fun moveGameData(
         packageName: String,
         direction: MoveDirection,
+        target: MigrationTarget = MigrationTarget.ALL,
         sdBase: String = "/data/sdext2"
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val internalPath = "/data/media/0/Android/data/$packageName"
-            val sdPath = "$sdBase/Android/data/$packageName"
+            val uid = RootShell.exec(
+                "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
+            ).output.trim().toIntOrNull() ?: 10000
+
+            val moveData = (target == MigrationTarget.ALL || target == MigrationTarget.DATA_ONLY)
+            val moveObb = (target == MigrationTarget.ALL || target == MigrationTarget.OBB_ONLY)
+
+            val internalData = "/data/media/0/Android/data/$packageName"
+            val sdData = "$sdBase/Android/data/$packageName"
+            val internalObb = "/data/media/0/Android/obb/$packageName"
+            val sdObb = "$sdBase/Android/obb/$packageName"
 
             when (direction) {
                 MoveDirection.TO_SD -> {
-                    if (!RootShell.exists(internalPath)) {
-                        error("Internal data path does not exist: $internalPath")
+                    // 1. Move Data if requested
+                    if (moveData) {
+                        if (RootShell.exists(internalData)) {
+                            RootShell.exec("mkdir -p \"$sdBase/Android/data\"")
+                            val copyRes = RootShell.exec("cp -a \"$internalData\" \"$sdBase/Android/data/\"")
+                            if (!copyRes.isSuccess) {
+                                error("Failed to copy game data to SD: ${copyRes.stderr.joinToString("\n")}")
+                            }
+                            if (!RootShell.exists(sdData)) {
+                                error("Verification failed: SD data directory not found after copy.")
+                            }
+                            RootShell.exec("chown -R $uid:1023 \"$sdData\"")
+                            RootShell.exec("chmod -R 777 \"$sdData\"")
+                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdData\"")
+                            // Clean original internal data content to free space
+                            RootShell.exec("rm -rf \"$internalData\"/*")
+                        } else if (target == MigrationTarget.DATA_ONLY) {
+                            error("Internal data path does not exist: $internalData")
+                        }
                     }
-                    // Ensure destination directory on MicroSD
-                    RootShell.exec("mkdir -p \"$sdBase/Android/data\"")
 
-                    // Copy data from internal to SD
-                    val copyCmd = "cp -a \"$internalPath\" \"$sdBase/Android/data/\""
-                    val copyRes = RootShell.exec(copyCmd)
-                    if (!copyRes.isSuccess) {
-                        error("Failed to copy game data to SD: ${copyRes.stderr.joinToString("\n")}")
+                    // 2. Move OBB if requested
+                    if (moveObb) {
+                        if (RootShell.exists(internalObb)) {
+                            RootShell.exec("mkdir -p \"$sdBase/Android/obb\"")
+                            val copyRes = RootShell.exec("cp -a \"$internalObb\" \"$sdBase/Android/obb/\"")
+                            if (!copyRes.isSuccess) {
+                                error("Failed to copy game OBB to SD: ${copyRes.stderr.joinToString("\n")}")
+                            }
+                            if (!RootShell.exists(sdObb)) {
+                                error("Verification failed: SD OBB directory not found after copy.")
+                            }
+                            RootShell.exec("chown -R $uid:1023 \"$sdObb\"")
+                            RootShell.exec("chmod -R 777 \"$sdObb\"")
+                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdObb\"")
+                            // Clean original internal OBB content to free space
+                            RootShell.exec("rm -rf \"$internalObb\"/*")
+                        } else if (target == MigrationTarget.OBB_ONLY) {
+                            error("Internal OBB path does not exist: $internalObb")
+                        }
                     }
-
-                    // Verify copy
-                    if (!RootShell.exists(sdPath)) {
-                        error("Verification failed: SD data directory not found after copy.")
-                    }
-
-                    // Set permissions on SD
-                    RootShell.exec("chmod -R 777 \"$sdPath\"")
-                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdPath\"")
-
-                    // Remove original internal data folder content to free space
-                    // Keep the folder itself or let bind mount take over
-                    RootShell.exec("rm -rf \"$internalPath\"/*")
                 }
                 MoveDirection.TO_INTERNAL -> {
-                    if (!RootShell.exists(sdPath)) {
-                        error("SD data path does not exist: $sdPath")
+                    // 1. Restore Data if requested
+                    if (moveData) {
+                        if (RootShell.exists(sdData)) {
+                            RootShell.exec("mkdir -p \"/data/media/0/Android/data\"")
+                            val copyRes = RootShell.exec("cp -a \"$sdData\" \"/data/media/0/Android/data/\"")
+                            if (!copyRes.isSuccess) {
+                                error("Failed to copy game data back to internal: ${copyRes.stderr.joinToString("\n")}")
+                            }
+                            if (!RootShell.exists(internalData)) {
+                                error("Verification failed: Internal data directory not found after restore.")
+                            }
+                            RootShell.exec("rm -rf \"$sdData\"")
+                        } else if (target == MigrationTarget.DATA_ONLY) {
+                            error("SD data path does not exist: $sdData")
+                        }
                     }
-                    RootShell.exec("mkdir -p \"/data/media/0/Android/data\"")
 
-                    // Copy back to internal
-                    val copyCmd = "cp -a \"$sdPath\" \"/data/media/0/Android/data/\""
-                    val copyRes = RootShell.exec(copyCmd)
-                    if (!copyRes.isSuccess) {
-                        error("Failed to copy game data back to internal: ${copyRes.stderr.joinToString("\n")}")
+                    // 2. Restore OBB if requested
+                    if (moveObb) {
+                        if (RootShell.exists(sdObb)) {
+                            RootShell.exec("mkdir -p \"/data/media/0/Android/obb\"")
+                            val copyRes = RootShell.exec("cp -a \"$sdObb\" \"/data/media/0/Android/obb/\"")
+                            if (!copyRes.isSuccess) {
+                                error("Failed to copy game OBB back to internal: ${copyRes.stderr.joinToString("\n")}")
+                            }
+                            if (!RootShell.exists(internalObb)) {
+                                error("Verification failed: Internal OBB directory not found after restore.")
+                            }
+                            RootShell.exec("rm -rf \"$sdObb\"")
+                        } else if (target == MigrationTarget.OBB_ONLY) {
+                            error("SD OBB path does not exist: $sdObb")
+                        }
                     }
-
-                    // Remove SD copy
-                    RootShell.exec("rm -rf \"$sdPath\"")
                 }
             }
             Unit

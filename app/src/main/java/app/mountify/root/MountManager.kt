@@ -29,59 +29,76 @@ class MountManager {
     suspend fun mountGame(game: GameEntry, sdBase: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val srcPath: String
-                val relPath: String
-
-                when (game.mode) {
-                    MountMode.FILES -> {
-                        srcPath = "$sdBase/Android/data/${game.packageName}/files"
-                        relPath = "Android/data/${game.packageName}/files"
-                        // Allow databases to stay on internal
-                        RootShell.exec(
-                            "chmod 771 \"/data/user/0/${game.packageName}/databases\" 2>/dev/null"
-                        )
-                    }
-                    MountMode.PKG -> {
-                        srcPath = "$sdBase/Android/data/${game.packageName}"
-                        relPath = "Android/data/${game.packageName}"
-                    }
+                val dataSrcPath = when (game.mode) {
+                    MountMode.FILES -> "$sdBase/Android/data/${game.packageName}/files"
+                    MountMode.PKG -> "$sdBase/Android/data/${game.packageName}"
                 }
+                val dataRelPath = when (game.mode) {
+                    MountMode.FILES -> "Android/data/${game.packageName}/files"
+                    MountMode.PKG -> "Android/data/${game.packageName}"
+                }
+                val obbSrcPath = "$sdBase/Android/obb/${game.packageName}"
+                val obbRelPath = "Android/obb/${game.packageName}"
 
-                // Check source exists
-                if (!RootShell.exists(srcPath)) {
-                    error("Source path does not exist: $srcPath")
+                val hasData = RootShell.exists(dataSrcPath)
+                val hasObb = RootShell.exists(obbSrcPath)
+
+                if (!hasData && !hasObb) {
+                    error("Neither data nor obb source path exists on MicroSD for ${game.packageName}")
                 }
 
                 // Get app UID
                 val uid = getGameUid(game.packageName)
 
-                // Set ownership and permissions on MicroSD
-                RootShell.exec("chown -R $uid:1023 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                RootShell.exec("chmod -R 777 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-
                 // Set ownership on internal data dir
                 RootShell.exec("chown -R $uid:$uid \"/data/user/0/${game.packageName}\" 2>/dev/null")
                 RootShell.exec("chmod -R 775 \"/data/user/0/${game.packageName}\" 2>/dev/null")
 
-                // Bind mount into all namespaces
-                for (namespace in MOUNT_NAMESPACES) {
-                    val targetPath = "$namespace/$relPath"
-                    RootShell.exec("[ -d \"$namespace/Android/data\" ] && mkdir -p \"$targetPath\" 2>/dev/null")
-                    RootShell.exec("[ -d \"$namespace/Android/data\" ] && mount -o bind \"$srcPath\" \"$targetPath\" 2>/dev/null")
+                if (game.mode == MountMode.FILES) {
+                    // Allow databases to stay on internal
+                    RootShell.exec(
+                        "chmod 771 \"/data/user/0/${game.packageName}/databases\" 2>/dev/null"
+                    )
+                }
+
+                // Bind mount Android/data if available on SD
+                if (hasData) {
+                    RootShell.exec("chown -R $uid:1023 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("chmod -R 777 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+
+                    for (namespace in MOUNT_NAMESPACES) {
+                        val targetPath = "$namespace/$dataRelPath"
+                        RootShell.exec("[ -d \"$namespace/Android/data\" ] && mkdir -p \"$targetPath\" 2>/dev/null")
+                        RootShell.exec("[ -d \"$namespace/Android/data\" ] && mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
+                    }
+                }
+
+                // Bind mount Android/obb if available on SD
+                if (hasObb) {
+                    RootShell.exec("chown -R $uid:1023 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chmod -R 777 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+
+                    for (namespace in MOUNT_NAMESPACES) {
+                        val targetPath = "$namespace/$obbRelPath"
+                        RootShell.exec("[ -d \"$namespace/Android\" ] && mkdir -p \"$namespace/Android/obb\" \"$targetPath\" 2>/dev/null")
+                        RootShell.exec("[ -d \"$namespace/Android\" ] && mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
+                    }
                 }
             }
         }
 
     /**
-     * Unmount a single game from all runtime namespaces.
+     * Unmount a single game from all runtime namespaces (both data and obb).
      */
     suspend fun unmountGame(game: GameEntry): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val relPaths = listOf(
                     "Android/data/${game.packageName}/files",
-                    "Android/data/${game.packageName}"
+                    "Android/data/${game.packageName}",
+                    "Android/obb/${game.packageName}"
                 )
                 for (namespace in MOUNT_NAMESPACES) {
                     for (rel in relPaths) {

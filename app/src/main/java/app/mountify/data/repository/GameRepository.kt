@@ -50,10 +50,12 @@ class GameRepository @Inject constructor(
             isEnabled = true
         )
         gameDao.insertGame(entry)
+        syncModuleGamelist()
     }
 
     suspend fun updateGame(game: GameEntry) = withContext(Dispatchers.IO) {
         gameDao.updateGame(game)
+        syncModuleGamelist()
     }
 
     suspend fun removeGame(packageName: String) = withContext(Dispatchers.IO) {
@@ -62,6 +64,7 @@ class GameRepository @Inject constructor(
             mountManager.unmountGame(game)
         }
         gameDao.deleteGame(packageName)
+        syncModuleGamelist()
     }
 
     suspend fun mountGame(game: GameEntry, sdBase: String = "/data/sdext2"): Result<Unit> =
@@ -117,16 +120,32 @@ class GameRepository @Inject constructor(
             count
         }
 
+    suspend fun syncModuleGamelist() = withContext(Dispatchers.IO) {
+        val moduleDir = "/data/adb/modules/Mountify"
+        if (RootShell.exists(moduleDir)) {
+            val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+            val content = games.filter { it.isEnabled }.joinToString("\n") { g ->
+                val modeStr = when (g.mode) {
+                    MountMode.PKG -> "pkg"
+                    MountMode.FILES -> "files"
+                }
+                "${g.packageName}:$modeStr"
+            }
+            RootShell.exec("cat << 'EOF' > \"$moduleDir/gamelist.conf\"\n$content\nEOF\n")
+        }
+    }
+
     suspend fun refreshMountStatuses() = withContext(Dispatchers.IO) {
         val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
         val mountedPaths = mountManager.getMountedPaths()
 
         for (g in games) {
-            val targetFolder = when (g.mode) {
+            val targetData = when (g.mode) {
                 MountMode.FILES -> "Android/data/${g.packageName}/files"
                 MountMode.PKG -> "Android/data/${g.packageName}"
             }
-            val isMounted = mountedPaths.any { it.contains(targetFolder) }
+            val targetObb = "Android/obb/${g.packageName}"
+            val isMounted = mountedPaths.any { it.contains(targetData) || it.contains(targetObb) }
             val newStatus = if (isMounted) MountStatus.MOUNTED else MountStatus.UNMOUNTED
             gameDao.updateMountStatus(g.packageName, newStatus)
         }
@@ -134,11 +153,15 @@ class GameRepository @Inject constructor(
 
     suspend fun calculateDataSize(packageName: String, sdBase: String = "/data/sdext2"): Long =
         withContext(Dispatchers.IO) {
-            val sdPath = "$sdBase/Android/data/$packageName"
-            val internalPath = "/data/media/0/Android/data/$packageName"
+            val sdData = "$sdBase/Android/data/$packageName"
+            val sdObb = "$sdBase/Android/obb/$packageName"
+            val internalData = "/data/media/0/Android/data/$packageName"
+            val internalObb = "/data/media/0/Android/obb/$packageName"
 
-            val targetPath = if (RootShell.exists(sdPath)) sdPath else internalPath
-            val res = RootShell.exec("du -sk \"$targetPath\" 2>/dev/null | cut -f1")
+            val targetData = if (RootShell.exists(sdData)) sdData else internalData
+            val targetObb = if (RootShell.exists(sdObb)) sdObb else internalObb
+
+            val res = RootShell.exec("du -sk \"$targetData\" \"$targetObb\" 2>/dev/null | awk '{sum+=\$1} END {print sum}'")
             val sizeKb = res.output.trim().toLongOrNull() ?: 0L
             val sizeBytes = sizeKb * 1024L
             gameDao.updateDataSize(packageName, sizeBytes)
@@ -147,20 +170,21 @@ class GameRepository @Inject constructor(
 
     suspend fun updateGameMode(packageName: String, mode: MountMode) = withContext(Dispatchers.IO) {
         gameDao.updateMode(packageName, mode)
+        syncModuleGamelist()
     }
 
     suspend fun getInternalAndSdSizes(packageName: String, sdBase: String = "/data/sdext2"): Pair<Long, Long> =
         withContext(Dispatchers.IO) {
-            val internalPath = "/data/media/0/Android/data/$packageName"
-            val sdPath = "$sdBase/Android/data/$packageName"
+            val internalData = "/data/media/0/Android/data/$packageName"
+            val internalObb = "/data/media/0/Android/obb/$packageName"
+            val sdData = "$sdBase/Android/data/$packageName"
+            val sdObb = "$sdBase/Android/obb/$packageName"
 
-            val internalKb = if (RootShell.exists(internalPath)) {
-                RootShell.exec("du -sk \"$internalPath\" 2>/dev/null | cut -f1").output.trim().toLongOrNull() ?: 0L
-            } else 0L
+            val internalRes = RootShell.exec("du -sk \"$internalData\" \"$internalObb\" 2>/dev/null | awk '{sum+=\$1} END {print sum}'")
+            val internalKb = internalRes.output.trim().toLongOrNull() ?: 0L
 
-            val sdKb = if (RootShell.exists(sdPath)) {
-                RootShell.exec("du -sk \"$sdPath\" 2>/dev/null | cut -f1").output.trim().toLongOrNull() ?: 0L
-            } else 0L
+            val sdRes = RootShell.exec("du -sk \"$sdData\" \"$sdObb\" 2>/dev/null | awk '{sum+=\$1} END {print sum}'")
+            val sdKb = sdRes.output.trim().toLongOrNull() ?: 0L
 
             Pair(internalKb * 1024L, sdKb * 1024L)
         }
@@ -233,21 +257,15 @@ class GameRepository @Inject constructor(
             append("  echo \"CACHE:0\"\n")
             append("fi\n")
 
-            append("EXT1_DIR=\"/data/media/0/Android/data/\$PKG\"\n")
-            append("if [ -d \"\$EXT1_DIR\" ]; then\n")
-            append("  EXT1_KB=\$(du -sk \"\$EXT1_DIR\" 2>/dev/null | awk '{print \$1}')\n")
-            append("  echo \"EXT1:\${EXT1_KB:-0}\"\n")
-            append("else\n")
-            append("  echo \"EXT1:0\"\n")
-            append("fi\n")
+            append("EXT1_DATA=\"/data/media/0/Android/data/\$PKG\"\n")
+            append("EXT1_OBB=\"/data/media/0/Android/obb/\$PKG\"\n")
+            append("EXT1_KB=\$(du -sk \"\$EXT1_DATA\" \"\$EXT1_OBB\" 2>/dev/null | awk '{sum+=\$1} END {print sum}')\n")
+            append("echo \"EXT1:\${EXT1_KB:-0}\"\n")
 
-            append("EXT2_DIR=\"\$SDBASE/Android/data/\$PKG\"\n")
-            append("if [ -d \"\$EXT2_DIR\" ]; then\n")
-            append("  EXT2_KB=\$(du -sk \"\$EXT2_DIR\" 2>/dev/null | awk '{print \$1}')\n")
-            append("  echo \"EXT2:\${EXT2_KB:-0}\"\n")
-            append("else\n")
-            append("  echo \"EXT2:0\"\n")
-            append("fi\n")
+            append("EXT2_DATA=\"\$SDBASE/Android/data/\$PKG\"\n")
+            append("EXT2_OBB=\"\$SDBASE/Android/obb/\$PKG\"\n")
+            append("EXT2_KB=\$(du -sk \"\$EXT2_DATA\" \"\$EXT2_OBB\" 2>/dev/null | awk '{sum+=\$1} END {print sum}')\n")
+            append("echo \"EXT2:\${EXT2_KB:-0}\"\n")
         }
 
         val res = RootShell.exec(script)

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import app.mountify.data.model.AppStorageBreakdown
 import app.mountify.data.model.GameEntry
 import app.mountify.data.model.InstalledAppInfo
+import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MountMode
 import app.mountify.data.model.MoveDirection
 import app.mountify.data.repository.GameRepository
@@ -148,12 +149,16 @@ class GamesViewModel @Inject constructor(
         }
     }
 
-    fun moveData(packageName: String, direction: MoveDirection) {
+    fun moveData(
+        packageName: String,
+        direction: MoveDirection,
+        target: MigrationTarget = MigrationTarget.ALL
+    ) {
         viewModelScope.launch {
             _isMovingData.value = true
             _moveMessage.value = null
             val sdBase = appPreferences.sdBasePath.first()
-            val result = storageRepository.moveGameData(packageName, direction, sdBase)
+            val result = storageRepository.moveGameData(packageName, direction, target, sdBase)
             _isMovingData.value = false
             if (result.isSuccess) {
                 _moveMessage.value = "SUCCESS"

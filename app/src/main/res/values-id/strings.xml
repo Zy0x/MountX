@@ -143,6 +143,10 @@
     <string name="game_detail_mode_title">Mode Mount</string>
     <string name="game_detail_mode_switch_desc">Mengubah mode memperbarui konfigurasi langsung tanpa menambah ulang game.</string>
     <string name="game_detail_move_title">Pemindahan Data Fisik</string>
+    <string name="game_detail_target_scope">Cakupan Transfer</string>
+    <string name="game_detail_target_all">Semua (Data+OBB)</string>
+    <string name="game_detail_target_data">Hanya Data</string>
+    <string name="game_detail_target_obb">Hanya OBB</string>
     <string name="game_detail_move_warning">Terverifikasi tanpa kehilangan data: data asal tetap utuh jika transfer gagal.</string>
     <string name="game_detail_move_to_sd">Pindah ke MicroSD</string>
     <string name="game_detail_move_to_internal">Kembalikan ke Internal</string>

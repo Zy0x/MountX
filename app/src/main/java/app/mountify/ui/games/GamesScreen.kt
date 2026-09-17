@@ -91,7 +91,7 @@ fun GamesScreen(
                 viewModel.clearMoveMessage()
                 selectedGameForDetail = null
             },
-            onMove = { dir -> viewModel.moveData(updatedGame.packageName, dir) },
+            onMove = { dir, target -> viewModel.moveData(updatedGame.packageName, dir, target) },
             onUpdateMode = { newMode -> viewModel.updateGameMode(updatedGame.packageName, newMode) },
             onDelete = {
                 gameToDelete = updatedGame

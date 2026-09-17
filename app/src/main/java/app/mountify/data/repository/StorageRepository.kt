@@ -1,6 +1,7 @@
 package app.mountify.data.repository
 
 import app.mountify.data.model.FilesystemType
+import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MoveDirection
 import app.mountify.data.model.StorageInfo
 import app.mountify.root.StorageManager
@@ -61,8 +62,9 @@ class StorageRepository @Inject constructor(
     suspend fun moveGameData(
         packageName: String,
         direction: MoveDirection,
+        target: MigrationTarget = MigrationTarget.ALL,
         sdBase: String = "/data/sdext2"
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        storageManager.moveGameData(packageName, direction, sdBase)
+        storageManager.moveGameData(packageName, direction, target, sdBase)
     }
 }

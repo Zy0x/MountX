@@ -44,6 +44,7 @@ import androidx.core.content.pm.PackageInfoCompat
 import app.mountify.R
 import app.mountify.data.model.AppStorageBreakdown
 import app.mountify.data.model.GameEntry
+import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MountMode
 import app.mountify.data.model.MoveDirection
 import app.mountify.ui.components.AppIconImage
@@ -65,7 +66,7 @@ fun GameDetailView(
     isMoving: Boolean,
     moveMessage: String?,
     onDismiss: () -> Unit,
-    onMove: (MoveDirection) -> Unit,
+    onMove: (MoveDirection, MigrationTarget) -> Unit,
     onUpdateMode: (MountMode) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -74,6 +75,7 @@ fun GameDetailView(
 
     val context = LocalContext.current
     var currentMode by remember(game.mode) { mutableStateOf(game.mode) }
+    var selectedTarget by remember { mutableStateOf(MigrationTarget.ALL) }
 
     // Resolve app package metadata from PackageManager
     val packageInfo = remember(game.packageName) {
@@ -549,6 +551,55 @@ fun GameDetailView(
                             color = MaterialTheme.colorScheme.primary
                         )
 
+                        // Transfer Scope Selector Chips
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = stringResource(R.string.game_detail_target_scope),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    MigrationTarget.ALL to stringResource(R.string.game_detail_target_all),
+                                    MigrationTarget.DATA_ONLY to stringResource(R.string.game_detail_target_data),
+                                    MigrationTarget.OBB_ONLY to stringResource(R.string.game_detail_target_obb)
+                                ).forEach { (target, label) ->
+                                    val isSelected = selectedTarget == target
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(28.dp)
+                                            .clickable { selectedTarget = target }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                                ),
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         if (isMoving) {
                             Row(
                                 modifier = Modifier
@@ -614,7 +665,7 @@ fun GameDetailView(
                             ) {
                                 // Move to MicroSD
                                 Button(
-                                    onClick = { onMove(MoveDirection.TO_SD) },
+                                    onClick = { onMove(MoveDirection.TO_SD, selectedTarget) },
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(34.dp),
@@ -636,7 +687,7 @@ fun GameDetailView(
 
                                 // Restore to Internal
                                 OutlinedButton(
-                                    onClick = { onMove(MoveDirection.TO_INTERNAL) },
+                                    onClick = { onMove(MoveDirection.TO_INTERNAL, selectedTarget) },
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(34.dp),

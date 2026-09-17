@@ -5,6 +5,19 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.34] - 2026-09-17
+
+### Added
+- **Dual OBB & Data Binding Engine (Tahap 1)**:
+  - Extended `MountManager` to bind-mount both game data (`Android/data/<pkg>`) and expansion assets (`Android/obb/<pkg>`) across all 7 Android runtime namespaces with SELinux context `media_rw_data_file` and ownership `UID:1023`.
+  - Added clean lazy unmount for both `data` and `obb` directories on game unmount.
+  - Added `MigrationTarget` enum (`ALL`, `DATA_ONLY`, `OBB_ONLY`) in `StorageInfo` and `StorageManager` to allow granular and combined physical data migration.
+  - Integrated `Android/obb` measurement in `GameRepository` storage breakdown: `Ext 1` now includes internal data + obb, and `Ext 2` includes MicroSD data + obb.
+  - Added dynamic sync of active game list to `/data/adb/modules/Mountify/gamelist.conf` upon add, update, mode change, or removal.
+  - Updated Magisk module `service.sh` to auto-detect and bind-mount `Android/obb` alongside `Android/data` during boot sequence.
+  - Added compact Transfer Scope selector chips (`All (Data+OBB)`, `Data Only`, `OBB Only`) to `GameDetailView` Physical Data Transfer card.
+  - Added English and Indonesian localized strings for transfer scopes.
+
 ## [2.1.33] - 2026-09-17
 
 ### Added
