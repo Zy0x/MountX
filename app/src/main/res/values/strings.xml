@@ -109,6 +109,7 @@
     <string name="add_app_title">Select Application</string>
     <string name="add_app_search_hint">Search app name or package…</string>
     <string name="add_app_menu_show_system">Show System Apps</string>
+    <string name="add_app_menu_hide_system">Hide System Apps</string>
     <string name="add_app_tag_system">SYSTEM</string>
     <string name="add_app_tag_game">GAME</string>
     <string name="add_app_tag_user">USER</string>

@@ -5,6 +5,11 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.27] - 2026-09-17
+
+### Changed
+- Replaced the awkward trailing checkmark on the system apps menu item with dynamic text and a leading Visibility/VisibilityOff icon ("Show System Apps" / "Hide System Apps").
+
 ## [2.1.26] - 2026-09-17
 
 ### Changed

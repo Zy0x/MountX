@@ -103,6 +103,7 @@
     <string name="add_app_title">Pilih Aplikasi</string>
     <string name="add_app_search_hint">Cari nama atau paket aplikasi…</string>
     <string name="add_app_menu_show_system">Tampilkan Aplikasi Sistem</string>
+    <string name="add_app_menu_hide_system">Sembunyikan Aplikasi Sistem</string>
     <string name="add_app_tag_system">SISTEM</string>
     <string name="add_app_tag_game">GAME</string>
     <string name="add_app_tag_user">PENGGUNA</string>
