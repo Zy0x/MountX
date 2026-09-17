@@ -455,8 +455,8 @@ private fun StorageTelemetryCard(
                         Text(
                             text = FormatUtils.formatBytes(storage.freeBytes),
                             style = MaterialTheme.typography.headlineMedium.copy(
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Black
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
                             ),
                             color = CyberEmerald
                         )
@@ -704,46 +704,52 @@ private fun BlockDeviceControlCard(
                     Button(
                         onClick = onMount,
                         enabled = selectedDevice.isNotBlank() && !isMountedCurrently,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = Color.White
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .sizeIn(minHeight = 48.dp)
+                            .height(36.dp)
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             stringResource(R.string.storage_mount),
                             style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
-                            )
+                            ),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
 
                     OutlinedButton(
                         onClick = onUnmount,
                         enabled = storage?.isMounted == true,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.6f)),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = NeonCrimson
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .sizeIn(minHeight = 48.dp)
+                            .height(36.dp)
                     ) {
-                        Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp), tint = NeonCrimson)
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(16.dp), tint = NeonCrimson)
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             stringResource(R.string.storage_unmount),
                             style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
-                            )
+                            ),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -866,18 +872,19 @@ private fun FilesystemFormatterCard(
                         containerColor = NeonCrimson,
                         contentColor = Color.White
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .sizeIn(minHeight = 48.dp)
+                        .height(38.dp)
                 ) {
                     if (isFormatting) {
                         CircularProgressIndicator(
                             color = Color.White,
                             strokeWidth = 2.dp,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             stringResource(R.string.format_in_progress),
                             style = MaterialTheme.typography.labelMedium.copy(
@@ -886,8 +893,8 @@ private fun FilesystemFormatterCard(
                             )
                         )
                     } else {
-                        Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             stringResource(R.string.format_button),
                             style = MaterialTheme.typography.labelMedium.copy(
@@ -1001,17 +1008,18 @@ private fun QuickBackupCard(
                 ) {
                     FilledTonalButton(
                         onClick = onExport,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .sizeIn(minHeight = 48.dp)
+                            .height(36.dp)
                     ) {
-                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             stringResource(R.string.backup_config_export),
                             style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         )
@@ -1019,18 +1027,19 @@ private fun QuickBackupCard(
 
                     OutlinedButton(
                         onClick = onImport,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier
                             .weight(1f)
-                            .sizeIn(minHeight = 48.dp)
+                            .height(36.dp)
                     ) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             stringResource(R.string.backup_config_import),
                             style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         )

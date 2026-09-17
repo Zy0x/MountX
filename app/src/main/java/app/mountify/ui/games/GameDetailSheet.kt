@@ -354,18 +354,19 @@ fun GameDetailSheet(
                         onClick = { onMove(MoveDirection.TO_SD) },
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = 42.dp, max = 46.dp),
-                        shape = RoundedCornerShape(12.dp),
+                            .height(36.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
                         Icon(Icons.Default.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = stringResource(R.string.game_detail_move_to_sd),
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -375,15 +376,16 @@ fun GameDetailSheet(
                         onClick = { onMove(MoveDirection.TO_INTERNAL) },
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = 42.dp, max = 46.dp),
-                        shape = RoundedCornerShape(12.dp),
+                            .height(36.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
                         Icon(Icons.Default.ArrowUpward, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = stringResource(R.string.game_detail_move_to_internal),
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -397,8 +399,9 @@ fun GameDetailSheet(
                 onClick = onDelete,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 40.dp, max = 44.dp),
-                shape = RoundedCornerShape(12.dp),
+                    .height(36.dp),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = NeonCrimson
                 ),

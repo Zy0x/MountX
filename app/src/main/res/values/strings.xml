@@ -165,8 +165,8 @@
     <string name="storage_block_device">Block Device</string>
     <string name="storage_block_device_hint">e.g. /dev/block/mmcblk0p3</string>
     <string name="storage_detect_devices">Detect Devices</string>
-    <string name="storage_mount">Mount Partition</string>
-    <string name="storage_unmount">Unmount Partition</string>
+    <string name="storage_mount">Mount</string>
+    <string name="storage_unmount">Unmount</string>
     <string name="storage_mount_point">Mount Point</string>
     <string name="storage_filesystem">Filesystem</string>
     <string name="storage_total">Total</string>

@@ -171,21 +171,22 @@ fun BackupRestoreScreen(
                         ) {
                             Button(
                                 onClick = { exportLauncher.launch("mountify_config.json") },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary,
                                     contentColor = Color.White
                                 ),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .sizeIn(minHeight = 48.dp)
+                                    .height(36.dp)
                             ) {
-                                Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     stringResource(R.string.backup_config_export),
                                     style = MaterialTheme.typography.labelMedium.copy(
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 )
@@ -193,18 +194,19 @@ fun BackupRestoreScreen(
 
                             OutlinedButton(
                                 onClick = { importLauncher.launch(arrayOf("application/json")) },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .sizeIn(minHeight = 48.dp)
+                                    .height(36.dp)
                             ) {
-                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     stringResource(R.string.backup_config_import),
                                     style = MaterialTheme.typography.labelMedium.copy(
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 )

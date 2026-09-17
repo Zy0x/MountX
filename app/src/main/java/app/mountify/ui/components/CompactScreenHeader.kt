@@ -56,7 +56,7 @@ fun CompactScreenHeader(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 17.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         ),
                         color = MaterialTheme.colorScheme.onSurface
@@ -64,7 +64,7 @@ fun CompactScreenHeader(
                     if (!subtitle.isNullOrBlank()) {
                         Text(
                             text = subtitle,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }

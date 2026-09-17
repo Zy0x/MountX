@@ -144,11 +144,12 @@ fun AboutScreen(
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo!!.downloadUrl))
                                         context.startActivity(intent)
                                     },
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(min = 42.dp, max = 46.dp)
+                                        .height(36.dp)
                                 ) {
                                     Text(stringResource(R.string.about_download_update), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -171,11 +172,12 @@ fun AboutScreen(
                         OutlinedButton(
                             onClick = { viewModel.checkForUpdate() },
                             enabled = !isChecking,
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 42.dp, max = 46.dp)
+                                .height(36.dp)
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -253,27 +255,39 @@ fun AboutScreen(
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://ko-fi.com/noir"))
                                     context.startActivity(intent)
                                 },
-                                modifier = Modifier.weight(1f)
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             ) {
-                                Text(stringResource(R.string.about_kofi))
+                                Text(stringResource(R.string.about_kofi), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                             }
                             FilledTonalButton(
                                 onClick = {
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://saweria.co/noir"))
                                     context.startActivity(intent)
                                 },
-                                modifier = Modifier.weight(1f)
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             ) {
-                                Text(stringResource(R.string.about_saweria))
+                                Text(stringResource(R.string.about_saweria), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                             }
                             FilledTonalButton(
                                 onClick = {
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://paypal.me/noir"))
                                     context.startActivity(intent)
                                 },
-                                modifier = Modifier.weight(1f)
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             ) {
-                                Text(stringResource(R.string.about_paypal))
+                                Text(stringResource(R.string.about_paypal), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }

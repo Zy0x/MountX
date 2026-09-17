@@ -155,8 +155,8 @@
     <string name="storage_block_device">Block Device</string>
     <string name="storage_block_device_hint">mis. /dev/block/mmcblk0p3</string>
     <string name="storage_detect_devices">Deteksi Perangkat</string>
-    <string name="storage_mount">Mount Partisi</string>
-    <string name="storage_unmount">Unmount Partisi</string>
+    <string name="storage_mount">Mount</string>
+    <string name="storage_unmount">Unmount</string>
     <string name="storage_mount_point">Titik Mount</string>
     <string name="storage_filesystem">Sistem Berkas</string>
     <string name="storage_total">Total</string>

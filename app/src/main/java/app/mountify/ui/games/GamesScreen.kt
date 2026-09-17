@@ -554,14 +554,14 @@ fun ModernGameCard(
             ) {
                 AppIconImage(
                     packageName = game.packageName,
-                    size = 42.dp
+                    size = 38.dp
                 )
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = game.displayName.ifBlank { game.packageName },
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 14.sp,
+                            fontSize = 13.5.sp,
                             fontWeight = FontWeight.Bold
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
@@ -569,7 +569,7 @@ fun ModernGameCard(
                     )
                     Text(
                         text = game.packageName,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         maxLines = 1
                     )

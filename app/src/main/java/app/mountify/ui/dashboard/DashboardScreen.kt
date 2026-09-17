@@ -271,7 +271,7 @@ private fun SleekCompactHeader(
             Text(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 color = MaterialTheme.colorScheme.onSurface
@@ -534,7 +534,7 @@ private fun SmartMasterControlCard(
                     else -> stringResource(R.string.dashboard_mounted_games)
                 },
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 color = MaterialTheme.colorScheme.onSurface
@@ -564,17 +564,17 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 42.dp, max = 46.dp)
+                            .height(38.dp)
                             .background(
                                 brush = AuroraGradientBrush,
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(10.dp)
                             ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.Transparent,
                             contentColor = Color.White
                         ),
-                        contentPadding = PaddingValues(0.dp)
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -590,7 +590,7 @@ private fun SmartMasterControlCard(
                             Text(
                                 text = stringResource(R.string.dashboard_hero_add_game_cta),
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = 13.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
                                 color = Color.White
@@ -607,8 +607,9 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 42.dp, max = 46.dp),
-                        shape = RoundedCornerShape(12.dp),
+                            .height(38.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
                             contentColor = MaterialTheme.colorScheme.onSurface
@@ -625,7 +626,7 @@ private fun SmartMasterControlCard(
                         Text(
                             text = stringResource(R.string.dashboard_hero_unmount_all_cta),
                             style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         )
@@ -642,9 +643,10 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 42.dp, max = 46.dp)
-                            .background(gradient, RoundedCornerShape(12.dp)),
-                        shape = RoundedCornerShape(12.dp),
+                            .height(38.dp)
+                            .background(gradient, RoundedCornerShape(10.dp)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.Transparent,
                             contentColor = Color.White
@@ -659,7 +661,7 @@ private fun SmartMasterControlCard(
                         Text(
                             text = stringResource(R.string.dashboard_hero_mount_all_cta),
                             style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         )

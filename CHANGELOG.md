@@ -5,6 +5,18 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.28] - 2026-09-17
+
+### Changed
+- Calibrated global typography scale in `Type.kt` and across screens for tighter visual density and improved readability.
+- Standardized screen header titles to 15sp and subtitles to 10.5sp across all primary tabs.
+- Calibrated oversized action buttons across screens (`DashboardScreen`, `StorageScreen`, `BackupRestoreScreen`, `GameDetailSheet`, `AddGameSheet`, `SettingsScreen`, `AboutScreen`, `ConfirmDialog`) from bloated 42–48dp down to sleek 34–38dp heights with 10dp rounded corners.
+- Scaled down Storage telemetry free-space metric text from 24sp to 18sp bold for balanced layout proportions.
+- Refined `SectionHeader` padding to align cleanly with card margins across screens.
+
+### Fixed
+- Fixed broken line-break on the Storage screen where "Unmount Partition" awkwardly wrapped into multiple lines by simplifying button labels to "Mount" and "Unmount" with enforced single-line rendering.
+
 ## [2.1.27] - 2026-09-17
 
 ### Changed

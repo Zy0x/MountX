@@ -964,13 +964,13 @@ private fun ConfigureAppView(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Button(
             onClick = onConfirm,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
+                .height(38.dp)
                 .background(
                     brush = AuroraGradientBrush,
                     shape = RoundedCornerShape(10.dp)
@@ -985,7 +985,7 @@ private fun ConfigureAppView(
             Text(
                 text = stringResource(R.string.add_game_button),
                 style = MaterialTheme.typography.labelMedium.copy(
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 color = Color.White
@@ -1063,14 +1063,14 @@ private fun ManualAppView(
             )
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Button(
             onClick = onConfirm,
             enabled = manualPackage.isNotBlank(),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
+                .height(38.dp)
                 .background(
                     brush = if (manualPackage.isNotBlank()) AuroraGradientBrush else SolidColor(Color.Gray.copy(alpha = 0.3f)),
                     shape = RoundedCornerShape(10.dp)
@@ -1087,7 +1087,7 @@ private fun ManualAppView(
             Text(
                 text = stringResource(R.string.add_game_button),
                 style = MaterialTheme.typography.labelMedium.copy(
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 color = if (manualPackage.isNotBlank()) Color.White else Color.White.copy(alpha = 0.4f)

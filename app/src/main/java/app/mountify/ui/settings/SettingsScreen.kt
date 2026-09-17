@@ -230,14 +230,15 @@ fun SettingsScreen(
                     onClick = { showResetDialog = true },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 42.dp, max = 46.dp),
-                    shape = RoundedCornerShape(12.dp),
+                        .height(36.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                     border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.5f)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson)
                 ) {
                     Text(
                         stringResource(R.string.settings_reset),
-                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     )
                 }
             }
