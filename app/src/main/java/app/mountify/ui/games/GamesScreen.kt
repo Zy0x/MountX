@@ -121,7 +121,6 @@ fun GamesScreen(
             onUnmountAll = { viewModel.unmountAllGames() },
             onSelectGameForDetail = { game ->
                 selectedGameForDetail = game
-                viewModel.loadStorageBreakdown(game.packageName)
             },
             modifier = modifier
         )

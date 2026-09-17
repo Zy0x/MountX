@@ -72,9 +72,10 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                _rootSolution.value = RootDetector.detectRootSolution()
-                _isModuleInstalled.value = RootDetector.isModuleInstalled()
-                _moduleVersion.value = RootDetector.getModuleVersion()
+                val info = RootDetector.getRootAndModuleInfo(forceRefresh = true)
+                _rootSolution.value = info.rootSolution
+                _isModuleInstalled.value = info.isModuleInstalled
+                _moduleVersion.value = info.moduleVersion
                 gameRepository.refreshMountStatuses()
             } finally {
                 _isRefreshing.value = false

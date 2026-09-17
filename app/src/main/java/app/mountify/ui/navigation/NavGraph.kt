@@ -1,6 +1,8 @@
 package app.mountify.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -46,21 +48,23 @@ fun NavGraph(
 
     val isTopLevelRoute = Screen.bottomNavItems.any { it.route == currentRoute }
 
+    val navigateToTab: (String) -> Unit = { route ->
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     Scaffold(
         bottomBar = {
             if (isTopLevelRoute) {
                 ModernNavigationBar(
                     screens = Screen.bottomNavItems,
                     currentRoute = currentRoute,
-                    onNavigate = { screen ->
-                        navController.navigate(screen.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
+                    onNavigate = { screen -> navigateToTab(screen.route) }
                 )
             }
         },
@@ -75,12 +79,12 @@ fun NavGraph(
                 val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
                 val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
                 if (isTargetBottom && isInitialBottom) {
-                    fadeIn(animationSpec = tween(140))
+                    EnterTransition.None
                 } else {
-                    fadeIn(animationSpec = tween(200)) +
+                    fadeIn(animationSpec = tween(150)) +
                         slideIntoContainer(
                             towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = tween(200)
+                            animationSpec = tween(150)
                         )
                 }
             },
@@ -88,12 +92,12 @@ fun NavGraph(
                 val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
                 val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
                 if (isTargetBottom && isInitialBottom) {
-                    fadeOut(animationSpec = tween(140))
+                    ExitTransition.None
                 } else {
-                    fadeOut(animationSpec = tween(200)) +
+                    fadeOut(animationSpec = tween(150)) +
                         slideOutOfContainer(
                             towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = tween(200)
+                            animationSpec = tween(150)
                         )
                 }
             },
@@ -101,12 +105,12 @@ fun NavGraph(
                 val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
                 val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
                 if (isTargetBottom && isInitialBottom) {
-                    fadeIn(animationSpec = tween(140))
+                    EnterTransition.None
                 } else {
-                    fadeIn(animationSpec = tween(200)) +
+                    fadeIn(animationSpec = tween(150)) +
                         slideIntoContainer(
                             towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = tween(200)
+                            animationSpec = tween(150)
                         )
                 }
             },
@@ -114,12 +118,12 @@ fun NavGraph(
                 val isTargetBottom = Screen.bottomNavItems.any { it.route == targetState.destination.route }
                 val isInitialBottom = Screen.bottomNavItems.any { it.route == initialState.destination.route }
                 if (isTargetBottom && isInitialBottom) {
-                    fadeOut(animationSpec = tween(140))
+                    ExitTransition.None
                 } else {
-                    fadeOut(animationSpec = tween(200)) +
+                    fadeOut(animationSpec = tween(150)) +
                         slideOutOfContainer(
                             towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = tween(200)
+                            animationSpec = tween(150)
                         )
                 }
             }
@@ -128,9 +132,9 @@ fun NavGraph(
                 val vm = hiltViewModel<DashboardViewModel>()
                 DashboardScreen(
                     viewModel = vm,
-                    onNavigateToGames = { navController.navigate(Screen.Games.route) },
-                    onNavigateToStorage = { navController.navigate(Screen.Storage.route) },
-                    onNavigateToLogs = { navController.navigate(Screen.Logs.route) }
+                    onNavigateToGames = { navigateToTab(Screen.Games.route) },
+                    onNavigateToStorage = { navigateToTab(Screen.Storage.route) },
+                    onNavigateToLogs = { navigateToTab(Screen.Logs.route) }
                 )
             }
 
@@ -144,7 +148,7 @@ fun NavGraph(
                 StorageScreen(
                     viewModel = vm,
                     onNavigateToBackup = { navController.navigate("backup_restore") },
-                    onNavigateToGames = { navController.navigate(Screen.Games.route) }
+                    onNavigateToGames = { navigateToTab(Screen.Games.route) }
                 )
             }
 

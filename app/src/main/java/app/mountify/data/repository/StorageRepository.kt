@@ -22,22 +22,22 @@ class StorageRepository @Inject constructor(
 ) {
 
     /**
-     * Poll storage info every 5 seconds.
+     * Poll storage info every 10 seconds.
      */
     fun observeStorageInfo(mountPoint: String = "/data/sdext2"): Flow<StorageInfo?> = flow {
         while (true) {
             emit(storageManager.getStorageInfo(mountPoint))
-            delay(5000L)
+            delay(10000L)
         }
     }.flowOn(Dispatchers.IO)
 
     /**
-     * Poll internal device storage (/data) every 5 seconds.
+     * Poll internal device storage (/data) every 10 seconds.
      */
     fun observeInternalStorage(): Flow<InternalStorageInfo?> = flow {
         while (true) {
             emit(storageManager.getInternalStorageInfo())
-            delay(5000L)
+            delay(10000L)
         }
     }.flowOn(Dispatchers.IO)
 

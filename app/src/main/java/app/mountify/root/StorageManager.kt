@@ -20,19 +20,32 @@ class StorageManager {
      * Query internal storage (/data) statistics (total, used, free space).
      */
     suspend fun getInternalStorageInfo(): InternalStorageInfo? = withContext(Dispatchers.IO) {
-        val dfRes = RootShell.exec("df -k /data 2>/dev/null | tail -n 1")
-        val dfParts = dfRes.output.trim().split(Regex("\\s+"))
-        if (dfParts.size >= 4) {
-            val total1k = dfParts.getOrNull(1)?.toLongOrNull() ?: 0L
-            val used1k = dfParts.getOrNull(2)?.toLongOrNull() ?: 0L
-            val free1k = dfParts.getOrNull(3)?.toLongOrNull() ?: 0L
+        try {
+            val stat = android.os.StatFs("/data")
+            val blockSize = stat.blockSizeLong
+            val totalBytes = stat.blockCountLong * blockSize
+            val freeBytes = stat.availableBlocksLong * blockSize
+            val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
             InternalStorageInfo(
-                totalBytes = total1k * 1024L,
-                usedBytes = used1k * 1024L,
-                freeBytes = free1k * 1024L
+                totalBytes = totalBytes,
+                usedBytes = usedBytes,
+                freeBytes = freeBytes
             )
-        } else {
-            null
+        } catch (_: Exception) {
+            val dfRes = RootShell.exec("df -k /data 2>/dev/null | tail -n 1")
+            val dfParts = dfRes.output.trim().split(Regex("\\s+"))
+            if (dfParts.size >= 4) {
+                val total1k = dfParts.getOrNull(1)?.toLongOrNull() ?: 0L
+                val used1k = dfParts.getOrNull(2)?.toLongOrNull() ?: 0L
+                val free1k = dfParts.getOrNull(3)?.toLongOrNull() ?: 0L
+                InternalStorageInfo(
+                    totalBytes = total1k * 1024L,
+                    usedBytes = used1k * 1024L,
+                    freeBytes = free1k * 1024L
+                )
+            } else {
+                null
+            }
         }
     }
 
@@ -42,15 +55,44 @@ class StorageManager {
      * (disk name, partition number, size, filesystem, mount point, label, UUID).
      */
     suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> = withContext(Dispatchers.IO) {
-        val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
         val mountedMap = mutableMapOf<String, Pair<String, String>>()
-        mountsRes.stdout.forEach { line ->
-            val parts = line.trim().split(Regex("\\s+"))
-            if (parts.size >= 3) {
-                val dev = parts[0]
-                val mnt = parts[1]
-                val fs = parts[2]
-                mountedMap[dev] = Pair(mnt, fs)
+        try {
+            val procMounts = java.io.File("/proc/mounts")
+            if (procMounts.exists() && procMounts.canRead()) {
+                procMounts.forEachLine { line ->
+                    val parts = line.trim().split(Regex("\\s+"))
+                    if (parts.size >= 3) {
+                        mountedMap[parts[0]] = Pair(parts[1], parts[2])
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        if (mountedMap.isEmpty()) {
+            val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
+            mountsRes.stdout.forEach { line ->
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size >= 3) {
+                    mountedMap[parts[0]] = Pair(parts[1], parts[2])
+                }
+            }
+        }
+
+        // Batch scan all blkid entries in ONE single command instead of per-partition loops
+        val blkidMap = mutableMapOf<String, Triple<String?, String?, String?>>()
+        val blkidRes = RootShell.exec("blkid 2>/dev/null || toybox blkid 2>/dev/null")
+        if (blkidRes.isSuccess && blkidRes.output.isNotBlank()) {
+            for (line in blkidRes.stdout) {
+                val devPath = line.substringBefore(":").trim()
+                if (devPath.isNotBlank()) {
+                    val typeMatch = Regex("TYPE=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                    val labelMatch = Regex("LABEL=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                    val uuidMatch = Regex("UUID=\"([^\"]+)\"").find(line)?.groupValues?.get(1)
+                    val info = Triple(typeMatch, labelMatch, uuidMatch)
+                    blkidMap[devPath] = info
+                    val nameOnly = devPath.substringAfterLast("/")
+                    blkidMap[nameOnly] = info
+                }
             }
         }
 
@@ -90,18 +132,13 @@ class StorageManager {
                     var label: String? = null
                     var uuid: String? = null
 
-                    val blkidRes = RootShell.exec("blkid \"$path\" 2>/dev/null || toybox blkid \"$path\" 2>/dev/null")
-                    if (blkidRes.isSuccess && blkidRes.output.isNotBlank()) {
-                        val out = blkidRes.output
-                        val typeMatch = Regex("TYPE=\"([^\"]+)\"").find(out)
-                        val labelMatch = Regex("LABEL=\"([^\"]+)\"").find(out)
-                        val uuidMatch = Regex("UUID=\"([^\"]+)\"").find(out)
-
-                        if (typeMatch != null && fsType.isBlank()) {
-                            fsType = typeMatch.groupValues[1]
+                    val blkidEntry = blkidMap[path] ?: blkidMap[name]
+                    if (blkidEntry != null) {
+                        if (blkidEntry.first != null && fsType.isBlank()) {
+                            fsType = blkidEntry.first!!
                         }
-                        label = labelMatch?.groupValues?.get(1)
-                        uuid = uuidMatch?.groupValues?.get(1)
+                        label = blkidEntry.second
+                        uuid = blkidEntry.third
                     }
 
                     val isTargetMount = mountPoint == targetMountPoint
@@ -253,44 +290,62 @@ class StorageManager {
      */
     suspend fun getStorageInfo(mountPoint: String = "/data/sdext2"): StorageInfo? =
         withContext(Dispatchers.IO) {
-            val isMounted = RootShell.isMountpoint(mountPoint)
-            if (!isMounted) return@withContext null
+            var mountLine: String? = null
+            try {
+                val procMounts = java.io.File("/proc/mounts")
+                if (procMounts.exists() && procMounts.canRead()) {
+                    val target = " $mountPoint "
+                    mountLine = procMounts.useLines { lines ->
+                        lines.firstOrNull { it.contains(target) }
+                    }
+                }
+            } catch (_: Exception) {}
 
-            // Find block device & filesystem from /proc/mounts
-            val mountsRes = RootShell.exec("grep \" $mountPoint \" /proc/mounts | head -n 1")
-            val mountParts = mountsRes.output.trim().split(Regex("\\s+"))
+            if (mountLine == null) {
+                val mountsRes = RootShell.exec("grep \" $mountPoint \" /proc/mounts 2>/dev/null | head -n 1")
+                if (mountsRes.isSuccess && mountsRes.output.isNotBlank()) {
+                    mountLine = mountsRes.output.trim()
+                }
+            }
+
+            if (mountLine.isNullOrBlank()) return@withContext null
+
+            val mountParts = mountLine.trim().split(Regex("\\s+"))
             val blockDevice = mountParts.getOrNull(0) ?: ""
             val filesystem = mountParts.getOrNull(2) ?: ""
 
-            // Use df to get sizes in 1K blocks: df -k /data/sdext2
-            val dfRes = RootShell.exec("df -k \"$mountPoint\" | tail -n 1")
-            val dfParts = dfRes.output.trim().split(Regex("\\s+"))
+            var totalBytes = 0L
+            var usedBytes = 0L
+            var freeBytes = 0L
 
-            if (dfParts.size >= 4) {
-                val total1k = dfParts.getOrNull(1)?.toLongOrNull() ?: 0L
-                val used1k = dfParts.getOrNull(2)?.toLongOrNull() ?: 0L
-                val free1k = dfParts.getOrNull(3)?.toLongOrNull() ?: 0L
-
-                StorageInfo(
-                    blockDevice = blockDevice,
-                    mountPoint = mountPoint,
-                    filesystem = filesystem,
-                    totalBytes = total1k * 1024L,
-                    usedBytes = used1k * 1024L,
-                    freeBytes = free1k * 1024L,
-                    isMounted = true
-                )
-            } else {
-                StorageInfo(
-                    blockDevice = blockDevice,
-                    mountPoint = mountPoint,
-                    filesystem = filesystem,
-                    totalBytes = 0L,
-                    usedBytes = 0L,
-                    freeBytes = 0L,
-                    isMounted = true
-                )
+            try {
+                val stat = android.os.StatFs(mountPoint)
+                val bs = stat.blockSizeLong
+                totalBytes = stat.blockCountLong * bs
+                freeBytes = stat.availableBlocksLong * bs
+                usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
+            } catch (_: Exception) {
+                val dfRes = RootShell.exec("df -k \"$mountPoint\" 2>/dev/null | tail -n 1")
+                val dfParts = dfRes.output.trim().split(Regex("\\s+"))
+                if (dfParts.size >= 4) {
+                    val total1k = dfParts.getOrNull(1)?.toLongOrNull() ?: 0L
+                    val used1k = dfParts.getOrNull(2)?.toLongOrNull() ?: 0L
+                    val free1k = dfParts.getOrNull(3)?.toLongOrNull() ?: 0L
+                    totalBytes = total1k * 1024L
+                    usedBytes = used1k * 1024L
+                    freeBytes = free1k * 1024L
+                }
             }
+
+            StorageInfo(
+                blockDevice = blockDevice,
+                mountPoint = mountPoint,
+                filesystem = filesystem,
+                totalBytes = totalBytes,
+                usedBytes = usedBytes,
+                freeBytes = freeBytes,
+                isMounted = true
+            )
         }
 
     /**

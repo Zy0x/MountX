@@ -91,8 +91,9 @@ class GamesViewModel @Inject constructor(
     fun loadStorageBreakdown(packageName: String) {
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
-            _storageBreakdown.value = gameRepository.getInternalAndSdSizes(packageName, sdBase)
-            _detailedStorage.value = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+            val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+            _detailedStorage.value = breakdown
+            _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
         }
     }
 
@@ -177,8 +178,9 @@ class GamesViewModel @Inject constructor(
                 }
 
                 gameRepository.calculateDataSize(packageName, sdBase)
-                _storageBreakdown.value = gameRepository.getInternalAndSdSizes(packageName, sdBase)
-                _detailedStorage.value = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+                _detailedStorage.value = breakdown
+                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
             } else {
                 _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
             }

@@ -5,6 +5,24 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.41] - 2026-09-17
+
+### Performance
+- **Zero-Lag Bottom Tab Navigation**:
+  - Replaced tab crossfade overhead with instantaneous transition (`EnterTransition.None` / `ExitTransition.None`) for top-level bottom navigation items, eliminating simultaneous composition and layout overhead.
+  - Retained fast 150ms slide transitions specifically for child and sub-screens (`backup_restore`, `about`).
+  - Added centralized tab routing using `findStartDestination` with `saveState = true`, `launchSingleTop = true`, and `restoreState = true`.
+  - Removed layout-remeasuring vertical expanding/shrinking from `ModernNavigationBar` tab items; replaced with fixed 120ms tween animations to eliminate tab switching jitter.
+- **Root Shell & Storage Command Batching**:
+  - Replaced 8 sequential root shell roundtrips in `RootDetector` with a single multi-check shell script and in-memory state caching.
+  - Converted internal storage measurement in `StorageManager` to Android's native `StatFs` kernel system call, eliminating periodic `df` process spawns.
+  - Batched partition device identification in `StorageManager.detectPartitions()` to a single `blkid` run, eliminating per-partition shell execution loops.
+  - Converted mount status checking in `getStorageInfo` to direct `/proc/mounts` file reads.
+  - Reduced storage polling intervals in `StorageRepository` and `LogsViewModel` to reduce background shell traffic.
+- **Canvas Rendering Optimization**:
+  - Optimized `ConcentricStorageChart` by lifting `textPaint`, `centerTextPaint`, and `dashPaint` into `remember(density)` blocks, eliminating frame-by-frame object allocations and garbage collection pressure during horizontal pager scrolling.
+  - Eliminated redundant `getInternalAndSdSizes` shell invocations in `GamesViewModel`.
+
 ## [2.1.40] - 2026-09-17
 
 ### Fixed

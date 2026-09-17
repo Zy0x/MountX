@@ -80,7 +80,7 @@ class LogsViewModel @Inject constructor(
                 if (_isAutoRefresh.value) {
                     readLogFile()
                 }
-                delay(3000L)
+                delay(6000L)
             }
         }
     }

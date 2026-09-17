@@ -143,22 +143,19 @@ private fun FigmaNavItem(
 
     val containerColor by animateColorAsState(
         targetValue = if (selected) activeIndicatorBg else Color.Transparent,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = tween(durationMillis = 120),
         label = "figmaNavContainerColor"
     )
 
     val iconColor by animateColorAsState(
         targetValue = if (selected) activeColor else inactiveColor,
-        animationSpec = tween(durationMillis = 220),
+        animationSpec = tween(durationMillis = 120),
         label = "figmaNavIconColor"
     )
 
     val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.06f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
+        targetValue = if (selected) 1.05f else 1.0f,
+        animationSpec = tween(durationMillis = 120),
         label = "figmaNavIconScale"
     )
 
@@ -178,7 +175,7 @@ private fun FigmaNavItem(
         Column(
             modifier = Modifier
                 .background(containerColor, RoundedCornerShape(12.dp))
-                .padding(horizontal = 4.dp, vertical = 2.dp),
+                .padding(horizontal = 6.dp, vertical = 3.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -193,22 +190,8 @@ private fun FigmaNavItem(
 
             AnimatedVisibility(
                 visible = selected,
-                enter = fadeIn(animationSpec = tween(180, delayMillis = 40)) +
-                    expandVertically(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium
-                        ),
-                        expandFrom = Alignment.Top
-                    ),
-                exit = fadeOut(animationSpec = tween(120)) +
-                    shrinkVertically(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium
-                        ),
-                        shrinkTowards = Alignment.Top
-                    )
+                enter = fadeIn(animationSpec = tween(100)),
+                exit = fadeOut(animationSpec = tween(80))
             ) {
                 Text(
                     text = stringResource(screen.titleRes),

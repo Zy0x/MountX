@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -1175,6 +1176,37 @@ fun ConcentricStorageChart(
     val extColor = Color(0xFF3BA71A)
     val neutralTrack = MaterialTheme.colorScheme.surfaceVariant
 
+    val density = LocalDensity.current
+    val textPaint = remember(density) {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = with(density) { 9.5.dp.toPx() }
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+    }
+
+    val centerTextPaint = remember(density) {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = with(density) { 9.5.dp.toPx() }
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+    }
+
+    val dashPaint = remember(density) {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(180, 255, 255, 255)
+            strokeWidth = with(density) { 1.4.dp.toPx() }
+            pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f, 4f), 0f)
+            style = android.graphics.Paint.Style.STROKE
+            isAntiAlias = true
+        }
+    }
+
     Canvas(modifier = modifier) {
         val diameter = size.minDimension
         val center = Offset(size.width / 2f, size.height / 2f)
@@ -1201,13 +1233,6 @@ fun ConcentricStorageChart(
         val ringCenterRadius = (outerRadius + innerRadius) / 2f
 
         var currentAngle = -90f
-        val textPaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
-            textSize = 9.5.dp.toPx()
-            textAlign = android.graphics.Paint.Align.CENTER
-            isFakeBoldText = true
-            isAntiAlias = true
-        }
 
         slices.forEach { slice ->
             if (slice.bytes > 0) {
@@ -1246,14 +1271,6 @@ fun ConcentricStorageChart(
         val centerCircleRadius = innerRadius - 3.dp.toPx()
         val internalPct = breakdown.internalPercent
         val extPct = breakdown.externalPercent
-
-        val centerTextPaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
-            textSize = 9.5.dp.toPx()
-            textAlign = android.graphics.Paint.Align.CENTER
-            isFakeBoldText = true
-            isAntiAlias = true
-        }
 
         if (extPct == 0) {
             // 100% on Phone Internal Memory
@@ -1302,13 +1319,6 @@ fun ConcentricStorageChart(
             )
 
             // Dotted divider vertical line between sectors
-            val dashPaint = android.graphics.Paint().apply {
-                color = android.graphics.Color.argb(180, 255, 255, 255)
-                this.strokeWidth = 1.4.dp.toPx()
-                pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f, 4f), 0f)
-                style = android.graphics.Paint.Style.STROKE
-                isAntiAlias = true
-            }
             drawContext.canvas.nativeCanvas.drawLine(
                 center.x,
                 center.y - centerCircleRadius * 0.65f,
