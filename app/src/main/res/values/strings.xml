@@ -108,13 +108,13 @@
     <!-- Full-Screen App Picker -->
     <string name="add_app_title">Select Application</string>
     <string name="add_app_search_hint">Search app name or package…</string>
-    <string name="add_app_tab_games">Games (%1$d)</string>
-    <string name="add_app_tab_user">User Apps (%1$d)</string>
-    <string name="add_app_tab_system">System (%1$d)</string>
-    <string name="add_app_tab_all">All (%1$d)</string>
+    <string name="add_app_menu_show_system">Show System Apps</string>
     <string name="add_app_tag_system">SYSTEM</string>
     <string name="add_app_tag_game">GAME</string>
     <string name="add_app_tag_user">USER</string>
+    <string name="add_app_system_warning_compact_title">System Package Warning</string>
+    <string name="add_app_system_warning_compact_desc">Redirecting system data for \"%1$s\" (%2$s) to MicroSD may cause force closes or bootloops if mount fails. Proceed?</string>
+    <string name="add_app_system_warning_proceed">Proceed</string>
     <string name="add_app_system_warning_title">System Application Warning</string>
     <string name="add_app_system_warning_desc">\"%1$s\" is an Android system package (%2$s).\n\nRedirecting system app data to MicroSD can cause repeated force closes, UI freezes, or bootloops if storage becomes unreadable.\n\nDo you want to proceed?</string>
     <string name="add_app_system_warning_confirm">Proceed Anyway</string>

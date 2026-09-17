@@ -4,32 +4,30 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,25 +40,16 @@ import app.mountify.data.model.MountMode
 import app.mountify.data.model.SmartGamePresets
 import app.mountify.ui.components.AppIconImage
 import app.mountify.ui.components.CompactScreenHeader
-import app.mountify.ui.components.ConfirmDialog
 import app.mountify.ui.theme.AuroraGradientBrush
 import app.mountify.ui.theme.CyberEmerald
 import app.mountify.ui.theme.NeonCrimson
 
-private enum class AppFilterTab {
-    GAMES,
-    USER,
-    SYSTEM,
-    ALL
-}
-
 /**
  * Dedicated Full-Screen Application Picker for Mountify.
- * Adheres strictly to Section 3.5 compact sizing guidelines:
- * - Uses CompactScreenHeader (zero excess status bar padding)
- * - Sleek 38dp search bar with BasicTextField
- * - 30dp compact filter tab chips
- * - Standardized 18-20dp action icons and 36dp app icons
+ * - Displays User Apps by default in pure alphabetical order (A-Z)
+ * - Top-right MoreVert menu to toggle system apps visibility
+ * - Floating Action Button (pencil icon) in bottom-right for custom/manual game entry
+ * - Ultra-minimalist compact warning dialog for system applications
  */
 @Composable
 fun AddAppPicker(
@@ -72,41 +61,35 @@ fun AddAppPicker(
     var isManualMode by remember { mutableStateOf(false) }
     var selectedApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
     var pendingSystemApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
+    var showSystemApps by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
 
     // Manual input fields
     var manualPackage by remember { mutableStateOf("") }
     var manualName by remember { mutableStateOf("") }
     var selectedMode by remember { mutableStateOf(MountMode.PKG) }
 
-    // Search and tab filter
+    // Real-time search query
     var searchQuery by remember { mutableStateOf("") }
-    var selectedFilterTab by remember(installedApps) {
-        mutableStateOf(if (installedApps.any { it.isGame }) AppFilterTab.GAMES else AppFilterTab.ALL)
-    }
 
-    val matchingApps = remember(installedApps, searchQuery) {
-        if (searchQuery.isBlank()) {
+    val baseApps = remember(installedApps, showSystemApps) {
+        val list = if (showSystemApps) {
             installedApps
         } else {
+            installedApps.filter { !it.isSystemApp }
+        }
+        list.sortedBy { it.displayName.lowercase() }
+    }
+
+    val filteredApps = remember(baseApps, searchQuery) {
+        if (searchQuery.isBlank()) {
+            baseApps
+        } else {
             val query = searchQuery.trim()
-            installedApps.filter { app ->
+            baseApps.filter { app ->
                 app.displayName.contains(query, ignoreCase = true) ||
                     app.packageName.contains(query, ignoreCase = true)
             }
-        }
-    }
-
-    val gamesCount = remember(matchingApps) { matchingApps.count { it.isGame } }
-    val userCount = remember(matchingApps) { matchingApps.count { !it.isGame && !it.isSystemApp } }
-    val systemCount = remember(matchingApps) { matchingApps.count { it.isSystemApp } }
-    val totalCount = matchingApps.size
-
-    val filteredApps = remember(matchingApps, selectedFilterTab) {
-        when (selectedFilterTab) {
-            AppFilterTab.GAMES -> matchingApps.filter { it.isGame }
-            AppFilterTab.USER -> matchingApps.filter { !it.isGame && !it.isSystemApp }
-            AppFilterTab.SYSTEM -> matchingApps.filter { it.isSystemApp }
-            AppFilterTab.ALL -> matchingApps
         }
     }
 
@@ -127,7 +110,7 @@ fun AddAppPicker(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Standard Compact Screen Header (replaces bloated TopAppBar)
+        // Standard Compact Screen Header
         CompactScreenHeader(
             title = when {
                 selectedApp != null -> stringResource(R.string.add_app_configure_title, selectedApp!!.displayName)
@@ -149,16 +132,52 @@ fun AddAppPicker(
             },
             actions = {
                 if (selectedApp == null && !isManualMode) {
-                    IconButton(
-                        onClick = { isManualMode = true },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = stringResource(R.string.add_app_manual_title),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Menu",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.add_app_menu_show_system),
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        if (showSystemApps) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    showSystemApps = !showSystemApps
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -205,12 +224,6 @@ fun AddAppPicker(
                         filteredApps = filteredApps,
                         searchQuery = searchQuery,
                         onSearchQueryChange = { searchQuery = it },
-                        selectedFilterTab = selectedFilterTab,
-                        onFilterTabChange = { selectedFilterTab = it },
-                        gamesCount = gamesCount,
-                        userCount = userCount,
-                        systemCount = systemCount,
-                        totalCount = totalCount,
                         onAppSelected = { app ->
                             if (app.isSystemApp) {
                                 pendingSystemApp = app
@@ -219,30 +232,112 @@ fun AddAppPicker(
                             }
                         }
                     )
+
+                    // Floating Action Button for Manual/Custom Game Input
+                    FloatingActionButton(
+                        onClick = { isManualMode = true },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 16.dp)
+                            .size(46.dp),
+                        shape = CircleShape,
+                        containerColor = Color.Transparent,
+                        contentColor = Color.White,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(brush = AuroraGradientBrush, shape = CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = stringResource(R.string.add_app_manual_title),
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 
-    // System App Warning Dialog (destructive safety gate)
+    // Ultra-Minimalist System App Warning Dialog
     if (pendingSystemApp != null) {
         val sysApp = pendingSystemApp!!
-        ConfirmDialog(
-            title = stringResource(R.string.add_app_system_warning_title),
-            message = stringResource(
-                R.string.add_app_system_warning_desc,
-                sysApp.displayName,
-                sysApp.packageName
-            ),
-            confirmText = stringResource(R.string.add_app_system_warning_confirm),
-            cancelText = stringResource(R.string.common_cancel),
-            isDestructive = true,
-            onConfirm = {
-                selectedApp = sysApp
-                pendingSystemApp = null
+        AlertDialog(
+            onDismissRequest = { pendingSystemApp = null },
+            shape = RoundedCornerShape(12.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = NeonCrimson,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.add_app_system_warning_compact_title),
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             },
-            onDismiss = {
-                pendingSystemApp = null
+            text = {
+                Text(
+                    text = stringResource(
+                        R.string.add_app_system_warning_compact_desc,
+                        sysApp.displayName,
+                        sysApp.packageName
+                    ),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        selectedApp = sysApp
+                        pendingSystemApp = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.add_app_system_warning_proceed),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { pendingSystemApp = null },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.common_cancel),
+                        fontSize = 11.5.sp
+                    )
+                }
             }
         )
     }
@@ -272,12 +367,6 @@ private fun BrowseAppListView(
     filteredApps: List<InstalledAppInfo>,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    selectedFilterTab: AppFilterTab,
-    onFilterTabChange: (AppFilterTab) -> Unit,
-    gamesCount: Int,
-    userCount: Int,
-    systemCount: Int,
-    totalCount: Int,
     onAppSelected: (InstalledAppInfo) -> Unit
 ) {
     Column(
@@ -353,45 +442,9 @@ private fun BrowseAppListView(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Compact Filter Chips Row (height 30dp)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            CompactFilterTabChip(
-                selected = selectedFilterTab == AppFilterTab.GAMES,
-                label = stringResource(R.string.add_app_tab_games, gamesCount),
-                icon = Icons.Default.SportsEsports,
-                onClick = { onFilterTabChange(AppFilterTab.GAMES) }
-            )
-            CompactFilterTabChip(
-                selected = selectedFilterTab == AppFilterTab.USER,
-                label = stringResource(R.string.add_app_tab_user, userCount),
-                icon = Icons.Default.Widgets,
-                onClick = { onFilterTabChange(AppFilterTab.USER) }
-            )
-            CompactFilterTabChip(
-                selected = selectedFilterTab == AppFilterTab.SYSTEM,
-                label = stringResource(R.string.add_app_tab_system, systemCount),
-                icon = Icons.Default.Warning,
-                onClick = { onFilterTabChange(AppFilterTab.SYSTEM) },
-                isWarning = true
-            )
-            CompactFilterTabChip(
-                selected = selectedFilterTab == AppFilterTab.ALL,
-                label = stringResource(R.string.add_app_tab_all, totalCount),
-                icon = Icons.Default.Android,
-                onClick = { onFilterTabChange(AppFilterTab.ALL) }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Application List Content
+        // Application List Content (starts immediately under search bar)
         if (installedApps.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -426,29 +479,6 @@ private fun BrowseAppListView(
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
-                    if (selectedFilterTab != AppFilterTab.ALL && totalCount > 0) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                            modifier = Modifier
-                                .height(32.dp)
-                                .clickable { onFilterTabChange(AppFilterTab.ALL) }
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(horizontal = 14.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.add_app_tab_all, totalCount),
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
                 }
             }
         } else {
@@ -457,7 +487,7 @@ private fun BrowseAppListView(
                     .fillMaxWidth()
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
-                contentPadding = PaddingValues(bottom = 16.dp)
+                contentPadding = PaddingValues(bottom = 76.dp)
             ) {
                 items(filteredApps, key = { it.packageName }) { app ->
                     val hasPreset = remember(app.packageName) {
@@ -584,62 +614,6 @@ private fun BrowseAppListView(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun CompactFilterTabChip(
-    selected: Boolean,
-    label: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    isWarning: Boolean = false
-) {
-    val backgroundColor = if (selected) {
-        if (isWarning) NeonCrimson.copy(alpha = 0.14f)
-        else MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-    }
-    val borderColor = if (selected) {
-        if (isWarning) NeonCrimson.copy(alpha = 0.8f)
-        else MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-    } else {
-        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-    }
-    val contentColor = if (selected) {
-        if (isWarning) NeonCrimson
-        else MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-    }
-
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = backgroundColor,
-        border = BorderStroke(1.dp, borderColor),
-        modifier = Modifier
-            .height(30.dp)
-            .clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(13.dp)
-            )
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = contentColor
-            )
         }
     }
 }
@@ -957,19 +931,19 @@ private fun ManualAppView(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            CompactFilterTabChip(
+            FilterChip(
                 selected = selectedMode == MountMode.PKG,
-                label = "PKG Mode",
-                icon = Icons.Default.SportsEsports,
-                onClick = { onModeChange(MountMode.PKG) }
+                onClick = { onModeChange(MountMode.PKG) },
+                label = { Text("PKG Mode", fontSize = 11.5.sp) },
+                modifier = Modifier.weight(1f)
             )
-            CompactFilterTabChip(
+            FilterChip(
                 selected = selectedMode == MountMode.FILES,
-                label = "FILES Mode",
-                icon = Icons.Default.Widgets,
-                onClick = { onModeChange(MountMode.FILES) }
+                onClick = { onModeChange(MountMode.FILES) },
+                label = { Text("FILES Mode", fontSize = 11.5.sp) },
+                modifier = Modifier.weight(1f)
             )
         }
 

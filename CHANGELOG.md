@@ -5,6 +5,17 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.21] - 2026-09-17
+
+### Added
+- Top-right `MoreVert` three-dots menu on `AddAppPicker` offering a checkmark toggle to display system applications on demand.
+- Floating Action Button (FAB) in the bottom-right corner (compact 46dp, Aurora theme gradient, pencil icon) for quick access to manual/custom game entry.
+
+### Changed
+- Removed category filter tabs entirely, reclaiming vertical real estate so the app list begins immediately beneath the compact 38dp search bar.
+- Streamlined default application list to show User Apps exclusively, sorted purely in alphabetical order (A–Z).
+- Replaced oversized confirmation dialog with an ultra-minimalist, compact safety warning dialog (34dp action buttons, concise technical message).
+
 ## [2.1.20] - 2026-09-17
 
 ### Added
