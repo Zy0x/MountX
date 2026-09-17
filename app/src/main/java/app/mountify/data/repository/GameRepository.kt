@@ -259,14 +259,23 @@ class GameRepository @Inject constructor(
 
             append("EXT1_DATA=\"/data/media/0/Android/data/\$PKG\"\n")
             append("EXT1_OBB=\"/data/media/0/Android/obb/\$PKG\"\n")
-            append("EXT1_KB=\$(du -sk \"\$EXT1_DATA\" \"\$EXT1_OBB\" 2>/dev/null | awk '{sum+=\$1} END {print sum}')\n")
-            append("echo \"EXT1:\${EXT1_KB:-0}\"\n")
+            append("EXT1_DATA_KB=\$(du -sk \"\$EXT1_DATA\" 2>/dev/null | awk '{print \$1}')\n")
+            append("EXT1_OBB_KB=\$(du -sk \"\$EXT1_OBB\" 2>/dev/null | awk '{print \$1}')\n")
+            append("echo \"EXT1_DATA:\${EXT1_DATA_KB:-0}\"\n")
+            append("echo \"EXT1_OBB:\${EXT1_OBB_KB:-0}\"\n")
 
             append("EXT2_DATA=\"\$SDBASE/Android/data/\$PKG\"\n")
             append("EXT2_OBB=\"\$SDBASE/Android/obb/\$PKG\"\n")
-            append("EXT2_KB=\$(du -sk \"\$EXT2_DATA\" \"\$EXT2_OBB\" 2>/dev/null | awk '{sum+=\$1} END {print sum}')\n")
-            append("echo \"EXT2:\${EXT2_KB:-0}\"\n")
+            append("EXT2_DATA_KB=\$(du -sk \"\$EXT2_DATA\" 2>/dev/null | awk '{print \$1}')\n")
+            append("EXT2_OBB_KB=\$(du -sk \"\$EXT2_OBB\" 2>/dev/null | awk '{print \$1}')\n")
+            append("echo \"EXT2_DATA:\${EXT2_DATA_KB:-0}\"\n")
+            append("echo \"EXT2_OBB:\${EXT2_OBB_KB:-0}\"\n")
         }
+
+        var ext1DataBytes = 0L
+        var ext1ObbBytes = 0L
+        var ext2DataBytes = 0L
+        var ext2ObbBytes = 0L
 
         val res = RootShell.exec(script)
         res.stdout.forEach { line ->
@@ -277,10 +286,17 @@ class GameRepository @Inject constructor(
                 trimmed.startsWith("LIB:") -> libBytes = (trimmed.substringAfter("LIB:").toLongOrNull() ?: 0L) * 1024L
                 trimmed.startsWith("DATA:") -> dataBytes = (trimmed.substringAfter("DATA:").toLongOrNull() ?: 0L) * 1024L
                 trimmed.startsWith("CACHE:") -> cacheBytes = (trimmed.substringAfter("CACHE:").toLongOrNull() ?: 0L) * 1024L
+                trimmed.startsWith("EXT1_DATA:") -> ext1DataBytes = (trimmed.substringAfter("EXT1_DATA:").toLongOrNull() ?: 0L) * 1024L
+                trimmed.startsWith("EXT1_OBB:") -> ext1ObbBytes = (trimmed.substringAfter("EXT1_OBB:").toLongOrNull() ?: 0L) * 1024L
+                trimmed.startsWith("EXT2_DATA:") -> ext2DataBytes = (trimmed.substringAfter("EXT2_DATA:").toLongOrNull() ?: 0L) * 1024L
+                trimmed.startsWith("EXT2_OBB:") -> ext2ObbBytes = (trimmed.substringAfter("EXT2_OBB:").toLongOrNull() ?: 0L) * 1024L
                 trimmed.startsWith("EXT1:") -> ext1Bytes = (trimmed.substringAfter("EXT1:").toLongOrNull() ?: 0L) * 1024L
                 trimmed.startsWith("EXT2:") -> ext2Bytes = (trimmed.substringAfter("EXT2:").toLongOrNull() ?: 0L) * 1024L
             }
         }
+
+        ext1Bytes = ext1DataBytes + ext1ObbBytes
+        ext2Bytes = ext2DataBytes + ext2ObbBytes
 
         // Fallback for APK if root returned 0 but appInfo file exists
         if (apkBytes == 0L && sourceDir.isNotBlank()) {
@@ -297,7 +313,11 @@ class GameRepository @Inject constructor(
             dataBytes = dataBytes,
             cacheBytes = cacheBytes,
             ext1Bytes = ext1Bytes,
-            ext2Bytes = ext2Bytes
+            ext2Bytes = ext2Bytes,
+            ext1DataBytes = ext1DataBytes,
+            ext1ObbBytes = ext1ObbBytes,
+            ext2DataBytes = ext2DataBytes,
+            ext2ObbBytes = ext2ObbBytes
         )
     }
 

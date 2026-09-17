@@ -175,6 +175,13 @@
     <string name="game_detail_delete_action">Remove from Mountify</string>
     <string name="game_detail_status_mounted">Active &amp; Mounted</string>
     <string name="game_detail_status_unmounted">Standby (Unmounted)</string>
+    <string name="game_detail_manage_status_internal">Data stored on internal storage</string>
+    <string name="game_detail_manage_status_sd">Data active on MicroSD (Mounted)</string>
+    <string name="game_detail_manage_est_transfer">Estimated data to transfer: %1$s</string>
+    <string name="game_detail_manage_est_restore">Estimated data to restore: %1$s</string>
+    <string name="game_detail_advanced_mode_title">Advanced: Mount Mode</string>
+    <string name="game_detail_advanced_mode_summary">Configured: %1$s Mode</string>
+    <string name="game_detail_advanced_mode_auto">Auto</string>
 
     <!-- Move Data Sheet -->
     <string name="move_data_title">Move App Data</string>

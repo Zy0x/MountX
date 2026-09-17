@@ -5,6 +5,17 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.38] - 2026-09-17
+
+### Added
+- **Manage Tab Automation & Seamless Transfer Hub**:
+  - **Automated Mount Lifecycle**: Moving data to MicroSD now automatically copies data, verifies integrity, cleans source internal storage, and auto-mounts into all 7 Android runtime namespaces instantly without requiring manual mount actions.
+  - **Clean & Safe Internal Restoration**: Restoring data to internal storage now performs automated unmounting first to prevent cross-device locks, transfers data back to internal shared storage, verifies integrity, restores standard Linux UID ownership (`$uid:1023`), permissions (`chmod 775`), and SELinux contexts (`u:object_r:media_rw_data_file:s0`), and cleans MicroSD directories.
+  - **Dynamic Transfer & Restore Size Estimation**: Added live size calculation surface dynamically reflecting exact bytes to be moved or restored according to the active scope chip selection (`All`, `Data Only`, `OBB Only`).
+  - **Collapsible Advanced Options Accordion**: Moved technical `PKG Mode` vs `FILES Mode` selection cards into an expandable "Advanced: Mount Mode" card with smooth animation, displaying current mode summary when collapsed.
+  - **Granular Storage Breakdown Metrics**: Added distinct measurement for `ext1DataBytes`, `ext1ObbBytes`, `ext2DataBytes`, and `ext2ObbBytes` in repository and data models.
+  - Added multi-language localized strings in `values/strings.xml` and `values-id/strings.xml`.
+
 ## [2.1.37] - 2026-09-17
 
 ### Changed

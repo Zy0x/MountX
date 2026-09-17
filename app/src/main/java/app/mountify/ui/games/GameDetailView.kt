@@ -7,6 +7,9 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,8 +27,11 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,6 +54,7 @@ import app.mountify.data.model.AppStorageBreakdown
 import app.mountify.data.model.GameEntry
 import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MountMode
+import app.mountify.data.model.MountStatus
 import app.mountify.data.model.MoveDirection
 import app.mountify.ui.components.AppIconImage
 import app.mountify.ui.components.CompactScreenHeader
@@ -271,6 +278,8 @@ fun GameDetailView(
                 when (page) {
                     0 -> StorageTabContent(breakdown = breakdown)
                     1 -> ManageTabContent(
+                        game = game,
+                        breakdown = breakdown,
                         currentMode = currentMode,
                         onUpdateMode = { mode ->
                             currentMode = mode
@@ -614,10 +623,12 @@ private fun StorageTabContent(
 }
 
 /**
- * Tab 1: Manage Mount Mode & Physical Data Transfer
+ * Tab 1: Unified Transfer Hub & Advanced Mount Mode Settings
  */
 @Composable
 private fun ManageTabContent(
+    game: GameEntry,
+    breakdown: AppStorageBreakdown,
     currentMode: MountMode,
     onUpdateMode: (MountMode) -> Unit,
     selectedTarget: MigrationTarget,
@@ -628,6 +639,12 @@ private fun ManageTabContent(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isAdvancedExpanded by remember { mutableStateOf(false) }
+
+    val isMounted = game.mountStatus == MountStatus.MOUNTED
+    val sizeToSd = breakdown.getSizeForScope(selectedTarget, MoveDirection.TO_SD)
+    val sizeToInternal = breakdown.getSizeForScope(selectedTarget, MoveDirection.TO_INTERNAL)
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -635,7 +652,7 @@ private fun ManageTabContent(
             .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // ── MOUNT MODE SELECTOR CARD ──
+        // ── UNIFIED PHYSICAL DATA TRANSFER & MOUNT HUB CARD ──
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -646,130 +663,69 @@ private fun ManageTabContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.game_detail_mode_title),
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.primary
-                )
-
+                // Header: Title & Dynamic Storage Status Badge
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // PKG Option
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (currentMode == MountMode.PKG)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        else
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = BorderStroke(
-                            1.dp,
-                            if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    Text(
+                        text = stringResource(R.string.game_detail_move_title),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
                         ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onUpdateMode(MountMode.PKG) }
-                    ) {
-                        Column(modifier = Modifier.padding(9.dp)) {
-                            Text(
-                                text = "PKG Mode",
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = stringResource(R.string.add_game_mode_pkg_desc),
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 9.5.sp,
-                                    lineHeight = 12.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                            )
-                        }
-                    }
+                        color = MaterialTheme.colorScheme.primary
+                    )
 
-                    // FILES Option
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (currentMode == MountMode.FILES)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        else
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isMounted) CyberEmerald.copy(alpha = 0.12f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
                         border = BorderStroke(
                             1.dp,
-                            if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary
+                            if (isMounted) CyberEmerald.copy(alpha = 0.4f)
                             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { onUpdateMode(MountMode.FILES) }
+                        )
                     ) {
-                        Column(modifier = Modifier.padding(9.dp)) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isMounted) Icons.Default.SdCard else Icons.Default.Smartphone,
+                                contentDescription = null,
+                                tint = if (isMounted) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(11.dp)
+                            )
                             Text(
-                                text = "FILES Mode",
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontSize = 12.sp,
+                                text = if (isMounted) stringResource(R.string.game_detail_badge_mounted)
+                                       else stringResource(R.string.game_detail_status_unmounted),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = stringResource(R.string.add_game_mode_files_desc),
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 9.5.sp,
-                                    lineHeight = 12.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                color = if (isMounted) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
 
+                // Storage location explanation
                 Text(
-                    text = stringResource(R.string.game_detail_mode_switch_desc),
+                    text = if (isMounted) stringResource(R.string.game_detail_manage_status_sd)
+                           else stringResource(R.string.game_detail_manage_status_internal),
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 9.5.sp,
-                        lineHeight = 12.sp
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp
                     ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
-                )
-            }
-        }
-
-        // ── PHYSICAL DATA TRANSFER CARD ──
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.game_detail_move_title),
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )
 
-                // Transfer Scope Selector Chips
+                // Scope Selector Chips
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = stringResource(R.string.game_detail_target_scope),
@@ -818,6 +774,51 @@ private fun ManageTabContent(
                     }
                 }
 
+                // Dynamic Size Estimation Box
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 9.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = if (isMounted)
+                                stringResource(R.string.game_detail_manage_est_restore, FormatUtils.formatBytes(sizeToInternal))
+                            else
+                                stringResource(R.string.game_detail_manage_est_transfer, FormatUtils.formatBytes(sizeToSd)),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Zero data loss safety note
+                Text(
+                    text = stringResource(R.string.game_detail_move_warning),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 9.5.sp,
+                        lineHeight = 12.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                )
+
+                // Loading or Result banner
                 if (isMoving) {
                     Row(
                         modifier = Modifier
@@ -881,7 +882,7 @@ private fun ManageTabContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Move to MicroSD
+                        // Move to MicroSD (Auto-Mount)
                         Button(
                             onClick = { onMove(MoveDirection.TO_SD, selectedTarget) },
                             modifier = Modifier
@@ -903,7 +904,7 @@ private fun ManageTabContent(
                             )
                         }
 
-                        // Restore to Internal
+                        // Restore to Internal (Auto-Unmount + Permission fix)
                         OutlinedButton(
                             onClick = { onMove(MoveDirection.TO_INTERNAL, selectedTarget) },
                             modifier = Modifier
@@ -921,6 +922,182 @@ private fun ManageTabContent(
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                    }
+                }
+            }
+        }
+
+        // ── COLLAPSIBLE ADVANCED OPTIONS: MOUNT MODE CARD ──
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Clickable accordion header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isAdvancedExpanded = !isAdvancedExpanded }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(6.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                text = stringResource(R.string.game_detail_advanced_mode_title),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = stringResource(R.string.game_detail_advanced_mode_summary, currentMode.name),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 10.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = if (isAdvancedExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Collapsible Content
+                AnimatedVisibility(
+                    visible = isAdvancedExpanded,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .padding(bottom = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // PKG Option
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (currentMode == MountMode.PKG)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onUpdateMode(MountMode.PKG) }
+                            ) {
+                                Column(modifier = Modifier.padding(9.dp)) {
+                                    Text(
+                                        text = "PKG Mode",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = stringResource(R.string.add_game_mode_pkg_desc),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 9.5.sp,
+                                            lineHeight = 12.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+
+                            // FILES Option
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (currentMode == MountMode.FILES)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onUpdateMode(MountMode.FILES) }
+                            ) {
+                                Column(modifier = Modifier.padding(9.dp)) {
+                                    Text(
+                                        text = "FILES Mode",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = stringResource(R.string.add_game_mode_files_desc),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 9.5.sp,
+                                            lineHeight = 12.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = stringResource(R.string.game_detail_mode_switch_desc),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 9.5.sp,
+                                lineHeight = 12.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                        )
                     }
                 }
             }

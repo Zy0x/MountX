@@ -19,7 +19,11 @@ data class AppStorageBreakdown(
     val dataBytes: Long = 0L,
     val cacheBytes: Long = 0L,
     val ext1Bytes: Long = 0L,
-    val ext2Bytes: Long = 0L
+    val ext2Bytes: Long = 0L,
+    val ext1DataBytes: Long = 0L,
+    val ext1ObbBytes: Long = 0L,
+    val ext2DataBytes: Long = 0L,
+    val ext2ObbBytes: Long = 0L
 ) {
     /** Total internal storage (Apk + Dex + Lib + Data + Cache) */
     val internalBytes: Long
@@ -44,5 +48,21 @@ data class AppStorageBreakdown(
     /** Helper for computing percentage of an arbitrary byte size against totalBytes */
     fun percentOfTotal(bytes: Long): Int {
         return if (totalBytes > 0) ((bytes.toDouble() / totalBytes) * 100).roundToInt() else 0
+    }
+
+    /** Returns bytes to transfer based on target scope and direction */
+    fun getSizeForScope(target: MigrationTarget, direction: MoveDirection): Long {
+        return when (direction) {
+            MoveDirection.TO_SD -> when (target) {
+                MigrationTarget.ALL -> ext1Bytes
+                MigrationTarget.DATA_ONLY -> if (ext1DataBytes > 0L) ext1DataBytes else ext1Bytes
+                MigrationTarget.OBB_ONLY -> ext1ObbBytes
+            }
+            MoveDirection.TO_INTERNAL -> when (target) {
+                MigrationTarget.ALL -> ext2Bytes
+                MigrationTarget.DATA_ONLY -> if (ext2DataBytes > 0L) ext2DataBytes else ext2Bytes
+                MigrationTarget.OBB_ONLY -> ext2ObbBytes
+            }
+        }
     }
 }

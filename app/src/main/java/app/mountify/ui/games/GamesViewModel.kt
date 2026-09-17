@@ -8,6 +8,7 @@ import app.mountify.data.model.GameEntry
 import app.mountify.data.model.InstalledAppInfo
 import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MountMode
+import app.mountify.data.model.MountStatus
 import app.mountify.data.model.MoveDirection
 import app.mountify.data.repository.GameRepository
 import app.mountify.data.repository.StorageRepository
@@ -158,10 +159,23 @@ class GamesViewModel @Inject constructor(
             _isMovingData.value = true
             _moveMessage.value = null
             val sdBase = appPreferences.sdBasePath.first()
+            val game = games.value.firstOrNull { it.packageName == packageName }
+
+            // If restoring to internal, unmount from runtime namespaces first
+            if (direction == MoveDirection.TO_INTERNAL && game != null && game.mountStatus == MountStatus.MOUNTED) {
+                gameRepository.unmountGame(game)
+            }
+
             val result = storageRepository.moveGameData(packageName, direction, target, sdBase)
             _isMovingData.value = false
             if (result.isSuccess) {
                 _moveMessage.value = "SUCCESS"
+
+                // If moved to SD card, auto-mount immediately to Android runtime namespaces
+                if (direction == MoveDirection.TO_SD && game != null) {
+                    gameRepository.mountGame(game, sdBase)
+                }
+
                 gameRepository.calculateDataSize(packageName, sdBase)
                 _storageBreakdown.value = gameRepository.getInternalAndSdSizes(packageName, sdBase)
                 _detailedStorage.value = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)

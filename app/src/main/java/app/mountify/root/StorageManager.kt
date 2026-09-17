@@ -400,6 +400,9 @@ class StorageManager {
                             if (!RootShell.exists(internalData)) {
                                 error("Verification failed: Internal data directory not found after restore.")
                             }
+                            RootShell.exec("chown -R $uid:1023 \"$internalData\"")
+                            RootShell.exec("chmod -R 775 \"$internalData\"")
+                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$internalData\"")
                             RootShell.exec("rm -rf \"$sdData\"")
                         } else if (target == MigrationTarget.DATA_ONLY) {
                             error("SD data path does not exist: $sdData")
@@ -417,11 +420,18 @@ class StorageManager {
                             if (!RootShell.exists(internalObb)) {
                                 error("Verification failed: Internal OBB directory not found after restore.")
                             }
+                            RootShell.exec("chown -R $uid:1023 \"$internalObb\"")
+                            RootShell.exec("chmod -R 775 \"$internalObb\"")
+                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$internalObb\"")
                             RootShell.exec("rm -rf \"$sdObb\"")
                         } else if (target == MigrationTarget.OBB_ONLY) {
                             error("SD OBB path does not exist: $sdObb")
                         }
                     }
+
+                    // Restore internal app sandbox directory permissions
+                    RootShell.exec("chown -R $uid:$uid \"/data/user/0/$packageName\" 2>/dev/null")
+                    RootShell.exec("chmod -R 775 \"/data/user/0/$packageName\" 2>/dev/null")
                 }
             }
             Unit

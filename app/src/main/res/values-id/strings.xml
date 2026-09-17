@@ -167,6 +167,13 @@
     <string name="game_detail_delete_action">Hapus dari Mountify</string>
     <string name="game_detail_status_mounted">Aktif &amp; Ter-mount</string>
     <string name="game_detail_status_unmounted">Siaga (Belum Mount)</string>
+    <string name="game_detail_manage_status_internal">Data tersimpan di memori internal</string>
+    <string name="game_detail_manage_status_sd">Data aktif di kartu MicroSD (Ter-mount)</string>
+    <string name="game_detail_manage_est_transfer">Estimasi data yang dialihkan: %1$s</string>
+    <string name="game_detail_manage_est_restore">Estimasi data yang dikembalikan: %1$s</string>
+    <string name="game_detail_advanced_mode_title">Opsi Lanjutan: Mode Mount</string>
+    <string name="game_detail_advanced_mode_summary">Konfigurasi: Mode %1$s</string>
+    <string name="game_detail_advanced_mode_auto">Otomatis</string>
 
     <string name="move_data_title">Pindah Data Aplikasi</string>
     <string name="move_data_to_sd">Pindah ke MicroSD</string>
