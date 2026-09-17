@@ -5,6 +5,12 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.29] - 2026-09-17
+
+### Changed
+- Refactored app preview card in the System Package Warning dialog to a two-tier layout: app icon + display name (up to 2 lines) in the header row, followed by a dedicated full-width monospace code container for the package name (up to 2 lines, `softWrap = true`).
+- Extended the two-line wrap pattern to `ConfigureAppView` header card and `GameDetailSheet` header row so long display names and package names no longer truncate with ellipsis.
+
 ## [2.1.28] - 2026-09-17
 
 ### Changed

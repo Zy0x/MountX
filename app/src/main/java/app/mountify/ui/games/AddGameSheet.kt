@@ -300,7 +300,7 @@ fun AddAppPicker(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 26.dp)
+                    .padding(horizontal = 24.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -342,49 +342,65 @@ fun AddAppPicker(
                         )
                     }
 
-                    // Selected App Preview Mini Card (Full-width title for maximum readability)
+                    // Selected App Preview Mini Card (Two-tier layout: App Name up to 2 lines + Full-Width Package Container)
                     Surface(
-                        shape = RoundedCornerShape(9.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 9.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                .padding(horizontal = 9.dp, vertical = 7.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            AppIconImage(
-                                packageName = sysApp.packageName,
-                                size = 32.dp
-                            )
-
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.Center
+                            // Tier 1: App Icon + App Display Name (up to 2 lines)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                AppIconImage(
+                                    packageName = sysApp.packageName,
+                                    size = 28.dp
+                                )
+
                                 Text(
                                     text = sysApp.displayName,
                                     style = MaterialTheme.typography.titleSmall.copy(
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        lineHeight = 15.sp
                                     ),
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
-                                Spacer(modifier = Modifier.height(1.dp))
+                            }
+
+                            // Tier 2: Dedicated Full-Width Code Box for Package Name
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
+                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Text(
                                     text = sysApp.packageName,
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         fontSize = 9.5.sp,
-                                        fontFamily = FontFamily.Monospace
+                                        fontFamily = FontFamily.Monospace,
+                                        lineHeight = 13.sp
                                     ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    softWrap = true,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 7.dp, vertical = 4.dp)
                                 )
                             }
                         }
@@ -777,11 +793,13 @@ private fun ConfigureAppView(
                             text = app.displayName,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 17.sp
                             ),
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (app.isSystemApp) {
                             Surface(
@@ -803,11 +821,13 @@ private fun ConfigureAppView(
                     Text(
                         text = app.packageName,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 10.5.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = 13.sp
                         ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                        maxLines = 1,
+                        maxLines = 2,
+                        softWrap = true,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
