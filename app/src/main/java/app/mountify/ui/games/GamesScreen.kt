@@ -65,37 +65,37 @@ fun GamesScreen(
     var selectedGameForDetail by remember { mutableStateOf<GameEntry?>(null) }
     var gameToDelete by remember { mutableStateOf<GameEntry?>(null) }
 
-    GamesContent(
-        games = games,
-        searchQuery = searchQuery,
-        filterStatus = filterStatus,
-        sortOption = sortOption,
-        onSearchQueryChange = { viewModel.setSearchQuery(it) },
-        onFilterStatusChange = { viewModel.setFilterStatus(it) },
-        onSortOptionChange = { viewModel.setSortOption(it) },
-        onAddClick = {
-            viewModel.loadInstalledApps()
-            showAddSheet = true
-        },
-        onToggleMount = { viewModel.toggleMount(it) },
-        onMountAll = { viewModel.mountAllGames() },
-        onUnmountAll = { viewModel.unmountAllGames() },
-        onSelectGameForDetail = { game ->
-            selectedGameForDetail = game
-            viewModel.loadStorageBreakdown(game.packageName)
-        },
-        modifier = modifier
-    )
-
-    // Add Game Sheet (Visual App Picker)
     if (showAddSheet) {
-        AddGameSheet(
+        AddAppPicker(
             installedApps = installedApps,
             onDismiss = { showAddSheet = false },
             onAdd = { pkg, name, mode ->
                 viewModel.addGame(pkg, name, mode)
                 showAddSheet = false
-            }
+            },
+            modifier = modifier
+        )
+    } else {
+        GamesContent(
+            games = games,
+            searchQuery = searchQuery,
+            filterStatus = filterStatus,
+            sortOption = sortOption,
+            onSearchQueryChange = { viewModel.setSearchQuery(it) },
+            onFilterStatusChange = { viewModel.setFilterStatus(it) },
+            onSortOptionChange = { viewModel.setSortOption(it) },
+            onAddClick = {
+                viewModel.loadInstalledApps()
+                showAddSheet = true
+            },
+            onToggleMount = { viewModel.toggleMount(it) },
+            onMountAll = { viewModel.mountAllGames() },
+            onUnmountAll = { viewModel.unmountAllGames() },
+            onSelectGameForDetail = { game ->
+                selectedGameForDetail = game
+                viewModel.loadStorageBreakdown(game.packageName)
+            },
+            modifier = modifier
         )
     }
 

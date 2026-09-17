@@ -5,6 +5,18 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.20] - 2026-09-17
+
+### Added
+- Standardized UI Compact Sizing Specification (Section 3.5 of `AGENTS.md`) enforcing strict dimension limits across headers, search bars, buttons, icons, and filter chips.
+- Custom `CompactFilterTabChip` component featuring a 30dp height profile, 13dp vector icons, and 11sp typography.
+
+### Changed
+- Replaced popup `Dialog` wrapper with direct native full-screen composable layout, eliminating window margins and background peeking.
+- Unified screen header with `CompactScreenHeader` (46dp height with status bar padding), permanently removing top gap and double padding.
+- Replaced oversized 56dp search bar with Mountify's streamlined 38dp `BasicTextField` container.
+- Streamlined application list cards, action buttons (42dp CTA), and icon proportions across the entire application picker.
+
 ## [2.1.19] - 2026-09-17
 
 ### Added
