@@ -5,6 +5,18 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.25] - 2026-09-17
+
+### Added
+- Dedicated Target Application Preview card inside the System Package Warning dialog featuring the app icon, title, monospace package ID, and system tag.
+- Structured risk alert callout box highlighting force close, UI freeze, and bootloop risks with clear visual separation.
+
+### Changed
+- Increased dialog action buttons to 38dp height with minimum touch target widths (72dp/80dp) and 12sp typography in compliance with mobile-first standards.
+
+### Fixed
+- Awkward text wrapping and mid-word line breaks when displaying long Android package names in warning messages.
+
 ## [2.1.24] - 2026-09-17
 
 ### Added

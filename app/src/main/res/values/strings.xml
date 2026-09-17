@@ -114,6 +114,7 @@
     <string name="add_app_tag_user">USER</string>
     <string name="add_app_system_warning_compact_title">System Package Warning</string>
     <string name="add_app_system_warning_compact_desc">Redirecting system data for \"%1$s\" (%2$s) to MicroSD may cause force closes or bootloops if mount fails. Proceed?</string>
+    <string name="add_app_system_warning_callout_desc">Redirecting system app data to MicroSD may cause persistent force closes, UI freezes, or bootloops if storage mount fails during boot.</string>
     <string name="add_app_system_warning_proceed">Proceed</string>
     <string name="add_app_system_warning_title">System Application Warning</string>
     <string name="add_app_system_warning_desc">\"%1$s\" is an Android system package (%2$s).\n\nRedirecting system app data to MicroSD can cause repeated force closes, UI freezes, or bootloops if storage becomes unreadable.\n\nDo you want to proceed?</string>
