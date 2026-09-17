@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -188,21 +189,21 @@ fun GamesContent(
                 subtitle = "$mountedCount/${games.size} " + stringResource(R.string.dashboard_mounted_games),
                 actions = {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (games.isNotEmpty()) {
                             // Mount All Action
                             IconButton(
                                 onClick = onMountAll,
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(26.dp)
                                         .background(
                                             color = CyberEmerald.copy(alpha = 0.12f),
-                                            shape = RoundedCornerShape(8.dp)
+                                            shape = RoundedCornerShape(6.dp)
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -210,7 +211,7 @@ fun GamesContent(
                                         imageVector = Icons.Default.PlayArrow,
                                         contentDescription = stringResource(R.string.games_batch_mount_all),
                                         tint = CyberEmerald,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
                             }
@@ -218,14 +219,14 @@ fun GamesContent(
                             // Unmount All Action
                             IconButton(
                                 onClick = onUnmountAll,
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(26.dp)
                                         .background(
                                             color = NeonCrimson.copy(alpha = 0.12f),
-                                            shape = RoundedCornerShape(8.dp)
+                                            shape = RoundedCornerShape(6.dp)
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -233,7 +234,7 @@ fun GamesContent(
                                         imageVector = Icons.Default.Stop,
                                         contentDescription = stringResource(R.string.games_batch_unmount_all),
                                         tint = NeonCrimson,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
                             }
@@ -242,14 +243,14 @@ fun GamesContent(
                             Box {
                                 IconButton(
                                     onClick = { showSortMenu = true },
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(32.dp)
+                                            .size(26.dp)
                                             .background(
                                                 color = MaterialTheme.colorScheme.surfaceVariant,
-                                                shape = RoundedCornerShape(8.dp)
+                                                shape = RoundedCornerShape(6.dp)
                                             ),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -257,7 +258,7 @@ fun GamesContent(
                                             imageVector = Icons.AutoMirrored.Filled.Sort,
                                             contentDescription = stringResource(R.string.games_sort_title),
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(14.dp)
                                         )
                                     }
                                 }
@@ -270,25 +271,31 @@ fun GamesContent(
                                         text = {
                                             Text(
                                                 stringResource(R.string.games_sort_size_desc),
+                                                fontSize = 12.sp,
                                                 fontWeight = if (sortOption == GameSortOption.SIZE_DESC) FontWeight.Bold else FontWeight.Normal
                                             )
                                         },
                                         onClick = {
                                             onSortOptionChange(GameSortOption.SIZE_DESC)
                                             showSortMenu = false
-                                        }
+                                        },
+                                        modifier = Modifier.heightIn(min = 32.dp, max = 34.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                                     )
                                     DropdownMenuItem(
                                         text = {
                                             Text(
                                                 stringResource(R.string.games_sort_name_asc),
+                                                fontSize = 12.sp,
                                                 fontWeight = if (sortOption == GameSortOption.NAME_ASC) FontWeight.Bold else FontWeight.Normal
                                             )
                                         },
                                         onClick = {
                                             onSortOptionChange(GameSortOption.NAME_ASC)
                                             showSortMenu = false
-                                        }
+                                        },
+                                        modifier = Modifier.heightIn(min = 32.dp, max = 34.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                                     )
                                 }
                             }
@@ -456,36 +463,33 @@ fun GamesContent(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    FilterChip(
-                        selected = filterStatus == GameFilterStatus.ALL,
-                        onClick = { onFilterStatusChange(GameFilterStatus.ALL) },
-                        label = {
+                    listOf(
+                        Triple(GameFilterStatus.ALL, stringResource(R.string.games_filter_all) + " (${games.size})", filterStatus == GameFilterStatus.ALL),
+                        Triple(GameFilterStatus.MOUNTED, stringResource(R.string.games_filter_mounted) + " ($mountedCount)", filterStatus == GameFilterStatus.MOUNTED),
+                        Triple(GameFilterStatus.UNMOUNTED, stringResource(R.string.games_filter_unmounted) + " ($unmountedCount)", filterStatus == GameFilterStatus.UNMOUNTED)
+                    ).forEach { (status, label, selected) ->
+                        Surface(
+                            onClick = { onFilterStatusChange(status) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        ) {
                             Text(
-                                stringResource(R.string.games_filter_all) + " (${games.size})",
-                                fontSize = 11.sp
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (selected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                maxLines = 1
                             )
                         }
-                    )
-                    FilterChip(
-                        selected = filterStatus == GameFilterStatus.MOUNTED,
-                        onClick = { onFilterStatusChange(GameFilterStatus.MOUNTED) },
-                        label = {
-                            Text(
-                                stringResource(R.string.games_filter_mounted) + " ($mountedCount)",
-                                fontSize = 11.sp
-                            )
-                        }
-                    )
-                    FilterChip(
-                        selected = filterStatus == GameFilterStatus.UNMOUNTED,
-                        onClick = { onFilterStatusChange(GameFilterStatus.UNMOUNTED) },
-                        label = {
-                            Text(
-                                stringResource(R.string.games_filter_unmounted) + " ($unmountedCount)",
-                                fontSize = 11.sp
-                            )
-                        }
-                    )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -535,7 +539,7 @@ fun ModernGameCard(
     val isMounted = game.mountStatus == MountStatus.MOUNTED
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
@@ -545,7 +549,7 @@ fun ModernGameCard(
             .fillMaxWidth()
             .clickable(onClick = onCardClick)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(10.dp)) {
             // Row 1: App Icon, Titles, and Status Chip (replaces redundant MoreVert button)
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -554,7 +558,7 @@ fun ModernGameCard(
             ) {
                 AppIconImage(
                     packageName = game.packageName,
-                    size = 38.dp
+                    size = 36.dp
                 )
 
                 Column(modifier = Modifier.weight(1f)) {
@@ -578,7 +582,7 @@ fun ModernGameCard(
                 StatusChip(status = game.mountStatus)
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(7.dp))
 
             // Row 2: Badges (Mode, Size) & Tactile Mount Action Button
             Row(

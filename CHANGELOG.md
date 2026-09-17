@@ -5,6 +5,14 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.30] - 2026-09-17
+
+### Changed
+- Compacted Games screen header action buttons (mount/unmount/sort) from 36dp to 28dp touch target with 26dp inner box, 6dp corner radius, 14dp icons, and 4dp inter-button spacing.
+- Replaced bloated Material `FilterChip` (default ~48dp height) with compact custom `Surface`-based chips (~28dp) using 10dp horizontal and 5dp vertical padding.
+- Reduced `DropdownMenuItem` height from default 48dp to 32–34dp with 12dp horizontal content padding and 12sp label text.
+- Reduced game card corner radius from 16dp to 12dp, inner padding from 12dp to 10dp, app icon from 38dp to 36dp, and inter-row spacer from 10dp to 7dp.
+
 ## [2.1.29] - 2026-09-17
 
 ### Changed
