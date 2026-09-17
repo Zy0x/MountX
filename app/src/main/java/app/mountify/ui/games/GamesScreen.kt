@@ -28,10 +28,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountify.R
@@ -41,7 +44,6 @@ import app.mountify.data.model.MountStatus
 import app.mountify.ui.components.AppIconImage
 import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
-import app.mountify.ui.components.StatusChip
 import app.mountify.ui.theme.AuroraGradientBrush
 import app.mountify.ui.theme.CyberEmerald
 import app.mountify.ui.theme.NeonCrimson
@@ -196,13 +198,15 @@ fun GamesContent(
                             // Mount All Action
                             IconButton(
                                 onClick = onMountAll,
+                                enabled = unmountedCount > 0,
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .size(26.dp)
                                         .background(
-                                            color = CyberEmerald.copy(alpha = 0.12f),
+                                            color = if (unmountedCount > 0) CyberEmerald.copy(alpha = 0.12f)
+                                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                                             shape = RoundedCornerShape(6.dp)
                                         ),
                                     contentAlignment = Alignment.Center
@@ -210,7 +214,8 @@ fun GamesContent(
                                     Icon(
                                         imageVector = Icons.Default.PlayArrow,
                                         contentDescription = stringResource(R.string.games_batch_mount_all),
-                                        tint = CyberEmerald,
+                                        tint = if (unmountedCount > 0) CyberEmerald
+                                               else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
@@ -219,13 +224,15 @@ fun GamesContent(
                             // Unmount All Action
                             IconButton(
                                 onClick = onUnmountAll,
+                                enabled = mountedCount > 0,
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .size(26.dp)
                                         .background(
-                                            color = NeonCrimson.copy(alpha = 0.12f),
+                                            color = if (mountedCount > 0) NeonCrimson.copy(alpha = 0.12f)
+                                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                                             shape = RoundedCornerShape(6.dp)
                                         ),
                                     contentAlignment = Alignment.Center
@@ -233,7 +240,8 @@ fun GamesContent(
                                     Icon(
                                         imageVector = Icons.Default.Stop,
                                         contentDescription = stringResource(R.string.games_batch_unmount_all),
-                                        tint = NeonCrimson,
+                                        tint = if (mountedCount > 0) NeonCrimson
+                                               else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
@@ -309,11 +317,11 @@ fun GamesContent(
                 onClick = onAddClick,
                 modifier = Modifier
                     .padding(end = 4.dp, bottom = 4.dp)
-                    .size(46.dp),
+                    .size(42.dp),
                 shape = CircleShape,
                 containerColor = Color.Transparent,
                 contentColor = Color.White,
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 3.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -325,7 +333,7 @@ fun GamesContent(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(R.string.games_add),
                         tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -454,7 +462,7 @@ fun GamesContent(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 // ── FILTER CHIPS ROW ──
                 Row(
@@ -492,7 +500,7 @@ fun GamesContent(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(7.dp))
 
                 // ── GAMES LIST ──
                 if (processedGames.isEmpty()) {
@@ -543,152 +551,128 @@ fun ModernGameCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (isMounted) CyberEmerald.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline
+            if (isMounted) CyberEmerald.copy(alpha = 0.45f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         ),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onCardClick)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            // Row 1: App Icon, Titles, and Status Chip (replaces redundant MoreVert button)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // App Icon
+            AppIconImage(
+                packageName = game.packageName,
+                size = 36.dp
+            )
+
+            // Titles & Metadata inline
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
             ) {
-                AppIconImage(
-                    packageName = game.packageName,
-                    size = 36.dp
+                Text(
+                    text = game.displayName.ifBlank { game.packageName },
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
 
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = game.displayName.ifBlank { game.packageName },
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1
-                    )
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
                     Text(
                         text = game.packageName,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
-                }
 
-                StatusChip(status = game.mountStatus)
-            }
+                    Text(
+                        text = "•",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
 
-            Spacer(modifier = Modifier.height(7.dp))
-
-            // Row 2: Badges (Mode, Size) & Tactile Mount Action Button
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Badges (Mode & Size)
-                Row(
-                    modifier = Modifier.weight(1f, fill = false),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Mode Badge
+                    // Mode badge inline
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
                     ) {
                         Text(
                             text = game.mode.name,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
 
-                    // Size Badge
+                    // Size badge inline if available
                     if (game.dataSizeBytes > 0) {
+                        Text(
+                            text = "•",
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        )
+                        Text(
+                            text = FormatUtils.formatBytes(game.dataSizeBytes),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                        )
+                    }
+
+                    // Error badge inline if error
+                    if (game.mountStatus == MountStatus.ERROR) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            shape = RoundedCornerShape(4.dp),
+                            color = NeonCrimson.copy(alpha = 0.14f),
+                            border = BorderStroke(0.8.dp, NeonCrimson.copy(alpha = 0.4f))
                         ) {
                             Text(
-                                text = FormatUtils.formatBytes(game.dataSizeBytes),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                text = stringResource(R.string.status_error),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCrimson,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Tactile Mount Button
-                if (isMounted) {
-                    FilledTonalButton(
-                        onClick = onToggleMount,
-                        modifier = Modifier.heightIn(min = 34.dp, max = 36.dp),
-                        shape = RoundedCornerShape(9.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = NeonCrimson.copy(alpha = 0.12f),
-                            contentColor = NeonCrimson
-                        ),
-                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Stop,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = NeonCrimson
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = stringResource(R.string.games_unmount),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = NeonCrimson,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                } else {
-                    Button(
-                        onClick = onToggleMount,
-                        modifier = Modifier.heightIn(min = 34.dp, max = 36.dp),
-                        shape = RoundedCornerShape(9.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = CyberEmerald.copy(alpha = 0.15f),
-                            contentColor = CyberEmerald
-                        ),
-                        border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.4f)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = CyberEmerald
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = stringResource(R.string.games_mount),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = CyberEmerald,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
             }
+
+            // Compact Switch (Toggle Tactile)
+            Switch(
+                checked = isMounted,
+                onCheckedChange = { onToggleMount() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = CyberEmerald,
+                    checkedBorderColor = CyberEmerald,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                ),
+                modifier = Modifier.scale(0.8f)
+            )
         }
     }
 }

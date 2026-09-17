@@ -5,6 +5,14 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.31] - 2026-09-17
+
+### Changed
+- Refactored `ModernGameCard` to Option 1 single-row compact layout: replaced stacked status chip and large action button with a native compact tactile `Switch` (scaled 0.8x) alongside inline mode and storage size badges.
+- Made header batch mount/unmount actions adaptive: greyed out and disabled when there are no games to mount or unmount.
+- Compacted Floating Action Button (FAB) from 46dp to 42dp with an 18dp icon and tighter padding.
+- Calibrated vertical spacers between search bar, filter chips, and games list (6dp and 7dp) to eliminate empty void.
+
 ## [2.1.30] - 2026-09-17
 
 ### Changed
