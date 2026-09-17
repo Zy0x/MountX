@@ -12,7 +12,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -29,39 +28,40 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.pm.PackageInfoCompat
 import app.mountify.R
+import app.mountify.data.model.AppStorageBreakdown
 import app.mountify.data.model.GameEntry
 import app.mountify.data.model.MountMode
 import app.mountify.data.model.MoveDirection
 import app.mountify.ui.components.AppIconImage
 import app.mountify.ui.components.CompactScreenHeader
-import app.mountify.ui.components.StatusChip
 import app.mountify.ui.theme.CyberEmerald
 import app.mountify.ui.theme.NeonCrimson
 import app.mountify.util.FormatUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 @Composable
 fun GameDetailView(
     game: GameEntry,
-    storageBreakdown: Pair<Long, Long>,
+    breakdown: AppStorageBreakdown,
     isMoving: Boolean,
     moveMessage: String?,
     onDismiss: () -> Unit,
@@ -73,7 +73,6 @@ fun GameDetailView(
     BackHandler(onBack = onDismiss)
 
     val context = LocalContext.current
-    val (internalBytes, sdBytes) = storageBreakdown
     var currentMode by remember(game.mode) { mutableStateOf(game.mode) }
 
     // Resolve app package metadata from PackageManager
@@ -102,15 +101,18 @@ fun GameDetailView(
         }
     }
 
-    Scaffold(
-        topBar = {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             CompactScreenHeader(
                 title = stringResource(R.string.game_detail_app_title),
-                subtitle = game.displayName.ifBlank { game.packageName },
                 navigationIcon = {
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -142,7 +144,7 @@ fun GameDetailView(
                             } catch (_: Exception) {
                             }
                         },
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(38.dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -163,573 +165,775 @@ fun GameDetailView(
                     }
                 }
             )
-        },
-        containerColor = MaterialTheme.colorScheme.background,
-        modifier = modifier.fillMaxSize()
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // ── APP HERO METADATA CARD (App2SD Pro Style) ──
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-                modifier = Modifier.fillMaxWidth()
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // ── APP HERO METADATA (Flat App2SD Pro Style) ──
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     AppIconImage(
                         packageName = game.packageName,
-                        size = 46.dp
+                        size = 54.dp
                     )
 
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                        verticalArrangement = Arrangement.spacedBy(1.5.dp)
                     ) {
                         Text(
                             text = game.displayName.ifBlank { game.packageName },
                             style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 14.5.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                lineHeight = 17.sp
+                                lineHeight = 19.sp
                             ),
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
 
                         Text(
                             text = game.packageName,
                             style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                lineHeight = 13.sp
+                                fontSize = 12.sp,
+                                lineHeight = 15.sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            color = Color(0xFF00838F),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
 
                         Text(
                             text = stringResource(R.string.game_detail_version, versionName, versionCode.toString()),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.5.sp,
+                                lineHeight = 14.sp
+                            ),
+                            color = Color(0xFF00838F),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
 
                         Text(
                             text = stringResource(R.string.game_detail_install_time, installTimeStr),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp
+                            ),
+                            color = Color(0xFF00838F),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-
-                    StatusChip(status = game.mountStatus)
                 }
-            }
 
-            // ── STORAGE DISTRIBUTION CARD (Donut Chart & Detailed Breakdown) ──
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+
+                // ── CONCENTRIC PIE / DONUT CHART & 3-TIER LEGEND ──
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.game_detail_storage_breakdown),
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.primary
+                    ConcentricStorageChart(
+                        breakdown = breakdown,
+                        modifier = Modifier.size(176.dp)
                     )
 
-                    val totalBytes = internalBytes + sdBytes
-                    val internalPercent = if (totalBytes > 0) ((internalBytes.toDouble() / totalBytes.toDouble()) * 100).roundToInt() else 0
-                    val sdPercent = if (totalBytes > 0) (100 - internalPercent) else 0
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    // 3-Tier Legend (Internal, Ext 1, Ext 2, Total)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
                     ) {
-                        // Donut Chart
-                        Box(
-                            modifier = Modifier.size(92.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val internalColor = Color(0xFFE65100)
-                            val sdColor = CyberEmerald
-                            val neutralTrack = MaterialTheme.colorScheme.surfaceVariant
-
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val strokeWidth = 14.dp.toPx()
-                                val radius = (size.minDimension - strokeWidth) / 2f
-                                val centerOffset = Offset(size.width / 2f, size.height / 2f)
-
-                                if (totalBytes == 0L) {
-                                    drawCircle(
-                                        color = neutralTrack,
-                                        radius = radius,
-                                        center = centerOffset,
-                                        style = Stroke(width = strokeWidth)
-                                    )
-                                } else {
-                                    val internalSweep = (internalPercent / 100f) * 360f
-                                    val sdSweep = 360f - internalSweep
-
-                                    // Draw Internal Arc (starting from top -90 deg)
-                                    drawArc(
-                                        color = internalColor,
-                                        startAngle = -90f,
-                                        sweepAngle = internalSweep,
-                                        useCenter = false,
-                                        topLeft = Offset(centerOffset.x - radius, centerOffset.y - radius),
-                                        size = Size(radius * 2f, radius * 2f),
-                                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                                    )
-
-                                    // Draw MicroSD Arc
-                                    drawArc(
-                                        color = sdColor,
-                                        startAngle = -90f + internalSweep,
-                                        sweepAngle = sdSweep,
-                                        useCenter = false,
-                                        topLeft = Offset(centerOffset.x - radius, centerOffset.y - radius),
-                                        size = Size(radius * 2f, radius * 2f),
-                                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                                    )
-                                }
-                            }
-
-                            // Center Text inside Donut
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = if (totalBytes > 0L) "$sdPercent%" else "0%",
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = if (sdPercent > 0) CyberEmerald else MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "SD Card",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
-                                )
-                            }
-                        }
-
-                        // Breakdown Legend Table (App2SD Pro style)
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // Internal Row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFFE65100))
-                                    )
-                                    Icon(
-                                        Icons.Default.Smartphone,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(13.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.game_detail_internal_storage),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Text(
-                                    text = FormatUtils.formatBytes(internalBytes),
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            // MicroSD Row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(CyberEmerald)
-                                    )
-                                    Icon(
-                                        Icons.Default.SdCard,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(13.dp),
-                                        tint = CyberEmerald
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.game_detail_microsd_storage),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                        color = CyberEmerald
-                                    )
-                                }
-                                Text(
-                                    text = FormatUtils.formatBytes(sdBytes),
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = CyberEmerald
-                                )
-                            }
-
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.padding(vertical = 2.dp)
-                            )
-
-                            // Total Cumulative Row (Σ)
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Text(
-                                        text = "Σ",
-                                        style = MaterialTheme.typography.labelMedium.copy(
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = stringResource(R.string.game_detail_total_storage),
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                Text(
-                                    text = FormatUtils.formatBytes(totalBytes),
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── MOUNT MODE SELECTOR CARD ──
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.game_detail_mode_title),
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // PKG Option
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (currentMode == MountMode.PKG)
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(
-                                1.dp,
-                                if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    currentMode = MountMode.PKG
-                                    onUpdateMode(MountMode.PKG)
-                                }
-                        ) {
-                            Column(modifier = Modifier.padding(9.dp)) {
-                                Text(
-                                    text = "PKG Mode",
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = stringResource(R.string.add_game_mode_pkg_desc),
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 9.5.sp,
-                                        lineHeight = 12.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                                )
-                            }
-                        }
-
-                        // FILES Option
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (currentMode == MountMode.FILES)
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(
-                                1.dp,
-                                if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    currentMode = MountMode.FILES
-                                    onUpdateMode(MountMode.FILES)
-                                }
-                        ) {
-                            Column(modifier = Modifier.padding(9.dp)) {
-                                Text(
-                                    text = "FILES Mode",
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = stringResource(R.string.add_game_mode_files_desc),
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 9.5.sp,
-                                        lineHeight = 12.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── PHYSICAL DATA TRANSFER CARD ──
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.game_detail_move_title),
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    if (isMoving) {
+                        // Internal
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
+                            FloppyDiskIcon(
+                                tint = Color(0xFFDF4006),
+                                modifier = Modifier.size(17.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = stringResource(R.string.common_loading),
-                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.5.sp),
-                                fontWeight = FontWeight.Medium
+                                text = FormatUtils.formatLegendBytes(breakdown.internalBytes),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color(0xFFDF4006)
                             )
                         }
-                    } else {
-                        if (moveMessage != null) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (moveMessage == "SUCCESS")
-                                    CyberEmerald.copy(alpha = 0.12f)
-                                else
-                                    NeonCrimson.copy(alpha = 0.12f),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (moveMessage == "SUCCESS") CyberEmerald.copy(alpha = 0.4f) else NeonCrimson.copy(alpha = 0.4f)
+
+                        // Ext 1 (Media)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Smartphone,
+                                contentDescription = null,
+                                tint = Color(0xFF3149FF),
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Text(
+                                text = FormatUtils.formatLegendBytes(breakdown.ext1Bytes),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold
                                 ),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (moveMessage == "SUCCESS") Icons.Default.CheckCircle else Icons.Default.Error,
-                                        contentDescription = null,
-                                        tint = if (moveMessage == "SUCCESS") CyberEmerald else NeonCrimson,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Text(
-                                        text = if (moveMessage == "SUCCESS")
-                                            stringResource(R.string.move_data_success)
-                                        else
-                                            stringResource(R.string.move_data_error, moveMessage),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                        color = if (moveMessage == "SUCCESS") CyberEmerald else NeonCrimson,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
+                                color = Color(0xFF3149FF)
+                            )
                         }
+
+                        // Ext 2 (MicroSD)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SdCard,
+                                contentDescription = null,
+                                tint = Color(0xFF3BA71A),
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Text(
+                                text = FormatUtils.formatLegendBytes(breakdown.ext2Bytes),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color(0xFF3BA71A)
+                            )
+                        }
+
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .width(85.dp)
+                                .padding(vertical = 1.dp)
+                        )
+
+                        // Total (Σ)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Σ",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = FormatUtils.formatLegendBytes(breakdown.totalBytes),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                // ── 7-ROW DETAILED BREAKDOWN CARD (App2SD Pro Exact Table) ──
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        BreakdownRow(
+                            label = stringResource(R.string.game_detail_cat_apk),
+                            labelColor = Color(0xFFE91E63),
+                            sizeText = FormatUtils.formatExactBytes(breakdown.apkBytes),
+                            isDisk = true,
+                            customIconTint = Color(0xFFDF4006)
+                        )
+                        BreakdownRow(
+                            label = stringResource(R.string.game_detail_cat_dex),
+                            labelColor = Color(0xFF00ACC1),
+                            sizeText = FormatUtils.formatExactBytes(breakdown.dexBytes),
+                            isDisk = true,
+                            customIconTint = Color(0xFFDF4006)
+                        )
+                        BreakdownRow(
+                            label = stringResource(R.string.game_detail_cat_lib),
+                            labelColor = Color(0xFFFB8C00),
+                            sizeText = FormatUtils.formatExactBytes(breakdown.libBytes),
+                            isDisk = true,
+                            customIconTint = Color(0xFFDF4006)
+                        )
+                        BreakdownRow(
+                            label = stringResource(R.string.game_detail_cat_data),
+                            labelColor = Color(0xFF00897B),
+                            sizeText = FormatUtils.formatExactBytes(breakdown.dataBytes),
+                            isDisk = true,
+                            customIconTint = Color(0xFFDF4006)
+                        )
+                        BreakdownRow(
+                            label = stringResource(R.string.game_detail_cat_cache),
+                            labelColor = Color(0xFFE57373),
+                            sizeText = FormatUtils.formatExactBytes(breakdown.cacheBytes),
+                            isDisk = true,
+                            customIconTint = Color(0xFFDF4006)
+                        )
+                        BreakdownRow(
+                            label = stringResource(R.string.game_detail_cat_ext1),
+                            labelColor = Color(0xFF5C6BC0),
+                            sizeText = FormatUtils.formatExactBytes(breakdown.ext1Bytes),
+                            vectorIcon = Icons.Default.Smartphone,
+                            customIconTint = Color(0xFF3149FF)
+                        )
+                        BreakdownRow(
+                            label = stringResource(R.string.game_detail_cat_ext2),
+                            labelColor = Color(0xFF43A047),
+                            sizeText = FormatUtils.formatExactBytes(breakdown.ext2Bytes),
+                            vectorIcon = Icons.Default.SdCard,
+                            customIconTint = Color(0xFF3BA71A)
+                        )
+                    }
+                }
+
+                // ── MOUNT MODE SELECTOR CARD ──
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.game_detail_mode_title),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Move to MicroSD
-                            Button(
-                                onClick = { onMove(MoveDirection.TO_SD) },
+                            // PKG Option
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (currentMode == MountMode.PKG)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                ),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(34.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                )
+                                    .clickable {
+                                        currentMode = MountMode.PKG
+                                        onUpdateMode(MountMode.PKG)
+                                    }
                             ) {
-                                Icon(Icons.Default.ArrowDownward, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.game_detail_move_to_sd),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Column(modifier = Modifier.padding(9.dp)) {
+                                    Text(
+                                        text = "PKG Mode",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = if (currentMode == MountMode.PKG) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = stringResource(R.string.add_game_mode_pkg_desc),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 9.5.sp,
+                                            lineHeight = 12.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                }
                             }
 
-                            // Restore to Internal
-                            OutlinedButton(
-                                onClick = { onMove(MoveDirection.TO_INTERNAL) },
+                            // FILES Option
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (currentMode == MountMode.FILES)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                ),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(34.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                    .clickable {
+                                        currentMode = MountMode.FILES
+                                        onUpdateMode(MountMode.FILES)
+                                    }
                             ) {
-                                Icon(Icons.Default.ArrowUpward, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.game_detail_move_to_internal),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Column(modifier = Modifier.padding(9.dp)) {
+                                    Text(
+                                        text = "FILES Mode",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = if (currentMode == MountMode.FILES) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = stringResource(R.string.add_game_mode_files_desc),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 9.5.sp,
+                                            lineHeight = 12.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // ── DANGER ZONE: REMOVE GAME ──
-            OutlinedButton(
-                onClick = onDelete,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(34.dp),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson),
-                border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.5f))
-            ) {
-                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp), tint = NeonCrimson)
-                Spacer(modifier = Modifier.width(5.dp))
-                Text(
-                    text = stringResource(R.string.game_detail_delete_action),
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = NeonCrimson
-                )
-            }
+                // ── PHYSICAL DATA TRANSFER CARD ──
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.game_detail_move_title),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                        if (isMoving) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.common_loading),
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.5.sp),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        } else {
+                            if (moveMessage != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (moveMessage == "SUCCESS")
+                                        CyberEmerald.copy(alpha = 0.12f)
+                                    else
+                                        NeonCrimson.copy(alpha = 0.12f),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (moveMessage == "SUCCESS") CyberEmerald.copy(alpha = 0.4f) else NeonCrimson.copy(alpha = 0.4f)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (moveMessage == "SUCCESS") Icons.Default.CheckCircle else Icons.Default.Error,
+                                            contentDescription = null,
+                                            tint = if (moveMessage == "SUCCESS") CyberEmerald else NeonCrimson,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = if (moveMessage == "SUCCESS")
+                                                stringResource(R.string.move_data_success)
+                                            else
+                                                stringResource(R.string.move_data_error, moveMessage),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                            color = if (moveMessage == "SUCCESS") CyberEmerald else NeonCrimson,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Move to MicroSD
+                                Button(
+                                    onClick = { onMove(MoveDirection.TO_SD) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(34.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Icon(Icons.Default.ArrowDownward, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.game_detail_move_to_sd),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // Restore to Internal
+                                OutlinedButton(
+                                    onClick = { onMove(MoveDirection.TO_INTERNAL) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(34.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                ) {
+                                    Icon(Icons.Default.ArrowUpward, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.game_detail_move_to_internal),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── DANGER ZONE: REMOVE GAME ──
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(34.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson),
+                    border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.5f))
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp), tint = NeonCrimson)
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = stringResource(R.string.game_detail_delete_action),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonCrimson
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 }
+
+/**
+ * Custom 3.5" Floppy/Hard Disk Icon matching App2SD Pro's internal disk graphic.
+ */
+@Composable
+fun FloppyDiskIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        // Outer disk body
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.08f, h * 0.08f),
+            size = Size(w * 0.84f, h * 0.84f),
+            cornerRadius = CornerRadius(w * 0.16f, h * 0.16f)
+        )
+        // Top slider / label slot (white cutout)
+        drawRoundRect(
+            color = Color.White,
+            topLeft = Offset(w * 0.24f, h * 0.16f),
+            size = Size(w * 0.52f, h * 0.28f),
+            cornerRadius = CornerRadius(w * 0.05f, h * 0.05f)
+        )
+        // Center hub (white cutout circle)
+        drawCircle(
+            color = Color.White,
+            radius = w * 0.15f,
+            center = Offset(w * 0.5f, h * 0.65f)
+        )
+        // Center dot (tint)
+        drawCircle(
+            color = tint,
+            radius = w * 0.06f,
+            center = Offset(w * 0.5f, h * 0.65f)
+        )
+    }
+}
+
+/**
+ * Concentric Pie / Donut Chart faithfully matching App2SD Pro:
+ * - Outer Ring: 7 slices for components (Dex, Lib, Data, Cache, Ext 1, Ext 2, Apk) with slice percentage labels
+ * - Inner Circle: Solid Internal vs External representation with dashed dividing line and percentage labels
+ */
+@Composable
+fun ConcentricStorageChart(
+    breakdown: AppStorageBreakdown,
+    modifier: Modifier = Modifier
+) {
+    val totalBytes = breakdown.totalBytes
+
+    val slices = remember(breakdown) {
+        listOf(
+            ChartSlice("Dex", breakdown.dexBytes, Color(0xFF64D8D2)),
+            ChartSlice("Lib", breakdown.libBytes, Color(0xFFFB8C00)),
+            ChartSlice("Data", breakdown.dataBytes, Color(0xFF00ACC1)),
+            ChartSlice("Cache", breakdown.cacheBytes, Color(0xFFE57373)),
+            ChartSlice("Ext1", breakdown.ext1Bytes, Color(0xFF5C6BC0)),
+            ChartSlice("Ext2", breakdown.ext2Bytes, Color(0xFF43A047)),
+            ChartSlice("Apk", breakdown.apkBytes, Color(0xFFE91E63))
+        )
+    }
+
+    val internalColor = Color(0xFFDF4006)
+    val extColor = Color(0xFF3BA71A)
+    val neutralTrack = MaterialTheme.colorScheme.surfaceVariant
+
+    Canvas(modifier = modifier) {
+        val diameter = size.minDimension
+        val center = Offset(size.width / 2f, size.height / 2f)
+
+        if (totalBytes <= 0L) {
+            drawCircle(
+                color = neutralTrack,
+                radius = diameter * 0.45f,
+                center = center,
+                style = Stroke(width = diameter * 0.16f)
+            )
+            drawCircle(
+                color = neutralTrack.copy(alpha = 0.5f),
+                radius = diameter * 0.28f,
+                center = center
+            )
+            return@Canvas
+        }
+
+        // 1. Draw Outer Donut Ring
+        val outerRadius = diameter * 0.48f
+        val innerRadius = diameter * 0.33f
+        val strokeWidth = outerRadius - innerRadius
+        val ringCenterRadius = (outerRadius + innerRadius) / 2f
+
+        var currentAngle = -90f
+        val textPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 10.dp.toPx()
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+
+        slices.forEach { slice ->
+            if (slice.bytes > 0) {
+                val fraction = slice.bytes.toDouble() / totalBytes.toDouble()
+                val sweep = (fraction * 360f).toFloat()
+                val pct = (fraction * 100).roundToInt()
+
+                drawArc(
+                    color = slice.color,
+                    startAngle = currentAngle,
+                    sweepAngle = sweep,
+                    useCenter = false,
+                    topLeft = Offset(center.x - ringCenterRadius, center.y - ringCenterRadius),
+                    size = Size(ringCenterRadius * 2f, ringCenterRadius * 2f),
+                    style = Stroke(width = strokeWidth)
+                )
+
+                if (pct >= 4) {
+                    val midAngleRad = Math.toRadians((currentAngle + sweep / 2f).toDouble())
+                    val textX = center.x + (ringCenterRadius * cos(midAngleRad)).toFloat()
+                    val textY = center.y + (ringCenterRadius * sin(midAngleRad)).toFloat() + (textPaint.textSize / 3f)
+
+                    drawContext.canvas.nativeCanvas.drawText(
+                        "$pct %",
+                        textX,
+                        textY,
+                        textPaint
+                    )
+                }
+
+                currentAngle += sweep
+            }
+        }
+
+        // 2. Draw Inner Circle (Internal vs External)
+        val centerCircleRadius = innerRadius - 3.dp.toPx()
+        val internalPct = breakdown.internalPercent
+        val extPct = breakdown.externalPercent
+
+        if (extPct == 0) {
+            drawCircle(
+                color = internalColor,
+                radius = centerCircleRadius,
+                center = center
+            )
+        } else {
+            val internalSweep = (internalPct / 100f) * 360f
+            drawArc(
+                color = internalColor,
+                startAngle = -90f,
+                sweepAngle = internalSweep,
+                useCenter = true,
+                topLeft = Offset(center.x - centerCircleRadius, center.y - centerCircleRadius),
+                size = Size(centerCircleRadius * 2f, centerCircleRadius * 2f)
+            )
+            drawArc(
+                color = extColor,
+                startAngle = -90f + internalSweep,
+                sweepAngle = 360f - internalSweep,
+                useCenter = true,
+                topLeft = Offset(center.x - centerCircleRadius, center.y - centerCircleRadius),
+                size = Size(centerCircleRadius * 2f, centerCircleRadius * 2f)
+            )
+        }
+
+        // Dotted divider vertical line
+        val dashPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(170, 255, 255, 255)
+            this.strokeWidth = 1.5.dp.toPx()
+            pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f, 4f), 0f)
+            style = android.graphics.Paint.Style.STROKE
+            isAntiAlias = true
+        }
+        drawContext.canvas.nativeCanvas.drawLine(
+            center.x,
+            center.y - centerCircleRadius * 0.65f,
+            center.x,
+            center.y + centerCircleRadius * 0.65f,
+            dashPaint
+        )
+
+        // Percentage text inside inner circle
+        val centerTextPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 9.5.dp.toPx()
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        val textY = center.y + (centerTextPaint.textSize / 3f)
+        val leftX = center.x - centerCircleRadius * 0.48f
+        val rightX = center.x + centerCircleRadius * 0.48f
+
+        drawContext.canvas.nativeCanvas.drawText("$internalPct %", leftX, textY, centerTextPaint)
+        drawContext.canvas.nativeCanvas.drawText("$extPct %", rightX, textY, centerTextPaint)
+    }
+}
+
+@Composable
+private fun BreakdownRow(
+    label: String,
+    labelColor: Color,
+    sizeText: String,
+    isDisk: Boolean = false,
+    vectorIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    customIconTint: Color = Color.Unspecified
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.SemiBold
+            ),
+            color = labelColor,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = sizeText,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.Medium
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(end = 16.dp)
+        )
+        if (isDisk) {
+            FloppyDiskIcon(
+                tint = customIconTint,
+                modifier = Modifier.size(16.dp)
+            )
+        } else if (vectorIcon != null) {
+            Icon(
+                imageVector = vectorIcon,
+                contentDescription = null,
+                tint = customIconTint,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+private data class ChartSlice(
+    val name: String,
+    val bytes: Long,
+    val color: Color
+)

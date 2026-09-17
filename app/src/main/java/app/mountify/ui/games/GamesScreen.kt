@@ -60,7 +60,7 @@ fun GamesScreen(
     val filterStatus by viewModel.filterStatus.collectAsState()
     val sortOption by viewModel.sortOption.collectAsState()
     val installedApps by viewModel.installedApps.collectAsState()
-    val storageBreakdown by viewModel.storageBreakdown.collectAsState()
+    val detailedStorage by viewModel.detailedStorage.collectAsState()
     val isMovingData by viewModel.isMovingData.collectAsState()
     val moveMessage by viewModel.moveMessage.collectAsState()
 
@@ -84,7 +84,7 @@ fun GamesScreen(
 
         GameDetailView(
             game = updatedGame,
-            storageBreakdown = storageBreakdown,
+            breakdown = detailedStorage,
             isMoving = isMovingData,
             moveMessage = moveMessage,
             onDismiss = {

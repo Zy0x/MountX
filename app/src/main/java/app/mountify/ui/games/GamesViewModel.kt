@@ -3,6 +3,7 @@ package app.mountify.ui.games
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mountify.data.model.AppStorageBreakdown
 import app.mountify.data.model.GameEntry
 import app.mountify.data.model.InstalledAppInfo
 import app.mountify.data.model.MountMode
@@ -64,6 +65,9 @@ class GamesViewModel @Inject constructor(
     private val _storageBreakdown = MutableStateFlow<Pair<Long, Long>>(Pair(0L, 0L))
     val storageBreakdown: StateFlow<Pair<Long, Long>> = _storageBreakdown.asStateFlow()
 
+    private val _detailedStorage = MutableStateFlow(AppStorageBreakdown())
+    val detailedStorage: StateFlow<AppStorageBreakdown> = _detailedStorage.asStateFlow()
+
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
@@ -86,6 +90,7 @@ class GamesViewModel @Inject constructor(
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
             _storageBreakdown.value = gameRepository.getInternalAndSdSizes(packageName, sdBase)
+            _detailedStorage.value = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
         }
     }
 
@@ -154,6 +159,7 @@ class GamesViewModel @Inject constructor(
                 _moveMessage.value = "SUCCESS"
                 gameRepository.calculateDataSize(packageName, sdBase)
                 _storageBreakdown.value = gameRepository.getInternalAndSdSizes(packageName, sdBase)
+                _detailedStorage.value = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
             } else {
                 _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
             }

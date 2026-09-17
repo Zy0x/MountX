@@ -1,0 +1,48 @@
+package app.mountify.data.model
+
+import kotlin.math.roundToInt
+
+/**
+ * Detailed storage breakdown representing the 7 storage categories of an Android application:
+ * 1. Apk: Base APK and split APKs
+ * 2. Dex: Dalvik/ART compiled code (oat/odex/art/vdex)
+ * 3. Lib: Native shared libraries (.so)
+ * 4. Data: Private internal storage (/data/data/<pkg>) excluding cache
+ * 5. Cache: Application internal cache (/data/data/<pkg>/cache + code_cache)
+ * 6. Ext 1: Shared external storage on internal media (/data/media/0/Android/data/<pkg>)
+ * 7. Ext 2: Secondary MicroSD partition storage ($sdBase/Android/data/<pkg>)
+ */
+data class AppStorageBreakdown(
+    val apkBytes: Long = 0L,
+    val dexBytes: Long = 0L,
+    val libBytes: Long = 0L,
+    val dataBytes: Long = 0L,
+    val cacheBytes: Long = 0L,
+    val ext1Bytes: Long = 0L,
+    val ext2Bytes: Long = 0L
+) {
+    /** Total internal storage (Apk + Dex + Lib + Data + Cache) */
+    val internalBytes: Long
+        get() = apkBytes + dexBytes + libBytes + dataBytes + cacheBytes
+
+    /** Total external storage (Ext 1 + Ext 2) */
+    val externalBytes: Long
+        get() = ext1Bytes + ext2Bytes
+
+    /** Grand total storage (Internal + Ext 1 + Ext 2) */
+    val totalBytes: Long
+        get() = internalBytes + externalBytes
+
+    /** Percentage of internal storage over total (0 - 100) */
+    val internalPercent: Int
+        get() = if (totalBytes > 0) ((internalBytes.toDouble() / totalBytes) * 100).roundToInt() else 0
+
+    /** Percentage of external storage over total (0 - 100) */
+    val externalPercent: Int
+        get() = if (totalBytes > 0) 100 - internalPercent else 0
+
+    /** Helper for computing percentage of an arbitrary byte size against totalBytes */
+    fun percentOfTotal(bytes: Long): Int {
+        return if (totalBytes > 0) ((bytes.toDouble() / totalBytes) * 100).roundToInt() else 0
+    }
+}

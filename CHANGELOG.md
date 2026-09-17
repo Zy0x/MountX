@@ -5,6 +5,17 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.33] - 2026-09-17
+
+### Added
+- Implemented exact App Detail breakdown structure inspired by App2SD Pro:
+  - Added `AppStorageBreakdown` model tracking all 7 Android app storage categories (`Apk`, `Dex`, `Lib`, `Data`, `Cache`, `Data(Ext) 1`, `Data(Ext) 2`) and 3-tier cumulative summaries.
+  - Implemented high-performance batch shell root calculation engine in `GameRepository` querying APK, DEX/oat, native lib, internal data, cache, and shared storage in a single non-blocking `Dispatchers.IO` command.
+  - Built Concentric Pie / Donut Chart with individual slice percentage labels, multi-slice coloring, and an inner circle representing Internal vs External distribution with dashed center divider.
+  - Added 3-tier legend beside the chart: 💽 Internal (`#DF4006`), 📱 Ext 1 (`#3149FF`), 💾 Ext 2 (`#3BA71A`), and $\Sigma$ Total cumulative data.
+  - Added 7-row Detailed Breakdown card with category-matched text colors, 2-decimal formatted sizes, and destination storage icons.
+- Streamlined App Detail header to flat surface styling with cyan/teal (`#00838F`) metadata typography and thin divider separator.
+
 ## [2.1.32] - 2026-09-17
 
 ### Added

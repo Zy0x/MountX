@@ -133,6 +133,13 @@
     <string name="game_detail_storage_breakdown">Rincian Penyimpanan</string>
     <string name="game_detail_internal_storage">Penyimpanan Internal</string>
     <string name="game_detail_microsd_storage">Penyimpanan MicroSD</string>
+    <string name="game_detail_cat_apk">Apk</string>
+    <string name="game_detail_cat_dex">Dex</string>
+    <string name="game_detail_cat_lib">Lib</string>
+    <string name="game_detail_cat_data">Data</string>
+    <string name="game_detail_cat_cache">Cache</string>
+    <string name="game_detail_cat_ext1">Data(Ext) 1</string>
+    <string name="game_detail_cat_ext2">Data(Ext) 2</string>
     <string name="game_detail_mode_title">Mode Mount</string>
     <string name="game_detail_mode_switch_desc">Mengubah mode memperbarui konfigurasi langsung tanpa menambah ulang game.</string>
     <string name="game_detail_move_title">Pemindahan Data Fisik</string>
