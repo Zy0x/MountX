@@ -18,10 +18,13 @@ import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.FsckReport
 import app.mountx.data.model.FsckStatus
 import app.mountx.data.model.SupportedFilesystemInfo
+import app.mountx.data.model.GlobalTrimReport
+import app.mountx.data.model.TrimPartitionResult
 import app.mountx.ui.components.OperationState
 import app.mountx.data.repository.GameRepository
 import app.mountx.data.repository.StorageRepository
 import app.mountx.util.AppPreferences
+import app.mountx.util.FormatUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -150,6 +153,49 @@ class StorageViewModel @Inject constructor(
         viewModelScope.launch {
             _supportedFilesystems.value = storageRepository.detectSupportedFilesystems()
         }
+    }
+
+    // Unmount Confirmation States
+    private val _partitionToUnmount = MutableStateFlow<PartitionInfo?>(null)
+    val partitionToUnmount: StateFlow<PartitionInfo?> = _partitionToUnmount.asStateFlow()
+
+    fun promptUnmountPartition(partition: PartitionInfo) {
+        _partitionToUnmount.value = partition
+    }
+
+    fun clearUnmountPartitionPrompt() {
+        _partitionToUnmount.value = null
+    }
+
+    fun confirmUnmountPartition() {
+        val part = _partitionToUnmount.value ?: return
+        _partitionToUnmount.value = null
+        unmountPartition(part)
+    }
+
+    private val _diskToEject = MutableStateFlow<SdCardDiskInfo?>(null)
+    val diskToEject: StateFlow<SdCardDiskInfo?> = _diskToEject.asStateFlow()
+
+    fun promptEjectDisk(disk: SdCardDiskInfo) {
+        _diskToEject.value = disk
+    }
+
+    fun clearEjectDiskPrompt() {
+        _diskToEject.value = null
+    }
+
+    fun confirmEjectDisk() {
+        val disk = _diskToEject.value ?: return
+        _diskToEject.value = null
+        unmountAllPartitions(disk)
+    }
+
+    // Structured Global Trim Report State
+    private val _globalTrimReport = MutableStateFlow<GlobalTrimReport?>(null)
+    val globalTrimReport: StateFlow<GlobalTrimReport?> = _globalTrimReport.asStateFlow()
+
+    fun clearGlobalTrimReport() {
+        _globalTrimReport.value = null
     }
 
 
@@ -733,29 +779,69 @@ class StorageViewModel @Inject constructor(
         viewModelScope.launch {
             _isTrimming.value = true
             _trimOutput.value = null
+            _globalTrimReport.value = null
             _operationProgress.value = OperationState.InProgress(
                 title = "Flash Storage TRIM",
                 stepMessage = "Mengirim sinyal fstrim ke seluruh blok memori ${disk.hardwareTitle}..."
             )
-            val res = storageRepository.executeGlobalTrim(disk)
+            val res = storageRepository.executeGlobalTrimStructured(disk)
             _isTrimming.value = false
             if (res.isSuccess) {
-                val out = res.getOrNull() ?: "Global TRIM complete."
-                _trimOutput.value = out
+                val report = res.getOrThrow()
+                _globalTrimReport.value = report
+                _trimOutput.value = report.rawLog
+
+                val details = report.partitionResults.map {
+                    val statusText = when {
+                        it.needsCleaning -> "Perlu dibersihkan (fsck)"
+                        it.notImplemented -> "Tidak didukung"
+                        it.bytesTrimmed > 0 -> "${FormatUtils.formatBytes(it.bytesTrimmed)} dibebaskan"
+                        else -> "Selesai"
+                    }
+                    "${it.partitionName} (${it.mountPoint})" to statusText
+                }
+
                 _operationProgress.value = OperationState.Success(
-                    title = "Global TRIM Selesai",
-                    message = "Seluruh blok flash yang tidak terpakai berhasil dibebaskan.",
-                    details = listOf(
-                        "Perangkat" to disk.hardwareTitle,
-                        "Status" to "Trimmed successfully"
-                    ),
-                    rawLog = out
+                    title = if (report.hasNeedsCleaning) "Peringatan Struktur Filesystem" else "Global TRIM Selesai",
+                    message = report.summary,
+                    details = details,
+                    rawLog = report.rawLog
                 )
             } else {
                 val err = res.exceptionOrNull()?.message ?: "TRIM failed"
                 _statusMessage.value = err
                 _operationProgress.value = OperationState.Error(
                     title = "TRIM Gagal",
+                    errorMessage = err
+                )
+            }
+        }
+    }
+
+    fun executeGuidedFsckRepair(partition: PartitionInfo) {
+        viewModelScope.launch {
+            _operationProgress.value = OperationState.InProgress(
+                title = "Perbaikan fsck Terpandu",
+                stepMessage = "Melepas mount ${partition.cleanShortName} secara aman dan menjalankan perbaikan fsck..."
+            )
+            val res = storageRepository.safeUnmountCheckAndRemount(partition)
+            if (res.isSuccess) {
+                val report = res.getOrThrow()
+                _fsckReport.value = report
+                _operationProgress.value = OperationState.Success(
+                    title = "Perbaikan fsck Selesai",
+                    message = "Partisi ${partition.cleanShortName} berhasil diperiksa dan dipasang kembali.",
+                    details = listOf(
+                        "Status Integritas" to report.status.name,
+                        "Hasil" to report.summary
+                    ),
+                    rawLog = report.rawLog
+                )
+                detectPartitions(force = true)
+            } else {
+                val err = res.exceptionOrNull()?.message ?: "Perbaikan fsck gagal"
+                _operationProgress.value = OperationState.Error(
+                    title = "Perbaikan fsck Gagal",
                     errorMessage = err
                 )
             }

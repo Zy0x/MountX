@@ -234,3 +234,22 @@ data class SupportedFilesystemInfo(
     val isFullySupported: Boolean get() = isKernelSupported && isToolSupported
 }
 
+data class TrimPartitionResult(
+    val partitionName: String,
+    val mountPoint: String,
+    val rawOutput: String,
+    val isSuccess: Boolean,
+    val needsCleaning: Boolean = false,
+    val notImplemented: Boolean = false,
+    val bytesTrimmed: Long = 0L
+)
+
+data class GlobalTrimReport(
+    val partitionResults: List<TrimPartitionResult>,
+    val hasNeedsCleaning: Boolean,
+    val dirtyPartitionName: String? = null,
+    val dirtyMountPoint: String? = null,
+    val summary: String,
+    val rawLog: String
+)
+

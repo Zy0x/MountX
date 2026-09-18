@@ -432,7 +432,7 @@
 
     <!-- Disk & Partition Tools (Modal Bottom Sheets & IO Tweaks) -->
     <string name="storage_action_mount_all">Mount All</string>
-    <string name="storage_action_unmount_all">Eject All</string>
+    <string name="storage_action_unmount_all">Eject Disk</string>
     <string name="storage_action_disk_tools">Disk Tools</string>
     <string name="storage_action_partition_tools">Tools</string>
     <string name="storage_disk_tools_title">Disk Performance &amp; Tools</string>
@@ -487,5 +487,23 @@
     <string name="storage_rename_label_title">Edit Partition Label</string>
     <string name="storage_rename_label_field">New Partition Label</string>
     <string name="storage_rename_label_confirm">Save Label</string>
+
+    <!-- Unmount Confirmations -->
+    <string name="storage_unmount_confirm_title">Unmount Partition</string>
+    <string name="storage_unmount_confirm_message">Are you sure you want to unmount partition %1$s (%2$s)? Any active background reads from this volume will be disconnected.</string>
+    <string name="storage_unmount_confirm_warning_game">WARNING: Active game bind-mounts are currently linked to this partition. Games running from this partition will freeze or crash if unmounted!</string>
+    <string name="storage_unmount_confirm_btn">Unmount Now</string>
+    <string name="storage_eject_disk_confirm_title">Eject Disk</string>
+    <string name="storage_eject_disk_confirm_message">Are you sure you want to eject %1$s? All %2$d mounted partitions on this drive will be safely unmounted.</string>
+    <string name="storage_eject_disk_confirm_btn">Eject Disk</string>
+
+    <!-- FSTRIM Actionable Remediation -->
+    <string name="storage_trim_clean_needed_title">Filesystem Structure Needs Cleaning</string>
+    <string name="storage_trim_clean_needed_desc">Partition %1$s reported dirty metadata. A filesystem check (fsck) is required before flash memory blocks can be trimmed.</string>
+    <string name="storage_trim_fsck_action_btn">Run fsck Now</string>
+    <string name="storage_trim_unsupported_desc">The storage driver or filesystem does not support TRIM/discard on this partition.</string>
+    <string name="storage_trim_guided_fsck_title">Guided fsck Repair</string>
+    <string name="storage_trim_guided_fsck_desc">The partition will be temporarily unmounted, checked and repaired with fsck, and automatically remounted back.</string>
+    <string name="storage_trim_guided_fsck_confirm">Proceed with Repair</string>
 </resources>
 

@@ -5,6 +5,25 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.1] - 2026-09-18
+
+### Added
+- **Disk & Partition Unmount Confirmation Safeguards**:
+  - Added modal confirmation dialogs for single partition unmounting and batch "Eject Disk" operations.
+  - Automatic inspection of active game bind-mounts targeting the partition (`isTargetMount`) with high-priority crimson warning alerts to prevent application freezes or crashes.
+  - Modernized "Eject Disk" button with official eject icon and clear multi-partition unmount metrics.
+- **Actionable FSTRIM Remediation Pipeline**:
+  - Upgraded global and partition TRIM execution with structured output parsing detecting kernel `EUCLEAN` (`Structure needs cleaning`) and unsupported discard operations.
+  - Added dedicated actionable remediation alert banner with **"Run fsck Now"** direct execution button in the TRIM results dialog.
+- **Cyber AMOLED Edit Partition Label Dialog**:
+  - Re-engineered volume rename dialog to match the `#121622` AMOLED cyber aesthetic with glowing cyan accents, monospace target path telemetry, and streamlined touch targets.
+
+### Fixed
+- **Sequential Read Benchmark 0.0 MB/s Calculation**:
+  - Resolved Toybox `dd` incompatibility (`bad iflag=direct`) on Android userspace by standardizing block count/size flags, validating byte throughput records, and calculating accurate read speeds (>0 MB/s, measured 48.7 MB/s on real hardware).
+- **Kernel Filesystem Detection Accuracy**:
+  - Fixed false `[Unsupported]` badges in `SingleFormatDialog` by replacing combined multi-binary check with individual executable probes (`[ -x /system/bin/... ] || command -v ...`), correctly detecting F2FS, Ext4, FAT32, and exFAT as `[Kernel Ready]`.
+
 ## [2.2.0] - 2026-09-18
 
 ### Added

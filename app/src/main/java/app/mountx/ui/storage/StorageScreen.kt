@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Eject
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
@@ -129,6 +130,9 @@ fun StorageScreen(
     val operationProgress by viewModel.operationProgress.collectAsState()
     val fsckReport by viewModel.fsckReport.collectAsState()
     val supportedFilesystems by viewModel.supportedFilesystems.collectAsState()
+    val partitionToUnmount by viewModel.partitionToUnmount.collectAsState()
+    val diskToEject by viewModel.diskToEject.collectAsState()
+    val globalTrimReport by viewModel.globalTrimReport.collectAsState()
 
     var showDiskToolsSheet by remember { mutableStateOf(false) }
     var showPartitionToolsSheet by remember { mutableStateOf(false) }
@@ -175,9 +179,9 @@ fun StorageScreen(
             onRefresh = { viewModel.detectPartitions(force = true) },
             onOpenWizard = { viewModel.openPartitionWizard(selectedDiskForDetail) },
             onMountPartition = { part -> viewModel.mountPartition(part) },
-            onUnmountPartition = { part -> viewModel.unmountPartition(part) },
+            onUnmountPartition = { part -> viewModel.promptUnmountPartition(part) },
             onMountAll = { selectedDiskForDetail?.let { viewModel.mountAllPartitions(it) } },
-            onUnmountAll = { selectedDiskForDetail?.let { viewModel.unmountAllPartitions(it) } },
+            onUnmountAll = { selectedDiskForDetail?.let { viewModel.promptEjectDisk(it) } },
             onOpenDiskTools = { showDiskToolsSheet = true },
             onOpenPartitionTools = { part ->
                 partitionForTools = part
@@ -386,49 +390,153 @@ fun StorageScreen(
         )
     }
 
-    // Storage TRIM Output Dialog
+    // Unmount Partition Confirmation Dialog
+    if (partitionToUnmount != null) {
+        UnmountPartitionConfirmDialog(
+            partition = partitionToUnmount!!,
+            onDismiss = { viewModel.clearUnmountPartitionPrompt() },
+            onConfirm = { viewModel.confirmUnmountPartition() }
+        )
+    }
+
+    // Eject Disk Confirmation Dialog
+    if (diskToEject != null) {
+        EjectDiskConfirmDialog(
+            disk = diskToEject!!,
+            onDismiss = { viewModel.clearEjectDiskPrompt() },
+            onConfirm = { viewModel.confirmEjectDisk() }
+        )
+    }
+
+    // Storage TRIM Output Dialog with Actionable Recommendations
     if (trimOutput != null) {
+        val hasNeedsCleaning = globalTrimReport?.hasNeedsCleaning ?: trimOutput?.contains("Structure needs cleaning", ignoreCase = true) ?: false
+        val dirtyPart = selectedDiskForDetail?.partitions?.firstOrNull { 
+            it.name == globalTrimReport?.dirtyPartitionName || it.mountPoint == globalTrimReport?.dirtyMountPoint || it.isTargetMount 
+        } ?: partitionForTools
+
         AlertDialog(
-            onDismissRequest = { viewModel.clearTrimOutput() },
+            onDismissRequest = {
+                viewModel.clearTrimOutput()
+                viewModel.clearGlobalTrimReport()
+            },
+            containerColor = Color(0xFF121622),
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 6.dp,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.CleaningServices,
                         contentDescription = null,
-                        tint = CyberEmerald,
-                        modifier = Modifier.size(18.dp)
+                        tint = if (hasNeedsCleaning) AmberWarn else CyberEmerald,
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = stringResource(R.string.storage_trim_result_title),
-                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             },
             text = {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color.Black.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = trimOutput ?: "",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.5.sp,
-                        lineHeight = 14.sp,
-                        color = CyberEmerald,
+                    // If Structure needs cleaning is detected -> Actionable Alert Banner
+                    if (hasNeedsCleaning && dirtyPart != null) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = AmberWarn.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, AmberWarn.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = AmberWarn,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.storage_trim_clean_needed_title),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = AmberWarn
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = stringResource(R.string.storage_trim_clean_needed_desc, dirtyPart.cleanShortName),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        viewModel.clearTrimOutput()
+                                        viewModel.clearGlobalTrimReport()
+                                        viewModel.executeGuidedFsckRepair(dirtyPart)
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = AmberWarn,
+                                        contentColor = Color.Black
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(34.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Build,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.storage_trim_fsck_action_btn),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Raw Output Terminal Box
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF07090F),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
                         modifier = Modifier
-                            .padding(10.dp)
-                            .verticalScroll(rememberScrollState())
-                    )
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                    ) {
+                        Text(
+                            text = trimOutput ?: "",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.5.sp,
+                            lineHeight = 14.sp,
+                            color = if (hasNeedsCleaning) AmberWarn else CyberEmerald,
+                            modifier = Modifier
+                                .padding(10.dp)
+                                .verticalScroll(rememberScrollState())
+                        )
+                    }
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = { viewModel.clearTrimOutput() },
+                    onClick = {
+                        viewModel.clearTrimOutput()
+                        viewModel.clearGlobalTrimReport()
+                    },
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                     modifier = Modifier.height(34.dp)
@@ -2473,6 +2581,253 @@ private fun FsckReportDialog(
     )
 }
 
+// ── Unmount Partition Confirmation Dialog ─────────────────────
+@Composable
+private fun UnmountPartitionConfirmDialog(
+    partition: PartitionInfo,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF121622),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 6.dp,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Eject,
+                    contentDescription = null,
+                    tint = NeonCrimson,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.storage_unmount_confirm_title),
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.storage_unmount_confirm_message, partition.cleanShortName.ifBlank { partition.name }, partition.fsType.uppercase()),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Partition Target Info
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Device: ${partition.path}",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        partition.mountPoint?.let { mp ->
+                            Text(
+                                text = "Mount Point: $mp",
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Active Game Warning if Target Mount
+                if (partition.isTargetMount) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = NeonCrimson.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = NeonCrimson,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.storage_unmount_confirm_warning_game),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
+                                color = NeonCrimson,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson, contentColor = Color.White),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text(stringResource(R.string.storage_unmount_confirm_btn), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text(stringResource(R.string.common_cancel), fontSize = 11.5.sp)
+            }
+        }
+    )
+}
+
+// ── Eject Disk Confirmation Dialog ────────────────────────────
+@Composable
+private fun EjectDiskConfirmDialog(
+    disk: SdCardDiskInfo,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val mountedPartitions = disk.partitions.filter { it.isMounted }
+    val hasActiveGameMounts = mountedPartitions.any { it.isTargetMount }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF121622),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 6.dp,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Eject,
+                    contentDescription = null,
+                    tint = NeonCrimson,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.storage_eject_disk_confirm_title),
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.storage_eject_disk_confirm_message, disk.displayName, mountedPartitions.size),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Disk Info Card
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Disk: ${disk.diskName} (${FormatUtils.formatBytes(disk.totalSizeBytes)})",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "${mountedPartitions.size} partition(s) will be unmounted",
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Active Game Warning
+                if (hasActiveGameMounts) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = NeonCrimson.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = NeonCrimson,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.storage_unmount_confirm_warning_game),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
+                                color = NeonCrimson,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson, contentColor = Color.White),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text(stringResource(R.string.storage_eject_disk_confirm_btn), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text(stringResource(R.string.common_cancel), fontSize = 11.5.sp)
+            }
+        }
+    )
+}
+
 // ── Edit Partition Label Dialog (Non-destructive) ───────────
 @Composable
 private fun EditPartitionLabelDialog(
@@ -2484,18 +2839,22 @@ private fun EditPartitionLabelDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = Color(0xFF121622),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 6.dp,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.AutoMirrored.Filled.Label,
                     contentDescription = null,
-                    tint = Color(0xFF38BDF8),
+                    tint = ElectricCyan,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = stringResource(R.string.storage_rename_label_title),
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         },
@@ -2513,7 +2872,7 @@ private fun EditPartitionLabelDialog(
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {

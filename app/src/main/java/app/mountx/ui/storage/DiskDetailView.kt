@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Eject
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SdStorage
@@ -423,7 +424,7 @@ private fun DiskHardwareOverviewCard(
                         )
                     } else {
                         Icon(
-                            imageVector = if (hasUnmounted) Icons.Default.PlayArrow else Icons.Default.Stop,
+                            imageVector = if (hasUnmounted) Icons.Default.PlayArrow else Icons.Default.Eject,
                             contentDescription = null,
                             modifier = Modifier.size(15.dp)
                         )
@@ -816,7 +817,7 @@ private fun DiskPartitionCard(
                             .height(34.dp)
                     ) {
                         Icon(
-                            Icons.Default.Stop,
+                            Icons.Default.Eject,
                             contentDescription = null,
                             modifier = Modifier.size(14.dp)
                         )

@@ -13,6 +13,7 @@ import app.mountx.data.model.PartitionSchemeConfig
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.SupportedFilesystemInfo
+import app.mountx.data.model.GlobalTrimReport
 import app.mountx.root.StorageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -151,6 +152,14 @@ class StorageRepository @Inject constructor(
 
     suspend fun executeGlobalTrim(disk: SdCardDiskInfo): Result<String> = withContext(Dispatchers.IO) {
         storageManager.executeGlobalTrim(disk)
+    }
+
+    suspend fun executeGlobalTrimStructured(disk: SdCardDiskInfo): Result<GlobalTrimReport> = withContext(Dispatchers.IO) {
+        storageManager.executeGlobalTrimStructured(disk)
+    }
+
+    suspend fun safeUnmountCheckAndRemount(partition: PartitionInfo): Result<FsckReport> = withContext(Dispatchers.IO) {
+        storageManager.safeUnmountCheckAndRemount(partition)
     }
 
     suspend fun executePartitionTrim(mountPoint: String): Result<String> = withContext(Dispatchers.IO) {

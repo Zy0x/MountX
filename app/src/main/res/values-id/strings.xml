@@ -415,7 +415,7 @@
 
     <!-- Disk & Partition Tools (Modal Bottom Sheets & IO Tweaks) -->
     <string name="storage_action_mount_all">Mount Semua</string>
-    <string name="storage_action_unmount_all">Eject Semua</string>
+    <string name="storage_action_unmount_all">Eject Disk</string>
     <string name="storage_action_disk_tools">Tools Disk</string>
     <string name="storage_action_partition_tools">Alat</string>
     <string name="storage_disk_tools_title">Performa &amp; Tools Disk</string>
@@ -470,5 +470,23 @@
     <string name="storage_rename_label_title">Ganti Label Partisi</string>
     <string name="storage_rename_label_field">Label Partisi Baru</string>
     <string name="storage_rename_label_confirm">Simpan Label</string>
+
+    <!-- Unmount Confirmations -->
+    <string name="storage_unmount_confirm_title">Konfirmasi Unmount Partisi</string>
+    <string name="storage_unmount_confirm_message">Apakah Anda yakin ingin melepas partisi %1$s (%2$s)? Proses pembacaan latar belakang pada volume ini akan terputus.</string>
+    <string name="storage_unmount_confirm_warning_game">PERINGATAN: Bind-mount game aktif sedang terhubung ke partisi ini. Game yang berjalan dari partisi ini akan tertutup atau mengalami crash jika dilepas!</string>
+    <string name="storage_unmount_confirm_btn">Unmount Sekarang</string>
+    <string name="storage_eject_disk_confirm_title">Konfirmasi Eject Disk</string>
+    <string name="storage_eject_disk_confirm_message">Apakah Anda yakin ingin melakukan eject pada %1$s? Seluruh %2$d partisi yang terpasang pada drive ini akan dilepas secara aman.</string>
+    <string name="storage_eject_disk_confirm_btn">Eject Disk</string>
+
+    <!-- FSTRIM Actionable Remediation -->
+    <string name="storage_trim_clean_needed_title">Struktur Filesystem Perlu Dibersihkan</string>
+    <string name="storage_trim_clean_needed_desc">Partisi %1$s melaporkan metadata kotor. Perbaikan filesystem (fsck) diperlukan agar blok memori flash dapat dibersihkan secara optimal.</string>
+    <string name="storage_trim_fsck_action_btn">Jalankan fsck Sekarang</string>
+    <string name="storage_trim_unsupported_desc">Driver penyimpanan atau filesystem tidak mendukung operasi TRIM/discard pada partisi ini.</string>
+    <string name="storage_trim_guided_fsck_title">Perbaikan fsck Terpandu</string>
+    <string name="storage_trim_guided_fsck_desc">Partisi akan dilepas sementara (unmount), diperiksa dan diperbaiki dengan fsck, lalu dipasang kembali secara otomatis.</string>
+    <string name="storage_trim_guided_fsck_confirm">Lanjutkan Perbaikan</string>
 </resources>
 

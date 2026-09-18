@@ -15,6 +15,8 @@ import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.FsckReport
 import app.mountx.data.model.FsckStatus
 import app.mountx.data.model.SupportedFilesystemInfo
+import app.mountx.data.model.GlobalTrimReport
+import app.mountx.data.model.TrimPartitionResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -623,61 +625,58 @@ class StorageManager {
                 .map { it.lowercase() }
                 .toSet()
         } else {
-            setOf("f2fs", "ext4", "vfat", "exfat")
+            setOf("f2fs", "ext4", "ext3", "ext2", "vfat", "exfat")
         }
 
-        val toolsRes = RootShell.exec("which make_f2fs mkfs.f2fs mke2fs mkfs.ext4 mkfs.fat mkfs.vfat mkfs.exfat mkfs.ntfs 2>/dev/null")
-        val availableTools = if (toolsRes.isSuccess) {
-            toolsRes.stdout.joinToString(" ").lowercase()
-        } else ""
+        // Modular binary checks to prevent a single missing tool from failing the entire probe
+        val f2fsTool = RootShell.exec("[ -x /system/bin/make_f2fs ] || command -v make_f2fs || command -v mkfs.f2fs").isSuccess
+        val ext4Tool = RootShell.exec("[ -x /system/bin/mke2fs ] || [ -x /system/bin/mkfs.ext4 ] || command -v mke2fs || command -v mkfs.ext4").isSuccess
+        val fatTool = RootShell.exec("[ -x /system/bin/newfs_msdos ] || command -v newfs_msdos || command -v mkfs.vfat || command -v mkdosfs || busybox which mkfs.vfat").isSuccess
+        val exfatTool = RootShell.exec("[ -x /system/bin/mkfs.exfat ] || command -v mkfs.exfat || busybox which mkfs.exfat").isSuccess
 
         val list = mutableListOf<SupportedFilesystemInfo>()
 
         // F2FS
         val f2fsKernel = kernelSupported.contains("f2fs")
-        val f2fsTool = availableTools.contains("f2fs")
         list.add(
             SupportedFilesystemInfo(
                 fsType = FilesystemType.F2FS,
                 isKernelSupported = f2fsKernel,
                 isToolSupported = f2fsTool,
-                description = if (f2fsKernel) "Optimized for flash storage, fastest game loading throughput" else "Kernel does not support F2FS"
+                description = if (f2fsKernel && f2fsTool) "Optimized for flash storage, fastest game loading throughput" else "Kernel does not support F2FS"
             )
         )
 
         // EXT4
         val ext4Kernel = kernelSupported.contains("ext4") || kernelSupported.contains("ext3") || kernelSupported.contains("ext2")
-        val ext4Tool = availableTools.contains("mke2fs") || availableTools.contains("mkfs.ext4")
         list.add(
             SupportedFilesystemInfo(
                 fsType = FilesystemType.EXT4,
                 isKernelSupported = ext4Kernel,
                 isToolSupported = ext4Tool,
-                description = if (ext4Kernel) "Standard Linux filesystem, widely compatible, stable & reliable" else "Kernel does not support Ext4"
+                description = if (ext4Kernel && ext4Tool) "Standard Linux filesystem, widely compatible, stable & reliable" else "Kernel does not support Ext4"
             )
         )
 
         // FAT32
         val fatKernel = kernelSupported.contains("vfat") || kernelSupported.contains("msdos")
-        val fatTool = true
         list.add(
             SupportedFilesystemInfo(
                 fsType = FilesystemType.FAT32,
                 isKernelSupported = fatKernel,
                 isToolSupported = fatTool,
-                description = if (fatKernel) "Universal cross-platform storage (4 GB single-file limit)" else "Kernel does not support FAT32"
+                description = if (fatKernel && fatTool) "Universal cross-platform storage (4 GB single-file limit)" else "Kernel does not support FAT32"
             )
         )
 
         // exFAT
         val exfatKernel = kernelSupported.contains("exfat")
-        val exfatTool = availableTools.contains("exfat") || true
         list.add(
             SupportedFilesystemInfo(
                 fsType = FilesystemType.EXFAT,
                 isKernelSupported = exfatKernel,
                 isToolSupported = exfatTool,
-                description = if (exfatKernel) "Modern cross-platform storage for files larger than 4 GB" else "Kernel does not support exFAT"
+                description = if (exfatKernel && exfatTool) "Modern cross-platform storage for files larger than 4 GB" else "Kernel does not support exFAT"
             )
         )
 
@@ -1366,15 +1365,16 @@ class StorageManager {
 
             // 7. Persist to module config.conf if requested
             if (config.isBootPersistent) {
-                val cfgFile = "/data/adb/modules/Mountify/config.conf"
                 val script = """
-                    if [ -f "$cfgFile" ]; then
-                        grep -q "^IO_TWEAKS_ENABLED=" "$cfgFile" && sed -i "s/^IO_TWEAKS_ENABLED=.*/IO_TWEAKS_ENABLED=1/" "$cfgFile" || echo "IO_TWEAKS_ENABLED=1" >> "$cfgFile"
-                        grep -q "^READ_AHEAD_KB=" "$cfgFile" && sed -i "s/^READ_AHEAD_KB=.*/READ_AHEAD_KB=${config.readAheadKb}/" "$cfgFile" || echo "READ_AHEAD_KB=${config.readAheadKb}" >> "$cfgFile"
-                        grep -q "^IO_SCHEDULER=" "$cfgFile" && sed -i "s/^IO_SCHEDULER=.*/IO_SCHEDULER=${config.scheduler}/" "$cfgFile" || echo "IO_SCHEDULER=${config.scheduler}" >> "$cfgFile"
-                        grep -q "^RQ_AFFINITY=" "$cfgFile" && sed -i "s/^RQ_AFFINITY=.*/RQ_AFFINITY=${config.rqAffinity}/" "$cfgFile" || echo "RQ_AFFINITY=${config.rqAffinity}" >> "$cfgFile"
-                        grep -q "^NR_REQUESTS=" "$cfgFile" && sed -i "s/^NR_REQUESTS=.*/NR_REQUESTS=${config.nrRequests}/" "$cfgFile" || echo "NR_REQUESTS=${config.nrRequests}" >> "$cfgFile"
-                        grep -q "^VFS_CACHE_PRESSURE=" "$cfgFile" && sed -i "s/^VFS_CACHE_PRESSURE=.*/VFS_CACHE_PRESSURE=${config.vfsCachePressure}/" "$cfgFile" || echo "VFS_CACHE_PRESSURE=${config.vfsCachePressure}" >> "$cfgFile"
+                    cfgFile="/data/adb/modules/MountX/config.conf"
+                    [ ! -f "${'$'}cfgFile" ] && cfgFile="/data/adb/modules/Mountify/config.conf"
+                    if [ -f "${'$'}cfgFile" ]; then
+                        grep -q "^IO_TWEAKS_ENABLED=" "${'$'}cfgFile" && sed -i "s/^IO_TWEAKS_ENABLED=.*/IO_TWEAKS_ENABLED=1/" "${'$'}cfgFile" || echo "IO_TWEAKS_ENABLED=1" >> "${'$'}cfgFile"
+                        grep -q "^READ_AHEAD_KB=" "${'$'}cfgFile" && sed -i "s/^READ_AHEAD_KB=.*/READ_AHEAD_KB=${config.readAheadKb}/" "${'$'}cfgFile" || echo "READ_AHEAD_KB=${config.readAheadKb}" >> "${'$'}cfgFile"
+                        grep -q "^IO_SCHEDULER=" "${'$'}cfgFile" && sed -i "s/^IO_SCHEDULER=.*/IO_SCHEDULER=${config.scheduler}/" "${'$'}cfgFile" || echo "IO_SCHEDULER=${config.scheduler}" >> "${'$'}cfgFile"
+                        grep -q "^RQ_AFFINITY=" "${'$'}cfgFile" && sed -i "s/^RQ_AFFINITY=.*/RQ_AFFINITY=${config.rqAffinity}/" "${'$'}cfgFile" || echo "RQ_AFFINITY=${config.rqAffinity}" >> "${'$'}cfgFile"
+                        grep -q "^NR_REQUESTS=" "${'$'}cfgFile" && sed -i "s/^NR_REQUESTS=.*/NR_REQUESTS=${config.nrRequests}/" "${'$'}cfgFile" || echo "NR_REQUESTS=${config.nrRequests}" >> "${'$'}cfgFile"
+                        grep -q "^VFS_CACHE_PRESSURE=" "${'$'}cfgFile" && sed -i "s/^VFS_CACHE_PRESSURE=.*/VFS_CACHE_PRESSURE=${config.vfsCachePressure}/" "${'$'}cfgFile" || echo "VFS_CACHE_PRESSURE=${config.vfsCachePressure}" >> "${'$'}cfgFile"
                     fi
                 """.trimIndent()
                 RootShell.exec(script)
@@ -1384,23 +1384,112 @@ class StorageManager {
     }
 
     /**
-     * Run global FSTRIM on all mounted partitions belonging to this physical disk.
+     * Run global FSTRIM on all mounted partitions belonging to this physical disk,
+     * returning a structured diagnostic report with actionable remediation detection.
      */
-    suspend fun executeGlobalTrim(disk: SdCardDiskInfo): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun executeGlobalTrimStructured(disk: SdCardDiskInfo): Result<GlobalTrimReport> = withContext(Dispatchers.IO) {
         runCatching {
-            val outputs = mutableListOf<String>()
+            val results = mutableListOf<TrimPartitionResult>()
+            val rawLogs = mutableListOf<String>()
+            var dirtyPartName: String? = null
+            var dirtyMnt: String? = null
+            var anyNeedsCleaning = false
+
             for (part in disk.partitions) {
                 val mnt = part.mountPoint
                 if (!mnt.isNullOrBlank()) {
                     val res = RootShell.exec("fstrim -v \"$mnt\" 2>&1")
-                    val msg = res.output.ifBlank { res.stderr.joinToString() }
-                    outputs.add("${part.cleanShortName} ($mnt): $msg")
+                    val msg = res.output.ifBlank { res.stderr.joinToString("\n") }
+                    rawLogs.add("${part.cleanShortName} ($mnt): $msg")
+
+                    val needsCleaning = msg.contains("Structure needs cleaning", ignoreCase = true)
+                    val notImplemented = msg.contains("Function not implemented", ignoreCase = true) || msg.contains("not supported", ignoreCase = true)
+                    val isSuccess = res.isSuccess && !needsCleaning && !notImplemented
+                    val bytes = Regex("""(\d+)\s+bytes""").find(msg)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+
+                    if (needsCleaning) {
+                        anyNeedsCleaning = true
+                        dirtyPartName = part.name
+                        dirtyMnt = mnt
+                    }
+
+                    results.add(
+                        TrimPartitionResult(
+                            partitionName = part.cleanShortName,
+                            mountPoint = mnt,
+                            rawOutput = msg,
+                            isSuccess = isSuccess,
+                            needsCleaning = needsCleaning,
+                            notImplemented = notImplemented,
+                            bytesTrimmed = bytes
+                        )
+                    )
                 }
             }
-            if (outputs.isEmpty()) {
+
+            if (results.isEmpty()) {
                 error("No mounted partitions found on ${disk.hardwareTitle}. Mount at least one partition before trimming.")
             }
-            outputs.joinToString("\n")
+
+            val summary = when {
+                anyNeedsCleaning -> "Peringatan: Satu atau lebih partisi memerlukan perbaikan integritas filesystem (fsck)."
+                results.all { it.notImplemented } -> "Driver partisi atau filesystem saat ini tidak mendukung operasi TRIM/discard."
+                else -> "Proses pembebasan blok memori tidak terpakai selesai."
+            }
+
+            GlobalTrimReport(
+                partitionResults = results,
+                hasNeedsCleaning = anyNeedsCleaning,
+                dirtyPartitionName = dirtyPartName,
+                dirtyMountPoint = dirtyMnt,
+                summary = summary,
+                rawLog = rawLogs.joinToString("\n")
+            )
+        }
+    }
+
+    /**
+     * Run global FSTRIM on all mounted partitions belonging to this physical disk (string output).
+     */
+    suspend fun executeGlobalTrim(disk: SdCardDiskInfo): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val report = executeGlobalTrimStructured(disk).getOrThrow()
+            report.rawLog
+        }
+    }
+
+    /**
+     * Safely unmount an active partition, run filesystem check (fsck), and remount it automatically.
+     */
+    suspend fun safeUnmountCheckAndRemount(partition: PartitionInfo): Result<FsckReport> = withContext(Dispatchers.IO) {
+        runCatching {
+            val blockDevice = partition.path
+            val mountPoint = partition.mountPoint ?: "/data/sdext2"
+            val fsType = partition.fsType
+
+            // 1. Unmount partition safely
+            val unmountRes = RootShell.exec("umount -f \"$mountPoint\" 2>/dev/null || umount \"$mountPoint\" 2>/dev/null || umount -l \"$mountPoint\" 2>/dev/null")
+            delay(500)
+
+            // 2. Execute fsck diagnostics and repair
+            val fsckReport = checkFilesystem(blockDevice, fsType).getOrThrow()
+
+            // 3. Remount back with high-performance flags
+            val mountCmd = when {
+                fsType.contains("f2fs", ignoreCase = true) -> {
+                    "mount -t f2fs -o rw,noatime,inline_data,flush_merge,mode=adaptive \"$blockDevice\" \"$mountPoint\""
+                }
+                fsType.contains("ext4", ignoreCase = true) -> {
+                    "mount -t ext4 -o rw,noatime,commit=60,delalloc,data=writeback \"$blockDevice\" \"$mountPoint\""
+                }
+                else -> {
+                    "mount \"$blockDevice\" \"$mountPoint\""
+                }
+            }
+            RootShell.exec(mountCmd)
+            delay(500)
+
+            fsckReport
         }
     }
 
@@ -1443,38 +1532,56 @@ class StorageManager {
      */
     suspend fun runQuickDiskBenchmark(blockDevice: String): Result<BenchmarkResult> = withContext(Dispatchers.IO) {
         runCatching {
-            // 1. Direct sequential block read throughput (64 MB test)
-            val ddRes = RootShell.exec("dd if=\"$blockDevice\" of=/dev/null bs=1M count=64 iflag=direct 2>&1")
+            // 1. Direct sequential block read throughput (32 MB sample) without iflag=direct for Android/Toybox compatibility
+            val ddRes = RootShell.exec("dd if=\"$blockDevice\" of=/dev/null bs=1048576 count=32 2>&1")
             val output = ddRes.output
 
-            var speedMb = 0.0
-            val speedMatch = Regex("([0-9.]+)\\s+(MB/s|GB/s|kB/s|bytes/sec)", RegexOption.IGNORE_CASE).find(output)
-            if (speedMatch != null) {
-                val num = speedMatch.groupValues[1].toDoubleOrNull() ?: 0.0
-                val unit = speedMatch.groupValues[2].uppercase()
-                speedMb = when {
-                    unit.contains("GB") -> num * 1024.0
-                    unit.contains("KB") -> num / 1024.0
-                    unit.contains("BYTE") -> num / (1024.0 * 1024.0)
-                    else -> num
-                }
+            // Validate that actual blocks were read
+            val recordsMatch = Regex("""(\d+)\+\d+\s+records\s+out""").find(output)
+            val recordsOut = recordsMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            if (recordsOut <= 0 || output.contains("bad iflag", ignoreCase = true) || output.contains("Permission denied", ignoreCase = true)) {
+                error(output.ifBlank { "Direct block read failed: 0 records copied" })
+            }
+
+            // Extract exact bytes and seconds for high-precision calculation
+            val bytesMatch = Regex("""(\d+)\s+bytes""").find(output)
+            val timeMatch = Regex("""([0-9.]+)\s+s(?:ec)?""").find(output)
+            val bytes = bytesMatch?.groupValues?.get(1)?.toDoubleOrNull() ?: (recordsOut * 1048576.0)
+            val seconds = timeMatch?.groupValues?.get(1)?.toDoubleOrNull()
+
+            var speedMb = if (seconds != null && seconds > 0.0) {
+                bytes / (seconds * 1048576.0)
             } else {
-                val timeMatch = Regex("copied,\\s+([0-9.]+)\\s+s", RegexOption.IGNORE_CASE).find(output)
-                val seconds = timeMatch?.groupValues?.get(1)?.toDoubleOrNull()
-                if (seconds != null && seconds > 0.0) {
-                    speedMb = 64.0 / seconds
+                0.0
+            }
+
+            if (speedMb <= 0.0) {
+                val speedMatch = Regex("""([0-9.]+)\s*([MGkBbytes/sec]+)""", RegexOption.IGNORE_CASE).find(output)
+                if (speedMatch != null) {
+                    val num = speedMatch.groupValues[1].toDoubleOrNull() ?: 0.0
+                    val unit = speedMatch.groupValues[2].uppercase()
+                    speedMb = when {
+                        unit.startsWith("G") -> num * 1024.0
+                        unit.startsWith("K") -> num / 1024.0
+                        unit.startsWith("B") -> num / (1024.0 * 1024.0)
+                        else -> num
+                    }
                 }
             }
 
-            // 2. Latency test: 4KB single random block read
+            if (speedMb <= 0.0) {
+                error("Read throughput returned 0 MB/s: $output")
+            }
+
+            // 2. Latency test: 4KB single block read
             val startNano = System.nanoTime()
-            RootShell.exec("dd if=\"$blockDevice\" of=/dev/null bs=4k count=1 iflag=direct 2>/dev/null")
+            RootShell.exec("dd if=\"$blockDevice\" of=/dev/null bs=4096 count=1 2>/dev/null")
             val latencyMs = (System.nanoTime() - startNano) / 1_000_000.0
 
             BenchmarkResult(
                 sequentialReadMbPerSec = (speedMb * 10).toInt() / 10.0,
                 accessLatencyMs = (latencyMs * 10).toInt() / 10.0,
-                sampleSizeBytes = 64L * 1024 * 1024,
+                sampleSizeBytes = (recordsOut * 1048576L),
                 timestamp = System.currentTimeMillis()
             )
         }
