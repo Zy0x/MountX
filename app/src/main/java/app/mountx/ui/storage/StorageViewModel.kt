@@ -155,9 +155,12 @@ class StorageViewModel @Inject constructor(
         }
     }
 
-    // Unmount Progress & Confirmation States
+    // Unmount & Mount Progress States
     private val _unmountingPartitionPath = MutableStateFlow<String?>(null)
     val unmountingPartitionPath: StateFlow<String?> = _unmountingPartitionPath.asStateFlow()
+
+    private val _mountingPartitionPath = MutableStateFlow<String?>(null)
+    val mountingPartitionPath: StateFlow<String?> = _mountingPartitionPath.asStateFlow()
 
     private val _partitionToUnmount = MutableStateFlow<PartitionInfo?>(null)
     val partitionToUnmount: StateFlow<PartitionInfo?> = _partitionToUnmount.asStateFlow()
@@ -225,40 +228,56 @@ class StorageViewModel @Inject constructor(
         Pair(mountedCount, totalBytes)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair(0, 0L))
 
-    fun detectPartitions(force: Boolean = false) {
+    private fun updatePartitionMountedState(path: String, isMounted: Boolean) {
+        _partitions.value = _partitions.value.map {
+            if (it.path == path) it.copy(isMounted = isMounted) else it
+        }
+        _selectedDiskForDetail.value = _selectedDiskForDetail.value?.let { disk ->
+            val updated = disk.partitions.map {
+                if (it.path == path) it.copy(isMounted = isMounted) else it
+            }
+            disk.copy(partitions = updated)
+        }
+    }
+
+    suspend fun detectPartitionsInternal(force: Boolean = false) {
         if (_isScanning.value) return
         if (!force && _partitions.value.isNotEmpty()) return
 
-        viewModelScope.launch {
-            _isScanning.value = true
-            try {
-                val sdBase = appPreferences.sdBasePath.first()
-                val detected = storageRepository.detectPartitions(sdBase)
-                _partitions.value = detected
-                _detectedDevices.value = detected.map { it.path }
+        _isScanning.value = true
+        try {
+            val sdBase = appPreferences.sdBasePath.first()
+            val detected = storageRepository.detectPartitions(sdBase)
+            _partitions.value = detected
+            _detectedDevices.value = detected.map { it.path }
 
-                // Fetch hardware disks info
-                val disks = storageRepository.getAllDisks(sdBase)
-                _allDisks.value = disks
-                val primaryDisk = disks.firstOrNull { it.diskType == app.mountx.data.model.DiskType.MICRO_SD } ?: disks.firstOrNull()
-                _diskInfo.value = primaryDisk
+            // Fetch hardware disks info reusing pre-scanned partitions
+            val disks = storageRepository.getAllDisks(sdBase, detected)
+            _allDisks.value = disks
+            val primaryDisk = disks.firstOrNull { it.diskType == app.mountx.data.model.DiskType.MICRO_SD } ?: disks.firstOrNull()
+            _diskInfo.value = primaryDisk
 
-                // Update selected disk if active
-                _selectedDiskForDetail.value?.let { currentSelDisk ->
-                    _selectedDiskForDetail.value = disks.firstOrNull { it.devicePath == currentSelDisk.devicePath }
-                }
-
-                // Auto-select active target mount or first suitable partition
-                val currentSel = _selectedPartition.value
-                val matched = detected.firstOrNull { it.path == currentSel?.path }
-                    ?: detected.firstOrNull { it.isTargetMount }
-                    ?: detected.firstOrNull { it.isMountTargetReady }
-                    ?: detected.firstOrNull()
-
-                _selectedPartition.value = matched
-            } finally {
-                _isScanning.value = false
+            // Update selected disk if active
+            _selectedDiskForDetail.value?.let { currentSelDisk ->
+                _selectedDiskForDetail.value = disks.firstOrNull { it.devicePath == currentSelDisk.devicePath }
             }
+
+            // Auto-select active target mount or first suitable partition
+            val currentSel = _selectedPartition.value
+            val matched = detected.firstOrNull { it.path == currentSel?.path }
+                ?: detected.firstOrNull { it.isTargetMount }
+                ?: detected.firstOrNull { it.isMountTargetReady }
+                ?: detected.firstOrNull()
+
+            _selectedPartition.value = matched
+        } finally {
+            _isScanning.value = false
+        }
+    }
+
+    fun detectPartitions(force: Boolean = false) {
+        viewModelScope.launch {
+            detectPartitionsInternal(force)
         }
     }
 
@@ -480,19 +499,25 @@ class StorageViewModel @Inject constructor(
 
     fun mountPartition(partition: PartitionInfo) {
         viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            val result = storageRepository.mountPartition(partition, sdBase)
-            if (result.isSuccess) {
-                if (partition.fsType.equals("f2fs", ignoreCase = true) ||
-                    partition.fsType.equals("ext4", ignoreCase = true) ||
-                    partition.isTargetMount
-                ) {
-                    appPreferences.setSdBlockDevice(partition.path)
+            _mountingPartitionPath.value = partition.path
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val result = storageRepository.mountPartition(partition, sdBase)
+                if (result.isSuccess) {
+                    if (partition.fsType.equals("f2fs", ignoreCase = true) ||
+                        partition.fsType.equals("ext4", ignoreCase = true) ||
+                        partition.isTargetMount
+                    ) {
+                        appPreferences.setSdBlockDevice(partition.path)
+                    }
+                    _statusMessage.value = "MOUNT_OK"
+                    updatePartitionMountedState(partition.path, isMounted = true)
+                    detectPartitionsInternal(force = true)
+                } else {
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Mount failed"
                 }
-                _statusMessage.value = "MOUNT_OK"
-                detectPartitions(force = true)
-            } else {
-                _statusMessage.value = result.exceptionOrNull()?.message ?: "Mount failed"
+            } finally {
+                _mountingPartitionPath.value = null
             }
         }
     }
@@ -505,7 +530,7 @@ class StorageViewModel @Inject constructor(
                 val result = storageRepository.unmountSdPartition(sdBase)
                 if (result.isSuccess) {
                     _statusMessage.value = "UNMOUNT_OK"
-                    detectPartitions(force = true)
+                    detectPartitionsInternal(force = true)
                 } else {
                     _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
                 }
@@ -522,7 +547,8 @@ class StorageViewModel @Inject constructor(
                 val result = storageRepository.unmountPartition(partition)
                 if (result.isSuccess) {
                     _statusMessage.value = "UNMOUNT_OK"
-                    detectPartitions(force = true)
+                    updatePartitionMountedState(partition.path, isMounted = false)
+                    detectPartitionsInternal(force = true)
                 } else {
                     _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
                 }
@@ -915,18 +941,10 @@ class StorageViewModel @Inject constructor(
             )
             val res = storageRepository.executePartitionTrim(mnt)
             _isTrimming.value = false
+            _operationProgress.value = null
             if (res.isSuccess) {
                 val out = res.getOrNull() ?: "TRIM complete."
                 _trimOutput.value = out
-                _operationProgress.value = OperationState.Success(
-                    title = "TRIM Partisi Selesai",
-                    message = "Blok tidak terpakai pada $mnt berhasil dibersihkan.",
-                    details = listOf(
-                        "Partisi" to partition.name,
-                        "Mount Point" to mnt
-                    ),
-                    rawLog = out
-                )
             } else {
                 val err = res.exceptionOrNull()?.message ?: "TRIM failed"
                 _statusMessage.value = err

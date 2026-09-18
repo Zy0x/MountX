@@ -28,6 +28,8 @@ import kotlinx.coroutines.withContext
  */
 class StorageManager {
 
+    private var cachedSupportedFilesystems: List<SupportedFilesystemInfo>? = null
+
     /**
      * Query internal storage (/data) statistics (total, used, free space).
      */
@@ -617,6 +619,7 @@ class StorageManager {
      * Query kernel supported filesystems from /proc/filesystems and check binary tool availability.
      */
     suspend fun detectSupportedFilesystems(): List<SupportedFilesystemInfo> = withContext(Dispatchers.IO) {
+        cachedSupportedFilesystems?.let { return@withContext it }
         val kernelFsRes = RootShell.exec("cat /proc/filesystems 2>/dev/null")
         val kernelSupported = if (kernelFsRes.isSuccess) {
             kernelFsRes.stdout
@@ -680,6 +683,7 @@ class StorageManager {
             )
         )
 
+        cachedSupportedFilesystems = list
         list
     }
 
@@ -738,6 +742,21 @@ class StorageManager {
     suspend fun unmountSdPartition(mountPoint: String = "/data/sdext2"): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
+                // 1. Unbind any game folders bind-mounted across runtime namespaces
+                val unbindScript = """
+                    for m in $(grep "$mountPoint" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
+                        if [ "${'$'}m" != "$mountPoint" ]; then
+                            umount -f -l "${'$'}m" 2>/dev/null
+                        fi
+                    done
+                    for ns in /proc/[0-9]*/ns/mnt; do
+                        nsenter --mount="${'$'}ns" umount -f -l "$mountPoint" 2>/dev/null
+                    done
+                """.trimIndent()
+                RootShell.execScript(unbindScript)
+                RootShell.exec("sync")
+
+                // 2. Unmount the root SD mount point
                 if (RootShell.isMountpoint(mountPoint)) {
                     val res = RootShell.exec("umount -f -l \"$mountPoint\" 2>/dev/null")
                     if (!res.isSuccess && RootShell.isMountpoint(mountPoint)) {
@@ -757,9 +776,19 @@ class StorageManager {
             val blockDev = partition.path
             val mnt = partition.mountPoint
 
-            if (partition.isTargetMount) {
+            if (partition.isTargetMount || mnt == "/data/sdext2") {
                 // If it's the target mount (/data/sdext2), unbind game folders and unmount target
                 unmountSdPartition(mnt ?: "/data/sdext2").getOrThrow()
+                // Clean up any remaining mounts for this block device across all namespaces
+                val mountsRes = RootShell.exec("grep -F \"$blockDev\" /proc/mounts 2>/dev/null")
+                val mountLines = mountsRes.stdout.map { it.trim() }.filter { it.isNotBlank() }
+                for (line in mountLines) {
+                    val m = line.split(Regex("\\s+")).getOrNull(1)
+                    if (!m.isNullOrBlank()) {
+                        RootShell.exec("umount -f -l \"$m\" 2>/dev/null")
+                    }
+                }
+                RootShell.exec("umount -f -l \"$blockDev\" 2>/dev/null")
             } else {
                 // 1. If it has an Android Vold volume (public:major,minor), execute sm unmount
                 val mmRes = RootShell.exec("cat /sys/class/block/$devName/dev 2>/dev/null")
@@ -777,6 +806,14 @@ class StorageManager {
                 }
 
                 // 3. Direct Linux umount by block device (cleans up any remaining mounts in all namespaces)
+                val mountsRes = RootShell.exec("grep -F \"$blockDev\" /proc/mounts 2>/dev/null")
+                val mountLines = mountsRes.stdout.map { it.trim() }.filter { it.isNotBlank() }
+                for (line in mountLines) {
+                    val m = line.split(Regex("\\s+")).getOrNull(1)
+                    if (!m.isNullOrBlank()) {
+                        RootShell.exec("umount -f -l \"$m\" 2>/dev/null")
+                    }
+                }
                 RootShell.exec("umount -f -l \"$blockDev\" 2>/dev/null")
             }
             Unit
@@ -894,8 +931,11 @@ class StorageManager {
      * Detect all connected physical storage disks (MicroSD, USB OTG flashdrives, etc.)
      * and their partition hierarchies.
      */
-    suspend fun detectAllDisks(targetMountPoint: String = "/data/sdext2"): List<SdCardDiskInfo> = withContext(Dispatchers.IO) {
-        val partitions = detectPartitions(targetMountPoint)
+    suspend fun detectAllDisks(
+        targetMountPoint: String = "/data/sdext2",
+        preScannedPartitions: List<PartitionInfo>? = null
+    ): List<SdCardDiskInfo> = withContext(Dispatchers.IO) {
+        val partitions = preScannedPartitions ?: detectPartitions(targetMountPoint)
 
         // 1. Discover all disk candidate names from partitions or RootShell sysfs inspection
         val candidateDiskNames = linkedSetOf<String>()
@@ -949,33 +989,46 @@ class StorageManager {
             val isMmc = candidateDisk.startsWith("mmcblk")
             val diskType = if (isMmc) DiskType.MICRO_SD else DiskType.USB_OTG
 
-            // Read hardware manufacturer ID & model
+            // Batch read hardware manufacturer ID, model, vendor, and sector count in 1 shell query
+            val sysfsBatch = RootShell.exec(
+                "echo -n \"MANFID=\"; cat /sys/block/$candidateDisk/device/manfid 2>/dev/null; echo; " +
+                "echo -n \"NAME=\"; cat /sys/block/$candidateDisk/device/name 2>/dev/null; echo; " +
+                "echo -n \"MODEL=\"; cat /sys/block/$candidateDisk/device/model 2>/dev/null; echo; " +
+                "echo -n \"VENDOR=\"; cat /sys/block/$candidateDisk/device/vendor 2>/dev/null; echo; " +
+                "echo -n \"SIZE=\"; cat /sys/block/$candidateDisk/size 2>/dev/null; echo"
+            )
+
             var manfid = ""
-            if (isMmc) {
-                val res = RootShell.exec("cat /sys/block/$candidateDisk/device/manfid 2>/dev/null")
-                if (res.isSuccess) manfid = res.output.trim()
-            }
-
             var model = ""
-            val nameRes = RootShell.exec("cat /sys/block/$candidateDisk/device/name 2>/dev/null")
-            if (nameRes.isSuccess && nameRes.output.isNotBlank()) {
-                model = nameRes.output.trim()
-            } else {
-                val usbModelRes = RootShell.exec("cat /sys/block/$candidateDisk/device/model 2>/dev/null")
-                if (usbModelRes.isSuccess) model = usbModelRes.output.trim()
-            }
-
             var vendor = ""
-            if (!isMmc) {
-                val res = RootShell.exec("cat /sys/block/$candidateDisk/device/vendor 2>/dev/null")
-                if (res.isSuccess) vendor = res.output.trim()
-            }
-
-            // Read disk sector count
             var sizeSectors = 0L
-            val sizeRes = RootShell.exec("cat /sys/block/$candidateDisk/size 2>/dev/null")
-            if (sizeRes.isSuccess) {
-                sizeSectors = sizeRes.output.trim().toLongOrNull() ?: 0L
+
+            if (sysfsBatch.isSuccess) {
+                for (rawLine in sysfsBatch.stdout) {
+                    val line = rawLine.trim()
+                    when {
+                        line.startsWith("MANFID=") -> {
+                            val v = line.substringAfter("MANFID=").trim()
+                            if (v.isNotBlank()) manfid = v
+                        }
+                        line.startsWith("NAME=") && model.isBlank() -> {
+                            val v = line.substringAfter("NAME=").trim()
+                            if (v.isNotBlank()) model = v
+                        }
+                        line.startsWith("MODEL=") && model.isBlank() -> {
+                            val v = line.substringAfter("MODEL=").trim()
+                            if (v.isNotBlank()) model = v
+                        }
+                        line.startsWith("VENDOR=") -> {
+                            val v = line.substringAfter("VENDOR=").trim()
+                            if (v.isNotBlank()) vendor = v
+                        }
+                        line.startsWith("SIZE=") -> {
+                            val v = line.substringAfter("SIZE=").trim()
+                            sizeSectors = v.toLongOrNull() ?: sizeSectors
+                        }
+                    }
+                }
             }
 
             val diskPartitions = partitions.filter { it.diskName == candidateDisk }
@@ -1492,7 +1545,23 @@ class StorageManager {
             val mountPoint = partition.mountPoint ?: "/data/sdext2"
             val fsType = partition.fsType
 
-            // 1. Deep unmount: find and unmount ALL mount points referencing this block device (bind-mounts and namespaces)
+            // 1. Deep unmount: unbind game folders and unmount all references across namespaces safely without killing system processes
+            val unbindScript = """
+                for m in $(grep "$mountPoint" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
+                    if [ "${'$'}m" != "$mountPoint" ]; then
+                        umount -f -l "${'$'}m" 2>/dev/null
+                    fi
+                done
+                for ns in /proc/[0-9]*/ns/mnt; do
+                    nsenter --mount="${'$'}ns" umount -f -l "$mountPoint" 2>/dev/null
+                    nsenter --mount="${'$'}ns" umount -f -l "$blockDevice" 2>/dev/null
+                done
+            """.trimIndent()
+            RootShell.execScript(unbindScript)
+
+            RootShell.exec("sync")
+            RootShell.exec("echo 3 > /proc/sys/vm/drop_caches 2>/dev/null")
+
             val mountsRes = RootShell.exec("grep -F \"$blockDevice\" /proc/mounts 2>/dev/null")
             val mountLines = mountsRes.stdout.map { it.trim() }.filter { it.isNotBlank() }
             for (line in mountLines) {
@@ -1503,7 +1572,7 @@ class StorageManager {
             }
             RootShell.exec("umount -f -l \"$mountPoint\" 2>/dev/null")
             RootShell.exec("umount -f -l \"$blockDevice\" 2>/dev/null")
-            delay(600)
+            delay(500)
 
             // 2. Execute fsck diagnostics and repair
             val cmd = when {

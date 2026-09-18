@@ -94,6 +94,7 @@ fun DiskDetailView(
     isMountingAll: Boolean = false,
     isUnmountingAll: Boolean = false,
     unmountingPartitionPath: String? = null,
+    mountingPartitionPath: String? = null,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenWizard: () -> Unit,
@@ -204,9 +205,11 @@ fun DiskDetailView(
                 }
             } else {
                 items(disk.partitions, key = { it.path }) { partition ->
+                    val isPartMounting = mountingPartitionPath == partition.path || isMountingAll
                     val isPartUnmounting = unmountingPartitionPath == partition.path || isUnmountingAll
                     DiskPartitionCard(
                         partition = partition,
+                        isMounting = isPartMounting,
                         isUnmounting = isPartUnmounting,
                         onMount = { onMountPartition(partition) },
                         onUnmount = { onUnmountPartition(partition) },
@@ -600,6 +603,7 @@ private fun DiskMiniVisualMapCard(
 @Composable
 private fun DiskPartitionCard(
     partition: PartitionInfo,
+    isMounting: Boolean = false,
     isUnmounting: Boolean = false,
     onMount: () -> Unit,
     onUnmount: () -> Unit,
@@ -817,7 +821,7 @@ private fun DiskPartitionCard(
                 if (partition.isMounted) {
                     OutlinedButton(
                         onClick = onUnmount,
-                        enabled = !isUnmounting,
+                        enabled = !isUnmounting && !isMounting,
                         shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.6f)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson),
@@ -849,6 +853,7 @@ private fun DiskPartitionCard(
                 } else {
                     Button(
                         onClick = onMount,
+                        enabled = !isMounting && !isUnmounting,
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = CyberEmerald,
@@ -859,14 +864,22 @@ private fun DiskPartitionCard(
                             .weight(0.65f)
                             .height(34.dp)
                     ) {
-                        Icon(
-                            Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        if (isMounting) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                color = Color.Black,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = stringResource(R.string.storage_action_mount),
+                            text = if (isMounting) stringResource(R.string.storage_action_mounting) else stringResource(R.string.storage_action_mount),
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -876,7 +889,7 @@ private fun DiskPartitionCard(
                 // 2. Partition Tools Button (35%)
                 OutlinedButton(
                     onClick = onOpenTools,
-                    enabled = !isUnmounting,
+                    enabled = !isUnmounting && !isMounting,
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),

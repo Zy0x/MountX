@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
@@ -141,6 +142,7 @@ fun StorageScreen(
     val diskToEject by viewModel.diskToEject.collectAsState()
     val globalTrimReport by viewModel.globalTrimReport.collectAsState()
     val unmountingPartitionPath by viewModel.unmountingPartitionPath.collectAsState()
+    val mountingPartitionPath by viewModel.mountingPartitionPath.collectAsState()
 
     var showDiskToolsSheet by remember { mutableStateOf(false) }
     var showPartitionToolsSheet by remember { mutableStateOf(false) }
@@ -183,6 +185,7 @@ fun StorageScreen(
             isMountingAll = isMountingAll,
             isUnmountingAll = isUnmountingAll,
             unmountingPartitionPath = unmountingPartitionPath,
+            mountingPartitionPath = mountingPartitionPath,
             onBack = { viewModel.closeDiskDetail() },
             onRefresh = { viewModel.detectPartitions(force = true) },
             onOpenWizard = { viewModel.openPartitionWizard(selectedDiskForDetail) },
@@ -456,6 +459,54 @@ fun StorageScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Target Volume Metadata Card
+                    if (dirtyPart != null) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = dirtyPart.cleanShortName.ifBlank { dirtyPart.name },
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    dirtyPart.mountPoint?.let { mp ->
+                                        Text(
+                                            text = mp,
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                                ) {
+                                    Text(
+                                        text = dirtyPart.fsType.uppercase(),
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (hasNeedsCleaning) AmberWarn else CyberEmerald,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // If Structure needs cleaning is detected -> Actionable Alert Banner
                     if (hasNeedsCleaning && dirtyPart != null) {
                         Surface(
@@ -519,25 +570,30 @@ fun StorageScreen(
                         }
                     }
 
-                    // Raw Output Terminal Box
+                    // Raw Output Terminal Box with Horizontal + Vertical Scrolling to prevent awkward wrap
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = Color(0xFF07090F),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 200.dp)
+                            .heightIn(max = 220.dp)
                     ) {
-                        Text(
-                            text = trimOutput ?: "",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.5.sp,
-                            lineHeight = 14.sp,
-                            color = if (hasNeedsCleaning) AmberWarn else CyberEmerald,
+                        Box(
                             modifier = Modifier
+                                .fillMaxWidth()
                                 .padding(10.dp)
+                                .horizontalScroll(rememberScrollState())
                                 .verticalScroll(rememberScrollState())
-                        )
+                        ) {
+                            Text(
+                                text = trimOutput ?: "",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                lineHeight = 14.sp,
+                                color = if (hasNeedsCleaning) AmberWarn else CyberEmerald
+                            )
+                        }
                     }
                 }
             },
@@ -1689,58 +1745,106 @@ private fun InteractivePartitionSliderBar(
                     val handleHalfWidthDp = 18.dp
                     val handleHalfWidthPx = with(density) { handleHalfWidthDp.toPx() }
                     val handleOffsetX = (dividerCenterX - handleHalfWidthPx).coerceIn(0f, barWidthPx - handleHalfWidthPx * 2)
-                    val dividerIndex = i
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .width(handleHalfWidthDp * 2)
-                            .offset { IntOffset(handleOffsetX.roundToInt(), 0) }
-                            .pointerInput(dividerIndex, validTotalKb, barWidthPx) {
-                                detectHorizontalDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    if (barWidthPx > 0f) {
-                                        val deltaFraction = dragAmount / barWidthPx
-                                        val deltaKb = (deltaFraction * validTotalKb).toLong()
-                                        if (deltaKb != 0L) {
-                                            onAdjustAdjacent(dividerIndex, deltaKb)
-                                        }
-                                    }
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // High-contrast AOMEI-style handle pill
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = Color(0xFF1E293B),
-                            border = BorderStroke(1.5.dp, ElectricCyan),
-                            shadowElevation = 4.dp,
-                            modifier = Modifier
-                                .width(14.dp)
-                                .height(32.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(1.5.dp)
-                                            .height(14.dp)
-                                            .background(ElectricCyan)
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .width(1.5.dp)
-                                            .height(14.dp)
-                                            .background(ElectricCyan)
-                                    )
-                                }
+                    PartitionDividerHandle(
+                        dividerIndex = i,
+                        offsetX = handleOffsetX,
+                        barWidthPx = barWidthPx,
+                        totalDiskKb = validTotalKb,
+                        onAdjustAdjacent = onAdjustAdjacent
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dedicated high-performance divider handle with touch accumulator and stable pointerInput gesture tracking.
+ */
+@Composable
+private fun PartitionDividerHandle(
+    dividerIndex: Int,
+    offsetX: Float,
+    barWidthPx: Float,
+    totalDiskKb: Long,
+    onAdjustAdjacent: (Int, Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isDragging by remember { mutableStateOf(false) }
+    val currentOnAdjust by rememberUpdatedState(onAdjustAdjacent)
+    val currentTotalKb by rememberUpdatedState(totalDiskKb)
+    val currentBarWidthPx by rememberUpdatedState(barWidthPx)
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(36.dp)
+            .offset { IntOffset(offsetX.roundToInt(), 0) }
+            .pointerInput(dividerIndex) {
+                var accumulatedDeltaKb = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        isDragging = true
+                        accumulatedDeltaKb = 0f
+                    },
+                    onDragEnd = {
+                        isDragging = false
+                        accumulatedDeltaKb = 0f
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        accumulatedDeltaKb = 0f
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        val widthPx = currentBarWidthPx
+                        val totalKb = currentTotalKb
+                        if (widthPx > 0f) {
+                            val deltaFraction = dragAmount / widthPx
+                            val rawDeltaKb = deltaFraction * totalKb
+                            accumulatedDeltaKb += rawDeltaKb
+                            // Step by 4MB chunks (4096 KB) to prevent micro-jitter and maintain smooth 60/120 FPS
+                            val stepChunks = (accumulatedDeltaKb / 4096f).toInt()
+                            if (stepChunks != 0) {
+                                val deltaToApply = stepChunks * 4096L
+                                currentOnAdjust(dividerIndex, deltaToApply)
+                                accumulatedDeltaKb -= deltaToApply.toFloat()
                             }
                         }
                     }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        // High-contrast AOMEI-style handle pill with active dragging visual feedback
+        Surface(
+            shape = RoundedCornerShape(4.dp),
+            color = if (isDragging) ElectricCyan else Color(0xFF1E293B),
+            border = BorderStroke(1.5.dp, if (isDragging) Color.White else ElectricCyan),
+            shadowElevation = if (isDragging) 6.dp else 3.dp,
+            modifier = Modifier
+                .width(if (isDragging) 16.dp else 14.dp)
+                .height(32.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                val lineColor = if (isDragging) Color(0xFF0F1117) else ElectricCyan
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(1.5.dp)
+                            .height(14.dp)
+                            .background(lineColor)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(1.5.dp)
+                            .height(14.dp)
+                            .background(lineColor)
+                    )
                 }
             }
         }
@@ -2831,31 +2935,82 @@ private fun UnmountPartitionConfirmDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Partition Target Info
+                // Compact Partition Metadata Card
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "Device: ${partition.path}",
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        partition.mountPoint?.let { mp ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(NeonCrimson.copy(alpha = 0.15f))
+                                ) {
+                                    Text(
+                                        text = "P${partition.partitionNumber.takeIf { it > 0 } ?: 1}",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = NeonCrimson
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = partition.path,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = partition.fsType.uppercase(),
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberEmerald,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                text = "Mount Point: $mp",
-                                fontSize = 10.5.sp,
+                                text = partition.mountPoint ?: stringResource(R.string.storage_status_unmounted_badge),
+                                fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (partition.isTargetMount) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant
                             )
+
+                            if (partition.sizeBytes > 0L) {
+                                Text(
+                                    text = FormatUtils.formatBytes(partition.sizeBytes),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -2898,6 +3053,12 @@ private fun UnmountPartitionConfirmDialog(
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                 modifier = Modifier.height(36.dp)
             ) {
+                Icon(
+                    imageVector = Icons.Default.Eject,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(stringResource(R.string.storage_unmount_confirm_btn), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
             }
         },
@@ -2958,28 +3119,71 @@ private fun EjectDiskConfirmDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Disk Info Card
+                // Compact Disk Info Card
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "Disk: ${disk.diskName} (${FormatUtils.formatBytes(disk.totalSizeBytes)})",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "${mountedPartitions.size} partition(s) will be unmounted",
-                            fontSize = 10.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (disk.diskType == DiskType.MICRO_SD) Icons.Default.SdStorage else Icons.Default.Usb,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = disk.diskName,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = FormatUtils.formatBytes(disk.totalSizeBytes),
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = disk.devicePath,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = ElectricCyan
+                            )
+                            Text(
+                                text = "${mountedPartitions.size} partisi terpasang",
+                                fontSize = 10.sp,
+                                color = NeonCrimson,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
 
@@ -3021,6 +3225,12 @@ private fun EjectDiskConfirmDialog(
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                 modifier = Modifier.height(36.dp)
             ) {
+                Icon(
+                    imageVector = Icons.Default.Eject,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(stringResource(R.string.storage_eject_disk_confirm_btn), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
             }
         },

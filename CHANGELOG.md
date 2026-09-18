@@ -5,6 +5,26 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.3] - 2026-09-19
+
+### Fixed
+- **Deep Unmount & Kernel Lock Teardown**:
+  - Resolved `mmcblk0p3` (`/data/sdext2`) requiring double unmount attempts by deeply unbinding all game folders across runtime namespaces (`/mnt/runtime/*`, `/storage/emulated/0/*`, `/data/media/0/*`), tearing down mounts across all active process namespaces via `nsenter`, dropping VM caches (`echo 3 > /proc/sys/vm/drop_caches`), and executing clean unmount with immediate optimistic UI status feedback.
+  - Added active `CircularProgressIndicator` spinner and dynamic "Memasang..." / "Mounting..." label directly on partition Mount buttons to eliminate user confusion during mounting.
+- **Deduplicated TRIM Results Dialog & Layout Fix**:
+  - Eliminated overlapping duplicate dialogs (`OperationProgressOverlay` and `AlertDialog`) by directly surfacing a single clean TRIM result dialog upon completion.
+  - Re-engineered TRIM dialog layout with structured target volume metadata cards, actionable remediation banner, and horizontal/vertical scrollable monospace terminal box to prevent awkward text wrapping of long mount points and UUIDs.
+- **FSCK Volume In-Use (EBUSY) Error Prevention**:
+  - Fixed `fsck.f2fs: In use by the system!` by tearing down all runtime namespace sub-mounts and releasing process file locks before invoking filesystem repair tools.
+- **Butter-Smooth 60/120 FPS Partition Wizard Slider**:
+  - Eliminated severe stutter and frame drops when dragging partition dividers in the Repartition Wizard by isolating divider handles into dedicated composables with static `pointerInput(dividerIndex)` keys, `rememberUpdatedState`, local touch accumulators, and 4MB quantized drag steps.
+- **App Navigation & Shell Overhead Optimization**:
+  - Added `beyondViewportPageCount = 1` in `HorizontalPager` to retain adjacent tabs in memory and eliminate tab switching frame drops.
+  - Cached supported filesystem capabilities in `StorageManager` to eliminate redundant root shell executions.
+  - Batched sysfs disk attribute inspection queries and reused pre-scanned partitions during disk detection.
+- **Streamlined Confirmation Dialogs**:
+  - Replaced repetitive and redundant text paragraphs in Unmount Partition and Eject Disk confirmation dialogs with concise question prompts and compact metadata cards featuring monospace paths, filesystem badges, and high-priority active game warning banners.
+
 ## [2.2.2] - 2026-09-19
 
 ### Added

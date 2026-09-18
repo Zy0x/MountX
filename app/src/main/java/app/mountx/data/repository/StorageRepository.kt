@@ -121,9 +121,12 @@ class StorageRepository @Inject constructor(
             storageManager.detectSdCardDiskInfo(targetMountPoint)
         }
 
-    suspend fun getAllDisks(targetMountPoint: String = "/data/sdext2"): List<SdCardDiskInfo> =
+    suspend fun getAllDisks(
+        targetMountPoint: String = "/data/sdext2",
+        preScannedPartitions: List<PartitionInfo>? = null
+    ): List<SdCardDiskInfo> =
         withContext(Dispatchers.IO) {
-            storageManager.detectAllDisks(targetMountPoint)
+            storageManager.detectAllDisks(targetMountPoint, preScannedPartitions)
         }
 
     suspend fun repartitionDisk(

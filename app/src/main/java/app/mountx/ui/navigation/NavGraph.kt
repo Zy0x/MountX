@@ -179,7 +179,7 @@ fun MainTabsScreen(
     ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
-            beyondViewportPageCount = 0,
+            beyondViewportPageCount = 1,
             userScrollEnabled = isOuterPagerScrollEnabled,
             key = { it },
             modifier = Modifier
