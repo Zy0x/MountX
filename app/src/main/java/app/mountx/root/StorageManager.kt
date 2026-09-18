@@ -1396,11 +1396,13 @@ class StorageManager {
             var anyNeedsCleaning = false
 
             for (part in disk.partitions) {
-                val mnt = part.mountPoint
-                if (!mnt.isNullOrBlank()) {
-                    val res = RootShell.exec("fstrim -v \"$mnt\" 2>&1")
+                val rawMnt = part.mountPoint
+                if (!rawMnt.isNullOrBlank()) {
+                    // Resolve direct Linux underlying mount point if rawMnt is FUSE /storage/<UUID>
+                    val targetMnt = resolveDirectMountPoint(rawMnt)
+                    val res = RootShell.exec("fstrim -v \"$targetMnt\" 2>&1")
                     val msg = res.output.ifBlank { res.stderr.joinToString("\n") }
-                    rawLogs.add("${part.cleanShortName} ($mnt): $msg")
+                    rawLogs.add("${part.cleanShortName} ($targetMnt): $msg")
 
                     val needsCleaning = msg.contains("Structure needs cleaning", ignoreCase = true)
                     val notImplemented = msg.contains("Function not implemented", ignoreCase = true) || msg.contains("not supported", ignoreCase = true)
@@ -1410,13 +1412,13 @@ class StorageManager {
                     if (needsCleaning) {
                         anyNeedsCleaning = true
                         dirtyPartName = part.name
-                        dirtyMnt = mnt
+                        dirtyMnt = targetMnt
                     }
 
                     results.add(
                         TrimPartitionResult(
                             partitionName = part.cleanShortName,
-                            mountPoint = mnt,
+                            mountPoint = targetMnt,
                             rawOutput = msg,
                             isSuccess = isSuccess,
                             needsCleaning = needsCleaning,
@@ -1449,6 +1451,29 @@ class StorageManager {
     }
 
     /**
+     * Resolve direct underlying Linux mount point for Android public volumes (e.g. /mnt/media_rw/<UUID>)
+     * to bypass FUSE lack of FITRIM support.
+     */
+    private suspend fun resolveDirectMountPoint(mountPoint: String): String {
+        if (mountPoint.startsWith("/storage/") && !mountPoint.startsWith("/storage/emulated") && !mountPoint.startsWith("/storage/self")) {
+            val uuid = mountPoint.substringAfterLast("/").trim()
+            if (uuid.isNotBlank()) {
+                val mediaRw = "/mnt/media_rw/$uuid"
+                val check = RootShell.exec("grep -F \" $mediaRw \" /proc/mounts 2>/dev/null")
+                if (check.isSuccess && check.output.isNotBlank()) {
+                    return mediaRw
+                }
+                val passThrough = "/mnt/pass_through/0/$uuid"
+                val checkPass = RootShell.exec("grep -F \" $passThrough \" /proc/mounts 2>/dev/null")
+                if (checkPass.isSuccess && checkPass.output.isNotBlank()) {
+                    return passThrough
+                }
+            }
+        }
+        return mountPoint
+    }
+
+    /**
      * Run global FSTRIM on all mounted partitions belonging to this physical disk (string output).
      */
     suspend fun executeGlobalTrim(disk: SdCardDiskInfo): Result<String> = withContext(Dispatchers.IO) {
@@ -1467,12 +1492,34 @@ class StorageManager {
             val mountPoint = partition.mountPoint ?: "/data/sdext2"
             val fsType = partition.fsType
 
-            // 1. Unmount partition safely
-            val unmountRes = RootShell.exec("umount -f \"$mountPoint\" 2>/dev/null || umount \"$mountPoint\" 2>/dev/null || umount -l \"$mountPoint\" 2>/dev/null")
-            delay(500)
+            // 1. Deep unmount: find and unmount ALL mount points referencing this block device (bind-mounts and namespaces)
+            val mountsRes = RootShell.exec("grep -F \"$blockDevice\" /proc/mounts 2>/dev/null")
+            val mountLines = mountsRes.stdout.map { it.trim() }.filter { it.isNotBlank() }
+            for (line in mountLines) {
+                val mnt = line.split(Regex("\\s+")).getOrNull(1)
+                if (!mnt.isNullOrBlank()) {
+                    RootShell.exec("umount -f -l \"$mnt\" 2>/dev/null")
+                }
+            }
+            RootShell.exec("umount -f -l \"$mountPoint\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"$blockDevice\" 2>/dev/null")
+            delay(600)
 
             // 2. Execute fsck diagnostics and repair
-            val fsckReport = checkFilesystem(blockDevice, fsType).getOrThrow()
+            val cmd = when {
+                fsType.contains("f2fs", ignoreCase = true) -> {
+                    "/system/bin/fsck.f2fs -a \"$blockDevice\" 2>&1 || /system/bin/fsck.f2fs -f -y \"$blockDevice\" 2>&1 || fsck.f2fs -a \"$blockDevice\" 2>&1"
+                }
+                fsType.contains("ext4", ignoreCase = true) -> {
+                    "/system/bin/e2fsck -p \"$blockDevice\" 2>&1 || /system/bin/e2fsck -y \"$blockDevice\" 2>&1 || e2fsck -p \"$blockDevice\" 2>&1"
+                }
+                else -> {
+                    "fsck -y \"$blockDevice\" 2>&1 || e2fsck -p \"$blockDevice\" 2>&1"
+                }
+            }
+            val res = RootShell.exec(cmd)
+            val output = res.output.ifBlank { res.stderr.joinToString("\n") }
+            val fsckReport = parseFsckOutput(output, res.code)
 
             // 3. Remount back with high-performance flags
             val mountCmd = when {
@@ -1489,6 +1536,15 @@ class StorageManager {
             RootShell.exec(mountCmd)
             delay(500)
 
+            // 4. If partition was target mount (/data/sdext2), re-trigger background module service to restore bind-mounts
+            if (partition.isTargetMount) {
+                val serviceScript = """
+                    [ -f /data/adb/modules/MountX/service.sh ] && sh /data/adb/modules/MountX/service.sh 2>/dev/null &
+                    [ -f /data/adb/modules/Mountify/service.sh ] && sh /data/adb/modules/Mountify/service.sh 2>/dev/null &
+                """.trimIndent()
+                RootShell.exec(serviceScript)
+            }
+
             fsckReport
         }
     }
@@ -1499,9 +1555,10 @@ class StorageManager {
     suspend fun executePartitionTrim(mountPoint: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             if (mountPoint.isBlank()) error("Mount point cannot be empty")
-            val res = RootShell.exec("fstrim -v \"$mountPoint\" 2>&1")
+            val targetMnt = resolveDirectMountPoint(mountPoint)
+            val res = RootShell.exec("fstrim -v \"$targetMnt\" 2>&1")
             val out = res.output.ifBlank { res.stderr.joinToString("\n") }
-            if (out.isBlank()) "TRIM completed successfully on $mountPoint." else out
+            if (out.isBlank()) "TRIM completed successfully on $targetMnt." else out
         }
     }
 

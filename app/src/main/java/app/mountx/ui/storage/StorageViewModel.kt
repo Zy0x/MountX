@@ -155,7 +155,10 @@ class StorageViewModel @Inject constructor(
         }
     }
 
-    // Unmount Confirmation States
+    // Unmount Progress & Confirmation States
+    private val _unmountingPartitionPath = MutableStateFlow<String?>(null)
+    val unmountingPartitionPath: StateFlow<String?> = _unmountingPartitionPath.asStateFlow()
+
     private val _partitionToUnmount = MutableStateFlow<PartitionInfo?>(null)
     val partitionToUnmount: StateFlow<PartitionInfo?> = _partitionToUnmount.asStateFlow()
 
@@ -390,6 +393,45 @@ class StorageViewModel @Inject constructor(
         _wizardPartitions.value = balanced
     }
 
+    /**
+     * Adjust space between two adjacent partitions by sliding their mutual boundary.
+     * Enforces a minimum partition size of 512 MB.
+     */
+    fun adjustAdjacentWizardPartitions(leftIndex: Int, deltaKb: Long) {
+        val current = _wizardPartitions.value.toMutableList()
+        if (leftIndex !in 0 until current.lastIndex) return
+
+        val minKb = 512L * 1024L // 512 MB minimum
+        val left = current[leftIndex]
+        val right = current[leftIndex + 1]
+        val totalPairKb = left.sizeKb + right.sizeKb
+        if (totalPairKb < minKb * 2) return
+
+        val newLeftRaw = left.sizeKb + deltaKb
+        val clampedLeft = newLeftRaw.coerceIn(minKb, totalPairKb - minKb)
+        val alignedLeft = ((clampedLeft / 2048L) * 2048L).coerceIn(minKb, totalPairKb - minKb)
+        val alignedRight = totalPairKb - alignedLeft
+
+        current[leftIndex] = left.copy(sizeKb = alignedLeft)
+        current[leftIndex + 1] = right.copy(sizeKb = alignedRight)
+        _wizardPartitions.value = current
+    }
+
+    /**
+     * Quick increment/decrement partition size by gigabytes (e.g. +1 GB / -1 GB).
+     */
+    fun adjustPartitionSizeByGb(index: Int, deltaGb: Long) {
+        val current = _wizardPartitions.value
+        if (current.size <= 1 || index !in current.indices) return
+
+        val deltaKb = deltaGb * 1024L * 1024L
+        if (index < current.lastIndex) {
+            adjustAdjacentWizardPartitions(index, deltaKb)
+        } else if (index > 0) {
+            adjustAdjacentWizardPartitions(index - 1, -deltaKb)
+        }
+    }
+
     fun executeRepartition() {
         viewModelScope.launch {
             _isRepartitioning.value = true
@@ -458,24 +500,34 @@ class StorageViewModel @Inject constructor(
     fun unmountPartition() {
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
-            val result = storageRepository.unmountSdPartition(sdBase)
-            if (result.isSuccess) {
-                _statusMessage.value = "UNMOUNT_OK"
-                detectPartitions(force = true)
-            } else {
-                _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+            _unmountingPartitionPath.value = sdBase
+            try {
+                val result = storageRepository.unmountSdPartition(sdBase)
+                if (result.isSuccess) {
+                    _statusMessage.value = "UNMOUNT_OK"
+                    detectPartitions(force = true)
+                } else {
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+                }
+            } finally {
+                _unmountingPartitionPath.value = null
             }
         }
     }
 
     fun unmountPartition(partition: PartitionInfo) {
         viewModelScope.launch {
-            val result = storageRepository.unmountPartition(partition)
-            if (result.isSuccess) {
-                _statusMessage.value = "UNMOUNT_OK"
-                detectPartitions(force = true)
-            } else {
-                _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+            _unmountingPartitionPath.value = partition.path
+            try {
+                val result = storageRepository.unmountPartition(partition)
+                if (result.isSuccess) {
+                    _statusMessage.value = "UNMOUNT_OK"
+                    detectPartitions(force = true)
+                } else {
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+                }
+            } finally {
+                _unmountingPartitionPath.value = null
             }
         }
     }

@@ -5,6 +5,19 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.2] - 2026-09-19
+
+### Added
+- **AOMEI-Style Interactive Multi-Partition Slider Bar**:
+  - Interactive proportional visual partition bar in `PartitionWizardDialog` allowing intuitive division of disk space across 2 or more partitions.
+  - Draggable touch-friendly divider handles (`||`) between adjacent partitions enabling real-time resizing with automatic 512 MB minimum partition clamping.
+  - Quick proportional stepper controls (`-1 GB`, `+1 GB`, `+5 GB`) and precision slider on each partition card alongside exact manual KB inputs.
+- **Unmount & Batch Eject Dynamic Progress Indicators**:
+  - Partition unmount buttons and batch "Eject Disk" header button now render active `CircularProgressIndicator` spinners with dynamic labels ("Unmounting..." / "Ejecting...") and disable interactive controls to prevent duplicate taps or race conditions.
+- **Direct Filesystem Path Resolution for FSTRIM (FUSE Bypass)**:
+  - Added automatic resolution of public Android mount points (`/storage/<UUID>`) to direct block-level mount paths (`/mnt/media_rw/<UUID>` or `/mnt/pass_through/0/<UUID>`), bypassing Android FUSE limitations that cause `FITRIM: Function not implemented`.
+  - Comprehensive bind-mount teardown across runtime namespaces prior to running `fsck.f2fs` / `e2fsck` during dirty volume remediation, followed by automatic remount and game restoration.
+
 ## [2.2.1] - 2026-09-18
 
 ### Added

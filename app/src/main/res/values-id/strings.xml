@@ -488,5 +488,10 @@
     <string name="storage_trim_guided_fsck_title">Perbaikan fsck Terpandu</string>
     <string name="storage_trim_guided_fsck_desc">Partisi akan dilepas sementara (unmount), diperiksa dan diperbaiki dengan fsck, lalu dipasang kembali secara otomatis.</string>
     <string name="storage_trim_guided_fsck_confirm">Lanjutkan Perbaikan</string>
+    <string name="storage_action_unmounting">Melepas…</string>
+    <string name="storage_action_ejecting">Mengeluarkan…</string>
+    <string name="storage_action_mounting">Memasang…</string>
+    <string name="storage_wizard_drag_hint">Geser pembatas antar partisi untuk membagi ruang</string>
+    <string name="storage_wizard_quick_adjust">Penyesuaian Cepat</string>
 </resources>
 

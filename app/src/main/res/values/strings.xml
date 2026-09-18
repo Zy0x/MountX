@@ -505,5 +505,10 @@
     <string name="storage_trim_guided_fsck_title">Guided fsck Repair</string>
     <string name="storage_trim_guided_fsck_desc">The partition will be temporarily unmounted, checked and repaired with fsck, and automatically remounted back.</string>
     <string name="storage_trim_guided_fsck_confirm">Proceed with Repair</string>
+    <string name="storage_action_unmounting">Unmounting…</string>
+    <string name="storage_action_ejecting">Ejecting…</string>
+    <string name="storage_action_mounting">Mounting…</string>
+    <string name="storage_wizard_drag_hint">Drag handles between partitions to resize</string>
+    <string name="storage_wizard_quick_adjust">Quick Adjust</string>
 </resources>
 

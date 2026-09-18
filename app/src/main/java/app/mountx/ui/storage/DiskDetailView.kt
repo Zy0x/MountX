@@ -91,9 +91,9 @@ fun DiskDetailView(
     storage: StorageInfo?,
     configuredSdBase: String,
     isCheckingFs: Boolean,
-    isFormatting: Boolean,
     isMountingAll: Boolean = false,
     isUnmountingAll: Boolean = false,
+    unmountingPartitionPath: String? = null,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenWizard: () -> Unit,
@@ -204,8 +204,10 @@ fun DiskDetailView(
                 }
             } else {
                 items(disk.partitions, key = { it.path }) { partition ->
+                    val isPartUnmounting = unmountingPartitionPath == partition.path || isUnmountingAll
                     DiskPartitionCard(
                         partition = partition,
+                        isUnmounting = isPartUnmounting,
                         onMount = { onMountPartition(partition) },
                         onUnmount = { onUnmountPartition(partition) },
                         onOpenTools = { onOpenPartitionTools(partition) }
@@ -430,8 +432,14 @@ private fun DiskHardwareOverviewCard(
                         )
                     }
                     Spacer(modifier = Modifier.width(6.dp))
+                    val batchText = when {
+                        isUnmountingAll -> stringResource(R.string.storage_action_ejecting)
+                        isMountingAll -> stringResource(R.string.storage_action_mounting)
+                        hasUnmounted -> stringResource(R.string.storage_action_mount_all)
+                        else -> stringResource(R.string.storage_action_unmount_all)
+                    }
                     Text(
-                        text = if (hasUnmounted) stringResource(R.string.storage_action_mount_all) else stringResource(R.string.storage_action_unmount_all),
+                        text = batchText,
                         fontSize = 11.5.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -592,6 +600,7 @@ private fun DiskMiniVisualMapCard(
 @Composable
 private fun DiskPartitionCard(
     partition: PartitionInfo,
+    isUnmounting: Boolean = false,
     onMount: () -> Unit,
     onUnmount: () -> Unit,
     onOpenTools: () -> Unit,
@@ -808,6 +817,7 @@ private fun DiskPartitionCard(
                 if (partition.isMounted) {
                     OutlinedButton(
                         onClick = onUnmount,
+                        enabled = !isUnmounting,
                         shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.6f)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson),
@@ -816,14 +826,22 @@ private fun DiskPartitionCard(
                             .weight(0.65f)
                             .height(34.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Eject,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        if (isUnmounting) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                color = NeonCrimson,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Eject,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = stringResource(R.string.storage_action_unmount),
+                            text = if (isUnmounting) stringResource(R.string.storage_action_unmounting) else stringResource(R.string.storage_action_unmount),
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -858,6 +876,7 @@ private fun DiskPartitionCard(
                 // 2. Partition Tools Button (35%)
                 OutlinedButton(
                     onClick = onOpenTools,
+                    enabled = !isUnmounting,
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),

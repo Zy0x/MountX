@@ -42,7 +42,9 @@ import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.SdStorage
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Warning
@@ -51,6 +53,11 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -133,6 +140,7 @@ fun StorageScreen(
     val partitionToUnmount by viewModel.partitionToUnmount.collectAsState()
     val diskToEject by viewModel.diskToEject.collectAsState()
     val globalTrimReport by viewModel.globalTrimReport.collectAsState()
+    val unmountingPartitionPath by viewModel.unmountingPartitionPath.collectAsState()
 
     var showDiskToolsSheet by remember { mutableStateOf(false) }
     var showPartitionToolsSheet by remember { mutableStateOf(false) }
@@ -172,9 +180,9 @@ fun StorageScreen(
             storage = storage,
             configuredSdBase = configuredSdBase,
             isCheckingFs = isCheckingFs,
-            isFormatting = isFormatting,
             isMountingAll = isMountingAll,
             isUnmountingAll = isUnmountingAll,
+            unmountingPartitionPath = unmountingPartitionPath,
             onBack = { viewModel.closeDiskDetail() },
             onRefresh = { viewModel.detectPartitions(force = true) },
             onOpenWizard = { viewModel.openPartitionWizard(selectedDiskForDetail) },
@@ -240,6 +248,8 @@ fun StorageScreen(
             onAddPartition = { viewModel.addPartition() },
             onRemovePartition = { idx -> viewModel.removePartition(idx) },
             onAutoBalance = { viewModel.autoBalanceWizardPartitions() },
+            onAdjustAdjacent = { idx, deltaKb -> viewModel.adjustAdjacentWizardPartitions(idx, deltaKb) },
+            onAdjustByGb = { idx, deltaGb -> viewModel.adjustPartitionSizeByGb(idx, deltaGb) },
             onTriggerApply = { showRepartitionFinalConfirm = true }
         )
     }
@@ -1571,6 +1581,172 @@ private fun DiskVisualMapOverviewCard(
     }
 }
 
+// ── Interactive Multi-Partition Drag Slider (AOMEI Partition Assistant Style) ──
+@Composable
+private fun InteractivePartitionSliderBar(
+    partitions: List<PartitionSchemeConfig>,
+    totalDiskKb: Long,
+    onAdjustAdjacent: (Int, Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var barWidthPx by remember { mutableFloatStateOf(1f) }
+    val validTotalKb = partitions.sumOf { it.sizeKb }.coerceAtLeast(1L)
+    val density = LocalDensity.current
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.SwapHoriz,
+                    contentDescription = null,
+                    tint = ElectricCyan,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.storage_wizard_drag_hint),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Multi-segment partition bar with draggable dividers
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF10141E))
+                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)), RoundedCornerShape(10.dp))
+                .onGloballyPositioned { coordinates ->
+                    barWidthPx = coordinates.size.width.toFloat()
+                }
+        ) {
+            // 1. Partition colored blocks
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                partitions.forEachIndexed { idx, p ->
+                    val weight = (p.sizeKb.toFloat() / validTotalKb.toFloat()).coerceIn(0.06f, 1f)
+                    val baseColor = when (p.fsType) {
+                        FilesystemType.F2FS -> CyberEmerald
+                        FilesystemType.EXT4 -> MaterialTheme.colorScheme.primary
+                        FilesystemType.FAT32, FilesystemType.EXFAT -> ElectricCyan
+                        else -> MaterialTheme.colorScheme.secondary
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(weight)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(baseColor.copy(alpha = 0.22f))
+                            .border(1.dp, baseColor.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "P${idx + 1}: ${p.label.ifBlank { p.fsType.label }}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = baseColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = String.format(java.util.Locale.US, "%.1f GB", p.sizeGb),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2. Draggable Divider Handles (||) placed at partition boundaries
+            if (partitions.size > 1 && barWidthPx > 10f) {
+                var cumulativeFraction = 0f
+                for (i in 0 until partitions.size - 1) {
+                    val partFraction = partitions[i].sizeKb.toFloat() / validTotalKb.toFloat()
+                    cumulativeFraction += partFraction
+                    val dividerCenterX = cumulativeFraction * barWidthPx
+                    val handleHalfWidthDp = 18.dp
+                    val handleHalfWidthPx = with(density) { handleHalfWidthDp.toPx() }
+                    val handleOffsetX = (dividerCenterX - handleHalfWidthPx).coerceIn(0f, barWidthPx - handleHalfWidthPx * 2)
+                    val dividerIndex = i
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(handleHalfWidthDp * 2)
+                            .offset { IntOffset(handleOffsetX.roundToInt(), 0) }
+                            .pointerInput(dividerIndex, validTotalKb, barWidthPx) {
+                                detectHorizontalDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    if (barWidthPx > 0f) {
+                                        val deltaFraction = dragAmount / barWidthPx
+                                        val deltaKb = (deltaFraction * validTotalKb).toLong()
+                                        if (deltaKb != 0L) {
+                                            onAdjustAdjacent(dividerIndex, deltaKb)
+                                        }
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // High-contrast AOMEI-style handle pill
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF1E293B),
+                            border = BorderStroke(1.5.dp, ElectricCyan),
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .width(14.dp)
+                                .height(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(1.5.dp)
+                                            .height(14.dp)
+                                            .background(ElectricCyan)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .width(1.5.dp)
+                                            .height(14.dp)
+                                            .background(ElectricCyan)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── Partitioning Wizard Dialog (AOMEI Partition Assistant Style) ──
 @Composable
 private fun PartitionWizardDialog(
@@ -1585,6 +1761,8 @@ private fun PartitionWizardDialog(
     onAddPartition: () -> Unit,
     onRemovePartition: (Int) -> Unit,
     onAutoBalance: () -> Unit,
+    onAdjustAdjacent: (Int, Long) -> Unit,
+    onAdjustByGb: (Int, Long) -> Unit,
     onTriggerApply: () -> Unit
 ) {
     val totalDiskBytes = diskInfo?.totalSizeBytes ?: 0L
@@ -1672,7 +1850,7 @@ private fun PartitionWizardDialog(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
-                        // 1. Capacity & Visual Map Preview
+                        // 1. Capacity & Interactive Slider Bar (AOMEI Style)
                         item {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
@@ -1702,50 +1880,12 @@ private fun PartitionWizardDialog(
 
                                     Spacer(modifier = Modifier.height(10.dp))
 
-                                    // Dynamic Live Preview Bar
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(34.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(2.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                        ) {
-                                            val validTotal = allocatedKb.coerceAtLeast(1L)
-                                            partitions.forEachIndexed { idx, p ->
-                                                val weight = (p.sizeKb.toFloat() / validTotal.toFloat()).coerceIn(0.08f, 1f)
-                                                val color = when (p.fsType) {
-                                                    FilesystemType.F2FS -> CyberEmerald
-                                                    FilesystemType.EXT4 -> MaterialTheme.colorScheme.primary
-                                                    FilesystemType.FAT32, FilesystemType.EXFAT -> ElectricCyan
-                                                    else -> MaterialTheme.colorScheme.secondary
-                                                }
-
-                                                Box(
-                                                    modifier = Modifier
-                                                        .weight(weight)
-                                                        .fillMaxHeight()
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(color.copy(alpha = 0.3f))
-                                                        .border(1.dp, color, RoundedCornerShape(6.dp)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text(
-                                                        text = "P${idx + 1} (${p.fsType.label})",
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = color,
-                                                        maxLines = 1
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
+                                    // AOMEI Interactive Partition Slider Bar
+                                    InteractivePartitionSliderBar(
+                                        partitions = partitions,
+                                        totalDiskKb = totalDiskKb,
+                                        onAdjustAdjacent = onAdjustAdjacent
+                                    )
                                 }
                             }
                         }
@@ -1758,6 +1898,7 @@ private fun PartitionWizardDialog(
                                 config = config,
                                 maxTotalKb = totalDiskKb,
                                 onSizeKbChange = { onUpdateSizeKb(index, it) },
+                                onAdjustByGb = { deltaGb -> onAdjustByGb(index, deltaGb) },
                                 onFsChange = { onUpdateFs(index, it) },
                                 onLabelChange = { onUpdateLabel(index, it) },
                                 onRemove = { onRemovePartition(index) }
@@ -1936,6 +2077,7 @@ private fun WizardPartitionCard(
     config: PartitionSchemeConfig,
     maxTotalKb: Long,
     onSizeKbChange: (Long) -> Unit,
+    onAdjustByGb: (Long) -> Unit,
     onFsChange: (FilesystemType) -> Unit,
     onLabelChange: (String) -> Unit,
     onRemove: () -> Unit,
@@ -1995,9 +2137,87 @@ private fun WizardPartitionCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Size in KB Field (Manual precision input per user requirement)
+            // Human readable capacity + Quick Steppers (-1 GB, +1 GB, +5 GB)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "≈ ${String.format(java.util.Locale.US, "%.1f GB", config.sizeGb)} (${String.format(java.util.Locale.US, "%,d MB", config.sizeMb.toLong())})",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (index == 0) ElectricCyan else CyberEmerald
+                    )
+                )
+
+                // Quick steppers
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Surface(
+                        onClick = { onAdjustByGb(-1L) },
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                        modifier = Modifier.height(26.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
+                            Text("-1 GB", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+
+                    Surface(
+                        onClick = { onAdjustByGb(1L) },
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                        modifier = Modifier.height(26.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
+                            Text("+1 GB", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+
+                    Surface(
+                        onClick = { onAdjustByGb(5L) },
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                        modifier = Modifier.height(26.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
+                            Text("+5 GB", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Proportional Slider
+            val maxValidKb = maxTotalKb.coerceAtLeast(1L)
+            val currentFraction = (config.sizeKb.toFloat() / maxValidKb.toFloat()).coerceIn(0.01f, 1f)
+            Slider(
+                value = currentFraction,
+                onValueChange = { fraction ->
+                    val targetKb = (fraction * maxValidKb).toLong().coerceAtLeast(512L * 1024L)
+                    onSizeKbChange(targetKb)
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = if (index == 0) ElectricCyan else CyberEmerald,
+                    activeTrackColor = if (index == 0) ElectricCyan else CyberEmerald,
+                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(26.dp)
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Size in KB Field (Manual precision input per user requirement) & Partition Label
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2086,17 +2306,6 @@ private fun WizardPartitionCard(
                     }
                 }
             }
-
-            // Size Human Readable Conversion Label
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "≈ ${String.format(java.util.Locale.US, "%.1f GB", config.sizeGb)} (${String.format(java.util.Locale.US, "%,d MB", config.sizeMb.toLong())})",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CyberEmerald
-                )
-            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
