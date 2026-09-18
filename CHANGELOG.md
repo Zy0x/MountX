@@ -5,6 +5,38 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.56] - 2026-09-18
+
+### Added
+- **Hierarchical Disk vs. Partition Operations Architecture**:
+  - Restructured Storage Disk Detail view into a clean 2-tier hierarchy separating physical drive operations from logical volume data tasks.
+  - **Disk Level Controls (`mmcblk*`)**:
+    - Batch Mount & Eject All Partitions button with real-time state feedback.
+    - Partition Wizard trigger for non-destructive or full drive repartitioning.
+    - Dedicated **Disk Tools Modal Bottom Sheet** with full sysfs hardware access and diagnostics.
+  - **Partition Level Controls (`mmcblk*p*`)**:
+    - Compact 2-button row layout (65% width primary 1-Click Mount/Unmount, 35% width Partition Tools button) eliminating text truncation across 720p to 4K resolutions.
+    - Dedicated **Partition Tools Modal Bottom Sheet** for volume maintenance.
+- **Root I/O Speed Booster Engine (App2SD Style)**:
+  - Dynamic kernel sysfs queue tuning directly on `/sys/block/<disk>/queue/`.
+  - Configurable Read-Ahead buffer slider (128 KB to 4096 KB) with quick chips (512, 1024, 2048, 4096 KB).
+  - Kernel I/O scheduler switcher (dynamically enumerates available schedulers: `none`, `mq-deadline`, `kyber`, `bfq`).
+  - CPU I/O completion affinity (`rq_affinity`) and VM cache pressure tuning (`vfs_cache_pressure`).
+  - 3 Instant Performance Presets:
+    - *Gaming Ultra*: 2048 KB Read-Ahead, `none` scheduler, `rq_affinity=2`, `vfs_cache_pressure=20` for minimal game texture streaming latency.
+    - *Balanced*: 1024 KB Read-Ahead, `mq-deadline`, `rq_affinity=1`, `vfs_cache_pressure=50`.
+    - *Default / Battery Saver*: 128 KB Read-Ahead, stock scheduler, `rq_affinity=0`, `vfs_cache_pressure=100`.
+  - Full boot-time persistence: stores active configuration into `/data/adb/modules/Mountify/config.conf` and applies automatically on startup via `service.sh`.
+- **Advanced Disk Diagnostic & Maintenance Tools**:
+  - **Global & Partition FSTRIM**: Discards unused flash memory blocks on mounted volumes via `fstrim -v` with dialog output.
+  - **F2FS Urgent Garbage Collection**: Triggers flash defragmentation via `/sys/fs/f2fs/<dev>/gc_urgent` to eliminate stutter during intense game asset streaming.
+  - **Quick Disk Benchmark**: 64 MB sequential read & write throughput test via `dd` reporting exact MB/s speeds.
+  - **Hardware Telemetry**: Reads eMMC/SD CID, CSD, serial number, manufacture date, OEM ID, and bus speed mode.
+- **Filesystem Conversion & Partition Tools**:
+  - Directed Format & Filesystem Switcher supporting F2FS, Ext4, FAT32, and exFAT with safety confirmation.
+  - Filesystem Integrity Check (`fsck`) with real-time log viewer.
+  - Ultra low latency mount flags for game storage partitions: `inline_data,inline_dentry,flush_merge,mode=adaptive` for F2FS and `commit=60,delalloc,data=writeback` for Ext4.
+
 ## [2.1.55] - 2026-09-18
 
 ### Changed

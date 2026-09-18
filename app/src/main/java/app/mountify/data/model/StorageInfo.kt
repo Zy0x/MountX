@@ -165,3 +165,46 @@ data class ShellResult(
     val isSuccess: Boolean get() = code == 0
     val output: String get() = stdout.joinToString("\n")
 }
+
+/** Preset tuning profiles for block device I/O */
+enum class IoPreset(
+    val label: String,
+    val readAheadKb: Int,
+    val rqAffinity: Int,
+    val nrRequests: Int,
+    val vfsCachePressure: Int
+) {
+    GAMING_ULTRA("Gaming Ultra", 2048, 2, 256, 20),
+    BALANCED("Balanced", 1024, 1, 128, 50),
+    DEFAULT_SYSTEM("Default", 128, 1, 128, 100)
+}
+
+/** Disk-level I/O performance tuning configuration */
+data class DiskIoConfig(
+    val readAheadKb: Int = 2048,
+    val scheduler: String = "none",
+    val availableSchedulers: List<String> = emptyList(),
+    val rqAffinity: Int = 2,
+    val nrRequests: Int = 256,
+    val vfsCachePressure: Int = 20,
+    val isBootPersistent: Boolean = true
+)
+
+/** Storage read/write benchmark result */
+data class BenchmarkResult(
+    val sequentialReadMbPerSec: Double = 0.0,
+    val accessLatencyMs: Double = 0.0,
+    val sampleSizeBytes: Long = 64L * 1024 * 1024,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+/** Hardware inspection metadata from /sys/block/<disk>/device */
+data class DiskHardwareDetails(
+    val vendor: String = "",
+    val productName: String = "",
+    val serialNumber: String = "",
+    val busClockMhz: String = "",
+    val uhsSpeedClass: String = "",
+    val isRemovable: Boolean = true
+)
+

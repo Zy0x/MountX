@@ -1,5 +1,8 @@
 package app.mountify.data.repository
 
+import app.mountify.data.model.BenchmarkResult
+import app.mountify.data.model.DiskHardwareDetails
+import app.mountify.data.model.DiskIoConfig
 import app.mountify.data.model.FilesystemType
 import app.mountify.data.model.InternalStorageInfo
 import app.mountify.data.model.MigrationTarget
@@ -125,4 +128,41 @@ class StorageRepository @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         storageManager.moveGameData(packageName, direction, target, sdBase)
     }
+
+    suspend fun getDiskIoConfig(diskName: String): Result<DiskIoConfig> = withContext(Dispatchers.IO) {
+        storageManager.getDiskIoConfig(diskName)
+    }
+
+    suspend fun applyDiskIoConfig(diskName: String, config: DiskIoConfig): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.applyDiskIoConfig(diskName, config)
+    }
+
+    suspend fun executeGlobalTrim(disk: SdCardDiskInfo): Result<String> = withContext(Dispatchers.IO) {
+        storageManager.executeGlobalTrim(disk)
+    }
+
+    suspend fun executePartitionTrim(mountPoint: String): Result<String> = withContext(Dispatchers.IO) {
+        storageManager.executePartitionTrim(mountPoint)
+    }
+
+    suspend fun executeF2fsUrgentGc(diskName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.executeF2fsUrgentGc(diskName)
+    }
+
+    suspend fun runQuickDiskBenchmark(blockDevice: String): Result<BenchmarkResult> = withContext(Dispatchers.IO) {
+        storageManager.runQuickDiskBenchmark(blockDevice)
+    }
+
+    suspend fun getDiskHardwareDetails(diskName: String): Result<DiskHardwareDetails> = withContext(Dispatchers.IO) {
+        storageManager.getDiskHardwareDetails(diskName)
+    }
+
+    suspend fun mountAllPartitions(disk: SdCardDiskInfo, sdBase: String = "/data/sdext2"): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.mountAllPartitions(disk, sdBase)
+    }
+
+    suspend fun unmountAllPartitions(disk: SdCardDiskInfo): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.unmountAllPartitions(disk)
+    }
 }
+

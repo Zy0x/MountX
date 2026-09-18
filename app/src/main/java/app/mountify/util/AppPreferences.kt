@@ -27,6 +27,10 @@ class AppPreferences @Inject constructor(
         val KEY_SD_BASE_PATH = stringPreferencesKey("sd_base_path")
         val KEY_SD_BLOCK_DEVICE = stringPreferencesKey("sd_block_device")
         val KEY_AUTO_MOUNT = booleanPreferencesKey("auto_mount_on_boot")
+        val KEY_IO_TWEAKS_ENABLED = booleanPreferencesKey("io_tweaks_enabled")
+        val KEY_IO_PRESET = stringPreferencesKey("io_preset")
+        val KEY_IO_READ_AHEAD_KB = androidx.datastore.preferences.core.intPreferencesKey("io_read_ahead_kb")
+        val KEY_IO_SCHEDULER = stringPreferencesKey("io_scheduler")
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
@@ -54,6 +58,22 @@ class AppPreferences @Inject constructor(
         prefs[KEY_AUTO_MOUNT] ?: true
     }
 
+    val ioTweaksEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_IO_TWEAKS_ENABLED] ?: true
+    }
+
+    val ioPreset: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_IO_PRESET] ?: "GAMING_ULTRA"
+    }
+
+    val ioReadAheadKb: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[KEY_IO_READ_AHEAD_KB] ?: 2048
+    }
+
+    val ioScheduler: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_IO_SCHEDULER] ?: "none"
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { it[KEY_THEME] = mode.name }
     }
@@ -74,9 +94,26 @@ class AppPreferences @Inject constructor(
         context.dataStore.edit { it[KEY_AUTO_MOUNT] = enabled }
     }
 
+    suspend fun setIoTweaksEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_IO_TWEAKS_ENABLED] = enabled }
+    }
+
+    suspend fun setIoPreset(preset: String) {
+        context.dataStore.edit { it[KEY_IO_PRESET] = preset }
+    }
+
+    suspend fun setIoReadAheadKb(kb: Int) {
+        context.dataStore.edit { it[KEY_IO_READ_AHEAD_KB] = kb }
+    }
+
+    suspend fun setIoScheduler(scheduler: String) {
+        context.dataStore.edit { it[KEY_IO_SCHEDULER] = scheduler }
+    }
+
     suspend fun resetDefaults() {
         context.dataStore.edit { prefs ->
             prefs.clear()
         }
     }
 }
+

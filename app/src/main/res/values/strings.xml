@@ -429,4 +429,53 @@
     <string name="common_recommended">Recommended</string>
     <string name="common_internal">Internal</string>
     <string name="common_external">MicroSD</string>
+
+    <!-- Disk & Partition Tools (Modal Bottom Sheets & IO Tweaks) -->
+    <string name="storage_action_mount_all">Mount All</string>
+    <string name="storage_action_unmount_all">Eject All</string>
+    <string name="storage_action_disk_tools">Disk Tools</string>
+    <string name="storage_action_partition_tools">Tools</string>
+    <string name="storage_disk_tools_title">Disk Performance &amp; Tools</string>
+    <string name="storage_disk_tools_subtitle">Tweak I/O cache, scheduler, and run storage maintenance</string>
+    <string name="storage_partition_tools_title">Partition Tools: %1$s</string>
+    <string name="storage_partition_tools_subtitle">Volume maintenance and filesystem operations</string>
+    <string name="storage_io_booster_title">I/O Speed Booster</string>
+    <string name="storage_io_booster_desc">Enhance random and sequential read speeds for heavy game asset loading.</string>
+    <string name="storage_io_preset_gaming">Gaming Ultra</string>
+    <string name="storage_io_preset_balanced">Balanced</string>
+    <string name="storage_io_preset_default">System Default</string>
+    <string name="storage_io_read_ahead">Read-Ahead Buffer</string>
+    <string name="storage_io_scheduler">I/O Scheduler</string>
+    <string name="storage_io_boot_persist">Apply automatically on system boot</string>
+    <string name="storage_io_apply_btn">Apply I/O Optimization</string>
+    <string name="storage_io_applying">Applying tweaks…</string>
+    <string name="storage_flash_maint_title">Flash Storage Maintenance</string>
+    <string name="storage_global_trim_btn">Global FSTRIM</string>
+    <string name="storage_global_trim_desc">Discard unused blocks across all mounted partitions to restore write speed.</string>
+    <string name="storage_f2fs_gc_btn">F2FS Urgent Garbage Collection</string>
+    <string name="storage_f2fs_gc_desc">Pre-clean dirty segments before launching heavy games to prevent frame drops.</string>
+    <string name="storage_benchmark_title">Quick Read &amp; Latency Benchmark</string>
+    <string name="storage_benchmark_btn">Run Benchmark (64 MB)</string>
+    <string name="storage_benchmark_running">Benchmarking storage…</string>
+    <string name="storage_benchmark_speed">Read Speed</string>
+    <string name="storage_benchmark_latency">Access Latency</string>
+    <string name="storage_hardware_info_title">Hardware &amp; Bus Telemetry</string>
+    <string name="storage_hw_vendor">Manufacturer</string>
+    <string name="storage_hw_serial">Serial / CID</string>
+    <string name="storage_hw_bus_speed">Bus Frequency</string>
+    <string name="storage_hw_speed_class">Speed Rating</string>
+    <string name="storage_action_format_change_fs">Format &amp; Change Filesystem</string>
+    <string name="storage_action_format_change_fs_desc">Reformat partition to F2FS, Ext4, exFAT, or FAT32.</string>
+    <string name="storage_action_fsck_desc">Diagnose and repair filesystem metadata inconsistencies.</string>
+    <string name="storage_action_trim_partition">Run FSTRIM on Partition</string>
+    <string name="storage_action_trim_partition_desc">Reclaim free space blocks on this mounted partition.</string>
+    <string name="storage_action_details">Partition Details &amp; Mount Flags</string>
+    <string name="storage_action_details_desc">Inspect UUID, dev node, and active kernel mount options.</string>
+    <string name="storage_trim_result_title">TRIM Execution Result</string>
+    <string name="storage_status_io_ok">I/O optimizations applied successfully</string>
+    <string name="storage_status_trim_ok">TRIM completed successfully</string>
+    <string name="storage_status_gc_ok">F2FS Garbage Collection completed</string>
+    <string name="storage_status_mount_all_ok">All disk partitions mounted</string>
+    <string name="storage_status_unmount_all_ok">All disk partitions ejected</string>
 </resources>
+

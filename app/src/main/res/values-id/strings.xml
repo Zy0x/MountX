@@ -412,4 +412,53 @@
     <string name="common_recommended">Disarankan</string>
     <string name="common_internal">Internal</string>
     <string name="common_external">MicroSD</string>
+
+    <!-- Disk & Partition Tools (Modal Bottom Sheets & IO Tweaks) -->
+    <string name="storage_action_mount_all">Mount Semua</string>
+    <string name="storage_action_unmount_all">Eject Semua</string>
+    <string name="storage_action_disk_tools">Tools Disk</string>
+    <string name="storage_action_partition_tools">Alat</string>
+    <string name="storage_disk_tools_title">Performa &amp; Tools Disk</string>
+    <string name="storage_disk_tools_subtitle">Optimasi antrean I/O, scheduler, dan pemeliharaan disk</string>
+    <string name="storage_partition_tools_title">Alat Partisi: %1$s</string>
+    <string name="storage_partition_tools_subtitle">Operasi volume dan sistem berkas</string>
+    <string name="storage_io_booster_title">Speed Booster I/O</string>
+    <string name="storage_io_booster_desc">Tingkatkan kecepatan baca acak dan sekuensial untuk pemuatan aset game.</string>
+    <string name="storage_io_preset_gaming">Gaming Ultra</string>
+    <string name="storage_io_preset_balanced">Seimbang</string>
+    <string name="storage_io_preset_default">Default Sistem</string>
+    <string name="storage_io_read_ahead">Buffer Read-Ahead</string>
+    <string name="storage_io_scheduler">I/O Scheduler</string>
+    <string name="storage_io_boot_persist">Terapkan otomatis saat booting</string>
+    <string name="storage_io_apply_btn">Terapkan Optimasi I/O</string>
+    <string name="storage_io_applying">Menerapkan tweak…</string>
+    <string name="storage_flash_maint_title">Pemeliharaan Flash Storage</string>
+    <string name="storage_global_trim_btn">Global FSTRIM</string>
+    <string name="storage_global_trim_desc">Bersihkan blok memori kosong di seluruh partisi untuk memulihkan kecepatan tulis.</string>
+    <string name="storage_f2fs_gc_btn">F2FS Urgent Garbage Collection</string>
+    <string name="storage_f2fs_gc_desc">Bersihkan fragmentasi segmen kotor sebelum bermain game untuk mencegah lag spike.</string>
+    <string name="storage_benchmark_title">Uji Kecepatan &amp; Latensi</string>
+    <string name="storage_benchmark_btn">Jalankan Uji Kecepatan (64 MB)</string>
+    <string name="storage_benchmark_running">Menguji kecepatan storage…</string>
+    <string name="storage_benchmark_speed">Kecepatan Baca</string>
+    <string name="storage_benchmark_latency">Latensi Akses</string>
+    <string name="storage_hardware_info_title">Telemetri Hardware &amp; Bus</string>
+    <string name="storage_hw_vendor">Manufaktur</string>
+    <string name="storage_hw_serial">Serial / CID</string>
+    <string name="storage_hw_bus_speed">Frekuensi Bus</string>
+    <string name="storage_hw_speed_class">Rating Kecepatan</string>
+    <string name="storage_action_format_change_fs">Format &amp; Ganti Filesystem</string>
+    <string name="storage_action_format_change_fs_desc">Format ulang partisi ke F2FS, Ext4, exFAT, atau FAT32.</string>
+    <string name="storage_action_fsck_desc">Diagnosa dan perbaiki inkonsistensi metadata sistem berkas.</string>
+    <string name="storage_action_trim_partition">Jalankan TRIM Partisi</string>
+    <string name="storage_action_trim_partition_desc">Optimalkan blok kosong pada partisi aktif ini.</string>
+    <string name="storage_action_details">Detail Partisi &amp; Mount Flags</string>
+    <string name="storage_action_details_desc">Periksa UUID, node dev, dan opsi mount kernel aktif.</string>
+    <string name="storage_trim_result_title">Hasil Eksekusi TRIM</string>
+    <string name="storage_status_io_ok">Optimasi I/O berhasil diterapkan</string>
+    <string name="storage_status_trim_ok">TRIM berhasil diselesaikan</string>
+    <string name="storage_status_gc_ok">F2FS Garbage Collection selesai</string>
+    <string name="storage_status_mount_all_ok">Semua partisi disk berhasil di-mount</string>
+    <string name="storage_status_unmount_all_ok">Semua partisi disk berhasil di-eject</string>
 </resources>
+

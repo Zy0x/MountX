@@ -23,6 +23,12 @@ LOG_FILE="${MODULE_DIR}/mountify.log"
 SD_BASE="/data/sdext2"
 SD_BLOCK="/dev/block/mmcblk0p3"
 FS_TYPE="f2fs"
+IO_TWEAKS_ENABLED=1
+READ_AHEAD_KB=2048
+IO_SCHEDULER="none"
+RQ_AFFINITY=2
+NR_REQUESTS=256
+VFS_CACHE_PRESSURE=20
 
 # ── Logging helper ────────────────────────────────────────────────────────────
 log() {
@@ -60,14 +66,20 @@ load_config() {
         [ -z "${key}" ] && continue
 
         case "${key}" in
-            SD_BASE)   SD_BASE="${val}"  ;;
-            SD_BLOCK)  SD_BLOCK="${val}" ;;
-            FS_TYPE)   FS_TYPE="${val}"  ;;
-            *) log_warn "config.conf: unknown key '${key}'" ;;
+            SD_BASE)             SD_BASE="${val}"             ;;
+            SD_BLOCK)            SD_BLOCK="${val}"            ;;
+            FS_TYPE)             FS_TYPE="${val}"             ;;
+            IO_TWEAKS_ENABLED)   IO_TWEAKS_ENABLED="${val}"   ;;
+            READ_AHEAD_KB)       READ_AHEAD_KB="${val}"       ;;
+            IO_SCHEDULER)        IO_SCHEDULER="${val}"        ;;
+            RQ_AFFINITY)         RQ_AFFINITY="${val}"         ;;
+            NR_REQUESTS)         NR_REQUESTS="${val}"         ;;
+            VFS_CACHE_PRESSURE)  VFS_CACHE_PRESSURE="${val}"  ;;
+            *) log_warn "config.conf: unknown key '${key}'"   ;;
         esac
     done < "${CONFIG_FILE}"
 
-    log_info "Config loaded — SD_BASE=${SD_BASE} SD_BLOCK=${SD_BLOCK} FS_TYPE=${FS_TYPE}"
+    log_info "Config loaded — SD_BASE=${SD_BASE} SD_BLOCK=${SD_BLOCK} FS_TYPE=${FS_TYPE} IO_TWEAKS=${IO_TWEAKS_ENABLED}"
 }
 
 # ── Wait until Android has finished booting ───────────────────────────────────
@@ -101,12 +113,60 @@ mount_sd() {
         return 0
     fi
 
-    if mount -t "${FS_TYPE}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}"; then
-        log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${FS_TYPE})"
-    else
-        log_error "Failed to mount ${SD_BLOCK} as ${FS_TYPE} at ${SD_BASE}."
-        exit 1
+    local mnt_opts="rw,noatime,nodiratime"
+    if [ "${FS_TYPE}" = "f2fs" ]; then
+        mnt_opts="${mnt_opts},inline_data,inline_dentry,flush_merge,mode=adaptive"
+    elif [ "${FS_TYPE}" = "ext4" ]; then
+        mnt_opts="${mnt_opts},commit=60,delalloc,data=writeback"
     fi
+
+    if mount -t "${FS_TYPE}" -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}"; then
+        log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${FS_TYPE} with ${mnt_opts})"
+    else
+        log_warn "Optimized mount failed, attempting generic fallback mount…"
+        if mount -t "${FS_TYPE}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}"; then
+            log_info "SD mounted with fallback options: ${SD_BLOCK} → ${SD_BASE}"
+        else
+            log_error "Failed to mount ${SD_BLOCK} as ${FS_TYPE} at ${SD_BASE}."
+            exit 1
+        fi
+    fi
+}
+
+# ── Apply kernel I/O queue & latency tweaks ───────────────────────────────────
+apply_io_tweaks() {
+    if [ "${IO_TWEAKS_ENABLED}" != "1" ]; then
+        log_info "I/O tweaks disabled in config."
+        return 0
+    fi
+
+    local disk_name
+    disk_name=$(basename "${SD_BLOCK}" | sed 's/p[0-9]*$//;s/[0-9]*$//')
+    local queue_dir="/sys/block/${disk_name}/queue"
+
+    log_info "Applying I/O tweaks on ${disk_name} (RA=${READ_AHEAD_KB}KB, Sched=${IO_SCHEDULER}, Affinity=${RQ_AFFINITY})…"
+
+    if [ -d "${queue_dir}" ]; then
+        [ -w "${queue_dir}/read_ahead_kb" ] && echo "${READ_AHEAD_KB}" > "${queue_dir}/read_ahead_kb"
+        [ -n "${IO_SCHEDULER}" ] && [ -w "${queue_dir}/scheduler" ] && echo "${IO_SCHEDULER}" > "${queue_dir}/scheduler" 2>/dev/null
+        [ -w "${queue_dir}/rq_affinity" ] && echo "${RQ_AFFINITY}" > "${queue_dir}/rq_affinity"
+        [ -w "${queue_dir}/nr_requests" ] && echo "${NR_REQUESTS}" > "${queue_dir}/nr_requests"
+        [ -w "${queue_dir}/add_random" ] && echo "0" > "${queue_dir}/add_random"
+        [ -w "${queue_dir}/rotational" ] && echo "0" > "${queue_dir}/rotational"
+        [ -w "${queue_dir}/nomerges" ] && echo "0" > "${queue_dir}/nomerges"
+    fi
+
+    # Apply to all virtual block device interfaces (BDI)
+    for bdi in /sys/devices/virtual/bdi/*/read_ahead_kb; do
+        [ -w "${bdi}" ] && echo "${READ_AHEAD_KB}" > "${bdi}" 2>/dev/null
+    done
+
+    # Retain dentry and inode cache in RAM for instantaneous metadata lookups
+    if [ -w "/proc/sys/vm/vfs_cache_pressure" ]; then
+        echo "${VFS_CACHE_PRESSURE}" > /proc/sys/vm/vfs_cache_pressure
+    fi
+
+    log_info "I/O tweaks successfully applied to ${disk_name}."
 }
 
 # ── Read gamelist.conf into arrays ────────────────────────────────────────────
@@ -297,6 +357,7 @@ main() {
     wait_for_boot
     load_config
     mount_sd
+    apply_io_tweaks
     load_gamelist
 
     if [ -z "${GAME_PKGS}" ]; then

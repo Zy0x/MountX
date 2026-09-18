@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
@@ -108,6 +109,22 @@ fun StorageScreen(
     val offloadedStats by viewModel.offloadedStats.collectAsState()
     val configuredSdBase by viewModel.configuredSdBase.collectAsState()
 
+    // I/O Tweaks & Storage Tools States
+    val diskIoConfig by viewModel.diskIoConfig.collectAsState()
+    val isApplyingIo by viewModel.isApplyingIo.collectAsState()
+    val isBenchmarking by viewModel.isBenchmarking.collectAsState()
+    val benchmarkResult by viewModel.benchmarkResult.collectAsState()
+    val isTrimming by viewModel.isTrimming.collectAsState()
+    val trimOutput by viewModel.trimOutput.collectAsState()
+    val diskHardwareDetails by viewModel.diskHardwareDetails.collectAsState()
+    val isMountingAll by viewModel.isMountingAll.collectAsState()
+    val isUnmountingAll by viewModel.isUnmountingAll.collectAsState()
+    val isUrgentGcRunning by viewModel.isUrgentGcRunning.collectAsState()
+
+    var showDiskToolsSheet by remember { mutableStateOf(false) }
+    var showPartitionToolsSheet by remember { mutableStateOf(false) }
+    var partitionForTools by remember { mutableStateOf<PartitionInfo?>(null) }
+
     // Wizard states
     val isWizardOpen by viewModel.isWizardOpen.collectAsState()
     val wizardPartitions by viewModel.wizardPartitions.collectAsState()
@@ -140,16 +157,20 @@ fun StorageScreen(
             configuredSdBase = configuredSdBase,
             isCheckingFs = isCheckingFs,
             isFormatting = isFormatting,
+            isMountingAll = isMountingAll,
+            isUnmountingAll = isUnmountingAll,
             onBack = { viewModel.closeDiskDetail() },
             onRefresh = { viewModel.detectPartitions(force = true) },
             onOpenWizard = { viewModel.openPartitionWizard(selectedDiskForDetail) },
             onMountPartition = { part -> viewModel.mountPartition(part) },
             onUnmountPartition = { part -> viewModel.unmountPartition(part) },
-            onFormatPartition = { part ->
-                viewModel.selectPartition(part)
-                showFormatDialog = true
+            onMountAll = { selectedDiskForDetail?.let { viewModel.mountAllPartitions(it) } },
+            onUnmountAll = { selectedDiskForDetail?.let { viewModel.unmountAllPartitions(it) } },
+            onOpenDiskTools = { showDiskToolsSheet = true },
+            onOpenPartitionTools = { part ->
+                partitionForTools = part
+                showPartitionToolsSheet = true
             },
-            onCheckFilesystem = { part -> viewModel.checkFilesystem(part) },
             modifier = modifier
         )
     } else {
@@ -270,6 +291,102 @@ fun StorageScreen(
             confirmButton = {
                 Button(
                     onClick = { viewModel.clearFsCheckOutput() },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Text(stringResource(R.string.common_close), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // Disk Tools Bottom Sheet
+    if (showDiskToolsSheet && selectedDiskForDetail != null) {
+        DiskToolsBottomSheet(
+            disk = selectedDiskForDetail!!,
+            ioConfig = diskIoConfig,
+            isApplyingIo = isApplyingIo,
+            hardwareDetails = diskHardwareDetails,
+            isBenchmarking = isBenchmarking,
+            benchmarkResult = benchmarkResult,
+            isTrimming = isTrimming,
+            trimOutput = trimOutput,
+            isUrgentGcRunning = isUrgentGcRunning,
+            onDismiss = { showDiskToolsSheet = false },
+            onApplyPreset = { preset -> viewModel.applyIoPreset(selectedDiskForDetail!!, preset) },
+            onApplyCustomConfig = { cfg -> viewModel.applyDiskIoConfig(selectedDiskForDetail!!, cfg) },
+            onRunBenchmark = { viewModel.runQuickDiskBenchmark(selectedDiskForDetail!!.devicePath) },
+            onRunGlobalTrim = { viewModel.runGlobalTrim(selectedDiskForDetail!!) },
+            onRunUrgentGc = { viewModel.runF2fsUrgentGc(selectedDiskForDetail!!) }
+        )
+    }
+
+    // Partition Tools Bottom Sheet
+    if (showPartitionToolsSheet && partitionForTools != null) {
+        PartitionToolsBottomSheet(
+            partition = partitionForTools!!,
+            isCheckingFs = isCheckingFs,
+            isTrimming = isTrimming,
+            onDismiss = { showPartitionToolsSheet = false },
+            onFormatClick = {
+                showPartitionToolsSheet = false
+                viewModel.selectPartition(partitionForTools!!)
+                showFormatDialog = true
+            },
+            onCheckFsClick = {
+                showPartitionToolsSheet = false
+                viewModel.checkFilesystem(partitionForTools!!)
+            },
+            onTrimClick = {
+                viewModel.runPartitionTrim(partitionForTools!!)
+            }
+        )
+    }
+
+    // Storage TRIM Output Dialog
+    if (trimOutput != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearTrimOutput() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.CleaningServices,
+                        contentDescription = null,
+                        tint = CyberEmerald,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.storage_trim_result_title),
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    )
+                }
+            },
+            text = {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.Black.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                ) {
+                    Text(
+                        text = trimOutput ?: "",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.5.sp,
+                        lineHeight = 14.sp,
+                        color = CyberEmerald,
+                        modifier = Modifier
+                            .padding(10.dp)
+                            .verticalScroll(rememberScrollState())
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.clearTrimOutput() },
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                     modifier = Modifier.height(34.dp)

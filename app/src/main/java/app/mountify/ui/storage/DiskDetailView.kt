@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -90,13 +91,17 @@ fun DiskDetailView(
     configuredSdBase: String,
     isCheckingFs: Boolean,
     isFormatting: Boolean,
+    isMountingAll: Boolean = false,
+    isUnmountingAll: Boolean = false,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenWizard: () -> Unit,
     onMountPartition: (PartitionInfo) -> Unit,
     onUnmountPartition: (PartitionInfo) -> Unit,
-    onFormatPartition: (PartitionInfo) -> Unit,
-    onCheckFilesystem: (PartitionInfo) -> Unit,
+    onMountAll: () -> Unit,
+    onUnmountAll: () -> Unit,
+    onOpenDiskTools: () -> Unit,
+    onOpenPartitionTools: (PartitionInfo) -> Unit,
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBack)
@@ -148,7 +153,12 @@ fun DiskDetailView(
             item {
                 DiskHardwareOverviewCard(
                     disk = disk,
-                    onOpenWizard = onOpenWizard
+                    onOpenWizard = onOpenWizard,
+                    onOpenDiskTools = onOpenDiskTools,
+                    onMountAll = onMountAll,
+                    onUnmountAll = onUnmountAll,
+                    isMountingAll = isMountingAll,
+                    isUnmountingAll = isUnmountingAll
                 )
             }
 
@@ -195,12 +205,9 @@ fun DiskDetailView(
                 items(disk.partitions, key = { it.path }) { partition ->
                     DiskPartitionCard(
                         partition = partition,
-                        isCheckingFs = isCheckingFs,
-                        isFormatting = isFormatting,
                         onMount = { onMountPartition(partition) },
                         onUnmount = { onUnmountPartition(partition) },
-                        onFormat = { onFormatPartition(partition) },
-                        onCheckFilesystem = { onCheckFilesystem(partition) }
+                        onOpenTools = { onOpenPartitionTools(partition) }
                     )
                 }
             }
@@ -213,9 +220,15 @@ fun DiskDetailView(
 private fun DiskHardwareOverviewCard(
     disk: SdCardDiskInfo,
     onOpenWizard: () -> Unit,
+    onOpenDiskTools: () -> Unit,
+    onMountAll: () -> Unit,
+    onUnmountAll: () -> Unit,
+    isMountingAll: Boolean,
+    isUnmountingAll: Boolean,
     modifier: Modifier = Modifier
 ) {
     val diskTypeIcon = if (disk.diskType == DiskType.MICRO_SD) Icons.Default.SdStorage else Icons.Default.Usb
+    val hasUnmounted = disk.partitions.any { !it.isMounted }
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -344,14 +357,14 @@ private fun DiskHardwareOverviewCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Partition Wizard Action Button (Vivid Aurora Gradient with High Contrast White Text)
+            // Baris 1: Partition Wizard Action Button (Vivid Aurora Gradient)
             Surface(
                 onClick = onOpenWizard,
                 shape = RoundedCornerShape(10.dp),
                 color = Color.Transparent,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .height(38.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(
                         Brush.horizontalGradient(
@@ -378,6 +391,79 @@ private fun DiskHardwareOverviewCard(
                             fontWeight = FontWeight.Bold
                         ),
                         color = Color.White
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Baris 2: Batch Mount/Eject + Disk Tools
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Batch Mount / Eject button
+                OutlinedButton(
+                    onClick = {
+                        if (hasUnmounted) onMountAll() else onUnmountAll()
+                    },
+                    enabled = disk.partitions.isNotEmpty() && !isMountingAll && !isUnmountingAll,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, if (hasUnmounted) CyberEmerald.copy(alpha = 0.6f) else NeonCrimson.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (hasUnmounted) CyberEmerald else NeonCrimson
+                    ),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                ) {
+                    if (isMountingAll || isUnmountingAll) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            color = if (hasUnmounted) CyberEmerald else NeonCrimson,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (hasUnmounted) Icons.Default.PlayArrow else Icons.Default.Stop,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (hasUnmounted) stringResource(R.string.storage_action_mount_all) else stringResource(R.string.storage_action_unmount_all),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Disk Tools Button
+                OutlinedButton(
+                    onClick = onOpenDiskTools,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.7f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = ElectricCyan.copy(alpha = 0.08f),
+                        contentColor = ElectricCyan
+                    ),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.storage_action_disk_tools),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -509,18 +595,13 @@ private fun DiskMiniVisualMapCard(
 @Composable
 private fun DiskPartitionCard(
     partition: PartitionInfo,
-    isCheckingFs: Boolean,
-    isFormatting: Boolean,
     onMount: () -> Unit,
     onUnmount: () -> Unit,
-    onFormat: () -> Unit,
-    onCheckFilesystem: () -> Unit,
+    onOpenTools: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showMountedFsckWarning by remember { mutableStateOf(false) }
-    var showMountedFormatWarning by remember { mutableStateOf(false) }
-
     val partBadgeColor = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.primary
+
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -720,13 +801,13 @@ private fun DiskPartitionCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Action Buttons Row (AOMEI Partition Assistant style direct actions)
+            // Action Buttons Row (65% Primary Action + 35% Partition Tools Menu)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 1. Mount / Unmount Button
+                // 1. Mount / Unmount Button (65%)
                 if (partition.isMounted) {
                     OutlinedButton(
                         onClick = onUnmount,
@@ -735,7 +816,7 @@ private fun DiskPartitionCard(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(0.65f)
                             .height(34.dp)
                     ) {
                         Icon(
@@ -760,7 +841,7 @@ private fun DiskPartitionCard(
                         ),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(0.65f)
                             .height(34.dp)
                     ) {
                         Icon(
@@ -777,105 +858,32 @@ private fun DiskPartitionCard(
                     }
                 }
 
-                // 2. Format Button with Safety Guard
+                // 2. Partition Tools Button (35%)
                 OutlinedButton(
-                    onClick = {
-                        if (partition.isMounted) {
-                            showMountedFormatWarning = true
-                        } else {
-                            onFormat()
-                        }
-                    },
+                    onClick = onOpenTools,
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(0.35f)
                         .height(34.dp)
                 ) {
                     Icon(
-                        Icons.Default.Build,
+                        Icons.Default.Tune,
                         contentDescription = null,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(14.dp),
+                        tint = ElectricCyan
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = stringResource(R.string.storage_action_format),
+                        text = stringResource(R.string.storage_action_partition_tools),
                         fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // 3. Filesystem Check (fsck) Button with Safety Guard
-                OutlinedButton(
-                    onClick = {
-                        if (partition.isMounted) {
-                            showMountedFsckWarning = true
-                        } else {
-                            onCheckFilesystem()
-                        }
-                    },
-                    enabled = !isCheckingFs,
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (partition.isMounted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(34.dp)
-                ) {
-                    if (isCheckingFs) {
-                        CircularProgressIndicator(
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.Shield,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = stringResource(R.string.storage_action_check_fs),
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
         }
-    }
-
-    // Informational & Safety Dialogs for DiskPartitionCard
-    if (showMountedFsckWarning) {
-        ConfirmDialog(
-            title = stringResource(R.string.storage_fsck_mounted_warning_title),
-            message = stringResource(
-                R.string.storage_fsck_mounted_warning_desc,
-                partition.mountPoint ?: partition.path
-            ),
-            confirmText = stringResource(R.string.common_ok),
-            onConfirm = { showMountedFsckWarning = false },
-            onDismiss = { showMountedFsckWarning = false }
-        )
-    }
-
-    if (showMountedFormatWarning) {
-        ConfirmDialog(
-            title = stringResource(R.string.format_warning),
-            message = stringResource(
-                R.string.storage_format_mounted_warning_desc,
-                partition.mountPoint ?: partition.path
-            ),
-            confirmText = stringResource(R.string.common_ok),
-            onConfirm = { showMountedFormatWarning = false },
-            onDismiss = { showMountedFormatWarning = false }
-        )
     }
 }
 

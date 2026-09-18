@@ -4,8 +4,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mountify.data.model.BenchmarkResult
+import app.mountify.data.model.DiskHardwareDetails
+import app.mountify.data.model.DiskIoConfig
 import app.mountify.data.model.FilesystemType
 import app.mountify.data.model.InternalStorageInfo
+import app.mountify.data.model.IoPreset
 import app.mountify.data.model.MountStatus
 import app.mountify.data.model.PartitionInfo
 import app.mountify.data.model.PartitionSchemeConfig
@@ -54,11 +58,45 @@ class StorageViewModel @Inject constructor(
     fun openDiskDetail(disk: SdCardDiskInfo) {
         _selectedDiskForDetail.value = disk
         disk.partitions.firstOrNull()?.let { selectPartition(it) }
+        loadDiskIoConfig(disk)
     }
 
     fun closeDiskDetail() {
         _selectedDiskForDetail.value = null
+        _diskIoConfig.value = null
+        _benchmarkResult.value = null
+        _trimOutput.value = null
     }
+
+    private val _diskIoConfig = MutableStateFlow<DiskIoConfig?>(null)
+    val diskIoConfig: StateFlow<DiskIoConfig?> = _diskIoConfig.asStateFlow()
+
+    private val _isApplyingIo = MutableStateFlow(false)
+    val isApplyingIo: StateFlow<Boolean> = _isApplyingIo.asStateFlow()
+
+    private val _isBenchmarking = MutableStateFlow(false)
+    val isBenchmarking: StateFlow<Boolean> = _isBenchmarking.asStateFlow()
+
+    private val _benchmarkResult = MutableStateFlow<BenchmarkResult?>(null)
+    val benchmarkResult: StateFlow<BenchmarkResult?> = _benchmarkResult.asStateFlow()
+
+    private val _isTrimming = MutableStateFlow(false)
+    val isTrimming: StateFlow<Boolean> = _isTrimming.asStateFlow()
+
+    private val _trimOutput = MutableStateFlow<String?>(null)
+    val trimOutput: StateFlow<String?> = _trimOutput.asStateFlow()
+
+    private val _diskHardwareDetails = MutableStateFlow<DiskHardwareDetails?>(null)
+    val diskHardwareDetails: StateFlow<DiskHardwareDetails?> = _diskHardwareDetails.asStateFlow()
+
+    private val _isMountingAll = MutableStateFlow(false)
+    val isMountingAll: StateFlow<Boolean> = _isMountingAll.asStateFlow()
+
+    private val _isUnmountingAll = MutableStateFlow(false)
+    val isUnmountingAll: StateFlow<Boolean> = _isUnmountingAll.asStateFlow()
+
+    private val _isUrgentGcRunning = MutableStateFlow(false)
+    val isUrgentGcRunning: StateFlow<Boolean> = _isUrgentGcRunning.asStateFlow()
 
     private val _partitions = MutableStateFlow<List<PartitionInfo>>(emptyList())
     val partitions: StateFlow<List<PartitionInfo>> = _partitions.asStateFlow()
@@ -86,6 +124,7 @@ class StorageViewModel @Inject constructor(
 
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
+
 
     // Wizard States
     private val _isWizardOpen = MutableStateFlow(false)
@@ -457,4 +496,146 @@ class StorageViewModel @Inject constructor(
     fun clearStatusMessage() {
         _statusMessage.value = null
     }
+
+    fun loadDiskIoConfig(disk: SdCardDiskInfo) {
+        viewModelScope.launch {
+            val diskName = disk.diskName
+            val ioRes = storageRepository.getDiskIoConfig(diskName)
+            if (ioRes.isSuccess) {
+                _diskIoConfig.value = ioRes.getOrNull()
+            }
+            val hwRes = storageRepository.getDiskHardwareDetails(diskName)
+            if (hwRes.isSuccess) {
+                _diskHardwareDetails.value = hwRes.getOrNull()
+            }
+        }
+    }
+
+    fun applyDiskIoConfig(disk: SdCardDiskInfo, config: DiskIoConfig) {
+        viewModelScope.launch {
+            _isApplyingIo.value = true
+            val res = storageRepository.applyDiskIoConfig(disk.diskName, config)
+            _isApplyingIo.value = false
+            if (res.isSuccess) {
+                _diskIoConfig.value = config
+                appPreferences.setIoReadAheadKb(config.readAheadKb)
+                appPreferences.setIoScheduler(config.scheduler)
+                _statusMessage.value = "IO_APPLY_OK"
+            } else {
+                _statusMessage.value = res.exceptionOrNull()?.message ?: "Failed to apply I/O config"
+            }
+        }
+    }
+
+    fun applyIoPreset(disk: SdCardDiskInfo, preset: IoPreset) {
+        val current = _diskIoConfig.value ?: DiskIoConfig()
+        val updated = current.copy(
+            readAheadKb = preset.readAheadKb,
+            rqAffinity = preset.rqAffinity,
+            nrRequests = preset.nrRequests,
+            vfsCachePressure = preset.vfsCachePressure
+        )
+        viewModelScope.launch {
+            appPreferences.setIoPreset(preset.name)
+        }
+        applyDiskIoConfig(disk, updated)
+    }
+
+    fun runQuickDiskBenchmark(blockDevice: String) {
+        viewModelScope.launch {
+            _isBenchmarking.value = true
+            _benchmarkResult.value = null
+            val res = storageRepository.runQuickDiskBenchmark(blockDevice)
+            _isBenchmarking.value = false
+            if (res.isSuccess) {
+                _benchmarkResult.value = res.getOrNull()
+            } else {
+                _statusMessage.value = res.exceptionOrNull()?.message ?: "Benchmark failed"
+            }
+        }
+    }
+
+    fun clearBenchmarkResult() {
+        _benchmarkResult.value = null
+    }
+
+    fun runGlobalTrim(disk: SdCardDiskInfo) {
+        viewModelScope.launch {
+            _isTrimming.value = true
+            _trimOutput.value = null
+            val res = storageRepository.executeGlobalTrim(disk)
+            _isTrimming.value = false
+            if (res.isSuccess) {
+                _trimOutput.value = res.getOrNull() ?: "Global TRIM complete."
+            } else {
+                _statusMessage.value = res.exceptionOrNull()?.message ?: "TRIM failed"
+            }
+        }
+    }
+
+    fun runPartitionTrim(partition: PartitionInfo) {
+        val mnt = partition.mountPoint
+        if (mnt.isNullOrBlank()) {
+            _statusMessage.value = "Partition must be mounted to run TRIM"
+            return
+        }
+        viewModelScope.launch {
+            _isTrimming.value = true
+            _trimOutput.value = null
+            val res = storageRepository.executePartitionTrim(mnt)
+            _isTrimming.value = false
+            if (res.isSuccess) {
+                _trimOutput.value = res.getOrNull() ?: "TRIM complete."
+            } else {
+                _statusMessage.value = res.exceptionOrNull()?.message ?: "TRIM failed"
+            }
+        }
+    }
+
+    fun clearTrimOutput() {
+        _trimOutput.value = null
+    }
+
+    fun runF2fsUrgentGc(disk: SdCardDiskInfo) {
+        viewModelScope.launch {
+            _isUrgentGcRunning.value = true
+            val res = storageRepository.executeF2fsUrgentGc(disk.diskName)
+            _isUrgentGcRunning.value = false
+            if (res.isSuccess) {
+                _statusMessage.value = "F2FS_GC_OK"
+            } else {
+                _statusMessage.value = res.exceptionOrNull()?.message ?: "F2FS Urgent GC failed"
+            }
+        }
+    }
+
+    fun mountAllPartitions(disk: SdCardDiskInfo) {
+        viewModelScope.launch {
+            _isMountingAll.value = true
+            val sdBase = appPreferences.sdBasePath.first()
+            val res = storageRepository.mountAllPartitions(disk, sdBase)
+            _isMountingAll.value = false
+            if (res.isSuccess) {
+                _statusMessage.value = "MOUNT_ALL_OK"
+                detectPartitions(force = true)
+            } else {
+                _statusMessage.value = res.exceptionOrNull()?.message ?: "Failed to mount all partitions"
+            }
+        }
+    }
+
+    fun unmountAllPartitions(disk: SdCardDiskInfo) {
+        viewModelScope.launch {
+            _isUnmountingAll.value = true
+            val res = storageRepository.unmountAllPartitions(disk)
+            _isUnmountingAll.value = false
+            if (res.isSuccess) {
+                _statusMessage.value = "UNMOUNT_ALL_OK"
+                detectPartitions(force = true)
+            } else {
+                _statusMessage.value = res.exceptionOrNull()?.message ?: "Failed to unmount all partitions"
+            }
+        }
+    }
 }
+
