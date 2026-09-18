@@ -766,7 +766,7 @@ private fun DashboardTelemetryCard(
                 DiskTelemetryRow(
                     icon = Icons.Default.PhoneAndroid,
                     iconTint = ElectricCyan,
-                    label = "Internal",
+                    label = "Internal Storage",
                     subLabel = "/data",
                     usedRatio = intUsedRatio,
                     usedBytes = internalStorage.usedBytes,

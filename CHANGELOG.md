@@ -5,6 +5,17 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.54] - 2026-09-18
+
+### Changed
+- **Harmonized Capacity Health Colors (Used & Free Synchronization)**:
+  - Synchronized the text color of both `Used` and `Free` metrics across all visual partition map cards (`InternalDiskVisualMapCard` and `DiskVisualMapOverviewCard`) to dynamically follow the disk's usage health color (`FormatUtils.getHealthColor(usedPercent)`).
+  - Eliminated the visual discrepancy where `Free` was previously hardcoded to green even when storage reached critical (red/orange) thresholds.
+  - The `Total` metric remains neutral (`onSurface`), preserving visual hierarchy.
+- **Label Refinements**:
+  - Updated the Dashboard disk telemetry row label from `"Internal"` to `"Internal Storage"`.
+  - Updated the Storage Visual Map card header from `"userdata (/data)"` to `"Internal Storage (/data)"` across English and Indonesian localizations.
+
 ## [2.1.53] - 2026-09-18
 
 ### Changed

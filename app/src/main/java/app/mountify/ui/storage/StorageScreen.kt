@@ -907,6 +907,8 @@ private fun InternalDiskVisualMapCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            val healthColor = FormatUtils.getHealthColor(internalStorage.usedPercent)
+
             // Capacity row
             Row(
                 modifier = Modifier
@@ -926,13 +928,13 @@ private fun InternalDiskVisualMapCard(
                 Text(
                     text = "${stringResource(R.string.storage_used)}: ${FormatUtils.formatBytes(internalStorage.usedBytes)}",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
-                    color = FormatUtils.getHealthColor(internalStorage.usedPercent)
+                    color = healthColor
                 )
                 Text(text = "•", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.outline)
                 Text(
                     text = "${stringResource(R.string.storage_free)}: ${FormatUtils.formatBytes(internalStorage.freeBytes)}",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
-                    color = CyberEmerald
+                    color = healthColor
                 )
             }
 
@@ -1090,6 +1092,8 @@ private fun DiskVisualMapOverviewCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            val diskHealthColor = FormatUtils.getHealthColor(disk.usedPercent)
+
             // Capacity Breakdown Row: Total • Digunakan • Bebas
             Row(
                 modifier = Modifier
@@ -1119,7 +1123,7 @@ private fun DiskVisualMapOverviewCard(
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold
                     ),
-                    color = FormatUtils.getHealthColor(disk.usedPercent)
+                    color = diskHealthColor
                 )
                 Text(
                     text = "•",
@@ -1132,7 +1136,7 @@ private fun DiskVisualMapOverviewCard(
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold
                     ),
-                    color = CyberEmerald
+                    color = diskHealthColor
                 )
             }
 
