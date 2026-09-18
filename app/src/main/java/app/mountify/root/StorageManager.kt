@@ -59,30 +59,64 @@ class StorageManager {
      * (disk name, partition number, size, filesystem, mount point, label, UUID).
      */
     suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> = withContext(Dispatchers.IO) {
-        val mountedMap = mutableMapOf<String, Pair<String, String>>()
+        // Collect all mount entries from /proc/mounts
+        data class RawMount(val spec: String, val file: String, val vfstype: String)
+        val allMounts = mutableListOf<RawMount>()
+
         try {
             val procMounts = java.io.File("/proc/mounts")
             if (procMounts.exists() && procMounts.canRead()) {
                 procMounts.forEachLine { line ->
                     val parts = line.trim().split(Regex("\\s+"))
                     if (parts.size >= 3) {
-                        mountedMap[parts[0]] = Pair(parts[1], parts[2])
+                        allMounts.add(RawMount(parts[0], parts[1], parts[2]))
                     }
                 }
             }
         } catch (_: Exception) {}
 
-        if (mountedMap.isEmpty()) {
+        if (allMounts.isEmpty()) {
             val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
             mountsRes.stdout.forEach { line ->
                 val parts = line.trim().split(Regex("\\s+"))
                 if (parts.size >= 3) {
-                    mountedMap[parts[0]] = Pair(parts[1], parts[2])
+                    allMounts.add(RawMount(parts[0], parts[1], parts[2]))
                 }
             }
         }
 
-        // Batch scan all blkid entries in ONE single command instead of per-partition loops
+        // Map device major:minor from /sys/class/block/*/dev for Android vold correlation
+        val devMajorMinorMap = mutableMapOf<String, String>() // e.g. "mmcblk0p1" -> "179:1"
+        try {
+            val blockDir = java.io.File("/sys/class/block")
+            if (blockDir.exists() && blockDir.isDirectory) {
+                blockDir.listFiles()?.forEach { f ->
+                    val devFile = java.io.File(f, "dev")
+                    if (devFile.exists()) {
+                        val mm = devFile.readText().trim()
+                        if (mm.isNotBlank()) {
+                            devMajorMinorMap[f.name] = mm
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        if (devMajorMinorMap.isEmpty()) {
+            val devRes = RootShell.exec("grep . /sys/class/block/*/dev 2>/dev/null")
+            if (devRes.isSuccess) {
+                devRes.stdout.forEach { line ->
+                    // line format: /sys/class/block/mmcblk0p1/dev:179:1
+                    val devName = line.substringBefore("/dev:").substringAfterLast("/")
+                    val mm = line.substringAfter("/dev:").trim()
+                    if (devName.isNotBlank() && mm.isNotBlank()) {
+                        devMajorMinorMap[devName] = mm
+                    }
+                }
+            }
+        }
+
+        // Batch scan all blkid entries in ONE single command
         val blkidMap = mutableMapOf<String, Triple<String?, String?, String?>>()
         val blkidRes = RootShell.exec("blkid 2>/dev/null || toybox blkid 2>/dev/null")
         if (blkidRes.isSuccess && blkidRes.output.isNotBlank()) {
@@ -100,7 +134,7 @@ class StorageManager {
             }
         }
 
-        // Query df -k for exact filesystem used and available space on mounted partitions
+        // Query df -k for filesystem used and available space
         val dfMap = mutableMapOf<String, Pair<Long, Long>>() // devPath or mountPoint -> (usedBytes, freeBytes)
         val dfRes = RootShell.exec("df -k 2>/dev/null")
         if (dfRes.isSuccess && dfRes.output.isNotBlank()) {
@@ -145,25 +179,79 @@ class StorageManager {
                     }
                     val sizeBytes = blocks * 1024L
 
-                    val mountInfo = mountedMap[path]
-                        ?: mountedMap.entries.firstOrNull { it.key.endsWith("/$name") }?.value
-                    val isMounted = mountInfo != null
-                    val mountPoint = mountInfo?.first
-                    var fsType = mountInfo?.second ?: ""
-
+                    // Blkid metadata
+                    var fsType = ""
                     var label: String? = null
                     var uuid: String? = null
 
                     val blkidEntry = blkidMap[path] ?: blkidMap[name]
                     if (blkidEntry != null) {
-                        if (blkidEntry.first != null && fsType.isBlank()) {
-                            fsType = blkidEntry.first!!
-                        }
+                        fsType = blkidEntry.first ?: ""
                         label = blkidEntry.second
                         uuid = blkidEntry.third
                     }
 
-                    val isTargetMount = mountPoint == targetMountPoint
+                    // Major:minor resolution for vold node detection
+                    val majorMinor = devMajorMinorMap[name] ?: ""
+                    val voldMajorComma = if (majorMinor.contains(":")) majorMinor.replace(':', ',') else ""
+                    val voldMajorUnderscore = if (majorMinor.contains(":")) majorMinor.replace(':', '_') else ""
+
+                    // Match all mounts for this physical partition across all Android subsystems
+                    val matchingMounts = allMounts.filter { m ->
+                        m.spec == path ||
+                        m.spec.endsWith("/$name") ||
+                        (majorMinor.isNotBlank() && (
+                            (voldMajorComma.isNotBlank() && (m.spec.contains("public:$voldMajorComma") || m.spec.contains("disk:$voldMajorComma"))) ||
+                            (voldMajorUnderscore.isNotBlank() && (m.spec.contains("public:$voldMajorUnderscore") || m.spec.contains("disk:$voldMajorUnderscore"))) ||
+                            m.spec.endsWith("/$majorMinor") ||
+                            m.spec.contains(majorMinor)
+                        )) ||
+                        (!uuid.isNullOrBlank() && (
+                            m.file.contains(uuid) || m.spec.contains(uuid)
+                        ))
+                    }
+
+                    // Canonical Mount Hierarchy (Anti-bind mount overwrite):
+                    // 1. Configured target mount (/data/sdext2) has top priority
+                    val targetMountEntry = matchingMounts.firstOrNull { it.file == targetMountPoint }
+                    val isTargetMount = targetMountEntry != null
+
+                    // 2. Android portable storage mount (/storage/<UUID> or /mnt/media_rw/<UUID>)
+                    val portableMountEntry = matchingMounts.firstOrNull { m ->
+                        (m.file.startsWith("/storage/") && !m.file.startsWith("/storage/emulated")) ||
+                        m.file.startsWith("/mnt/media_rw/") ||
+                        m.file.startsWith("/mnt/pass_through/")
+                    }
+                    val isPortableMount = !isTargetMount && portableMountEntry != null
+
+                    // 3. Other non-bind root mount points
+                    val rootMountEntry = matchingMounts.firstOrNull { m ->
+                        !m.file.startsWith("/data/media/") &&
+                        !m.file.startsWith("/mnt/runtime/") &&
+                        !m.file.startsWith("/mnt/user/") &&
+                        !m.file.startsWith("/storage/emulated/") &&
+                        !m.file.startsWith("/apex/")
+                    }
+
+                    val isMounted = matchingMounts.isNotEmpty()
+                    val canonicalMountPoint = when {
+                        isTargetMount -> targetMountPoint
+                        isPortableMount -> {
+                            matchingMounts.firstOrNull { it.file.startsWith("/storage/") && !it.file.startsWith("/storage/emulated") }?.file
+                                ?: portableMountEntry?.file
+                        }
+                        rootMountEntry != null -> rootMountEntry.file
+                        isMounted -> matchingMounts.first().file
+                        else -> null
+                    }
+
+                    if (fsType.isBlank()) {
+                        fsType = targetMountEntry?.vfstype
+                            ?: portableMountEntry?.vfstype
+                            ?: rootMountEntry?.vfstype
+                            ?: matchingMounts.firstOrNull()?.vfstype
+                            ?: ""
+                    }
 
                     // Disk removability check (sysfs /sys/block/<disk>/removable)
                     val isRemovable = try {
@@ -188,17 +276,17 @@ class StorageManager {
                     }
 
                     // Exclude partitions mounted to critical Android system hierarchy
-                    val isSystemMount = mountPoint != null && (
-                        mountPoint == "/" ||
-                        mountPoint == "/system" ||
-                        mountPoint == "/vendor" ||
-                        mountPoint == "/product" ||
-                        mountPoint == "/system_ext" ||
-                        mountPoint == "/metadata" ||
-                        mountPoint == "/data" ||
-                        mountPoint == "/persist" ||
-                        mountPoint.startsWith("/apex") ||
-                        mountPoint.startsWith("/mnt/vendor")
+                    val isSystemMount = canonicalMountPoint != null && (
+                        canonicalMountPoint == "/" ||
+                        canonicalMountPoint == "/system" ||
+                        canonicalMountPoint == "/vendor" ||
+                        canonicalMountPoint == "/product" ||
+                        canonicalMountPoint == "/system_ext" ||
+                        canonicalMountPoint == "/metadata" ||
+                        canonicalMountPoint == "/data" ||
+                        canonicalMountPoint == "/persist" ||
+                        canonicalMountPoint.startsWith("/apex") ||
+                        canonicalMountPoint.startsWith("/mnt/vendor")
                     )
                     if (isSystemMount && !isTargetMount) {
                         continue
@@ -207,21 +295,34 @@ class StorageManager {
                     val isLinuxFs = fsType.equals("f2fs", ignoreCase = true) || fsType.equals("ext4", ignoreCase = true)
                     val isSuitable = isTargetMount || (isRemovable && (isLinuxFs || (partNum >= 2 && !isMounted)))
 
-                    val dfPair = dfMap[path] ?: dfMap[name] ?: if (mountPoint != null) dfMap[mountPoint] else null
-                    val (usedBytes, freeBytes) = if (dfPair != null) {
-                        dfPair
-                    } else if (mountPoint != null && isMounted) {
-                        try {
-                            val stat = android.os.StatFs(mountPoint)
-                            val total = stat.blockCountLong * stat.blockSizeLong
-                            val free = stat.availableBlocksLong * stat.blockSizeLong
-                            val used = (total - free).coerceAtLeast(0L)
-                            Pair(used, free)
-                        } catch (_: Exception) {
-                            Pair(0L, 0L)
+                    // Accurately compute used & free bytes via canonical mount point and dfMap / StatFs
+                    var usedBytes = 0L
+                    var freeBytes = 0L
+                    if (isMounted) {
+                        val dfPair = if (canonicalMountPoint != null) {
+                            dfMap[canonicalMountPoint]
+                                ?: dfMap[path]
+                                ?: dfMap[name]
+                                ?: (if (!uuid.isNullOrBlank()) dfMap.entries.firstOrNull { e -> e.key.contains(uuid) }?.value else null)
+                        } else {
+                            dfMap[path] ?: dfMap[name]
                         }
-                    } else {
-                        Pair(0L, 0L)
+
+                        if (dfPair != null && (dfPair.first > 0L || dfPair.second > 0L)) {
+                            usedBytes = dfPair.first
+                            freeBytes = dfPair.second
+                        } else if (canonicalMountPoint != null) {
+                            try {
+                                val stat = android.os.StatFs(canonicalMountPoint)
+                                val total = stat.blockCountLong * stat.blockSizeLong
+                                val free = stat.availableBlocksLong * stat.blockSizeLong
+                                val used = (total - free).coerceAtLeast(0L)
+                                if (total > 0L) {
+                                    usedBytes = used
+                                    freeBytes = free
+                                }
+                            } catch (_: Exception) {}
+                        }
                     }
 
                     partitionItems.add(
@@ -234,11 +335,12 @@ class StorageManager {
                             usedBytes = usedBytes,
                             freeBytes = freeBytes,
                             fsType = fsType,
-                            mountPoint = mountPoint,
+                            mountPoint = canonicalMountPoint,
                             label = label,
                             uuid = uuid,
                             isMounted = isMounted,
                             isTargetMount = isTargetMount,
+                            isPortableMount = isPortableMount,
                             isMountTargetReady = isSuitable
                         )
                     )
@@ -250,9 +352,9 @@ class StorageManager {
             val fallbackDevices = detectBlockDevices()
             fallbackDevices.forEach { devPath ->
                 val name = devPath.substringAfterLast("/")
-                val mountInfo = mountedMap[devPath]
+                val mountInfo = allMounts.firstOrNull { it.spec == devPath || it.spec.endsWith("/$name") }
                 val isMounted = mountInfo != null
-                val dfPair = dfMap[devPath] ?: dfMap[name] ?: if (mountInfo?.first != null) dfMap[mountInfo.first] else null
+                val dfPair = dfMap[devPath] ?: dfMap[name] ?: if (mountInfo?.file != null) dfMap[mountInfo.file] else null
                 partitionItems.add(
                     PartitionInfo(
                         path = devPath,
@@ -262,10 +364,10 @@ class StorageManager {
                         sizeBytes = 0L,
                         usedBytes = dfPair?.first ?: 0L,
                         freeBytes = dfPair?.second ?: 0L,
-                        fsType = mountInfo?.second ?: "",
-                        mountPoint = mountInfo?.first,
+                        fsType = mountInfo?.vfstype ?: "",
+                        mountPoint = mountInfo?.file,
                         isMounted = isMounted,
-                        isTargetMount = mountInfo?.first == targetMountPoint,
+                        isTargetMount = mountInfo?.file == targetMountPoint,
                         isMountTargetReady = true
                     )
                 )

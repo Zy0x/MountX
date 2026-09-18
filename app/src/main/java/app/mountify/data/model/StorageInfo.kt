@@ -75,6 +75,7 @@ data class PartitionInfo(
     val uuid: String? = null,
     val isMounted: Boolean = false,
     val isTargetMount: Boolean = false,
+    val isPortableMount: Boolean = false,
     val isMountTargetReady: Boolean = false
 ) {
     val usedPercent: Float
@@ -82,8 +83,9 @@ data class PartitionInfo(
 
     val shortName: String
         get() = when {
-            isTargetMount -> "Part $partitionNumber (EXT)"
-            partitionNumber == 1 -> "Part 1 (Portable)"
+            isTargetMount -> "Part $partitionNumber (Target)"
+            isPortableMount -> "Part $partitionNumber (Portable)"
+            partitionNumber > 0 && fsType.isNotBlank() -> "Part $partitionNumber (${fsType.uppercase()})"
             partitionNumber > 0 -> "Part $partitionNumber"
             else -> name.takeLast(6)
         }
@@ -101,10 +103,19 @@ data class SdCardDiskInfo(
     val diskType: DiskType = DiskType.MICRO_SD,
     val partitions: List<PartitionInfo> = emptyList()
 ) {
+    val hardwareTitle: String get() {
+        val modelPart = if (modelName.isNotBlank()) " $modelName" else ""
+        return "$vendorName$modelPart".trim()
+    }
+
     val displayName: String get() {
         val modelPart = if (modelName.isNotBlank()) " $modelName" else ""
-        val sizeGb = String.format(java.util.Locale.US, "%.1f GB", totalSizeBytes / (1024.0 * 1024.0 * 1024.0))
-        return "$vendorName$modelPart ($sizeGb)"
+        return if (totalSizeBytes > 0L) {
+            val sizeGb = String.format(java.util.Locale.US, "%.1f GB", totalSizeBytes / (1024.0 * 1024.0 * 1024.0))
+            "$vendorName$modelPart ($sizeGb)"
+        } else {
+            "$vendorName$modelPart".trim()
+        }
     }
 
     val usedPercent: Float

@@ -299,6 +299,15 @@
     <string name="storage_disk_total_capacity">Total: %1$s • Used: %2$s • Free: %3$s</string>
     <string name="storage_multi_disk_otg_title">USB OTG Storage</string>
     <string name="storage_action_check_fs">Check (fsck)</string>
+    <string name="storage_disk_manage_badge">Manage</string>
+    <string name="storage_badge_system_portable">System Portable</string>
+    <string name="storage_badge_ready_to_mount">Ready to Mount</string>
+    <string name="storage_btn_system_mounted">System Active</string>
+    <string name="storage_fsck_mounted_warning_title">Partition is Mounted</string>
+    <string name="storage_fsck_mounted_warning_desc">File system check (fsck) cannot be performed while the partition is actively mounted (%1$s). Please unmount it first to prevent data corruption.</string>
+    <string name="storage_system_mounted_info_title">Managed by Android</string>
+    <string name="storage_system_mounted_info_desc">This partition is mounted by the Android system as portable external storage (%1$s). Files can be accessed through file managers or system storage.</string>
+    <string name="storage_format_mounted_warning_desc">This partition is actively mounted (%1$s). Please unmount the partition first before formatting to avoid filesystem corruption.</string>
 
 
     <!-- Format Partition -->

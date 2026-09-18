@@ -855,7 +855,7 @@ private fun DiskVisualMapOverviewCard(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            // Header: Disk Name, Type Icon, and Detail Navigation Hint
+            // Header: Disk Name, Type Icon, and Compact Manage Pill
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -863,13 +863,13 @@ private fun DiskVisualMapOverviewCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
                     val diskIcon = if (disk.diskType == DiskType.USB_OTG) Icons.Default.Usb else Icons.Default.SdCard
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(30.dp)
+                            .size(32.dp)
                             .clip(CircleShape)
                             .background(CyberEmerald.copy(alpha = 0.12f))
                     ) {
@@ -877,45 +877,61 @@ private fun DiskVisualMapOverviewCard(
                             imageVector = diskIcon,
                             contentDescription = null,
                             tint = CyberEmerald,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = disk.displayName,
+                            text = disk.hardwareTitle,
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontSize = 13.5.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             ),
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "${disk.devicePath} • ${disk.partitions.size} " + stringResource(R.string.storage_disk_partitions_list).lowercase(),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = stringResource(R.string.storage_disk_card_tap_hint),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold
-                        ),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Icon(
-                        Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Compact "Kelola" / "Manage" Action Pill Badge
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.storage_disk_manage_badge),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
             }
 
@@ -969,52 +985,70 @@ private fun DiskVisualMapOverviewCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Proportional Two-Tier Visual Partition Map Bar
+            // Proportional Two-Tier Visual Partition Map Bar (High Contrast & Clear Boundaries)
             if (disk.partitions.isNotEmpty()) {
                 val totalDiskBytes = disk.totalSizeBytes.coerceAtLeast(1L)
                 val partitionColors = listOf(
-                    ElectricCyan,
-                    CyberEmerald,
-                    Color(0xFFF59E0B),
-                    Color(0xFF8B5CF6),
-                    Color(0xFFEC4899)
+                    Color(0xFF0284C7), // Vivid Sky Blue for P1 (Portable)
+                    Color(0xFF059669), // Cyber Emerald for P2/P3 (Target Mount / F2FS)
+                    Color(0xFFD97706), // Tangerine Amber for P3/Other
+                    Color(0xFF7C3AED), // Violet for P4
+                    Color(0xFFEC4899)  // Pink for P5+
                 )
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(38.dp)
+                        .height(40.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                 ) {
                     disk.partitions.forEachIndexed { idx, part ->
+                        if (idx > 0) {
+                            Spacer(modifier = Modifier.width(3.dp))
+                        }
+
                         val color = partitionColors[idx % partitionColors.size]
-                        val weightFraction = (part.sizeBytes.toFloat() / totalDiskBytes.toFloat()).coerceAtLeast(0.04f)
+                        val weightFraction = (part.sizeBytes.toFloat() / totalDiskBytes.toFloat()).coerceAtLeast(0.06f)
 
                         Box(
                             modifier = Modifier
                                 .weight(weightFraction)
                                 .fillMaxHeight()
-                                .background(color.copy(alpha = 0.14f))
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF131722))
                                 .border(
-                                    BorderStroke(0.5.dp, color.copy(alpha = 0.35f))
+                                    BorderStroke(1.dp, color.copy(alpha = 0.65f)),
+                                    RoundedCornerShape(6.dp)
                                 )
                         ) {
-                            // Inner solid used space bar (two-tier fill)
+                            // Inner solid used space bar with gradient and right edge highlight line
                             val usedFraction = if (part.usedBytes > 0L) {
                                 (part.usedBytes.toFloat() / part.sizeBytes.toFloat()).coerceIn(0f, 1f)
                             } else 0f
 
-                            if (usedFraction > 0f) {
+                            if (usedFraction > 0.001f) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxHeight()
                                         .fillMaxWidth(fraction = usedFraction)
-                                        .background(color.copy(alpha = 0.40f))
-                                )
+                                        .background(
+                                            Brush.horizontalGradient(
+                                                listOf(color.copy(alpha = 0.75f), color)
+                                            )
+                                        )
+                                ) {
+                                    // Sharp white highlight divider line at used space edge
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .width(1.5.dp)
+                                            .fillMaxHeight()
+                                            .background(Color.White.copy(alpha = 0.85f))
+                                    )
+                                }
                             }
 
-                            // Centered Label
+                            // Centered Partition Label Overlay
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -1028,7 +1062,7 @@ private fun DiskVisualMapOverviewCard(
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold
                                     ),
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = Color.White,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -1038,7 +1072,7 @@ private fun DiskVisualMapOverviewCard(
                                         fontSize = 8.5.sp,
                                         fontWeight = FontWeight.Medium
                                     ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = Color.White.copy(alpha = 0.85f),
                                     maxLines = 1
                                 )
                             }
@@ -1048,7 +1082,7 @@ private fun DiskVisualMapOverviewCard(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Partition Legend Items
+                // Partition Legend Items with Used & Free breakdown
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1056,6 +1090,12 @@ private fun DiskVisualMapOverviewCard(
                 ) {
                     disk.partitions.forEachIndexed { idx, part ->
                         val color = partitionColors[idx % partitionColors.size]
+                        val roleLabel = when {
+                            part.isTargetMount -> "[Target sdext2]"
+                            part.isPortableMount -> "[Portable]"
+                            part.fsType.isNotBlank() -> "[${part.fsType.uppercase()}]"
+                            else -> ""
+                        }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(vertical = 2.dp)
@@ -1066,14 +1106,14 @@ private fun DiskVisualMapOverviewCard(
                                     .clip(CircleShape)
                                     .background(color)
                             )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            val roleLabel = when {
-                                part.isTargetMount -> "[sdext2]"
-                                part.partitionNumber == 1 -> "[Portable]"
-                                else -> "[${part.fsType.uppercase()}]"
+                            Spacer(modifier = Modifier.width(6.dp))
+                            val usageDetail = if (part.usedBytes > 0L) {
+                                "${part.shortName} $roleLabel: ${FormatUtils.formatBytes(part.sizeBytes)} (Used: ${FormatUtils.formatBytes(part.usedBytes)} • Free: ${FormatUtils.formatBytes(part.freeBytes)})"
+                            } else {
+                                "${part.shortName} $roleLabel: ${FormatUtils.formatBytes(part.sizeBytes)}"
                             }
                             Text(
-                                text = "${part.shortName} $roleLabel: ${FormatUtils.formatBytes(part.sizeBytes)}",
+                                text = usageDetail,
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
@@ -1082,6 +1122,30 @@ private fun DiskVisualMapOverviewCard(
                             )
                         }
                     }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Bottom Hint Caption
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.storage_disk_card_tap_hint),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Normal
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
                 }
             }
         }

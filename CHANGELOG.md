@@ -5,6 +5,27 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.47] - 2026-09-18
+
+### Fixed
+- **Disk Header Label Layout & Truncation**:
+  - Replaced expansive text in the `DiskVisualMapOverviewCard` header with a compact `[ Kelola › ]` / `[ Manage › ]` action pill, allowing the drive manufacturer and model label full horizontal width without truncation.
+  - Decoupled `hardwareTitle` from byte size string in header titles to eliminate redundancy with the prominent capacity breakdown row.
+- **Visual Partition Map Contrast & Legend Clarity**:
+  - Replaced muted partition fills with high-contrast distinct color coding: Vivid Sky Blue (`#0284C7`) for portable partitions, Cyber Emerald (`#059669`) for target mount partitions, Tangerine Amber, and Violet.
+  - Implemented solid dark-slate `#131722` partition containers, vibrant gradient used-space bars, a sharp white divider line at the boundary, and a 3 dp physical gap between partitions.
+  - Added an itemized per-partition breakdown legend directly below the visual bar displaying partition role, total capacity, used bytes, and free bytes.
+- **Android Vold Mount Detection & Portable Storage Status**:
+  - Re-engineered `StorageManager.detectPartitions()` to correlate physical block devices with Android `vold` mount nodes (`/dev/block/vold/public:<major>,<minor>`), `/mnt/media_rw/<UUID>`, and `/storage/<UUID>`.
+  - Accurately identifies partitions mounted by Android as portable storage, displaying the `Portabel Sistem` / `System Portable` status badge and canonical `/storage/<UUID>` path instead of mislabeling them as unmounted.
+  - Replaced redundant "Mount" action on portable partitions with an informative `[ ✓ Aktif di Sistem ]` / `[ ✓ System Active ]` status button explaining system file manager accessibility.
+- **Filesystem Integrity Check (fsck) Safety Guard**:
+  - Added safety validation preventing `fsck` execution on actively mounted partitions, preventing kernel aborts (`is mounted cannot continue`) and guarding against potential filesystem corruption.
+  - Displays a clear informational safety dialog prompting the user to safely unmount the partition prior to running integrity checks.
+- **Canonical Mount Hierarchy & Target Mount Isolation**:
+  - Enforced a prioritized canonical mount resolution hierarchy that gives top precedence to the configured target mount point (`/data/sdext2`).
+  - Filtered out secondary runtime game bind-mount paths (`/data/media/0/Android/data/...`, `/mnt/runtime/...`) from being registered as partition mount points, preserving the correct `Target Aktif` badge and `/data/sdext2` display.
+
 ## [2.1.46] - 2026-09-18
 
 ### Added

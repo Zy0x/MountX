@@ -288,6 +288,15 @@
     <string name="storage_disk_total_capacity">Total: %1$s • Terpakai: %2$s • Bebas: %3$s</string>
     <string name="storage_multi_disk_otg_title">Penyimpanan USB OTG</string>
     <string name="storage_action_check_fs">Periksa (fsck)</string>
+    <string name="storage_disk_manage_badge">Kelola</string>
+    <string name="storage_badge_system_portable">Portabel Sistem</string>
+    <string name="storage_badge_ready_to_mount">Siap Di-mount</string>
+    <string name="storage_btn_system_mounted">Aktif di Sistem</string>
+    <string name="storage_fsck_mounted_warning_title">Partisi Sedang Digunakan</string>
+    <string name="storage_fsck_mounted_warning_desc">Pemeriksaan filesystem (fsck) tidak dapat dijalankan saat partisi sedang terpasang aktif (%1$s). Silakan unmount terlebih dahulu untuk mencegah kerusakan data.</string>
+    <string name="storage_system_mounted_info_title">Dikelola Sistem Android</string>
+    <string name="storage_system_mounted_info_desc">Partisi ini di-mount oleh sistem Android sebagai penyimpanan eksternal portabel (%1$s). Berkas dapat diakses langsung melalui pengelola berkas atau sistem penyimpanan.</string>
+    <string name="storage_format_mounted_warning_desc">Partisi ini sedang terpasang aktif (%1$s). Harap unmount partisi terlebih dahulu sebelum melakukan pemformatan untuk mencegah kerusakan filesystem.</string>
 
 
     <string name="format_title">Format Partisi</string>
