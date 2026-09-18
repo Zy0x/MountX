@@ -69,6 +69,16 @@ object FormatUtils {
         )
     }
 
+    /**
+     * Calculates the single smooth solid health color for a given usage fraction:
+     * - 0–60%   : Stable Green (#10B981)
+     * - 60–80%  : Smooth transition Green -> Yellow (#EAB308)
+     * - 80–90%  : Smooth transition Yellow -> Orange (#F97316)
+     * - 90–100% : Smooth transition Orange -> Red (#EF4444)
+     *
+     * The color changes smoothly across percentage thresholds without abrupt jumps
+     * and without multi-color gradients across the bar.
+     */
     fun getHealthColor(usedFraction: Float): androidx.compose.ui.graphics.Color {
         val f = usedFraction.coerceIn(0f, 1f)
         return when {
@@ -80,53 +90,9 @@ object FormatUtils {
     }
 
     /**
-     * Generates a continuous 4-tier traffic-light health gradient mapped to the filled portion of a bar:
-     * - 0–60%   : Stable Green (#10B981)
-     * - 60–80%  : Smooth transition Green -> Yellow (#EAB308)
-     * - 80–90%  : Smooth transition Yellow -> Orange (#F97316)
-     * - 90–100% : Smooth transition Orange -> Red (#EF4444)
+     * Solid color brush representing the smooth health color (maintains Brush compatibility without gradients).
      */
     fun getHealthBrush(usedFraction: Float): androidx.compose.ui.graphics.Brush {
-        val f = usedFraction.coerceIn(0.001f, 1f)
-        val endColor = getHealthColor(f)
-
-        val stops = when {
-            f <= 0.60f -> arrayOf(
-                0.0f to HealthGreen,
-                1.0f to HealthGreen
-            )
-            f <= 0.80f -> arrayOf(
-                0.0f to HealthGreen,
-                (0.60f / f).coerceIn(0f, 1f) to HealthGreen,
-                1.0f to endColor
-            )
-            f <= 0.90f -> arrayOf(
-                0.0f to HealthGreen,
-                (0.60f / f).coerceIn(0f, 1f) to HealthGreen,
-                (0.80f / f).coerceIn(0f, 1f) to HealthYellow,
-                1.0f to endColor
-            )
-            else -> arrayOf(
-                0.0f to HealthGreen,
-                (0.60f / f).coerceIn(0f, 1f) to HealthGreen,
-                (0.80f / f).coerceIn(0f, 1f) to HealthYellow,
-                (0.90f / f).coerceIn(0f, 1f) to HealthOrange,
-                1.0f to endColor
-            )
-        }
-        return androidx.compose.ui.graphics.Brush.horizontalGradient(*stops)
-    }
-
-    /**
-     * Full-span horizontal gradient covering the entire 0% to 100% scale.
-     */
-    fun getFullHealthBrush(): androidx.compose.ui.graphics.Brush {
-        return androidx.compose.ui.graphics.Brush.horizontalGradient(
-            0.0f to HealthGreen,
-            0.60f to HealthGreen,
-            0.80f to HealthYellow,
-            0.90f to HealthOrange,
-            1.0f to HealthRed
-        )
+        return androidx.compose.ui.graphics.SolidColor(getHealthColor(usedFraction))
     }
 }

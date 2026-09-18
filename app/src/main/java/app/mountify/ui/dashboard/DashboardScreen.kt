@@ -760,7 +760,7 @@ private fun M3StorageCard(
                             .fillMaxWidth(fraction = usedRatio)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(3.dp))
-                            .background(StorageGradientBrush)
+                            .background(FormatUtils.getHealthColor(usedRatio))
                     )
                 }
 

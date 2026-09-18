@@ -5,6 +5,18 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.51] - 2026-09-18
+
+### Changed
+- **Smooth Solid Health Colors (Non-Gradient Progression)**:
+  - Replaced multi-color gradient brushes on storage progress bars with smooth solid colors across all telemetries and maps (`FormatUtils.getHealthColor`):
+    - `0–60%`: Stable Green (`#10B981`).
+    - `60–80%`: Smooth interpolation from Green to Yellow (`#EAB308`).
+    - `80–90%`: Smooth interpolation from Yellow to Orange (`#F97316`).
+    - `90–100%`: Smooth interpolation from Orange to Red (`#EF4444`).
+  - Guaranteed each bar renders in a single, unified solid color that organically morphs across capacity milestones without abrupt jumps and without multi-colored gradient bands.
+  - Aligned Dashboard MicroSD storage bar, Multi-Disk Telemetry bars, Visual Partition Map segments, and Disk Detail gauges to this unified color model.
+
 ## [2.1.50] - 2026-09-18
 
 ### Fixed

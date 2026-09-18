@@ -603,7 +603,7 @@ private fun MultiDiskTelemetryCard(
                                     .fillMaxHeight()
                                     .fillMaxWidth(fraction = internalUsedPct.coerceIn(0f, 1f))
                                     .clip(RoundedCornerShape(3.dp))
-                                    .background(FormatUtils.getHealthBrush(internalUsedPct))
+                                    .background(FormatUtils.getHealthColor(internalUsedPct))
                             )
                         }
                     }
@@ -694,7 +694,7 @@ private fun MultiDiskTelemetryCard(
                                     .fillMaxHeight()
                                     .fillMaxWidth(fraction = diskUsedPct.coerceIn(0f, 1f))
                                     .clip(RoundedCornerShape(3.dp))
-                                    .background(FormatUtils.getHealthBrush(diskUsedPct))
+                                    .background(FormatUtils.getHealthColor(diskUsedPct))
                             )
                         }
                     }
@@ -977,7 +977,7 @@ private fun DiskVisualMapOverviewCard(
                                         .fillMaxHeight()
                                         .fillMaxWidth(fraction = usedFraction)
                                         .background(
-                                            FormatUtils.getHealthBrush(usedFraction)
+                                            FormatUtils.getHealthColor(usedFraction)
                                         )
                                 ) {
                                     // Sharp white highlight divider line at used space edge

@@ -345,7 +345,7 @@ private fun DiskHardwareOverviewCard(
                             .fillMaxHeight()
                             .clip(CircleShape)
                             .background(
-                                FormatUtils.getHealthBrush(disk.usedPercent)
+                                FormatUtils.getHealthColor(disk.usedPercent)
                             )
                     )
                 }
@@ -462,7 +462,7 @@ private fun DiskMiniVisualMapCard(
                                         .fillMaxHeight()
                                         .fillMaxWidth(fraction = part.usedPercent)
                                         .background(
-                                            FormatUtils.getHealthBrush(part.usedPercent)
+                                            FormatUtils.getHealthColor(part.usedPercent)
                                         )
                                 ) {
                                     Box(
@@ -723,7 +723,7 @@ private fun DiskPartitionCard(
                             .fillMaxWidth(fraction = partition.usedPercent)
                             .fillMaxHeight()
                             .clip(CircleShape)
-                            .background(FormatUtils.getHealthBrush(partition.usedPercent))
+                            .background(FormatUtils.getHealthColor(partition.usedPercent))
                     )
                 }
             }
