@@ -1,0 +1,180 @@
+package app.mountx.data.repository
+
+import app.mountx.data.model.BenchmarkResult
+import app.mountx.data.model.DiskHardwareDetails
+import app.mountx.data.model.DiskIoConfig
+import app.mountx.data.model.FilesystemType
+import app.mountx.data.model.InternalStorageInfo
+import app.mountx.data.model.MigrationTarget
+import app.mountx.data.model.MoveDirection
+import app.mountx.data.model.FsckReport
+import app.mountx.data.model.PartitionInfo
+import app.mountx.data.model.PartitionSchemeConfig
+import app.mountx.data.model.SdCardDiskInfo
+import app.mountx.data.model.StorageInfo
+import app.mountx.data.model.SupportedFilesystemInfo
+import app.mountx.root.StorageManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class StorageRepository @Inject constructor(
+    private val storageManager: StorageManager
+) {
+
+    /**
+     * Poll storage info every 10 seconds.
+     */
+    fun observeStorageInfo(mountPoint: String = "/data/sdext2"): Flow<StorageInfo?> = flow {
+        while (true) {
+            emit(storageManager.getStorageInfo(mountPoint))
+            delay(10000L)
+        }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Poll internal device storage (/data) every 10 seconds.
+     */
+    fun observeInternalStorage(): Flow<InternalStorageInfo?> = flow {
+        while (true) {
+            emit(storageManager.getInternalStorageInfo())
+            delay(10000L)
+        }
+    }.flowOn(Dispatchers.IO)
+
+    suspend fun getStorageInfo(mountPoint: String = "/data/sdext2"): StorageInfo? =
+        withContext(Dispatchers.IO) {
+            storageManager.getStorageInfo(mountPoint)
+        }
+
+    suspend fun getInternalStorageInfo(): InternalStorageInfo? =
+        withContext(Dispatchers.IO) {
+            storageManager.getInternalStorageInfo()
+        }
+
+    suspend fun detectBlockDevices(): List<String> = withContext(Dispatchers.IO) {
+        storageManager.detectBlockDevices()
+    }
+
+    suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> =
+        withContext(Dispatchers.IO) {
+            storageManager.detectPartitions(targetMountPoint)
+        }
+
+    suspend fun checkFilesystem(blockDevice: String, fsType: String = ""): Result<FsckReport> =
+        withContext(Dispatchers.IO) {
+            storageManager.checkFilesystem(blockDevice, fsType)
+        }
+
+    suspend fun setPartitionLabel(blockDevice: String, fsType: String, newLabel: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            storageManager.setPartitionLabel(blockDevice, fsType, newLabel)
+        }
+
+    suspend fun detectSupportedFilesystems(): List<SupportedFilesystemInfo> =
+        withContext(Dispatchers.IO) {
+            storageManager.detectSupportedFilesystems()
+        }
+
+    suspend fun mountSdPartition(
+        blockDevice: String,
+        mountPoint: String = "/data/sdext2",
+        fsType: FilesystemType = FilesystemType.F2FS
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.mountSdPartition(blockDevice, mountPoint, fsType)
+    }
+
+    suspend fun unmountSdPartition(mountPoint: String = "/data/sdext2"): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            storageManager.unmountSdPartition(mountPoint)
+        }
+
+    suspend fun unmountPartition(partition: PartitionInfo): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            storageManager.unmountPartition(partition)
+        }
+
+    suspend fun mountPartition(
+        partition: PartitionInfo,
+        targetMountPoint: String = "/data/sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.mountPartition(partition, targetMountPoint)
+    }
+
+    suspend fun formatPartition(
+        blockDevice: String,
+        fsType: FilesystemType,
+        label: String = "sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.formatPartition(blockDevice, fsType, label)
+    }
+
+    suspend fun getSdCardDiskInfo(targetMountPoint: String = "/data/sdext2"): SdCardDiskInfo? =
+        withContext(Dispatchers.IO) {
+            storageManager.detectSdCardDiskInfo(targetMountPoint)
+        }
+
+    suspend fun getAllDisks(targetMountPoint: String = "/data/sdext2"): List<SdCardDiskInfo> =
+        withContext(Dispatchers.IO) {
+            storageManager.detectAllDisks(targetMountPoint)
+        }
+
+    suspend fun repartitionDisk(
+        diskPath: String,
+        partitions: List<PartitionSchemeConfig>
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.repartitionDisk(diskPath, partitions)
+    }
+
+    suspend fun moveGameData(
+        packageName: String,
+        direction: MoveDirection,
+        target: MigrationTarget = MigrationTarget.ALL,
+        sdBase: String = "/data/sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.moveGameData(packageName, direction, target, sdBase)
+    }
+
+    suspend fun getDiskIoConfig(diskName: String): Result<DiskIoConfig> = withContext(Dispatchers.IO) {
+        storageManager.getDiskIoConfig(diskName)
+    }
+
+    suspend fun applyDiskIoConfig(diskName: String, config: DiskIoConfig): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.applyDiskIoConfig(diskName, config)
+    }
+
+    suspend fun executeGlobalTrim(disk: SdCardDiskInfo): Result<String> = withContext(Dispatchers.IO) {
+        storageManager.executeGlobalTrim(disk)
+    }
+
+    suspend fun executePartitionTrim(mountPoint: String): Result<String> = withContext(Dispatchers.IO) {
+        storageManager.executePartitionTrim(mountPoint)
+    }
+
+    suspend fun executeF2fsUrgentGc(diskName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.executeF2fsUrgentGc(diskName)
+    }
+
+    suspend fun runQuickDiskBenchmark(blockDevice: String): Result<BenchmarkResult> = withContext(Dispatchers.IO) {
+        storageManager.runQuickDiskBenchmark(blockDevice)
+    }
+
+    suspend fun getDiskHardwareDetails(diskName: String): Result<DiskHardwareDetails> = withContext(Dispatchers.IO) {
+        storageManager.getDiskHardwareDetails(diskName)
+    }
+
+    suspend fun mountAllPartitions(disk: SdCardDiskInfo, sdBase: String = "/data/sdext2"): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.mountAllPartitions(disk, sdBase)
+    }
+
+    suspend fun unmountAllPartitions(disk: SdCardDiskInfo): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.unmountAllPartitions(disk)
+    }
+}
+

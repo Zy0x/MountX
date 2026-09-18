@@ -1,6 +1,6 @@
-id=Mountify
-name=Mountify
-version=v1.0
-versionCode=1
+id=MountX
+name=MountX
+version=v2.2.0
+versionCode=20200
 author=Noir
-description=Bind mount game data subfolders from external SD partition.
+description=Android Game Storage Bind-Mount Engine & Advanced I/O Optimization.

@@ -5,6 +5,32 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.0] - 2026-09-18
+
+### Added
+- **Total Rebrand to MountX**:
+  - Rebranded entire project, package ID (`app.mountx`), and application display name to **MountX**.
+  - Integrated official high-resolution MountX launcher icons from `Icon/` across all mipmap densities (hdpi, mdpi, xhdpi, xxhdpi, xxxhdpi) and adaptive foreground vector assets.
+  - Transparent auto-migration of legacy database (`mountify.db` to `mountx.db`) and legacy shared preferences (`mountify_prefs` to `mountx_prefs`).
+  - Rebranded root module to `MountX` (`id=MountX`, `name=MountX`) with backward-compatibility detection for `/data/adb/modules/MountX` and `/data/adb/modules/Mountify`.
+- **Universal Operation Progress Overlay**:
+  - Created cyber-styled `OperationProgressOverlay` modal providing step-by-step progress tracking and live terminal output for all long-running root operations (I/O optimization, global FSTRIM, partition formatting, filesystem checks, and volume labeling).
+  - Features pulsing cyber status badges, auto-dismiss countdown timer, and manual dismiss controls.
+- **Kernel Filesystem Detection Engine**:
+  - Dynamic discovery of supported filesystems directly from `/proc/filesystems` and device binary utilities (`mkfs.f2fs`, `mke2fs`, `mkfs.ext4`, `mkfs.fat`, `mkfs.exfat`).
+  - Added dynamic badges (`[Kernel Ready]` vs `[Unsupported]`) in `SingleFormatDialog` with automatic disabling of unsupported filesystem options to prevent system corruption.
+- **Non-Destructive Partition Labeling**:
+  - Added in-place volume label editing dialog in `PartitionToolsBottomSheet` using native Linux utilities (`tune2fs`, `e2label`, `fatlabel`, `exfatlabel`, `f2fs.setlabel`) without formatting or risking data loss.
+- **Structured Filesystem Diagnostics (fsck)**:
+  - Added structured `FsckReport` model and interactive diagnostics dialog displaying status badges (Clean, Repaired, Dirty Warning, Error), inode counts, block statistics, and collapsible raw log accordion.
+- **Intelligent I/O Schedulers & Factory Baseline Persistence**:
+  - Live query of physical disk queue schedulers from `/sys/block/<disk>/queue/scheduler`.
+  - Automatic detection and persistent storage of factory baseline (`read_ahead_kb`, stock scheduler) in `AppPreferences` on first initialization.
+  - "Default" performance preset cleanly restores exact factory read-ahead buffer and stock kernel scheduler.
+- **Visual & Ergonomics Refinements**:
+  - Harmonized "Repartition Disk" button in `DiskDetailView` into a sleek cyber outlined card with glowing icon and theme-adaptive borders.
+  - Streamlined Disk Tools bottom sheet into 3 focused action tiles (I/O Speed Booster, Maintenance, Benchmark) with hardware telemetry embedded directly in the Hub footer.
+
 ## [2.1.57] - 2026-09-18
 
 ### Added

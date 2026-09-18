@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # =============================================================================
-# Mountify — service.sh
+# MountX — service.sh
 # Magisk module service script.
 # Runs after boot; bind-mounts game data folders from an external SD partition
 # into every active Android namespace.
@@ -14,10 +14,10 @@
 # =============================================================================
 
 # ── Module paths ──────────────────────────────────────────────────────────────
-MODULE_DIR="/data/adb/modules/Mountify"
+if [ -d "/data/adb/modules/MountX" ]; then MODULE_DIR="/data/adb/modules/MountX"; elif [ -d "/data/adb/modules/Mountify" ]; then MODULE_DIR="/data/adb/modules/Mountify"; else MODULE_DIR="/data/adb/modules/MountX"; fi
 CONFIG_FILE="${MODULE_DIR}/config.conf"
 GAMELIST_FILE="${MODULE_DIR}/gamelist.conf"
-LOG_FILE="${MODULE_DIR}/mountify.log"
+LOG_FILE="${MODULE_DIR}/mountx.log"
 
 # ── Default configuration values ─────────────────────────────────────────────
 SD_BASE="/data/sdext2"
@@ -38,7 +38,7 @@ log() {
     local ts
     ts=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[${ts}] [${level}] ${msg}" >> "${LOG_FILE}"
-    echo "[${ts}] [${level}] ${msg}" >> "/storage/emulated/0/mountify.log" 2>/dev/null
+    echo "[${ts}] [${level}] ${msg}" >> "/storage/emulated/0/mountx.log" 2>/dev/null
 }
 
 log_info()  { log "INFO " "$@"; }
@@ -48,7 +48,7 @@ log_error() { log "ERROR" "$@"; }
 # ── Initialise log for this boot ──────────────────────────────────────────────
 {
     echo "============================================================"
-    echo " Mountify service started — $(date)"
+    echo " MountX service started — $(date)"
     echo "============================================================"
 } >> "${LOG_FILE}"
 
@@ -376,7 +376,7 @@ main() {
         i=$((i + 1))
     done
 
-    log_info "All games processed. Mountify service done."
+    log_info "All games processed. MountX service done."
 }
 
 main
