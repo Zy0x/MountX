@@ -10,9 +10,17 @@ import kotlinx.coroutines.withContext
  */
 object RootShell {
 
-    /** Returns true if root shell is available */
+    /** Returns true if root shell is available, initializing shell session if needed */
     val isAvailable: Boolean
-        get() = Shell.isAppGrantedRoot() == true
+        get() {
+            val cached = Shell.isAppGrantedRoot()
+            if (cached != null) return cached
+            return try {
+                Shell.getShell().isRoot
+            } catch (_: Exception) {
+                false
+            }
+        }
 
     /**
      * Execute a shell command with root and return the result.
