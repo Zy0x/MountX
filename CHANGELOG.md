@@ -5,6 +5,24 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.57] - 2026-09-18
+
+### Added
+- **Disk Tools Animated Menu Hub**:
+  - Replaced the long monolithic Disk Tools bottom sheet with a modular in-sheet navigation system powered by Compose `AnimatedContent` with horizontal slide and crossfade transitions.
+  - Implemented 4 Cyber Menu Tiles on the Hub:
+    1. **I/O Speed Booster**: Quick presets (Gaming Ultra, Balanced, Default), read-ahead buffer tuning (128 KB - 4096 KB), I/O schedulers, and boot persistence.
+    2. **Flash Storage Maintenance**: Global FSTRIM block reclamation and F2FS urgent garbage collection defragmentation.
+    3. **Quick Read & Latency Benchmark**: 64 MB sequential read and access latency test with live result cards.
+    4. **Hardware & Bus Telemetry**: CID, manufacturer identification, bus clock frequency, and UHS speed class.
+  - Added in-sheet back navigation with both a header back button (`[ ← ]`) and Android system `BackHandler` integration.
+- **Partition Tools Non-Destructive Verification**:
+  - Verified non-destructive filesystem check (`fsck.f2fs`) diagnostics workflow on target partitions with real-time terminal output modal.
+  - Verified partition-level FSTRIM execution and filesystem metadata inspection.
+  - Enforced zero data-loss safety barriers on destructive formatting and filesystem conversion workflows.
+- **Localization Completion**:
+  - Synchronized English (`values/strings.xml`) and Indonesian (`values-id/strings.xml`) resources for all diagnostic, telemetry, and maintenance components.
+
 ## [2.1.56] - 2026-09-18
 
 ### Added

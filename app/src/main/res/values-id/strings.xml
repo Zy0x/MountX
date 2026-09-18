@@ -460,5 +460,10 @@
     <string name="storage_status_gc_ok">F2FS Garbage Collection selesai</string>
     <string name="storage_status_mount_all_ok">Semua partisi disk berhasil di-mount</string>
     <string name="storage_status_unmount_all_ok">Semua partisi disk berhasil di-eject</string>
+    <string name="storage_flash_maintenance_desc">FSTRIM global &amp; pembersihan segmen F2FS</string>
+    <string name="storage_benchmark_desc">Uji kecepatan baca sekuensial 64 MB &amp; latensi akses.</string>
+    <string name="storage_hw_no_telemetry">Telemetri hardware tidak tersedia untuk perangkat ini.</string>
+    <string name="storage_action_trim_unmounted_warning">Partisi harus di-mount untuk menjalankan operasi TRIM.</string>
+    <string name="storage_uuid_label">UUID</string>
 </resources>
 

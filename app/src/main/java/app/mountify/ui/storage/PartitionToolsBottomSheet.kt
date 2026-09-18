@@ -172,7 +172,7 @@ fun PartitionToolsBottomSheet(
                 subtitle = if (partition.isMounted) {
                     stringResource(R.string.storage_action_trim_partition_desc)
                 } else {
-                    "Partition must be mounted to perform TRIM operation."
+                    stringResource(R.string.storage_action_trim_unmounted_warning)
                 },
                 isLoading = isTrimming,
                 onClick = onTrimClick
@@ -208,7 +208,7 @@ fun PartitionToolsBottomSheet(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Filesystem", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.storage_filesystem), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = partition.fsType.ifBlank { "RAW" }.uppercase(),
                             fontSize = 10.5.sp,
@@ -220,7 +220,7 @@ fun PartitionToolsBottomSheet(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Mount Point", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.storage_mount_point), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = partition.mountPoint ?: stringResource(R.string.storage_status_unmounted_badge),
                             fontSize = 10.sp,
@@ -233,7 +233,7 @@ fun PartitionToolsBottomSheet(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("UUID", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.storage_uuid_label), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 text = partition.uuid,
                                 fontSize = 9.5.sp,
@@ -247,7 +247,7 @@ fun PartitionToolsBottomSheet(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Label", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.storage_label_field), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 text = partition.label,
                                 fontSize = 10.sp,
