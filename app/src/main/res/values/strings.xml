@@ -231,6 +231,10 @@
     <string name="storage_unmounted_hint">Mount the secondary partition to enable transparent data redirection.</string>
     <string name="storage_active_mount">Active Mount</string>
     <string name="storage_internal_title">Internal Storage (/data)</string>
+    <string name="storage_internal_protected_badge">Protected</string>
+    <string name="storage_internal_protected_title">Internal Storage Protected</string>
+    <string name="storage_internal_protected_desc">Internal storage (/data) contains core Android system files and user applications. Partitioning, formatting, and unmounting operations are permanently disabled to prevent system instability.</string>
+    <string name="storage_internal_partition_name">userdata (/data)</string>
     <string name="storage_microsd_title">MicroSD Extended Storage</string>
     <string name="storage_offloaded_summary">%1$d games offloaded • %2$s saved on internal</string>
     <string name="storage_partitions_title">Disks &amp; Partitions</string>

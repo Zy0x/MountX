@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -41,8 +42,19 @@ class DashboardViewModel @Inject constructor(
     private val _moduleVersion = MutableStateFlow("")
     val moduleVersion: StateFlow<String> = _moduleVersion.asStateFlow()
 
+    private val _allDisks = MutableStateFlow<List<app.mountify.data.model.SdCardDiskInfo>>(emptyList())
+    val allDisks: StateFlow<List<app.mountify.data.model.SdCardDiskInfo>> = _allDisks.asStateFlow()
+
+    val internalStorageInfo: StateFlow<app.mountify.data.model.InternalStorageInfo?> = storageRepository.observeInternalStorage()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val games: StateFlow<List<GameEntry>> = gameRepository.observeGames()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val offloadedStats: StateFlow<Pair<Int, Long>> = games.map { list ->
+        val mountedGames = list.filter { it.mountStatus == MountStatus.MOUNTED }
+        Pair(mountedGames.size, mountedGames.sumOf { it.dataSizeBytes })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair(0, 0L))
 
     val storageInfo = storageRepository.observeStorageInfo()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -76,6 +88,8 @@ class DashboardViewModel @Inject constructor(
                 _rootSolution.value = info.rootSolution
                 _isModuleInstalled.value = info.isModuleInstalled
                 _moduleVersion.value = info.moduleVersion
+                val sdBase = appPreferences.sdBasePath.first()
+                _allDisks.value = storageRepository.getAllDisks(sdBase)
                 gameRepository.refreshMountStatuses()
             } finally {
                 _isRefreshing.value = false

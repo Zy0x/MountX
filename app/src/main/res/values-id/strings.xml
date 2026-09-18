@@ -220,6 +220,10 @@
     <string name="storage_unmounted_hint">Mount partisi sekunder untuk mengaktifkan pengalihan data secara transparan.</string>
     <string name="storage_active_mount">Mount Aktif</string>
     <string name="storage_internal_title">Penyimpanan Internal (/data)</string>
+    <string name="storage_internal_protected_badge">Terlindungi</string>
+    <string name="storage_internal_protected_title">Penyimpanan Internal Terlindungi</string>
+    <string name="storage_internal_protected_desc">Penyimpanan internal (/data) memuat berkas sistem inti Android dan data aplikasi pengguna. Tindakan partisi, format, dan unmount dinonaktifkan secara permanen demi keselamatan sistem.</string>
+    <string name="storage_internal_partition_name">userdata (/data)</string>
     <string name="storage_microsd_title">Penyimpanan Ekstensi MicroSD</string>
     <string name="storage_offloaded_summary">%1$d game dialihkan • %2$s dihemat di internal</string>
     <string name="storage_partitions_title">Disk &amp; Partisi</string>

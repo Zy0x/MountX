@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -77,6 +78,7 @@ import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
 import app.mountify.ui.components.SectionHeader
 import app.mountify.ui.components.StatusChip
+import app.mountify.ui.theme.AmberWarn
 import app.mountify.ui.theme.CyberEmerald
 import app.mountify.ui.theme.ElectricCyan
 import app.mountify.ui.theme.MountifyTheme
@@ -339,25 +341,8 @@ fun StorageContent(
                             )
                         }
                         item {
-                            MultiDiskTelemetryCard(
-                                storage = storage,
-                                internalStorage = internalStorage,
-                                disks = effectiveDisks,
-                                offloadedStats = offloadedStats,
-                                onNavigateToGames = onNavigateToGames
-                            )
-                        }
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
-                    ) {
-                        item {
                             MultiDiskVisualMapSection(
+                                internalStorage = internalStorage,
                                 disks = effectiveDisks,
                                 onOpenDiskDetail = onOpenDiskDetail
                             )
@@ -369,6 +354,16 @@ fun StorageContent(
                                 onOpenFullBackup = onNavigateToBackup
                             )
                         }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
+                    ) {
+                        // Right column placeholder — will be used for future content
                     }
                 }
             } else {
@@ -386,17 +381,8 @@ fun StorageContent(
                     }
 
                     item {
-                        MultiDiskTelemetryCard(
-                            storage = storage,
-                            internalStorage = internalStorage,
-                            disks = effectiveDisks,
-                            offloadedStats = offloadedStats,
-                            onNavigateToGames = onNavigateToGames
-                        )
-                    }
-
-                    item {
                         MultiDiskVisualMapSection(
+                            internalStorage = internalStorage,
                             disks = effectiveDisks,
                             onOpenDiskDetail = onOpenDiskDetail
                         )
@@ -769,6 +755,7 @@ private fun MultiDiskTelemetryCard(
 // ── Multi-Disk Visual Partition Map Section ─────────────────
 @Composable
 private fun MultiDiskVisualMapSection(
+    internalStorage: InternalStorageInfo? = null,
     disks: List<SdCardDiskInfo>,
     onOpenDiskDetail: (SdCardDiskInfo) -> Unit,
     modifier: Modifier = Modifier
@@ -781,7 +768,12 @@ private fun MultiDiskVisualMapSection(
             title = stringResource(R.string.storage_disk_map_title)
         )
 
-        if (disks.isEmpty()) {
+        // Internal Storage — always first, read-only Protected card
+        if (internalStorage != null) {
+            InternalDiskVisualMapCard(internalStorage = internalStorage)
+        }
+
+        if (disks.isEmpty() && internalStorage == null) {
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
@@ -826,6 +818,213 @@ private fun MultiDiskVisualMapSection(
                 )
             }
         }
+    }
+}
+
+// ── Internal Storage Visual Map Card (Read-Only / Protected) ──
+@Composable
+private fun InternalDiskVisualMapCard(
+    internalStorage: InternalStorageInfo,
+    modifier: Modifier = Modifier
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Card(
+        onClick = { showDialog = true },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Header row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(ElectricCyan.copy(alpha = 0.12f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhoneAndroid,
+                        contentDescription = null,
+                        tint = ElectricCyan,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.storage_internal_partition_name),
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "/data • F2FS",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                // Protected badge
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = AmberWarn.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, AmberWarn.copy(alpha = 0.45f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = AmberWarn,
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.storage_internal_protected_badge),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = AmberWarn
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Capacity row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Total: ${FormatUtils.formatBytes(internalStorage.totalBytes)}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(text = "•", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.outline)
+                Text(
+                    text = "${stringResource(R.string.storage_used)}: ${FormatUtils.formatBytes(internalStorage.usedBytes)}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
+                    color = FormatUtils.getHealthColor(internalStorage.usedPercent)
+                )
+                Text(text = "•", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.outline)
+                Text(
+                    text = "${stringResource(R.string.storage_free)}: ${FormatUtils.formatBytes(internalStorage.freeBytes)}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
+                    color = CyberEmerald
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Single-partition visual map bar
+            val usedFrac = internalStorage.usedPercent.coerceIn(0f, 1f)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF182030))
+                        .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)), RoundedCornerShape(8.dp))
+                ) {
+                    if (usedFrac > 0.001f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(fraction = usedFrac)
+                                .background(FormatUtils.getHealthColor(usedFrac))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .width(1.5.dp)
+                                    .fillMaxHeight()
+                                    .background(Color.White.copy(alpha = 0.85f))
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "userdata",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = FormatUtils.formatBytes(internalStorage.totalBytes),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                            color = Color.White.copy(alpha = 0.75f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Protected info dialog
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            icon = {
+                Icon(Icons.Default.Lock, contentDescription = null, tint = AmberWarn, modifier = Modifier.size(28.dp))
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.storage_internal_protected_title),
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.storage_internal_protected_desc),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp)
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(
+                    onClick = { showDialog = false },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(text = "OK", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 0.dp
+        )
     }
 }
 

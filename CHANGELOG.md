@@ -5,6 +5,20 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.53] - 2026-09-18
+
+### Changed
+- **Dashboard: Partition Telemetry Migrated to Dashboard Screen**:
+  - Removed the multi-disk telemetry card from the Storage screen.
+  - Added a new `Disk Overview` card to the Dashboard, positioned below Master Control, displaying all detected disks (Internal and External) with proportional usage bars and free-space labels in one consolidated view.
+  - Each disk row shows its type icon, label, device path, color-coded health bar (smooth progression: Green → Yellow → Orange → Red), percentage, and free space.
+  - Footer shows game offload count and total freed space when at least one game is mounted; tapping navigates to Games screen.
+- **Storage Screen: Internal Storage Visual Partition Map**:
+  - The Partition Map section now includes a read-only Internal Storage card (`userdata / /data`) as the first entry, displayed above all external disk cards.
+  - Card renders a proportional single-partition bar representing `/data` usage with real `StatFs` data.
+  - A `🔒 Protected` amber badge is displayed on the card header.
+  - Tapping the card opens an informational dialog explaining that internal storage management is restricted to prevent system damage; no format, unmount, or repartition controls are available.
+
 ## [2.1.52] - 2026-09-18
 
 ### Added
