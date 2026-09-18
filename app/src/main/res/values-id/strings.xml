@@ -280,6 +280,7 @@
     <string name="storage_badge_ready">Siap Di-mount</string>
     <string name="storage_disk_detail_title">Disk &amp; Partisi</string>
     <string name="storage_disk_detail_subtitle">%1$d partisi terdeteksi</string>
+    <string name="storage_disk_partitions_badge">%1$d Partisi</string>
     <string name="storage_disk_card_tap_hint">Ketuk untuk kelola disk &amp; partisi</string>
     <string name="storage_disk_hardware_info">Hardware &amp; Kapasitas</string>
     <string name="storage_disk_partitions_list">Daftar Partisi</string>

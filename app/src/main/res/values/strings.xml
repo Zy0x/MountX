@@ -291,6 +291,7 @@
     <string name="storage_badge_ready">Ready to Mount</string>
     <string name="storage_disk_detail_title">Disk &amp; Partitions</string>
     <string name="storage_disk_detail_subtitle">%1$d partitions detected</string>
+    <string name="storage_disk_partitions_badge">%1$d Partitions</string>
     <string name="storage_disk_card_tap_hint">Tap to view partitions &amp; manage disk</string>
     <string name="storage_disk_hardware_info">Hardware &amp; Capacity</string>
     <string name="storage_disk_partitions_list">Partitions</string>

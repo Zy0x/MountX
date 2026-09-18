@@ -59,24 +59,12 @@ class StorageManager {
      * (disk name, partition number, size, filesystem, mount point, label, UUID).
      */
     suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> = withContext(Dispatchers.IO) {
-        // Collect all mount entries from /proc/mounts
+        // Collect all mount entries from /proc/mounts using RootShell first for full root namespace visibility
         data class RawMount(val spec: String, val file: String, val vfstype: String)
         val allMounts = mutableListOf<RawMount>()
 
-        try {
-            val procMounts = java.io.File("/proc/mounts")
-            if (procMounts.exists() && procMounts.canRead()) {
-                procMounts.forEachLine { line ->
-                    val parts = line.trim().split(Regex("\\s+"))
-                    if (parts.size >= 3) {
-                        allMounts.add(RawMount(parts[0], parts[1], parts[2]))
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-
-        if (allMounts.isEmpty()) {
-            val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
+        val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
+        if (mountsRes.isSuccess && mountsRes.stdout.isNotEmpty()) {
             mountsRes.stdout.forEach { line ->
                 val parts = line.trim().split(Regex("\\s+"))
                 if (parts.size >= 3) {
@@ -85,33 +73,72 @@ class StorageManager {
             }
         }
 
-        // Map device major:minor from /sys/class/block/*/dev for Android vold correlation
-        val devMajorMinorMap = mutableMapOf<String, String>() // e.g. "mmcblk0p1" -> "179:1"
-        try {
-            val blockDir = java.io.File("/sys/class/block")
-            if (blockDir.exists() && blockDir.isDirectory) {
-                blockDir.listFiles()?.forEach { f ->
-                    val devFile = java.io.File(f, "dev")
-                    if (devFile.exists()) {
-                        val mm = devFile.readText().trim()
-                        if (mm.isNotBlank()) {
-                            devMajorMinorMap[f.name] = mm
+        if (allMounts.isEmpty()) {
+            try {
+                val procMounts = java.io.File("/proc/mounts")
+                if (procMounts.exists() && procMounts.canRead()) {
+                    procMounts.forEachLine { line ->
+                        val parts = line.trim().split(Regex("\\s+"))
+                        if (parts.size >= 3) {
+                            allMounts.add(RawMount(parts[0], parts[1], parts[2]))
                         }
                     }
                 }
-            }
-        } catch (_: Exception) {}
+            } catch (_: Exception) {}
+        }
 
-        if (devMajorMinorMap.isEmpty()) {
-            val devRes = RootShell.exec("grep . /sys/class/block/*/dev 2>/dev/null")
-            if (devRes.isSuccess) {
-                devRes.stdout.forEach { line ->
-                    // line format: /sys/class/block/mmcblk0p1/dev:179:1
-                    val devName = line.substringBefore("/dev:").substringAfterLast("/")
-                    val mm = line.substringAfter("/dev:").trim()
-                    if (devName.isNotBlank() && mm.isNotBlank()) {
-                        devMajorMinorMap[devName] = mm
-                    }
+        // Map device major:minor from /sys/class/block/*/dev for Android vold correlation
+        val devMajorMinorMap = mutableMapOf<String, String>() // e.g. "mmcblk0p1" -> "179:1", "sdd1" -> "8:49"
+        val devRes = RootShell.exec("grep . /sys/class/block/*/dev 2>/dev/null")
+        if (devRes.isSuccess) {
+            devRes.stdout.forEach { line ->
+                val devName = line.substringBefore("/dev:").substringAfterLast("/")
+                val mm = line.substringAfter("/dev:").trim()
+                if (devName.isNotBlank() && mm.isNotBlank()) {
+                    devMajorMinorMap[devName] = mm
+                }
+            }
+        }
+
+        // Batch query removable flags for all disks via RootShell (SELinux-safe)
+        val removableDisks = mutableSetOf<String>()
+        val remRes = RootShell.exec("grep . /sys/block/*/removable 2>/dev/null")
+        if (remRes.isSuccess) {
+            remRes.stdout.forEach { line ->
+                val disk = line.substringBefore("/removable:").substringAfterLast("/")
+                val isRem = line.substringAfter("/removable:").trim() == "1"
+                if (isRem) {
+                    removableDisks.add(disk)
+                }
+            }
+        }
+
+        // Batch query USB-connected disks via sysfs block symlinks (SELinux-safe)
+        val usbDisks = mutableSetOf<String>()
+        val usbRes = RootShell.exec("ls -l /sys/block/ 2>/dev/null")
+        if (usbRes.isSuccess) {
+            usbRes.stdout.forEach { line ->
+                if (line.contains("/usb") || line.contains("usb-") || line.contains("musb-")) {
+                    val target = line.substringAfterLast(" -> ")
+                    val diskName = target.substringAfterLast("/")
+                    if (diskName.isNotBlank()) usbDisks.add(diskName)
+                    val nameBefore = line.substringBefore(" -> ").trim().substringAfterLast(" ")
+                    if (nameBefore.isNotBlank()) usbDisks.add(nameBefore)
+                }
+            }
+        }
+
+        // Batch query Android StorageManager public volume records (e.g. public:8,49 mounted 405F-B626)
+        val smPublicVolumes = mutableMapOf<String, String>() // "8:49" -> "405F-B626", "405F-B626" -> "8:49"
+        val smRes = RootShell.exec("sm list-volumes public 2>/dev/null")
+        if (smRes.isSuccess) {
+            smRes.stdout.forEach { line ->
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size >= 3 && parts[0].startsWith("public:")) {
+                    val devNode = parts[0].substringAfter("public:").replace(',', ':')
+                    val uuid = parts[2]
+                    smPublicVolumes[devNode] = uuid
+                    smPublicVolumes[uuid] = devNode
                 }
             }
         }
@@ -156,196 +183,288 @@ class StorageManager {
         val partitionItems = mutableListOf<PartitionInfo>()
 
         if (partitionsRes.isSuccess && partitionsRes.stdout.size > 2) {
+            data class RawProcPart(val major: Int, val minor: Int, val blocks: Long, val name: String)
+            val rawList = mutableListOf<RawProcPart>()
+
             for (line in partitionsRes.stdout) {
                 val parts = line.trim().split(Regex("\\s+"))
                 if (parts.size >= 4) {
+                    val major = parts[0].toIntOrNull() ?: continue
+                    val minor = parts[1].toIntOrNull() ?: continue
                     val blocks = parts[2].toLongOrNull() ?: continue
                     val name = parts[3]
-
-                    val isMmcPartition = name.matches(Regex("mmcblk[0-9]+p[0-9]+"))
-                    val isSdPartition = name.matches(Regex("sd[a-z][0-9]+"))
-                    if (!isMmcPartition && !isSdPartition) continue
-
-                    val path = "/dev/block/$name"
-                    val diskName = if (isMmcPartition) {
-                        name.substringBeforeLast("p")
-                    } else {
-                        name.filter { it.isLetter() }
-                    }
-                    val partNum = if (isMmcPartition) {
-                        name.substringAfterLast("p").toIntOrNull() ?: 1
-                    } else {
-                        name.filter { it.isDigit() }.toIntOrNull() ?: 1
-                    }
-                    val sizeBytes = blocks * 1024L
-
-                    // Blkid metadata
-                    var fsType = ""
-                    var label: String? = null
-                    var uuid: String? = null
-
-                    val blkidEntry = blkidMap[path] ?: blkidMap[name]
-                    if (blkidEntry != null) {
-                        fsType = blkidEntry.first ?: ""
-                        label = blkidEntry.second
-                        uuid = blkidEntry.third
-                    }
-
-                    // Major:minor resolution for vold node detection
-                    val majorMinor = devMajorMinorMap[name] ?: ""
-                    val voldMajorComma = if (majorMinor.contains(":")) majorMinor.replace(':', ',') else ""
-                    val voldMajorUnderscore = if (majorMinor.contains(":")) majorMinor.replace(':', '_') else ""
-
-                    // Match all mounts for this physical partition across all Android subsystems
-                    val matchingMounts = allMounts.filter { m ->
-                        m.spec == path ||
-                        m.spec.endsWith("/$name") ||
-                        (majorMinor.isNotBlank() && (
-                            (voldMajorComma.isNotBlank() && (m.spec.contains("public:$voldMajorComma") || m.spec.contains("disk:$voldMajorComma"))) ||
-                            (voldMajorUnderscore.isNotBlank() && (m.spec.contains("public:$voldMajorUnderscore") || m.spec.contains("disk:$voldMajorUnderscore"))) ||
-                            m.spec.endsWith("/$majorMinor") ||
-                            m.spec.contains(majorMinor)
-                        )) ||
-                        (!uuid.isNullOrBlank() && (
-                            m.file.contains(uuid) || m.spec.contains(uuid)
-                        ))
-                    }
-
-                    // Canonical Mount Hierarchy (Anti-bind mount overwrite):
-                    // 1. Configured target mount (/data/sdext2) has top priority
-                    val targetMountEntry = matchingMounts.firstOrNull { it.file == targetMountPoint }
-                    val isTargetMount = targetMountEntry != null
-
-                    // 2. Android portable storage mount (/storage/<UUID> or /mnt/media_rw/<UUID>)
-                    val portableMountEntry = matchingMounts.firstOrNull { m ->
-                        (m.file.startsWith("/storage/") && !m.file.startsWith("/storage/emulated")) ||
-                        m.file.startsWith("/mnt/media_rw/") ||
-                        m.file.startsWith("/mnt/pass_through/")
-                    }
-                    val isPortableMount = !isTargetMount && portableMountEntry != null
-
-                    // 3. Other non-bind root mount points
-                    val rootMountEntry = matchingMounts.firstOrNull { m ->
-                        !m.file.startsWith("/data/media/") &&
-                        !m.file.startsWith("/mnt/runtime/") &&
-                        !m.file.startsWith("/mnt/user/") &&
-                        !m.file.startsWith("/storage/emulated/") &&
-                        !m.file.startsWith("/apex/")
-                    }
-
-                    val isMounted = matchingMounts.isNotEmpty()
-                    val canonicalMountPoint = when {
-                        isTargetMount -> targetMountPoint
-                        isPortableMount -> {
-                            matchingMounts.firstOrNull { it.file.startsWith("/storage/") && !it.file.startsWith("/storage/emulated") }?.file
-                                ?: portableMountEntry?.file
-                        }
-                        rootMountEntry != null -> rootMountEntry.file
-                        isMounted -> matchingMounts.first().file
-                        else -> null
-                    }
-
-                    if (fsType.isBlank()) {
-                        fsType = targetMountEntry?.vfstype
-                            ?: portableMountEntry?.vfstype
-                            ?: rootMountEntry?.vfstype
-                            ?: matchingMounts.firstOrNull()?.vfstype
-                            ?: ""
-                    }
-
-                    // Disk removability check (sysfs /sys/block/<disk>/removable)
-                    val isRemovable = try {
-                        val remFile = java.io.File("/sys/block/$diskName/removable")
-                        if (remFile.exists() && remFile.canRead()) {
-                            remFile.readText().trim() == "1"
-                        } else {
-                            isMmcPartition
-                        }
-                    } catch (_: Exception) {
-                        isMmcPartition
-                    }
-
-                    // Exclude internal fixed flash storage (such as UFS sda-sdf LUNs) unless already configured as target mount
-                    if (isSdPartition && !isRemovable && !isTargetMount) {
-                        continue
-                    }
-
-                    // Exclude tiny firmware partitions (< 250MB) unless already mounted as target
-                    if (sizeBytes < 250 * 1024 * 1024L && !isTargetMount) {
-                        continue
-                    }
-
-                    // Exclude partitions mounted to critical Android system hierarchy
-                    val isSystemMount = canonicalMountPoint != null && (
-                        canonicalMountPoint == "/" ||
-                        canonicalMountPoint == "/system" ||
-                        canonicalMountPoint == "/vendor" ||
-                        canonicalMountPoint == "/product" ||
-                        canonicalMountPoint == "/system_ext" ||
-                        canonicalMountPoint == "/metadata" ||
-                        canonicalMountPoint == "/data" ||
-                        canonicalMountPoint == "/persist" ||
-                        canonicalMountPoint.startsWith("/apex") ||
-                        canonicalMountPoint.startsWith("/mnt/vendor")
-                    )
-                    if (isSystemMount && !isTargetMount) {
-                        continue
-                    }
-
-                    val isLinuxFs = fsType.equals("f2fs", ignoreCase = true) || fsType.equals("ext4", ignoreCase = true)
-                    val isSuitable = isTargetMount || (isRemovable && (isLinuxFs || (partNum >= 2 && !isMounted)))
-
-                    // Accurately compute used & free bytes via canonical mount point and dfMap / StatFs
-                    var usedBytes = 0L
-                    var freeBytes = 0L
-                    if (isMounted) {
-                        val dfPair = if (canonicalMountPoint != null) {
-                            dfMap[canonicalMountPoint]
-                                ?: dfMap[path]
-                                ?: dfMap[name]
-                                ?: (if (!uuid.isNullOrBlank()) dfMap.entries.firstOrNull { e -> e.key.contains(uuid) }?.value else null)
-                        } else {
-                            dfMap[path] ?: dfMap[name]
-                        }
-
-                        if (dfPair != null && (dfPair.first > 0L || dfPair.second > 0L)) {
-                            usedBytes = dfPair.first
-                            freeBytes = dfPair.second
-                        } else if (canonicalMountPoint != null) {
-                            try {
-                                val stat = android.os.StatFs(canonicalMountPoint)
-                                val total = stat.blockCountLong * stat.blockSizeLong
-                                val free = stat.availableBlocksLong * stat.blockSizeLong
-                                val used = (total - free).coerceAtLeast(0L)
-                                if (total > 0L) {
-                                    usedBytes = used
-                                    freeBytes = free
-                                }
-                            } catch (_: Exception) {}
-                        }
-                    }
-
-                    partitionItems.add(
-                        PartitionInfo(
-                            path = path,
-                            name = name,
-                            diskName = diskName,
-                            partitionNumber = partNum,
-                            sizeBytes = sizeBytes,
-                            usedBytes = usedBytes,
-                            freeBytes = freeBytes,
-                            fsType = fsType,
-                            mountPoint = canonicalMountPoint,
-                            label = label,
-                            uuid = uuid,
-                            isMounted = isMounted,
-                            isTargetMount = isTargetMount,
-                            isPortableMount = isPortableMount,
-                            isMountTargetReady = isSuitable
-                        )
-                    )
+                    rawList.add(RawProcPart(major, minor, blocks, name))
                 }
             }
+
+            for (entry in rawList) {
+                val name = entry.name
+                val isMmcPartition = name.matches(Regex("mmcblk[0-9]+p[0-9]+"))
+                val isSdPartition = name.matches(Regex("sd[a-z][0-9]+"))
+                val isSdWholeDisk = name.matches(Regex("sd[a-z]"))
+
+                // If it's a whole disk like 'sdd', check if it has child partitions like 'sdd1'
+                if (isSdWholeDisk) {
+                    val hasChildPartitions = rawList.any { it.name.startsWith(name) && it.name != name }
+                    if (hasChildPartitions) {
+                        continue
+                    }
+                }
+
+                if (!isMmcPartition && !isSdPartition && !isSdWholeDisk) continue
+
+                val path = "/dev/block/$name"
+                val diskName = when {
+                    isMmcPartition -> name.substringBeforeLast("p")
+                    isSdPartition -> name.filter { it.isLetter() }
+                    else -> name
+                }
+                val partNum = when {
+                    isMmcPartition -> name.substringAfterLast("p").toIntOrNull() ?: 1
+                    isSdPartition -> name.filter { it.isDigit() }.toIntOrNull() ?: 1
+                    else -> 1
+                }
+                val sizeBytes = entry.blocks * 1024L
+
+                // Blkid metadata
+                var fsType = ""
+                var label: String? = null
+                var uuid: String? = null
+
+                val blkidEntry = blkidMap[path] ?: blkidMap[name]
+                if (blkidEntry != null) {
+                    fsType = blkidEntry.first ?: ""
+                    label = blkidEntry.second
+                    uuid = blkidEntry.third
+                }
+
+                // Major:minor resolution for vold node detection
+                val majorMinor = devMajorMinorMap[name] ?: "${entry.major}:${entry.minor}"
+                val voldMajorComma = if (majorMinor.contains(":")) majorMinor.replace(':', ',') else "${entry.major},${entry.minor}"
+                val voldMajorUnderscore = if (majorMinor.contains(":")) majorMinor.replace(':', '_') else "${entry.major}_${entry.minor}"
+
+                // Match all mounts for this physical partition across all Android subsystems
+                val matchingMounts = allMounts.filter { m ->
+                    m.spec == path ||
+                    m.spec.endsWith("/$name") ||
+                    (voldMajorComma.isNotBlank() && (m.spec.contains("public:$voldMajorComma") || m.spec.contains("disk:$voldMajorComma"))) ||
+                    (voldMajorUnderscore.isNotBlank() && (m.spec.contains("public:$voldMajorUnderscore") || m.spec.contains("disk:$voldMajorUnderscore"))) ||
+                    m.spec.endsWith("/$majorMinor") ||
+                    m.spec.contains(majorMinor) ||
+                    (!uuid.isNullOrBlank() && (
+                        m.file.contains(uuid) || m.spec.contains(uuid)
+                    ))
+                }
+
+                // Canonical Mount Hierarchy (Anti-bind mount overwrite):
+                // 1. Configured target mount (/data/sdext2) has top priority
+                val targetMountEntry = matchingMounts.firstOrNull { it.file == targetMountPoint }
+                val isTargetMount = targetMountEntry != null
+
+                // 2. Android portable storage mount (/storage/<UUID> or /mnt/media_rw/<UUID>)
+                val portableMountEntry = matchingMounts.firstOrNull { m ->
+                    (m.file.startsWith("/storage/") && !m.file.startsWith("/storage/emulated") && !m.file.startsWith("/storage/self")) ||
+                    m.file.startsWith("/mnt/media_rw/") ||
+                    m.file.startsWith("/mnt/pass_through/")
+                }
+                val isPortableMount = !isTargetMount && portableMountEntry != null
+
+                // 3. Other non-bind root mount points
+                val rootMountEntry = matchingMounts.firstOrNull { m ->
+                    !m.file.startsWith("/data/media/") &&
+                    !m.file.startsWith("/mnt/runtime/") &&
+                    !m.file.startsWith("/mnt/user/") &&
+                    !m.file.startsWith("/storage/emulated/") &&
+                    !m.file.startsWith("/storage/self/") &&
+                    !m.file.startsWith("/apex/")
+                }
+
+                val isMounted = matchingMounts.isNotEmpty()
+                val canonicalMountPoint = when {
+                    isTargetMount -> targetMountPoint
+                    isPortableMount -> {
+                        matchingMounts.firstOrNull { it.file.startsWith("/storage/") && !it.file.startsWith("/storage/emulated") && !it.file.startsWith("/storage/self") }?.file
+                            ?: portableMountEntry?.file
+                    }
+                    rootMountEntry != null -> rootMountEntry.file
+                    isMounted -> matchingMounts.first().file
+                    else -> null
+                }
+
+                if (fsType.isBlank()) {
+                    fsType = targetMountEntry?.vfstype
+                        ?: portableMountEntry?.vfstype
+                        ?: rootMountEntry?.vfstype
+                        ?: matchingMounts.firstOrNull()?.vfstype
+                        ?: ""
+                }
+
+                // Comprehensive Removability Check: MMC, sysfs removable flag, USB controller bus, Vold public volume, or /storage/ mount
+                val hasVoldNode = voldMajorComma.isNotBlank() && allMounts.any { it.spec.contains("public:$voldMajorComma") }
+                val isKnownPublic = smPublicVolumes.containsKey(majorMinor) || (!uuid.isNullOrBlank() && smPublicVolumes.containsKey(uuid))
+                val isRemovable = isMmcPartition ||
+                    removableDisks.contains(diskName) ||
+                    usbDisks.contains(diskName) ||
+                    isTargetMount ||
+                    isPortableMount ||
+                    hasVoldNode ||
+                    isKnownPublic
+
+                // Exclude internal fixed flash storage (such as UFS sda-sdf LUNs) unless removable or target mount
+                if (!isMmcPartition && !isRemovable && !isTargetMount) {
+                    continue
+                }
+
+                // Exclude tiny firmware partitions (< 100MB) unless already mounted as target or portable
+                if (sizeBytes < 100 * 1024 * 1024L && !isTargetMount && !isPortableMount) {
+                    continue
+                }
+
+                // Exclude partitions mounted to critical Android system hierarchy
+                val isSystemMount = canonicalMountPoint != null && (
+                    canonicalMountPoint == "/" ||
+                    canonicalMountPoint == "/system" ||
+                    canonicalMountPoint == "/vendor" ||
+                    canonicalMountPoint == "/product" ||
+                    canonicalMountPoint == "/system_ext" ||
+                    canonicalMountPoint == "/metadata" ||
+                    canonicalMountPoint == "/data" ||
+                    canonicalMountPoint == "/persist" ||
+                    canonicalMountPoint.startsWith("/apex") ||
+                    canonicalMountPoint.startsWith("/mnt/vendor")
+                )
+                if (isSystemMount && !isTargetMount) {
+                    continue
+                }
+
+                val isLinuxFs = fsType.equals("f2fs", ignoreCase = true) || fsType.equals("ext4", ignoreCase = true)
+                val isSuitable = isTargetMount || (isRemovable && (isLinuxFs || (partNum >= 2 && !isMounted)))
+
+                // Accurately compute used & free bytes via canonical mount point and dfMap / StatFs
+                var usedBytes = 0L
+                var freeBytes = 0L
+                if (isMounted) {
+                    val dfPair = if (canonicalMountPoint != null) {
+                        dfMap[canonicalMountPoint]
+                            ?: dfMap[path]
+                            ?: dfMap[name]
+                            ?: (if (!uuid.isNullOrBlank()) dfMap.entries.firstOrNull { e -> e.key.contains(uuid) }?.value else null)
+                    } else {
+                        dfMap[path] ?: dfMap[name]
+                    }
+
+                    if (dfPair != null && (dfPair.first > 0L || dfPair.second > 0L)) {
+                        usedBytes = dfPair.first
+                        freeBytes = dfPair.second
+                    } else if (canonicalMountPoint != null) {
+                        try {
+                            val stat = android.os.StatFs(canonicalMountPoint)
+                            val total = stat.blockCountLong * stat.blockSizeLong
+                            val free = stat.availableBlocksLong * stat.blockSizeLong
+                            val used = (total - free).coerceAtLeast(0L)
+                            if (total > 0L) {
+                                usedBytes = used
+                                freeBytes = free
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                partitionItems.add(
+                    PartitionInfo(
+                        path = path,
+                        name = name,
+                        diskName = diskName,
+                        partitionNumber = partNum,
+                        sizeBytes = sizeBytes,
+                        usedBytes = usedBytes,
+                        freeBytes = freeBytes,
+                        fsType = fsType,
+                        mountPoint = canonicalMountPoint,
+                        label = label,
+                        uuid = uuid,
+                        isMounted = isMounted,
+                        isTargetMount = isTargetMount,
+                        isPortableMount = isPortableMount,
+                        isMountTargetReady = isSuitable
+                    )
+                )
+            }
+        }
+
+        // Supplementary pass: Guarantee any mounted /storage/<UUID> or Android public volumes are registered
+        val externalStorageMounts = allMounts.filter { m ->
+            m.file.startsWith("/storage/") &&
+            !m.file.startsWith("/storage/emulated") &&
+            !m.file.startsWith("/storage/self")
+        }.distinctBy { it.file }
+
+        for (smMount in externalStorageMounts) {
+            val mntPath = smMount.file
+            val mntUuid = mntPath.substringAfterLast("/")
+            if (partitionItems.any { it.mountPoint == mntPath || (it.uuid != null && it.uuid.equals(mntUuid, ignoreCase = true)) }) {
+                continue
+            }
+
+            // Resolve vold public device or devMajorMinor for this mount
+            val voldMount = allMounts.firstOrNull { it.file.contains(mntUuid) && it.spec.contains("public:") }
+            val majorMinor = voldMount?.spec?.substringAfter("public:")?.replace(',', ':') ?: ""
+            val resolvedDevName = if (majorMinor.isNotBlank()) {
+                devMajorMinorMap.entries.firstOrNull { it.value == majorMinor }?.key
+            } else null
+
+            val devName = resolvedDevName ?: "usb_${mntUuid.take(6)}"
+            val diskName = if (devName.startsWith("sd") && devName.length >= 3) {
+                devName.filter { it.isLetter() }
+            } else if (devName.startsWith("mmcblk")) {
+                devName.substringBeforeLast("p")
+            } else {
+                devName
+            }
+            val partNum = devName.filter { it.isDigit() }.toIntOrNull() ?: 1
+            val devPath = if (resolvedDevName != null) "/dev/block/$resolvedDevName" else (voldMount?.spec ?: smMount.spec)
+
+            val fsType = blkidMap[devPath]?.first ?: blkidMap[devName]?.first ?: smMount.vfstype
+            val label = blkidMap[devPath]?.second ?: blkidMap[devName]?.second
+            val uuid = blkidMap[devPath]?.third ?: blkidMap[devName]?.third ?: mntUuid
+
+            var totalBytes = 0L
+            var usedBytes = 0L
+            var freeBytes = 0L
+
+            val dfPair = dfMap[mntPath] ?: dfMap[devPath] ?: dfMap[devName]
+            if (dfPair != null && (dfPair.first > 0L || dfPair.second > 0L)) {
+                usedBytes = dfPair.first
+                freeBytes = dfPair.second
+                totalBytes = usedBytes + freeBytes
+            } else {
+                try {
+                    val stat = android.os.StatFs(mntPath)
+                    totalBytes = stat.blockCountLong * stat.blockSizeLong
+                    freeBytes = stat.availableBlocksLong * stat.blockSizeLong
+                    usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
+                } catch (_: Exception) {}
+            }
+
+            partitionItems.add(
+                PartitionInfo(
+                    path = devPath,
+                    name = devName,
+                    diskName = diskName,
+                    partitionNumber = partNum,
+                    sizeBytes = totalBytes,
+                    usedBytes = usedBytes,
+                    freeBytes = freeBytes,
+                    fsType = fsType,
+                    mountPoint = mntPath,
+                    label = label,
+                    uuid = uuid,
+                    isMounted = true,
+                    isTargetMount = mntPath == targetMountPoint,
+                    isPortableMount = true,
+                    isMountTargetReady = fsType.equals("f2fs", ignoreCase = true) || fsType.equals("ext4", ignoreCase = true)
+                )
+            )
         }
 
         if (partitionItems.isEmpty()) {
@@ -541,33 +660,49 @@ class StorageManager {
     suspend fun detectAllDisks(targetMountPoint: String = "/data/sdext2"): List<SdCardDiskInfo> = withContext(Dispatchers.IO) {
         val partitions = detectPartitions(targetMountPoint)
 
-        // 1. Discover all disk candidate names from partitions or /sys/block
+        // 1. Discover all disk candidate names from partitions or RootShell sysfs inspection
         val candidateDiskNames = linkedSetOf<String>()
         partitions.forEach { candidateDiskNames.add(it.diskName) }
 
-        // Also inspect /sys/block for mmcblk* and sd*
-        try {
-            val sysBlock = java.io.File("/sys/block")
-            if (sysBlock.exists() && sysBlock.isDirectory) {
-                sysBlock.listFiles()?.forEach { f ->
-                    val name = f.name
-                    if (name.startsWith("mmcblk") && !name.contains("boot") && !name.contains("rpmb")) {
-                        candidateDiskNames.add(name)
-                    } else if (name.matches(Regex("sd[a-z]"))) {
-                        val rem = try {
-                            java.io.File(f, "removable").readText().trim()
-                        } catch (_: Exception) { "0" }
-                        if (rem == "1") {
-                            candidateDiskNames.add(name)
-                        }
+        // Also inspect removable & USB disks via RootShell (SELinux-safe)
+        val remRes = RootShell.exec("grep . /sys/block/*/removable 2>/dev/null")
+        if (remRes.isSuccess) {
+            remRes.stdout.forEach { line ->
+                val disk = line.substringBefore("/removable:").substringAfterLast("/")
+                val isRem = line.substringAfter("/removable:").trim() == "1"
+                if (isRem && !disk.startsWith("loop") && !disk.startsWith("ram") && !disk.startsWith("zram") && !disk.contains("boot") && !disk.contains("rpmb")) {
+                    candidateDiskNames.add(disk)
+                }
+            }
+        }
+
+        val usbRes = RootShell.exec("ls -l /sys/block/ 2>/dev/null")
+        if (usbRes.isSuccess) {
+            usbRes.stdout.forEach { line ->
+                if (line.contains("/usb") || line.contains("usb-") || line.contains("musb-")) {
+                    val target = line.substringAfterLast(" -> ")
+                    val diskName = target.substringAfterLast("/")
+                    if (diskName.isNotBlank() && !diskName.startsWith("loop") && !diskName.startsWith("ram") && !diskName.startsWith("zram")) {
+                        candidateDiskNames.add(diskName)
+                    }
+                    val nameBefore = line.substringBefore(" -> ").trim().substringAfterLast(" ")
+                    if (nameBefore.isNotBlank() && !nameBefore.startsWith("loop") && !nameBefore.startsWith("ram") && !nameBefore.startsWith("zram")) {
+                        candidateDiskNames.add(nameBefore)
                     }
                 }
             }
-        } catch (_: Exception) {}
+        }
 
         if (candidateDiskNames.isEmpty()) {
-            if (java.io.File("/sys/block/mmcblk0").exists()) candidateDiskNames.add("mmcblk0")
-            else if (java.io.File("/sys/block/mmcblk1").exists()) candidateDiskNames.add("mmcblk1")
+            val checkMmc = RootShell.exec("ls -d /sys/block/mmcblk* 2>/dev/null")
+            if (checkMmc.isSuccess) {
+                checkMmc.stdout.forEach { line ->
+                    val name = line.trim().substringAfterLast("/")
+                    if (name.startsWith("mmcblk") && !name.contains("boot") && !name.contains("rpmb")) {
+                        candidateDiskNames.add(name)
+                    }
+                }
+            }
         }
 
         val disks = mutableListOf<SdCardDiskInfo>()
@@ -578,46 +713,32 @@ class StorageManager {
             val diskType = if (isMmc) DiskType.MICRO_SD else DiskType.USB_OTG
 
             // Read hardware manufacturer ID & model
-            var manfid = try {
-                val f = java.io.File("/sys/block/$candidateDisk/device/manfid")
-                if (f.exists() && f.canRead()) f.readText().trim() else ""
-            } catch (_: Exception) { "" }
-            if (manfid.isBlank() && isMmc) {
+            var manfid = ""
+            if (isMmc) {
                 val res = RootShell.exec("cat /sys/block/$candidateDisk/device/manfid 2>/dev/null")
                 if (res.isSuccess) manfid = res.output.trim()
             }
 
-            var model = try {
-                val f = java.io.File("/sys/block/$candidateDisk/device/name")
-                if (f.exists() && f.canRead()) f.readText().trim() else ""
-            } catch (_: Exception) { "" }
-            if (model.isBlank()) {
-                val res = RootShell.exec("cat /sys/block/$candidateDisk/device/name 2>/dev/null")
-                if (res.isSuccess && res.output.isNotBlank()) {
-                    model = res.output.trim()
-                } else {
-                    val usbModelRes = RootShell.exec("cat /sys/block/$candidateDisk/device/model 2>/dev/null")
-                    if (usbModelRes.isSuccess) model = usbModelRes.output.trim()
-                }
+            var model = ""
+            val nameRes = RootShell.exec("cat /sys/block/$candidateDisk/device/name 2>/dev/null")
+            if (nameRes.isSuccess && nameRes.output.isNotBlank()) {
+                model = nameRes.output.trim()
+            } else {
+                val usbModelRes = RootShell.exec("cat /sys/block/$candidateDisk/device/model 2>/dev/null")
+                if (usbModelRes.isSuccess) model = usbModelRes.output.trim()
             }
 
-            var vendor = try {
-                val f = java.io.File("/sys/block/$candidateDisk/device/vendor")
-                if (f.exists() && f.canRead()) f.readText().trim() else ""
-            } catch (_: Exception) { "" }
-            if (vendor.isBlank() && !isMmc) {
+            var vendor = ""
+            if (!isMmc) {
                 val res = RootShell.exec("cat /sys/block/$candidateDisk/device/vendor 2>/dev/null")
                 if (res.isSuccess) vendor = res.output.trim()
             }
 
             // Read disk sector count
-            var sizeSectors = try {
-                val f = java.io.File("/sys/block/$candidateDisk/size")
-                if (f.exists() && f.canRead()) f.readText().trim().toLongOrNull() ?: 0L else 0L
-            } catch (_: Exception) { 0L }
-            if (sizeSectors == 0L) {
-                val res = RootShell.exec("cat /sys/block/$candidateDisk/size 2>/dev/null")
-                if (res.isSuccess) sizeSectors = res.output.trim().toLongOrNull() ?: 0L
+            var sizeSectors = 0L
+            val sizeRes = RootShell.exec("cat /sys/block/$candidateDisk/size 2>/dev/null")
+            if (sizeRes.isSuccess) {
+                sizeSectors = sizeRes.output.trim().toLongOrNull() ?: 0L
             }
 
             val diskPartitions = partitions.filter { it.diskName == candidateDisk }
@@ -628,7 +749,7 @@ class StorageManager {
             }
 
             val totalUsedBytes = diskPartitions.sumOf { it.usedBytes }
-            val totalFreeBytes = if (totalUsedBytes > 0L) {
+            val totalFreeBytes = if (totalSizeBytes > totalUsedBytes) {
                 (totalSizeBytes - totalUsedBytes).coerceAtLeast(0L)
             } else {
                 diskPartitions.sumOf { it.freeBytes }
@@ -651,16 +772,18 @@ class StorageManager {
                     if (mVendor == "MicroSD") "MicroSD Card" else "$mVendor MicroSD"
                 }
                 else -> {
-                    if (vendor.isNotBlank()) "$vendor USB OTG" else "USB OTG Storage"
+                    if (vendor.isNotBlank()) "$vendor USB" else "USB OTG"
                 }
             }
+
+            val cleanModel = if (model.isNotBlank()) model else if (!isMmc) "Storage" else ""
 
             disks.add(
                 SdCardDiskInfo(
                     devicePath = diskPath,
                     diskName = candidateDisk,
                     vendorName = vendorDisplayName,
-                    modelName = model,
+                    modelName = cleanModel,
                     totalSizeBytes = totalSizeBytes,
                     totalUsedBytes = totalUsedBytes,
                     totalFreeBytes = totalFreeBytes,

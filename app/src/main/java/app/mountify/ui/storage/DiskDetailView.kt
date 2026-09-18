@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -223,7 +224,7 @@ private fun DiskHardwareOverviewCard(
     onOpenWizard: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val diskTypeIcon = if (disk.diskType == DiskType.MICRO_SD) Icons.Default.SdStorage else Icons.Default.Storage
+    val diskTypeIcon = if (disk.diskType == DiskType.MICRO_SD) Icons.Default.SdStorage else Icons.Default.Usb
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -285,7 +286,7 @@ private fun DiskHardwareOverviewCard(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                 ) {
                     Text(
-                        text = "${disk.partitions.size} Partisi",
+                        text = stringResource(R.string.storage_disk_partitions_badge, disk.partitions.size),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

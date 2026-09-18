@@ -5,6 +5,16 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.49] - 2026-09-18
+
+### Fixed
+- **USB OTG & Public `/storage/*` Volume Detection**:
+  - Resolved an issue where USB OTG flash drives and Android public storage volumes (`/storage/<UUID>`) were ignored during hardware partition scans.
+  - Replaced Java-based sysfs reads with SELinux-safe RootShell batch queries for `/sys/block/*/removable` and USB bus controllers (`ls -l /sys/block/`).
+  - Added support for unpartitioned whole block devices (e.g. `/dev/block/sda`, `/dev/block/sdd` formatted without MBR/GPT partition tables).
+  - Integrated Android Vold public volume resolution (`sm list-volumes public`) and a supplementary `/storage/*` mount scanner to guarantee all connected external media are registered in telemetry and partition maps.
+  - Updated `DiskDetailView` with dedicated USB iconography (`Icons.Default.Usb`) and localized partition badges.
+
 ## [2.1.48] - 2026-09-18
 
 ### Changed
