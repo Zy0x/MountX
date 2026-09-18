@@ -81,6 +81,9 @@ data class PartitionInfo(
     val usedPercent: Float
         get() = if (sizeBytes > 0L && usedBytes > 0L) (usedBytes.toFloat() / sizeBytes.toFloat()).coerceIn(0f, 1f) else 0f
 
+    val cleanShortName: String
+        get() = if (partitionNumber > 0) "Part $partitionNumber" else name.takeLast(6)
+
     val shortName: String
         get() = when {
             isTargetMount -> "Part $partitionNumber (Target)"

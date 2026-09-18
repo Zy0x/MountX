@@ -5,6 +5,30 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.48] - 2026-09-18
+
+### Changed
+- **Storage Screen Header Streamlining & Pull-to-Refresh**:
+  - Simplified the top bar to display only the screen title (`Storage`), removing redundant subtitle metrics and top action icons.
+  - Replaced manual top refresh and backup icons with native `PullToRefreshBox` swipe gesture support and automated partition scanning on screen entry.
+- **Partition Telemetry Hero Optimization**:
+  - Removed the redundant `[ ✓ Mounted ]` badge from the hero telemetry header to declutter the interface.
+  - Trimmed hardware drive names to display clean vendor and model info (`hardwareTitle`), eliminating duplicate byte capacity strings next to the name.
+- **Visual Partition Map Layout & 4-Tier Health Gradients**:
+  - Relocated the `[ Kelola › ]` / `[ Manage › ]` button to the bottom-right of each drive card, providing full horizontal width for drive titles without label truncation.
+  - Removed the static bottom guidance text while maintaining full-card tap accessibility.
+  - Implemented a dynamic 4-tier traffic-light health gradient across all partition usage bars:
+    - `0–60%`: Emerald Green (`#10B981`)
+    - `60–80%`: Green-to-Yellow transition (`#EAB308`)
+    - `80–90%`: Yellow-to-Orange transition (`#F97316`)
+    - `90–100%`: Orange-to-Red transition (`#EF4444`)
+  - Standardized segment text inside the visual map to display clean `Part X` labels with byte capacities, and formatted the legend as `Part X (Used: X GB • Free: Y GB)`.
+- **Disk Detail View Standardization**:
+  - Renamed the section header from `PARTITION TELEMETRY` to `Disk` for conciseness and visual balance.
+  - Redesigned the `Repartition Disk` action button with a high-contrast Aurora gradient brush (`#00E5FF` to `#2563EB`) and bold white typography.
+  - Standardized partition card badges to technical status indicators: `Mounted` (`Ter-mount`) in green and `Unmounted` (`Belum Di-mount`) in neutral outline, deprecating specialized `Target Active` and `System Portable` badges.
+  - Applied the 4-tier dynamic health gradient to the disk gauge bar, mini partition map, and individual partition storage meters.
+
 ## [2.1.47] - 2026-09-18
 
 ### Fixed

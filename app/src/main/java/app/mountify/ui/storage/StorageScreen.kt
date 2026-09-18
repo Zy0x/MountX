@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -303,56 +304,79 @@ fun StorageContent(
     Scaffold(
         topBar = {
             CompactScreenHeader(
-                title = stringResource(R.string.storage_title),
-                subtitle = if (storage != null && storage.isMounted) {
-                    "${storage.filesystem.uppercase()} • ${storage.mountPoint} • ${FormatUtils.formatBytes(storage.freeBytes)} free"
-                } else {
-                    stringResource(R.string.storage_not_mounted)
-                },
-                actions = {
-                    IconButton(
-                        onClick = onNavigateToBackup,
-                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.FileUpload,
-                            contentDescription = stringResource(R.string.backup_title),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-                    IconButton(
-                        onClick = onRefreshPartitions,
-                        modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.storage_detect_devices),
-                            tint = if (isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-                }
+                title = stringResource(R.string.storage_title)
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier.fillMaxSize()
     ) { paddingValues ->
-        if (isLandscape) {
-            // Dual-Column Responsive Layout for Landscape / Tablet
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = isScanning,
+            onRefresh = onRefreshPartitions,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            if (isLandscape) {
+                // Dual-Column Responsive Layout for Landscape / Tablet
+                Row(
                     modifier = Modifier
-                        .weight(1.1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
+                    ) {
+                        item {
+                            StatusFeedbackBanner(
+                                statusMessage = statusMessage,
+                                onDismiss = onClearStatusMessage
+                            )
+                        }
+                        item {
+                            MultiDiskTelemetryCard(
+                                storage = storage,
+                                internalStorage = internalStorage,
+                                disks = effectiveDisks,
+                                offloadedStats = offloadedStats,
+                                onNavigateToGames = onNavigateToGames
+                            )
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
+                    ) {
+                        item {
+                            MultiDiskVisualMapSection(
+                                disks = effectiveDisks,
+                                onOpenDiskDetail = onOpenDiskDetail
+                            )
+                        }
+                        item {
+                            QuickBackupCard(
+                                onExport = onExportConfig,
+                                onImport = onImportConfig,
+                                onOpenFullBackup = onNavigateToBackup
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Single-Column Responsive Layout for Portrait
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     item {
                         StatusFeedbackBanner(
@@ -360,6 +384,7 @@ fun StorageContent(
                             onDismiss = onClearStatusMessage
                         )
                     }
+
                     item {
                         MultiDiskTelemetryCard(
                             storage = storage,
@@ -369,21 +394,14 @@ fun StorageContent(
                             onNavigateToGames = onNavigateToGames
                         )
                     }
-                }
 
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
-                ) {
                     item {
                         MultiDiskVisualMapSection(
                             disks = effectiveDisks,
                             onOpenDiskDetail = onOpenDiskDetail
                         )
                     }
+
                     item {
                         QuickBackupCard(
                             onExport = onExportConfig,
@@ -391,47 +409,6 @@ fun StorageContent(
                             onOpenFullBackup = onNavigateToBackup
                         )
                     }
-                }
-            }
-        } else {
-            // Single-Column Responsive Layout for Portrait
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                item {
-                    StatusFeedbackBanner(
-                        statusMessage = statusMessage,
-                        onDismiss = onClearStatusMessage
-                    )
-                }
-
-                item {
-                    MultiDiskTelemetryCard(
-                        storage = storage,
-                        internalStorage = internalStorage,
-                        disks = effectiveDisks,
-                        offloadedStats = offloadedStats,
-                        onNavigateToGames = onNavigateToGames
-                    )
-                }
-
-                item {
-                    MultiDiskVisualMapSection(
-                        disks = effectiveDisks,
-                        onOpenDiskDetail = onOpenDiskDetail
-                    )
-                }
-
-                item {
-                    QuickBackupCard(
-                        onExport = onExportConfig,
-                        onImport = onImportConfig,
-                        onOpenFullBackup = onNavigateToBackup
-                    )
                 }
             }
         }
@@ -567,10 +544,6 @@ private fun MultiDiskTelemetryCard(
                         )
                     }
                 }
-
-                StatusChip(
-                    status = if (storage?.isMounted == true) MountStatus.MOUNTED else MountStatus.UNMOUNTED
-                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -674,7 +647,7 @@ private fun MultiDiskTelemetryCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = disk.displayName,
+                                text = disk.hardwareTitle,
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -855,83 +828,47 @@ private fun DiskVisualMapOverviewCard(
         modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            // Header: Disk Name, Type Icon, and Compact Manage Pill
+            // Header: Disk Name & Type Icon (full width, no truncation)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f, fill = false)
+                val diskIcon = if (disk.diskType == DiskType.USB_OTG) Icons.Default.Usb else Icons.Default.SdCard
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(CyberEmerald.copy(alpha = 0.12f))
                 ) {
-                    val diskIcon = if (disk.diskType == DiskType.USB_OTG) Icons.Default.Usb else Icons.Default.SdCard
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(CyberEmerald.copy(alpha = 0.12f))
-                    ) {
-                        Icon(
-                            imageVector = diskIcon,
-                            contentDescription = null,
-                            tint = CyberEmerald,
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = disk.hardwareTitle,
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${disk.devicePath} • ${disk.partitions.size} " + stringResource(R.string.storage_disk_partitions_list).lowercase(),
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Icon(
+                        imageVector = diskIcon,
+                        contentDescription = null,
+                        tint = CyberEmerald,
+                        modifier = Modifier.size(17.dp)
+                    )
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Compact "Kelola" / "Manage" Action Pill Badge
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.storage_disk_manage_badge),
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = disk.hardwareTitle,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${disk.devicePath} • ${disk.partitions.size} " + stringResource(R.string.storage_disk_partitions_list).lowercase(),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -985,16 +922,9 @@ private fun DiskVisualMapOverviewCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Proportional Two-Tier Visual Partition Map Bar (High Contrast & Clear Boundaries)
+            // Proportional Two-Tier Visual Partition Map Bar (4-Tier Health Dynamics)
             if (disk.partitions.isNotEmpty()) {
                 val totalDiskBytes = disk.totalSizeBytes.coerceAtLeast(1L)
-                val partitionColors = listOf(
-                    Color(0xFF0284C7), // Vivid Sky Blue for P1 (Portable)
-                    Color(0xFF059669), // Cyber Emerald for P2/P3 (Target Mount / F2FS)
-                    Color(0xFFD97706), // Tangerine Amber for P3/Other
-                    Color(0xFF7C3AED), // Violet for P4
-                    Color(0xFFEC4899)  // Pink for P5+
-                )
 
                 Row(
                     modifier = Modifier
@@ -1007,8 +937,10 @@ private fun DiskVisualMapOverviewCard(
                             Spacer(modifier = Modifier.width(3.dp))
                         }
 
-                        val color = partitionColors[idx % partitionColors.size]
                         val weightFraction = (part.sizeBytes.toFloat() / totalDiskBytes.toFloat()).coerceAtLeast(0.06f)
+                        val usedFraction = if (part.usedBytes > 0L) {
+                            (part.usedBytes.toFloat() / part.sizeBytes.toFloat()).coerceIn(0f, 1f)
+                        } else 0f
 
                         Box(
                             modifier = Modifier
@@ -1017,24 +949,18 @@ private fun DiskVisualMapOverviewCard(
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(Color(0xFF131722))
                                 .border(
-                                    BorderStroke(1.dp, color.copy(alpha = 0.65f)),
+                                    BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
                                     RoundedCornerShape(6.dp)
                                 )
                         ) {
-                            // Inner solid used space bar with gradient and right edge highlight line
-                            val usedFraction = if (part.usedBytes > 0L) {
-                                (part.usedBytes.toFloat() / part.sizeBytes.toFloat()).coerceIn(0f, 1f)
-                            } else 0f
-
+                            // Inner solid used space bar with 4-tier health gradient and right edge highlight line
                             if (usedFraction > 0.001f) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxHeight()
                                         .fillMaxWidth(fraction = usedFraction)
                                         .background(
-                                            Brush.horizontalGradient(
-                                                listOf(color.copy(alpha = 0.75f), color)
-                                            )
+                                            FormatUtils.getHealthBrush(usedFraction)
                                         )
                                 ) {
                                     // Sharp white highlight divider line at used space edge
@@ -1057,7 +983,7 @@ private fun DiskVisualMapOverviewCard(
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 Text(
-                                    text = part.shortName,
+                                    text = part.cleanShortName,
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold
@@ -1088,14 +1014,8 @@ private fun DiskVisualMapOverviewCard(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    disk.partitions.forEachIndexed { idx, part ->
-                        val color = partitionColors[idx % partitionColors.size]
-                        val roleLabel = when {
-                            part.isTargetMount -> "[Target sdext2]"
-                            part.isPortableMount -> "[Portable]"
-                            part.fsType.isNotBlank() -> "[${part.fsType.uppercase()}]"
-                            else -> ""
-                        }
+                    disk.partitions.forEach { part ->
+                        val healthColor = FormatUtils.getHealthColor(part.usedPercent)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(vertical = 2.dp)
@@ -1104,13 +1024,13 @@ private fun DiskVisualMapOverviewCard(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(color)
+                                    .background(healthColor)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             val usageDetail = if (part.usedBytes > 0L) {
-                                "${part.shortName} $roleLabel: ${FormatUtils.formatBytes(part.sizeBytes)} (Used: ${FormatUtils.formatBytes(part.usedBytes)} • Free: ${FormatUtils.formatBytes(part.freeBytes)})"
+                                "${part.cleanShortName} (${stringResource(R.string.storage_used)}: ${FormatUtils.formatBytes(part.usedBytes)} • ${stringResource(R.string.storage_free)}: ${FormatUtils.formatBytes(part.freeBytes)})"
                             } else {
-                                "${part.shortName} $roleLabel: ${FormatUtils.formatBytes(part.sizeBytes)}"
+                                "${part.cleanShortName} (${stringResource(R.string.storage_total)}: ${FormatUtils.formatBytes(part.sizeBytes)})"
                             }
                             Text(
                                 text = usageDetail,
@@ -1126,26 +1046,38 @@ private fun DiskVisualMapOverviewCard(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Bottom Hint Caption
+                // Bottom Right Manage Action Pill Button
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = stringResource(R.string.storage_disk_card_tap_hint),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Normal
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.storage_disk_manage_badge),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

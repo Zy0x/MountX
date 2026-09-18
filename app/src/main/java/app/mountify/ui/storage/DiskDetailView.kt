@@ -103,7 +103,7 @@ fun DiskDetailView(
     Scaffold(
         topBar = {
             CompactScreenHeader(
-                title = disk.displayName,
+                title = disk.hardwareTitle,
                 subtitle = stringResource(R.string.storage_disk_detail_subtitle, disk.partitions.size),
                 navigationIcon = {
                     IconButton(
@@ -258,7 +258,7 @@ private fun DiskHardwareOverviewCard(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = disk.displayName,
+                            text = disk.hardwareTitle,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
@@ -303,7 +303,7 @@ private fun DiskHardwareOverviewCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = stringResource(R.string.storage_specs).uppercase(),
+                    text = stringResource(R.string.storage_section_disk_label).uppercase(),
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
@@ -329,7 +329,7 @@ private fun DiskHardwareOverviewCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Cumulative Capacity Progress Bar
+            // Cumulative Capacity Progress Bar (4-Tier Health Gradient)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -344,9 +344,7 @@ private fun DiskHardwareOverviewCard(
                             .fillMaxHeight()
                             .clip(CircleShape)
                             .background(
-                                Brush.horizontalGradient(
-                                    listOf(CyberEmerald, ElectricCyan)
-                                )
+                                FormatUtils.getHealthBrush(disk.usedPercent)
                             )
                     )
                 }
@@ -354,32 +352,42 @@ private fun DiskHardwareOverviewCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Partition Wizard Action Button
-            Button(
+            // Partition Wizard Action Button (Vivid Aurora Gradient with High Contrast White Text)
+            Surface(
                 onClick = onOpenWizard,
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.primary
-                ),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                color = Color.Transparent,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Tune,
-                    contentDescription = null,
-                    modifier = Modifier.size(15.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = stringResource(R.string.storage_action_repartition),
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF00E5FF), Color(0xFF2563EB))
+                        )
                     )
-                )
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.storage_action_repartition),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Color.White
+                    )
+                }
             }
         }
     }
@@ -426,25 +434,13 @@ private fun DiskMiniVisualMapCard(
                         .padding(3.dp),
                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    val partitionColors = listOf(
-                        Color(0xFF0284C7), // Sky Blue for P1 (Portable)
-                        Color(0xFF059669), // Cyber Emerald for P2/Target
-                        Color(0xFFD97706), // Tangerine Amber for P3
-                        Color(0xFF7C3AED), // Violet for P4
-                        Color(0xFFEC4899)  // Pink for P5+
-                    )
-
-                    partitions.forEachIndexed { idx, part ->
+                    partitions.forEach { part ->
                         val rawFraction = (part.sizeBytes.toFloat() / totalBytes.toFloat()).coerceIn(0.01f, 1f)
                         val weight = rawFraction.coerceAtLeast(0.12f)
-                        val color = partitionColors[idx % partitionColors.size]
-
-                        val shortName = if (weight < 0.25f && part.name.startsWith("mmcblk0p")) {
-                            "p${part.name.removePrefix("mmcblk0p")}"
-                        } else if (weight < 0.20f && part.name.startsWith("mmcblk")) {
-                            part.name.removePrefix("mmcblk")
+                        val shortName = if (weight < 0.25f && part.partitionNumber > 0) {
+                            "P${part.partitionNumber}"
                         } else {
-                            part.shortName
+                            part.cleanShortName
                         }
 
                         Box(
@@ -453,18 +449,19 @@ private fun DiskMiniVisualMapCard(
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0xFF131722))
-                                .border(BorderStroke(1.dp, color.copy(alpha = 0.65f)), RoundedCornerShape(8.dp))
+                                .border(
+                                    BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                                    RoundedCornerShape(8.dp)
+                                )
                         ) {
-                            // Two-tier fill level: Solid fill for Used space with white edge highlight line
+                            // Two-tier fill level: Solid fill for Used space with 4-tier health gradient and white edge highlight line
                             if (part.usedPercent > 0.001f) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxHeight()
                                         .fillMaxWidth(fraction = part.usedPercent)
                                         .background(
-                                            Brush.horizontalGradient(
-                                                listOf(color.copy(alpha = 0.75f), color)
-                                            )
+                                            FormatUtils.getHealthBrush(part.usedPercent)
                                         )
                                 ) {
                                     Box(
@@ -532,27 +529,14 @@ private fun DiskPartitionCard(
     var showMountedFormatWarning by remember { mutableStateOf(false) }
     var showPortableInfoDialog by remember { mutableStateOf(false) }
 
-    val partitionColors = listOf(
-        Color(0xFF0284C7), // Sky Blue for P1
-        Color(0xFF059669), // Cyber Emerald for Target
-        Color(0xFFD97706), // Amber for P3
-        Color(0xFF7C3AED)  // Violet for P4
-    )
-    val partColor = when {
-        partition.isTargetMount -> CyberEmerald
-        partition.isPortableMount -> Color(0xFF0284C7)
-        partition.fsType.equals("f2fs", ignoreCase = true) -> CyberEmerald
-        partition.fsType.equals("ext4", ignoreCase = true) -> Color(0xFF0284C7)
-        else -> partitionColors[(partition.partitionNumber.coerceAtLeast(1) - 1) % partitionColors.size]
-    }
+    val partBadgeColor = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.primary
 
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (partition.isTargetMount) CyberEmerald.copy(alpha = 0.6f)
-            else if (partition.isPortableMount) Color(0xFF0284C7).copy(alpha = 0.5f)
+            if (partition.isMounted) CyberEmerald.copy(alpha = 0.5f)
             else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
         ),
         modifier = modifier.fillMaxWidth()
@@ -570,13 +554,13 @@ private fun DiskPartitionCard(
                         modifier = Modifier
                             .size(28.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(partColor.copy(alpha = 0.15f))
+                            .background(partBadgeColor.copy(alpha = 0.15f))
                     ) {
                         Text(
                             text = "P${partition.partitionNumber.takeIf { it > 0 } ?: 1}",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = partColor
+                            color = partBadgeColor
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
@@ -600,103 +584,45 @@ private fun DiskPartitionCard(
                     }
                 }
 
-                // Status Badge
-                when {
-                    partition.isTargetMount -> {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = CyberEmerald.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.5f))
+                // Standard Technical Status Badge (Mounted / Unmounted)
+                if (partition.isMounted) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = CyberEmerald.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = CyberEmerald,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.storage_badge_target_active),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CyberEmerald
-                                )
-                            }
-                        }
-                    }
-                    partition.isPortableMount -> {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF0284C7).copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.5f))
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.SdStorage,
-                                    contentDescription = null,
-                                    tint = Color(0xFF0284C7),
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.storage_badge_system_portable),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF0284C7)
-                                )
-                            }
-                        }
-                    }
-                    partition.isMounted -> {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = ElectricCyan.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.5f))
-                        ) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = CyberEmerald,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = stringResource(R.string.storage_badge_portable),
+                                text = stringResource(R.string.storage_status_mounted_badge),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ElectricCyan,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                color = CyberEmerald
                             )
                         }
                     }
-                    partition.isMountTargetReady -> {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-                        ) {
-                            Text(
-                                text = stringResource(R.string.storage_badge_ready),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
-                    else -> {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.storage_partition_unmounted),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Normal,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = stringResource(R.string.storage_status_unmounted_badge),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
                     }
                 }
             }
@@ -718,7 +644,7 @@ private fun DiskPartitionCard(
                         text = partition.fsType.ifBlank { "RAW" }.uppercase(),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = partColor,
+                        color = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -757,7 +683,7 @@ private fun DiskPartitionCard(
                 }
             }
 
-            // Storage Fill Bar if mounted or size is known
+            // Storage Fill Bar if mounted or size is known (4-Tier Health Gradient)
             if (partition.isMounted && partition.usedBytes > 0L) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
@@ -778,7 +704,7 @@ private fun DiskPartitionCard(
                         text = "${(partition.usedPercent * 100).toInt()}%",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = partColor
+                        color = FormatUtils.getHealthColor(partition.usedPercent)
                     )
                 }
 
@@ -796,7 +722,7 @@ private fun DiskPartitionCard(
                             .fillMaxWidth(fraction = partition.usedPercent)
                             .fillMaxHeight()
                             .clip(CircleShape)
-                            .background(partColor)
+                            .background(FormatUtils.getHealthBrush(partition.usedPercent))
                     )
                 }
             }

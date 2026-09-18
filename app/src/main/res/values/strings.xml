@@ -308,6 +308,9 @@
     <string name="storage_system_mounted_info_title">Managed by Android</string>
     <string name="storage_system_mounted_info_desc">This partition is mounted by the Android system as portable external storage (%1$s). Files can be accessed through file managers or system storage.</string>
     <string name="storage_format_mounted_warning_desc">This partition is actively mounted (%1$s). Please unmount the partition first before formatting to avoid filesystem corruption.</string>
+    <string name="storage_status_mounted_badge">Mounted</string>
+    <string name="storage_status_unmounted_badge">Unmounted</string>
+    <string name="storage_section_disk_label">Disk</string>
 
 
     <!-- Format Partition -->
