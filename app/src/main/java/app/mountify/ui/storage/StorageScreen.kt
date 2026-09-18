@@ -88,6 +88,10 @@ fun StorageScreen(
     var selectedFs by remember { mutableStateOf(FilesystemType.F2FS) }
     var showFormatDialog by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        viewModel.detectPartitions(force = false)
+    }
+
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
@@ -849,6 +853,9 @@ private fun PartitionScannerCard(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+    val visiblePartitions = if (isExpanded || partitions.size <= 4) partitions else partitions.take(4)
+
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -906,12 +913,35 @@ private fun PartitionScannerCard(
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        partitions.forEach { part ->
-                            val isSelected = selectedPartition?.path == part.path
-                            PartitionListItem(
-                                partition = part,
-                                isSelected = isSelected,
-                                onClick = { onSelectPartition(part) }
+                        visiblePartitions.forEach { part ->
+                            key(part.path) {
+                                val isSelected = selectedPartition?.path == part.path
+                                PartitionListItem(
+                                    partition = part,
+                                    isSelected = isSelected,
+                                    onClick = { onSelectPartition(part) }
+                                )
+                            }
+                        }
+                    }
+
+                    if (partitions.size > 4) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        TextButton(
+                            onClick = { isExpanded = !isExpanded },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(34.dp),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(
+                                text = if (isExpanded) {
+                                    stringResource(R.string.storage_show_less)
+                                } else {
+                                    "${stringResource(R.string.storage_show_more)} (${partitions.size})"
+                                },
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }

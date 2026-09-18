@@ -5,6 +5,20 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.43] - 2026-09-18
+
+### Performance
+- **Zero-Lag Startup & Lazy ViewModel Initialization**:
+  - Configured `HorizontalPager` with `beyondViewportPageCount = 0`, ensuring only the active `DashboardScreen` is composed on application launch.
+  - Deferred initialization of `GamesViewModel`, `StorageViewModel`, `LogsViewModel`, and `SettingsViewModel` so they are instantiated on-demand only when their respective tab pages are navigated to.
+  - Removed synchronous disk scanning and root shell polling loops from `StorageViewModel` and `LogsViewModel` initializers, eliminating background process contention and reducing cold-start time to <150ms.
+- **Storage Partition Filtering & UI Optimization**:
+  - Filtered out internal non-removable UFS LUN partitions (`sdc1` to `sdc60`, etc.) in `StorageManager.detectPartitions()` via `/sys/block/<disk>/removable` sysfs check and minimum 250MB threshold. This eliminates 50+ internal firmware partitions from flooding the candidate list.
+  - Excluded Android root system mountpoints (`/`, `/system`, `/vendor`, `/data`, `/persist`, `/apex`) from being erroneously classified as candidate SD partitions.
+  - Optimized `PartitionScannerCard` in `StorageScreen` with item keying and an expandable partition toggle (`storage_show_more`), capping initial card rendering to 4 items and eliminating UI layout stalls.
+- **Lifecycle-Aware Log Tailing**:
+  - Replaced persistent infinite log polling in `LogsViewModel` with lifecycle-bound `startTailing()` and `stopTailing()` tied to `DisposableEffect` in `LogsScreen`, stopping background shell executions while on other tabs.
+
 ## [2.1.42] - 2026-09-18
 
 ### Performance

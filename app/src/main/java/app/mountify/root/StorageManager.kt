@@ -142,8 +142,48 @@ class StorageManager {
                     }
 
                     val isTargetMount = mountPoint == targetMountPoint
+
+                    // Disk removability check (sysfs /sys/block/<disk>/removable)
+                    val isRemovable = try {
+                        val remFile = java.io.File("/sys/block/$diskName/removable")
+                        if (remFile.exists() && remFile.canRead()) {
+                            remFile.readText().trim() == "1"
+                        } else {
+                            isMmcPartition
+                        }
+                    } catch (_: Exception) {
+                        isMmcPartition
+                    }
+
+                    // Exclude internal fixed flash storage (such as UFS sda-sdf LUNs) unless already configured as target mount
+                    if (isSdPartition && !isRemovable && !isTargetMount) {
+                        continue
+                    }
+
+                    // Exclude tiny firmware partitions (< 250MB) unless already mounted as target
+                    if (sizeBytes < 250 * 1024 * 1024L && !isTargetMount) {
+                        continue
+                    }
+
+                    // Exclude partitions mounted to critical Android system hierarchy
+                    val isSystemMount = mountPoint != null && (
+                        mountPoint == "/" ||
+                        mountPoint == "/system" ||
+                        mountPoint == "/vendor" ||
+                        mountPoint == "/product" ||
+                        mountPoint == "/system_ext" ||
+                        mountPoint == "/metadata" ||
+                        mountPoint == "/data" ||
+                        mountPoint == "/persist" ||
+                        mountPoint.startsWith("/apex") ||
+                        mountPoint.startsWith("/mnt/vendor")
+                    )
+                    if (isSystemMount && !isTargetMount) {
+                        continue
+                    }
+
                     val isLinuxFs = fsType.equals("f2fs", ignoreCase = true) || fsType.equals("ext4", ignoreCase = true)
-                    val isSuitable = isTargetMount || isLinuxFs || (partNum >= 2 && !isMounted)
+                    val isSuitable = isTargetMount || (isRemovable && (isLinuxFs || (partNum >= 2 && !isMounted)))
 
                     partitionItems.add(
                         PartitionInfo(
@@ -230,14 +270,14 @@ class StorageManager {
      * Scans /dev/block for mmcblk[0-9]p* and sd[a-z][0-9] devices.
      */
     suspend fun detectBlockDevices(): List<String> = withContext(Dispatchers.IO) {
-        val result = RootShell.exec("ls /dev/block/mmcblk* /dev/block/sd* 2>/dev/null")
+        val result = RootShell.exec("ls /dev/block/mmcblk*p* 2>/dev/null")
         if (!result.isSuccess) return@withContext emptyList()
 
         result.stdout
             .map { it.trim() }
             .filter { line ->
-                // Keep partition blocks like mmcblk0p2, mmcblk1p1, sda1, sdb2
-                line.matches(Regex(".*/(mmcblk[0-9]+p[0-9]+|sd[a-z][0-9]+)$"))
+                // Keep partition blocks like mmcblk0p2, mmcblk1p1
+                line.matches(Regex(".*/mmcblk[0-9]+p[0-9]+$"))
             }
             .distinct()
             .sorted()

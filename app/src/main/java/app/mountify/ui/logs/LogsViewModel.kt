@@ -35,9 +35,7 @@ class LogsViewModel @Inject constructor(
     private val _selectedFilter = MutableStateFlow(LogLevel.INFO)
     val selectedFilter: StateFlow<LogLevel> = _selectedFilter.asStateFlow()
 
-    init {
-        startLogTail()
-    }
+    private var tailJob: kotlinx.coroutines.Job? = null
 
     fun toggleAutoRefresh() {
         _isAutoRefresh.value = !_isAutoRefresh.value
@@ -74,15 +72,22 @@ class LogsViewModel @Inject constructor(
         })
     }
 
-    private fun startLogTail() {
-        viewModelScope.launch {
+    fun startTailing() {
+        if (tailJob?.isActive == true) return
+        tailJob = viewModelScope.launch {
+            readLogFile()
             while (isActive) {
+                delay(6000L)
                 if (_isAutoRefresh.value) {
                     readLogFile()
                 }
-                delay(6000L)
             }
         }
+    }
+
+    fun stopTailing() {
+        tailJob?.cancel()
+        tailJob = null
     }
 
     private suspend fun readLogFile() = withContext(Dispatchers.IO) {

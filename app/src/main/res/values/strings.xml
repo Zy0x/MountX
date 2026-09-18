@@ -241,6 +241,8 @@
     <string name="storage_partition_unmounted">Unmounted</string>
     <string name="storage_partition_no_partitions">No external partitions detected. Insert an SD card or check root access.</string>
     <string name="storage_scanning">Scanning partitions…</string>
+    <string name="storage_show_more">Show all partitions</string>
+    <string name="storage_show_less">Show less</string>
     <string name="storage_selected_partition">Selected Partition</string>
     <string name="storage_app2sd_hub">App2SD &amp; Mount Hub</string>
     <string name="storage_app2sd_readiness">App2SD Readiness</string>

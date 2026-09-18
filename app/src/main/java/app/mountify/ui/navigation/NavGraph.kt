@@ -155,12 +155,6 @@ fun MainTabsScreen(
         }
     }
 
-    val dashboardVm = hiltViewModel<DashboardViewModel>()
-    val gamesVm = hiltViewModel<GamesViewModel>()
-    val storageVm = hiltViewModel<StorageViewModel>()
-    val logsVm = hiltViewModel<LogsViewModel>()
-    val settingsVm = hiltViewModel<SettingsViewModel>()
-
     Scaffold(
         bottomBar = {
             ModernNavigationBar(
@@ -185,7 +179,7 @@ fun MainTabsScreen(
     ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
-            beyondViewportPageCount = 2,
+            beyondViewportPageCount = 0,
             userScrollEnabled = isOuterPagerScrollEnabled,
             key = { it },
             modifier = Modifier
@@ -194,6 +188,7 @@ fun MainTabsScreen(
         ) { page ->
             when (page) {
                 0 -> {
+                    val dashboardVm = hiltViewModel<DashboardViewModel>()
                     DashboardScreen(
                         viewModel = dashboardVm,
                         onNavigateToGames = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
@@ -202,12 +197,14 @@ fun MainTabsScreen(
                     )
                 }
                 1 -> {
+                    val gamesVm = hiltViewModel<GamesViewModel>()
                     GamesScreen(
                         viewModel = gamesVm,
                         onPagerScrollEnabled = { isOuterPagerScrollEnabled = it }
                     )
                 }
                 2 -> {
+                    val storageVm = hiltViewModel<StorageViewModel>()
                     StorageScreen(
                         viewModel = storageVm,
                         onNavigateToBackup = onNavigateToBackup,
@@ -215,9 +212,11 @@ fun MainTabsScreen(
                     )
                 }
                 3 -> {
+                    val logsVm = hiltViewModel<LogsViewModel>()
                     LogsScreen(viewModel = logsVm)
                 }
                 4 -> {
+                    val settingsVm = hiltViewModel<SettingsViewModel>()
                     SettingsScreen(
                         viewModel = settingsVm,
                         onNavigateToAbout = onNavigateToAbout

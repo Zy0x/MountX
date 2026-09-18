@@ -230,6 +230,8 @@
     <string name="storage_partition_unmounted">Tidak Di-mount</string>
     <string name="storage_partition_no_partitions">Tidak ada partisi eksternal terdeteksi. Masukkan kartu SD atau periksa akses root.</string>
     <string name="storage_scanning">Memindai partisi…</string>
+    <string name="storage_show_more">Tampilkan semua partisi</string>
+    <string name="storage_show_less">Tampilkan lebih sedikit</string>
     <string name="storage_selected_partition">Partisi Terpilih</string>
     <string name="storage_app2sd_hub">Pusat App2SD &amp; Mount</string>
     <string name="storage_app2sd_readiness">Kesiapan App2SD</string>

@@ -41,6 +41,13 @@ fun LogsScreen(
     val isAutoRefresh by viewModel.isAutoRefresh.collectAsState()
     val listState = rememberLazyListState()
 
+    DisposableEffect(Unit) {
+        viewModel.startTailing()
+        onDispose {
+            viewModel.stopTailing()
+        }
+    }
+
     LaunchedEffect(logLines.size) {
         if (logLines.isNotEmpty()) {
             listState.scrollToItem(logLines.size - 1)

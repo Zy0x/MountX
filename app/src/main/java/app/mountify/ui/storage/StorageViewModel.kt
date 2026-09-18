@@ -77,11 +77,10 @@ class StorageViewModel @Inject constructor(
         Pair(mountedCount, totalBytes)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair(0, 0L))
 
-    init {
-        detectPartitions()
-    }
+    fun detectPartitions(force: Boolean = false) {
+        if (_isScanning.value) return
+        if (!force && _partitions.value.isNotEmpty()) return
 
-    fun detectPartitions() {
         viewModelScope.launch {
             _isScanning.value = true
             try {
@@ -105,7 +104,7 @@ class StorageViewModel @Inject constructor(
     }
 
     fun detectDevices() {
-        detectPartitions()
+        detectPartitions(force = true)
     }
 
     fun selectPartition(partition: PartitionInfo) {
