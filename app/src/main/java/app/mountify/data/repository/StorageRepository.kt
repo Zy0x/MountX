@@ -5,6 +5,8 @@ import app.mountify.data.model.InternalStorageInfo
 import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MoveDirection
 import app.mountify.data.model.PartitionInfo
+import app.mountify.data.model.PartitionSchemeConfig
+import app.mountify.data.model.SdCardDiskInfo
 import app.mountify.data.model.StorageInfo
 import app.mountify.root.StorageManager
 import kotlinx.coroutines.Dispatchers
@@ -84,6 +86,18 @@ class StorageRepository @Inject constructor(
         label: String = "sdext2"
     ): Result<Unit> = withContext(Dispatchers.IO) {
         storageManager.formatPartition(blockDevice, fsType, label)
+    }
+
+    suspend fun getSdCardDiskInfo(targetMountPoint: String = "/data/sdext2"): SdCardDiskInfo? =
+        withContext(Dispatchers.IO) {
+            storageManager.detectSdCardDiskInfo(targetMountPoint)
+        }
+
+    suspend fun repartitionDisk(
+        diskPath: String,
+        partitions: List<PartitionSchemeConfig>
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.repartitionDisk(diskPath, partitions)
     }
 
     suspend fun moveGameData(

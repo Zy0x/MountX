@@ -8,6 +8,8 @@ import app.mountify.data.model.FilesystemType
 import app.mountify.data.model.InternalStorageInfo
 import app.mountify.data.model.MountStatus
 import app.mountify.data.model.PartitionInfo
+import app.mountify.data.model.PartitionSchemeConfig
+import app.mountify.data.model.SdCardDiskInfo
 import app.mountify.data.model.StorageInfo
 import app.mountify.data.repository.GameRepository
 import app.mountify.data.repository.StorageRepository
@@ -40,6 +42,9 @@ class StorageViewModel @Inject constructor(
     val internalStorageInfo: StateFlow<InternalStorageInfo?> = storageRepository.observeInternalStorage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    private val _diskInfo = MutableStateFlow<SdCardDiskInfo?>(null)
+    val diskInfo: StateFlow<SdCardDiskInfo?> = _diskInfo.asStateFlow()
+
     private val _partitions = MutableStateFlow<List<PartitionInfo>>(emptyList())
     val partitions: StateFlow<List<PartitionInfo>> = _partitions.asStateFlow()
 
@@ -67,6 +72,19 @@ class StorageViewModel @Inject constructor(
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
+    // Wizard States
+    private val _isWizardOpen = MutableStateFlow(false)
+    val isWizardOpen: StateFlow<Boolean> = _isWizardOpen.asStateFlow()
+
+    private val _wizardPartitions = MutableStateFlow<List<PartitionSchemeConfig>>(emptyList())
+    val wizardPartitions: StateFlow<List<PartitionSchemeConfig>> = _wizardPartitions.asStateFlow()
+
+    private val _isRepartitioning = MutableStateFlow(false)
+    val isRepartitioning: StateFlow<Boolean> = _isRepartitioning.asStateFlow()
+
+    private val _repartitionError = MutableStateFlow<String?>(null)
+    val repartitionError: StateFlow<String?> = _repartitionError.asStateFlow()
+
     val configuredSdBase = appPreferences.sdBasePath
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "/data/sdext2")
 
@@ -89,16 +107,170 @@ class StorageViewModel @Inject constructor(
                 _partitions.value = detected
                 _detectedDevices.value = detected.map { it.path }
 
+                // Fetch hardware disk info
+                val disk = storageRepository.getSdCardDiskInfo(sdBase)
+                _diskInfo.value = disk
+
                 // Auto-select active target mount or first suitable partition
                 val currentSel = _selectedPartition.value
                 val matched = detected.firstOrNull { it.path == currentSel?.path }
                     ?: detected.firstOrNull { it.isTargetMount }
-                    ?: detected.firstOrNull { it.isSuitableForApp2sd }
+                    ?: detected.firstOrNull { it.isMountTargetReady }
                     ?: detected.firstOrNull()
 
                 _selectedPartition.value = matched
             } finally {
                 _isScanning.value = false
+            }
+        }
+    }
+
+    fun openPartitionWizard() {
+        val disk = _diskInfo.value
+        val totalBytes = if (disk != null && disk.totalSizeBytes > 0) {
+            disk.totalSizeBytes
+        } else {
+            _partitions.value.sumOf { it.sizeBytes }.takeIf { it > 0 } ?: (64L * 1024 * 1024 * 1024)
+        }
+        val totalKb = totalBytes / 1024L
+
+        // Default 2-partition scheme:
+        // Part 1: Portable storage (60%), FAT32 (or exFAT)
+        // Part 2: Target Mount for games (40%), F2FS
+        val part1Kb = ((totalKb * 0.60) / 2048).toLong() * 2048L
+        val part2Kb = (totalKb - part1Kb).coerceAtLeast(1024L * 1024L)
+
+        val part1Fs = if (part1Kb > 32L * 1024 * 1024) FilesystemType.FAT32 else FilesystemType.FAT32
+        val p1 = PartitionSchemeConfig(
+            partitionIndex = 1,
+            sizeKb = part1Kb,
+            fsType = part1Fs,
+            label = "STORAGE",
+            isPrimary = true
+        )
+        val p2 = PartitionSchemeConfig(
+            partitionIndex = 2,
+            sizeKb = part2Kb,
+            fsType = FilesystemType.F2FS,
+            label = "sdext2",
+            isPrimary = true
+        )
+
+        _wizardPartitions.value = listOf(p1, p2)
+        _repartitionError.value = null
+        _isWizardOpen.value = true
+    }
+
+    fun closePartitionWizard() {
+        _isWizardOpen.value = false
+        _repartitionError.value = null
+    }
+
+    fun updatePartitionSizeKb(index: Int, sizeKb: Long) {
+        val current = _wizardPartitions.value.toMutableList()
+        if (index in current.indices) {
+            val clampedKb = sizeKb.coerceAtLeast(1024L) // Min 1MB
+            current[index] = current[index].copy(sizeKb = clampedKb)
+            _wizardPartitions.value = current
+        }
+    }
+
+    fun updatePartitionFsType(index: Int, fsType: FilesystemType) {
+        val current = _wizardPartitions.value.toMutableList()
+        if (index in current.indices) {
+            current[index] = current[index].copy(fsType = fsType)
+            _wizardPartitions.value = current
+        }
+    }
+
+    fun updatePartitionLabel(index: Int, label: String) {
+        val current = _wizardPartitions.value.toMutableList()
+        if (index in current.indices) {
+            current[index] = current[index].copy(label = label)
+            _wizardPartitions.value = current
+        }
+    }
+
+    fun addPartition() {
+        val current = _wizardPartitions.value.toMutableList()
+        if (current.size >= 4) return
+
+        val disk = _diskInfo.value
+        val totalKb = (disk?.totalSizeBytes ?: 0L) / 1024L
+        val allocatedKb = current.sumOf { it.sizeKb }
+        val unallocatedKb = (totalKb - allocatedKb).coerceAtLeast(0L)
+
+        val newIndex = current.size + 1
+        if (unallocatedKb >= 1024L * 1024L) {
+            current.add(
+                PartitionSchemeConfig(
+                    partitionIndex = newIndex,
+                    sizeKb = (unallocatedKb / 2048) * 2048L,
+                    fsType = FilesystemType.EXT4,
+                    label = "PART$newIndex"
+                )
+            )
+        } else {
+            val lastIdx = current.lastIndex
+            val lastSize = current[lastIdx].sizeKb
+            val halfSize = ((lastSize / 2) / 2048) * 2048L
+            if (halfSize >= 1024L * 1024L) {
+                current[lastIdx] = current[lastIdx].copy(sizeKb = lastSize - halfSize)
+                current.add(
+                    PartitionSchemeConfig(
+                        partitionIndex = newIndex,
+                        sizeKb = halfSize,
+                        fsType = FilesystemType.EXT4,
+                        label = "PART$newIndex"
+                    )
+                )
+            }
+        }
+        _wizardPartitions.value = current
+    }
+
+    fun removePartition(index: Int) {
+        val current = _wizardPartitions.value.toMutableList()
+        if (current.size <= 1) return
+        if (index in current.indices) {
+            val removed = current.removeAt(index)
+            val targetIdx = (index - 1).coerceAtLeast(0)
+            current[targetIdx] = current[targetIdx].copy(sizeKb = current[targetIdx].sizeKb + removed.sizeKb)
+            val reindexed = current.mapIndexed { idx, p -> p.copy(partitionIndex = idx + 1) }
+            _wizardPartitions.value = reindexed
+        }
+    }
+
+    fun autoBalanceWizardPartitions() {
+        val current = _wizardPartitions.value
+        if (current.isEmpty()) return
+        val disk = _diskInfo.value
+        val totalKb = (disk?.totalSizeBytes ?: 0L) / 1024L
+        if (totalKb <= 0) return
+        val perPartKb = ((totalKb / current.size) / 2048) * 2048L
+        val remainder = totalKb - (perPartKb * current.size)
+        val balanced = current.mapIndexed { idx, p ->
+            val extra = if (idx == current.lastIndex) remainder else 0L
+            p.copy(sizeKb = perPartKb + extra)
+        }
+        _wizardPartitions.value = balanced
+    }
+
+    fun executeRepartition() {
+        viewModelScope.launch {
+            _isRepartitioning.value = true
+            _repartitionError.value = null
+            val diskPath = _diskInfo.value?.devicePath ?: "/dev/block/mmcblk0"
+            val result = storageRepository.repartitionDisk(diskPath, _wizardPartitions.value)
+            _isRepartitioning.value = false
+            if (result.isSuccess) {
+                _statusMessage.value = "REPARTITION_OK"
+                _isWizardOpen.value = false
+                detectPartitions(force = true)
+            } else {
+                val err = result.exceptionOrNull()?.message ?: "Repartition failed"
+                _repartitionError.value = err
+                _statusMessage.value = err
             }
         }
     }

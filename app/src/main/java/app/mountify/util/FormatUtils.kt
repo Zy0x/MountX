@@ -20,7 +20,7 @@ object FormatUtils {
 
     /**
      * Format byte sizes with 2 decimal places and no space before unit (e.g. 9.50MB, 4.00KB).
-     * Defaults to KB minimum as seen in App2SD Pro.
+     * Defaults to KB minimum for compact telemetry readouts.
      */
     fun formatExactBytes(bytes: Long): String {
         if (bytes <= 0) return "0.00KB"

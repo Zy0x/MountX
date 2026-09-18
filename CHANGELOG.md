@@ -5,6 +5,25 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.44] - 2026-09-18
+
+### Added
+- **AOMEI-Style Visual Partition Map for MicroSD Cards**:
+  - Implemented interactive proportional multi-segment disk bar in `StorageScreen` representing the physical MicroSD card and its partitions.
+  - Distinct color-coded partition visualization: CyberEmerald for Target Mount / F2FS, ElectricCyan for portable FAT32/exFAT storage, Indigo for Ext4, and gray for unallocated space.
+  - Tapping any segment dynamically highlights the partition and selects it for contextual actions.
+- **Accurate Hardware Disk & Manufacturer Detection**:
+  - Implemented `StorageManager.detectSdCardDiskInfo` reading hardware `manfid`, model `name`, and block count from sysfs (`/sys/block/<disk>/device/`) with root fallback, accurately displaying vendor names (e.g., Samsung, SanDisk, Kingston, etc.), hardware model, and byte capacity.
+- **Multi-Partition Wizard with KB-Precision Input**:
+  - Integrated full partition reallocation wizard (`PartitionWizardDialog`) allowing users to split their MicroSD card into 1 to 4 custom partitions.
+  - Added precise manual input text field in **KB** (as well as MB/GB human-readable labels and dynamic sliders) for sector alignment.
+  - Dynamic live visual bar preview that updates in real-time as partition sizes, filesystem types (FAT32, exFAT, F2FS, Ext4), or labels are adjusted.
+  - Added automated space balancing (`Bagi Rata`) and linked partition resizing.
+  - Multi-step destructive safety verification: safety checkbox, clear scheme breakdown comparison, and confirmation dialog before executing GPT partition table recreation via `sgdisk`/`fdisk`.
+- **Contextual Partition Action Hub**:
+  - Reorganized partition management into a clean, dedicated action card displaying mount readiness checklist, instant Mount/Unmount controls, Single Partition Formatter dialog, and `fsck` filesystem integrity verifier.
+  - Completely purged all historical "App2SD" text and branding in compliance with system standards.
+
 ## [2.1.43] - 2026-09-18
 
 ### Performance

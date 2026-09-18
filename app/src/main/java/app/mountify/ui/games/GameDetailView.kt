@@ -1110,7 +1110,7 @@ private fun ManageTabContent(
 }
 
 /**
- * Custom 3.5" Floppy/Hard Disk Icon matching App2SD Pro's internal disk graphic.
+ * Custom 3.5" Floppy/Hard Disk Icon for internal disk graphic.
  */
 @Composable
 fun FloppyDiskIcon(
@@ -1150,7 +1150,7 @@ fun FloppyDiskIcon(
 }
 
 /**
- * Concentric Pie / Donut Chart faithfully matching App2SD Pro:
+ * Concentric Pie / Donut Storage Telemetry Chart:
  * - Outer Ring: 7 slices for components (Dex, Lib, Data, Cache, Ext 1, Ext 2, Apk) with slice percentage labels
  * - Inner Circle: Solid Internal vs External representation with dashed dividing line and percentage labels
  */

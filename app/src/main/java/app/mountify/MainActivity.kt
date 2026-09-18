@@ -221,14 +221,12 @@ fun FullAppPreviewLayout(
                             isMounted = true
                         ),
                         internalStorage = null,
+                        diskInfo = null,
                         partitions = emptyList(),
                         selectedPartition = null,
                         configuredSdBase = "/data/sdext2",
                         isScanning = false,
-                        isFormatting = false,
                         isCheckingFs = false,
-                        partitionLabel = "",
-                        selectedFs = app.mountify.data.model.FilesystemType.F2FS,
                         statusMessage = null,
                         offloadedStats = 0 to 0L
                     )

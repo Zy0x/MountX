@@ -16,6 +16,7 @@ enum class FilesystemType(
 ) {
     F2FS("F2FS", "f2fs", isRecommended = true),
     EXT4("Ext4", "ext4"),
+    FAT32("FAT32", "vfat"),
     EXFAT("exFAT", "exfat"),
     NTFS("NTFS", "ntfs")
 }
@@ -67,8 +68,38 @@ data class PartitionInfo(
     val uuid: String? = null,
     val isMounted: Boolean = false,
     val isTargetMount: Boolean = false,
-    val isSuitableForApp2sd: Boolean = false
+    val isMountTargetReady: Boolean = false,
+    val isSuitableForApp2sd: Boolean = isMountTargetReady
 )
+
+/** Physical MicroSD disk hardware metadata */
+data class SdCardDiskInfo(
+    val devicePath: String = "/dev/block/mmcblk0",
+    val diskName: String = "mmcblk0",
+    val vendorName: String = "MicroSD Card",
+    val modelName: String = "",
+    val totalSizeBytes: Long = 0L,
+    val partitions: List<PartitionInfo> = emptyList()
+) {
+    val displayName: String get() {
+        val modelPart = if (modelName.isNotBlank()) " $modelName" else ""
+        val sizeGb = String.format(java.util.Locale.US, "%.1f GB", totalSizeBytes / (1024.0 * 1024.0 * 1024.0))
+        return "$vendorName$modelPart ($sizeGb)"
+    }
+}
+
+/** Specification for creating a partition in the Partition Wizard */
+data class PartitionSchemeConfig(
+    val partitionIndex: Int = 1,
+    val sizeKb: Long = 0L,
+    val fsType: FilesystemType = FilesystemType.FAT32,
+    val label: String = "STORAGE",
+    val isPrimary: Boolean = true
+) {
+    val sizeBytes: Long get() = sizeKb * 1024L
+    val sizeMb: Double get() = sizeKb / 1024.0
+    val sizeGb: Double get() = sizeKb / (1024.0 * 1024.0)
+}
 
 /** Overall app status shown on Dashboard */
 data class AppStatus(

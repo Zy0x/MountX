@@ -9,20 +9,26 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
@@ -32,6 +38,7 @@ import androidx.compose.material.icons.filled.SdStorage
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,14 +53,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.mountify.R
 import app.mountify.data.model.FilesystemType
 import app.mountify.data.model.InternalStorageInfo
 import app.mountify.data.model.MountStatus
 import app.mountify.data.model.PartitionInfo
+import app.mountify.data.model.PartitionSchemeConfig
+import app.mountify.data.model.SdCardDiskInfo
 import app.mountify.data.model.StorageInfo
 import app.mountify.ui.components.CompactScreenHeader
 import app.mountify.ui.components.ConfirmDialog
@@ -74,6 +86,7 @@ fun StorageScreen(
 ) {
     val storage by viewModel.storageInfo.collectAsState()
     val internalStorage by viewModel.internalStorageInfo.collectAsState()
+    val diskInfo by viewModel.diskInfo.collectAsState()
     val partitions by viewModel.partitions.collectAsState()
     val selectedPartition by viewModel.selectedPartition.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
@@ -85,8 +98,14 @@ fun StorageScreen(
     val offloadedStats by viewModel.offloadedStats.collectAsState()
     val configuredSdBase by viewModel.configuredSdBase.collectAsState()
 
-    var selectedFs by remember { mutableStateOf(FilesystemType.F2FS) }
+    // Wizard states
+    val isWizardOpen by viewModel.isWizardOpen.collectAsState()
+    val wizardPartitions by viewModel.wizardPartitions.collectAsState()
+    val isRepartitioning by viewModel.isRepartitioning.collectAsState()
+    val repartitionError by viewModel.repartitionError.collectAsState()
+
     var showFormatDialog by remember { mutableStateOf(false) }
+    var showRepartitionFinalConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.detectPartitions(force = false)
@@ -107,24 +126,21 @@ fun StorageScreen(
     StorageContent(
         storage = storage,
         internalStorage = internalStorage,
+        diskInfo = diskInfo,
         partitions = partitions,
         selectedPartition = selectedPartition,
         configuredSdBase = configuredSdBase,
         isScanning = isScanning,
-        isFormatting = isFormatting,
         isCheckingFs = isCheckingFs,
-        partitionLabel = partitionLabel,
-        selectedFs = selectedFs,
         statusMessage = statusMessage,
         offloadedStats = offloadedStats,
         onSelectPartition = { viewModel.selectPartition(it) },
-        onSelectedFsChange = { selectedFs = it },
-        onPartitionLabelChange = { viewModel.setPartitionLabel(it) },
-        onRefreshPartitions = { viewModel.detectPartitions() },
+        onRefreshPartitions = { viewModel.detectPartitions(force = true) },
         onMountPartition = { dev, fs -> viewModel.mountPartition(dev, fs) },
         onUnmountPartition = { viewModel.unmountPartition() },
         onFormatClick = { showFormatDialog = true },
         onCheckFilesystem = { part -> viewModel.checkFilesystem(part) },
+        onOpenWizard = { viewModel.openPartitionWizard() },
         onClearStatusMessage = { viewModel.clearStatusMessage() },
         onExportConfig = { exportLauncher.launch("mountify_config.json") },
         onImportConfig = { importLauncher.launch(arrayOf("application/json")) },
@@ -133,19 +149,57 @@ fun StorageScreen(
         modifier = modifier
     )
 
-    // Two-step Destructive Format Confirmation Dialog
+    // Single Partition Format Dialog
     if (showFormatDialog) {
-        val targetDevicePath = selectedPartition?.path ?: configuredSdBase
+        SingleFormatDialog(
+            partition = selectedPartition,
+            defaultLabel = partitionLabel,
+            isFormatting = isFormatting,
+            onDismiss = { showFormatDialog = false },
+            onConfirmFormat = { fs, label ->
+                showFormatDialog = false
+                val targetPath = selectedPartition?.path ?: configuredSdBase
+                viewModel.formatPartition(targetPath, fs, label)
+            }
+        )
+    }
+
+    // Partition Wizard Dialog
+    if (isWizardOpen) {
+        PartitionWizardDialog(
+            diskInfo = diskInfo,
+            partitions = wizardPartitions,
+            isRepartitioning = isRepartitioning,
+            repartitionError = repartitionError,
+            onClose = { viewModel.closePartitionWizard() },
+            onUpdateSizeKb = { idx, sizeKb -> viewModel.updatePartitionSizeKb(idx, sizeKb) },
+            onUpdateFs = { idx, fs -> viewModel.updatePartitionFsType(idx, fs) },
+            onUpdateLabel = { idx, label -> viewModel.updatePartitionLabel(idx, label) },
+            onAddPartition = { viewModel.addPartition() },
+            onRemovePartition = { idx -> viewModel.removePartition(idx) },
+            onAutoBalance = { viewModel.autoBalanceWizardPartitions() },
+            onTriggerApply = { showRepartitionFinalConfirm = true }
+        )
+    }
+
+    // Multi-Step Repartition Final Confirmation Dialog
+    if (showRepartitionFinalConfirm) {
+        val targetDiskPath = diskInfo?.devicePath ?: "/dev/block/mmcblk0"
+        val summaryLines = wizardPartitions.mapIndexed { idx, p ->
+            "• ${stringResource(R.string.storage_wizard_partition_n, idx + 1)}: ${String.format(java.util.Locale.US, "%.1f GB", p.sizeGb)} (${p.fsType.label}, \"${p.label}\")"
+        }.joinToString("\n")
+
         ConfirmDialog(
-            title = stringResource(R.string.format_confirm_title),
-            message = stringResource(R.string.format_confirm_desc, targetDevicePath),
-            confirmText = stringResource(R.string.format_confirm_button),
+            title = stringResource(R.string.storage_wizard_confirm_title),
+            message = "${stringResource(R.string.storage_wizard_confirm_warning)}\n\n" +
+                    "Target: $targetDiskPath\n\n$summaryLines",
+            confirmText = stringResource(R.string.storage_wizard_apply_btn),
             isDestructive = true,
             onConfirm = {
-                showFormatDialog = false
-                viewModel.formatPartition(targetDevicePath, selectedFs, partitionLabel)
+                showRepartitionFinalConfirm = false
+                viewModel.executeRepartition()
             },
-            onDismiss = { showFormatDialog = false }
+            onDismiss = { showRepartitionFinalConfirm = false }
         )
     }
 
@@ -206,25 +260,22 @@ fun StorageScreen(
 @Composable
 fun StorageContent(
     storage: StorageInfo?,
-    internalStorage: InternalStorageInfo?,
-    partitions: List<PartitionInfo>,
-    selectedPartition: PartitionInfo?,
-    configuredSdBase: String,
-    isScanning: Boolean,
-    isFormatting: Boolean,
-    isCheckingFs: Boolean,
-    partitionLabel: String,
-    selectedFs: FilesystemType,
-    statusMessage: String?,
-    offloadedStats: Pair<Int, Long>,
+    internalStorage: InternalStorageInfo? = null,
+    diskInfo: SdCardDiskInfo? = null,
+    partitions: List<PartitionInfo> = emptyList(),
+    selectedPartition: PartitionInfo? = null,
+    configuredSdBase: String = "/data/sdext2",
+    isScanning: Boolean = false,
+    isCheckingFs: Boolean = false,
+    statusMessage: String? = null,
+    offloadedStats: Pair<Int, Long> = Pair(0, 0L),
     onSelectPartition: (PartitionInfo) -> Unit = {},
-    onSelectedFsChange: (FilesystemType) -> Unit = {},
-    onPartitionLabelChange: (String) -> Unit = {},
     onRefreshPartitions: () -> Unit = {},
     onMountPartition: (String, FilesystemType) -> Unit = { _, _ -> },
     onUnmountPartition: () -> Unit = {},
     onFormatClick: () -> Unit = {},
     onCheckFilesystem: (PartitionInfo) -> Unit = {},
+    onOpenWizard: () -> Unit = {},
     onClearStatusMessage: () -> Unit = {},
     onExportConfig: () -> Unit = {},
     onImportConfig: () -> Unit = {},
@@ -284,7 +335,7 @@ fun StorageContent(
             ) {
                 LazyColumn(
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(1.1f)
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
@@ -304,6 +355,15 @@ fun StorageContent(
                         )
                     }
                     item {
+                        SdCardVisualDiskMapCard(
+                            diskInfo = diskInfo,
+                            partitions = partitions,
+                            selectedPartition = selectedPartition,
+                            onSelectPartition = onSelectPartition,
+                            onOpenWizard = onOpenWizard
+                        )
+                    }
+                    item {
                         PartitionScannerCard(
                             partitions = partitions,
                             selectedPartition = selectedPartition,
@@ -316,37 +376,33 @@ fun StorageContent(
 
                 LazyColumn(
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(0.9f)
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
                 ) {
                     item {
-                        App2sdControlHubCard(
+                        PartitionActionHubCard(
                             storage = storage,
                             selectedPartition = selectedPartition,
-                            selectedFs = selectedFs,
                             configuredSdBase = configuredSdBase,
                             isCheckingFs = isCheckingFs,
                             onMount = {
                                 val dev = selectedPartition?.path ?: ""
-                                if (dev.isNotBlank()) onMountPartition(dev, selectedFs)
+                                val fs = when (selectedPartition?.fsType?.lowercase()) {
+                                    "f2fs" -> FilesystemType.F2FS
+                                    "ext4" -> FilesystemType.EXT4
+                                    "vfat", "fat32" -> FilesystemType.FAT32
+                                    "exfat" -> FilesystemType.EXFAT
+                                    else -> FilesystemType.F2FS
+                                }
+                                if (dev.isNotBlank()) onMountPartition(dev, fs)
                             },
                             onUnmount = onUnmountPartition,
+                            onFormat = onFormatClick,
                             onCheckFilesystem = {
                                 selectedPartition?.let { onCheckFilesystem(it) }
                             }
-                        )
-                    }
-                    item {
-                        FilesystemFormatterCard(
-                            selectedPartition = selectedPartition,
-                            selectedFs = selectedFs,
-                            partitionLabel = partitionLabel,
-                            isFormatting = isFormatting,
-                            onSelectedFsChange = onSelectedFsChange,
-                            onPartitionLabelChange = onPartitionLabelChange,
-                            onFormatClick = onFormatClick
                         )
                     }
                     item {
@@ -384,6 +440,16 @@ fun StorageContent(
                 }
 
                 item {
+                    SdCardVisualDiskMapCard(
+                        diskInfo = diskInfo,
+                        partitions = partitions,
+                        selectedPartition = selectedPartition,
+                        onSelectPartition = onSelectPartition,
+                        onOpenWizard = onOpenWizard
+                    )
+                }
+
+                item {
                     PartitionScannerCard(
                         partitions = partitions,
                         selectedPartition = selectedPartition,
@@ -394,32 +460,27 @@ fun StorageContent(
                 }
 
                 item {
-                    App2sdControlHubCard(
+                    PartitionActionHubCard(
                         storage = storage,
                         selectedPartition = selectedPartition,
-                        selectedFs = selectedFs,
                         configuredSdBase = configuredSdBase,
                         isCheckingFs = isCheckingFs,
                         onMount = {
                             val dev = selectedPartition?.path ?: ""
-                            if (dev.isNotBlank()) onMountPartition(dev, selectedFs)
+                            val fs = when (selectedPartition?.fsType?.lowercase()) {
+                                "f2fs" -> FilesystemType.F2FS
+                                "ext4" -> FilesystemType.EXT4
+                                "vfat", "fat32" -> FilesystemType.FAT32
+                                "exfat" -> FilesystemType.EXFAT
+                                else -> FilesystemType.F2FS
+                            }
+                            if (dev.isNotBlank()) onMountPartition(dev, fs)
                         },
                         onUnmount = onUnmountPartition,
+                        onFormat = onFormatClick,
                         onCheckFilesystem = {
                             selectedPartition?.let { onCheckFilesystem(it) }
                         }
-                    )
-                }
-
-                item {
-                    FilesystemFormatterCard(
-                        selectedPartition = selectedPartition,
-                        selectedFs = selectedFs,
-                        partitionLabel = partitionLabel,
-                        isFormatting = isFormatting,
-                        onSelectedFsChange = onSelectedFsChange,
-                        onPartitionLabelChange = onPartitionLabelChange,
-                        onFormatClick = onFormatClick
                     )
                 }
 
@@ -479,6 +540,7 @@ private fun StatusFeedbackBanner(
                         "MOUNT_OK" -> stringResource(R.string.storage_mount_success)
                         "UNMOUNT_OK" -> stringResource(R.string.storage_unmount_success)
                         "FORMAT_OK" -> stringResource(R.string.format_success)
+                        "REPARTITION_OK" -> stringResource(R.string.storage_wizard_success)
                         "EXPORT_OK" -> stringResource(R.string.backup_success, "JSON")
                         "IMPORT_OK" -> stringResource(R.string.restore_success)
                         else -> statusMessage
@@ -638,7 +700,7 @@ private fun DualStorageTelemetryCard(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // 2. MicroSD App2SD Storage Telemetry Row
+            // 2. MicroSD Extended Storage Telemetry Row
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -840,6 +902,261 @@ private fun TelemetrySpecChip(
                 maxLines = 1
             )
         }
+    }
+}
+
+// ── Visual Disk Map Card (AOMEI Partition Assistant Style) ──
+@Composable
+private fun SdCardVisualDiskMapCard(
+    diskInfo: SdCardDiskInfo?,
+    partitions: List<PartitionInfo>,
+    selectedPartition: PartitionInfo?,
+    onSelectPartition: (PartitionInfo) -> Unit,
+    onOpenWizard: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cardTitle = diskInfo?.displayName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.storage_disk_title)
+    val devicePath = diskInfo?.devicePath ?: "/dev/block/mmcblk0"
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SectionHeader(title = stringResource(R.string.storage_disk_map_title))
+
+            Button(
+                onClick = onOpenWizard,
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.height(30.dp)
+            ) {
+                Icon(
+                    Icons.Default.AccountTree,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.storage_action_repartition),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                // Disk Hardware Banner
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.SdStorage,
+                            contentDescription = null,
+                            tint = CyberEmerald,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = cardTitle,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = devicePath,
+                            fontSize = 9.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Interactive Proportional Partition Map Bar
+                if (partitions.isEmpty()) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = stringResource(R.string.storage_partition_no_partitions),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    VisualDiskMapBar(
+                        partitions = partitions,
+                        selectedPartition = selectedPartition,
+                        onSelectPartition = onSelectPartition
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Map Legend Chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        DiskMapLegendItem(
+                            color = CyberEmerald,
+                            label = stringResource(R.string.storage_partition_app2sd_target)
+                        )
+                        DiskMapLegendItem(
+                            color = ElectricCyan,
+                            label = stringResource(R.string.storage_badge_portable)
+                        )
+                        DiskMapLegendItem(
+                            color = MaterialTheme.colorScheme.primary,
+                            label = "Linux (Ext4)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisualDiskMapBar(
+    partitions: List<PartitionInfo>,
+    selectedPartition: PartitionInfo?,
+    onSelectPartition: (PartitionInfo) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val totalBytes = partitions.sumOf { it.sizeBytes }.coerceAtLeast(1L)
+
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(54.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            partitions.forEach { part ->
+                val rawFraction = (part.sizeBytes.toFloat() / totalBytes.toFloat()).coerceIn(0.01f, 1f)
+                val weight = rawFraction.coerceAtLeast(0.12f)
+                val isSelected = selectedPartition?.path == part.path
+
+                val partColor = when {
+                    part.isTargetMount || part.fsType.equals("f2fs", ignoreCase = true) -> CyberEmerald
+                    part.fsType.equals("ext4", ignoreCase = true) -> MaterialTheme.colorScheme.primary
+                    part.fsType.equals("fat32", ignoreCase = true) || part.fsType.equals("exfat", ignoreCase = true) || part.fsType.equals("vfat", ignoreCase = true) -> ElectricCyan
+                    else -> MaterialTheme.colorScheme.secondary
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(weight)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(partColor.copy(alpha = if (isSelected) 0.32f else 0.15f))
+                        .clickable { onSelectPartition(part) }
+                        .then(
+                            if (isSelected) {
+                                Modifier.border(1.8.dp, partColor, RoundedCornerShape(8.dp))
+                            } else {
+                                Modifier.border(0.5.dp, partColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            }
+                        )
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = part.name,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.5.sp,
+                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold
+                            ),
+                            color = if (isSelected) partColor else MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = if (part.sizeBytes > 0) FormatUtils.formatBytes(part.sizeBytes) else part.fsType.uppercase(),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiskMapLegendItem(
+    color: Color,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Medium
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -1078,7 +1395,7 @@ private fun PartitionListItem(
                                 maxLines = 1
                             )
                         }
-                    } else if (partition.isSuitableForApp2sd) {
+                    } else if (partition.isMountTargetReady) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -1119,16 +1436,16 @@ private fun PartitionListItem(
     }
 }
 
-// ── App2SD & Mount Control Hub ──────────────────────────────
+// ── Contextual Partition Action Hub Card ────────────────────
 @Composable
-private fun App2sdControlHubCard(
+private fun PartitionActionHubCard(
     storage: StorageInfo?,
     selectedPartition: PartitionInfo?,
-    selectedFs: FilesystemType,
     configuredSdBase: String,
     isCheckingFs: Boolean,
     onMount: () -> Unit,
     onUnmount: () -> Unit,
+    onFormat: () -> Unit,
     onCheckFilesystem: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1139,7 +1456,7 @@ private fun App2sdControlHubCard(
             (storage.blockDevice == devPath || selectedPartition?.isTargetMount == true)
 
     Column(modifier = modifier.fillMaxWidth()) {
-        SectionHeader(title = stringResource(R.string.storage_app2sd_hub))
+        SectionHeader(title = stringResource(R.string.storage_quick_actions))
 
         Card(
             shape = RoundedCornerShape(18.dp),
@@ -1165,7 +1482,11 @@ private fun App2sdControlHubCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = if (devPath.isNotBlank()) devPath else stringResource(R.string.storage_no_devices_detected),
+                            text = if (devPath.isNotBlank()) {
+                                "${selectedPartition?.name ?: devPath} (${FormatUtils.formatBytes(selectedPartition?.sizeBytes ?: 0L)})"
+                            } else {
+                                stringResource(R.string.storage_no_devices_detected)
+                            },
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -1191,7 +1512,7 @@ private fun App2sdControlHubCard(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // App2SD Readiness Checklist
+                // Readiness Checklist
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -1199,27 +1520,27 @@ private fun App2sdControlHubCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        App2sdCheckItem(
+                        ReadinessCheckItem(
                             label = stringResource(R.string.storage_app2sd_step_root),
                             isPassed = true,
-                            sublabel = "libsu sandbox active"
+                            sublabel = "Active"
                         )
-                        App2sdCheckItem(
+                        ReadinessCheckItem(
                             label = stringResource(R.string.storage_app2sd_step_partition),
                             isPassed = isLinuxFs,
                             sublabel = if (isLinuxFs) selectedPartition?.fsType?.uppercase() ?: "Linux" else "Requires F2FS or Ext4"
                         )
-                        App2sdCheckItem(
+                        ReadinessCheckItem(
                             label = stringResource(R.string.storage_app2sd_step_mounted),
                             isPassed = isMountedCurrently,
-                            sublabel = if (isMountedCurrently) "Active at $configuredSdBase" else "Standby (Not mounted)"
+                            sublabel = if (isMountedCurrently) "Active at $configuredSdBase" else "Standby"
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Dual Mount / Unmount Action Bar (40-44dp height)
+                // Primary Mount & Unmount Action Bar (40dp)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1240,7 +1561,7 @@ private fun App2sdControlHubCard(
                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            stringResource(R.string.storage_mount),
+                            stringResource(R.string.storage_action_mount),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
@@ -1264,7 +1585,7 @@ private fun App2sdControlHubCard(
                         Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(16.dp), tint = NeonCrimson)
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            stringResource(R.string.storage_unmount),
+                            stringResource(R.string.storage_action_unmount),
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
@@ -1275,41 +1596,68 @@ private fun App2sdControlHubCard(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Filesystem Check Utility Button (34dp)
-                FilledTonalButton(
-                    onClick = onCheckFilesystem,
-                    enabled = devPath.isNotBlank() && !isMountedCurrently && !isCheckingFs,
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(34.dp)
+                // Secondary Actions: Format Partisi & Periksa Filesystem (36dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (isCheckingFs) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                    OutlinedButton(
+                        onClick = onFormat,
+                        enabled = devPath.isNotBlank() && !isMountedCurrently,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.6f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = NeonCrimson
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp), tint = NeonCrimson)
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            stringResource(R.string.storage_fsck_checking),
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    } else {
-                        Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            stringResource(R.string.storage_fsck_button),
+                            stringResource(R.string.storage_action_format),
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+
+                    FilledTonalButton(
+                        onClick = onCheckFilesystem,
+                        enabled = devPath.isNotBlank() && !isMountedCurrently && !isCheckingFs,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                    ) {
+                        if (isCheckingFs) {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                stringResource(R.string.storage_fsck_checking),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        } else {
+                            Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                stringResource(R.string.storage_action_fsck),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
 
                 if (isMountedCurrently) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = stringResource(R.string.storage_fsck_mounted_warning),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
@@ -1323,7 +1671,7 @@ private fun App2sdControlHubCard(
 }
 
 @Composable
-private fun App2sdCheckItem(
+private fun ReadinessCheckItem(
     label: String,
     isPassed: Boolean,
     sublabel: String,
@@ -1363,127 +1711,448 @@ private fun App2sdCheckItem(
     }
 }
 
-// ── Filesystem Formatter Hub (Danger Zone) ───────────────────
+// ── Partitioning Wizard Dialog (AOMEI Partition Assistant Style) ──
 @Composable
-private fun FilesystemFormatterCard(
-    selectedPartition: PartitionInfo?,
-    selectedFs: FilesystemType,
-    partitionLabel: String,
-    isFormatting: Boolean,
-    onSelectedFsChange: (FilesystemType) -> Unit,
-    onPartitionLabelChange: (String) -> Unit,
-    onFormatClick: () -> Unit,
-    modifier: Modifier = Modifier
+private fun PartitionWizardDialog(
+    diskInfo: SdCardDiskInfo?,
+    partitions: List<PartitionSchemeConfig>,
+    isRepartitioning: Boolean,
+    repartitionError: String?,
+    onClose: () -> Unit,
+    onUpdateSizeKb: (Int, Long) -> Unit,
+    onUpdateFs: (Int, FilesystemType) -> Unit,
+    onUpdateLabel: (Int, String) -> Unit,
+    onAddPartition: () -> Unit,
+    onRemovePartition: (Int) -> Unit,
+    onAutoBalance: () -> Unit,
+    onTriggerApply: () -> Unit
 ) {
-    val devPath = selectedPartition?.path ?: ""
+    val totalDiskBytes = diskInfo?.totalSizeBytes ?: 0L
+    val totalDiskKb = totalDiskBytes / 1024L
+    val allocatedKb = partitions.sumOf { it.sizeKb }
+    val unallocatedKb = (totalDiskKb - allocatedKb).coerceAtLeast(0L)
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
+    var isConfirmedCheckbox by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = { if (!isRepartitioning) onClose() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.65f))
+                .padding(horizontal = 14.dp, vertical = 20.dp),
+            contentAlignment = Alignment.Center
         ) {
-            SectionHeader(title = stringResource(R.string.format_title))
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = NeonCrimson.copy(alpha = 0.15f),
-                border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.4f))
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f)
             ) {
-                Text(
-                    text = stringResource(R.string.storage_danger_zone).uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.5.sp
-                    ),
-                    color = NeonCrimson,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Header Bar (44dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.AccountTree,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = stringResource(R.string.storage_wizard_title),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = diskInfo?.displayName ?: stringResource(R.string.storage_disk_title),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onClose,
+                            enabled = !isRepartitioning,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = stringResource(R.string.common_close),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+
+                    // Scrollable Wizard Content
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        // 1. Capacity & Visual Map Preview
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.storage_wizard_total_capacity, FormatUtils.formatBytes(totalDiskBytes)),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.storage_wizard_unallocated, FormatUtils.formatBytes(unallocatedKb * 1024L)),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (unallocatedKb > 1024L * 1024L) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Dynamic Live Preview Bar
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(34.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(2.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            val validTotal = allocatedKb.coerceAtLeast(1L)
+                                            partitions.forEachIndexed { idx, p ->
+                                                val weight = (p.sizeKb.toFloat() / validTotal.toFloat()).coerceIn(0.08f, 1f)
+                                                val color = when (p.fsType) {
+                                                    FilesystemType.F2FS -> CyberEmerald
+                                                    FilesystemType.EXT4 -> MaterialTheme.colorScheme.primary
+                                                    FilesystemType.FAT32, FilesystemType.EXFAT -> ElectricCyan
+                                                    else -> MaterialTheme.colorScheme.secondary
+                                                }
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .weight(weight)
+                                                        .fillMaxHeight()
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(color.copy(alpha = 0.3f))
+                                                        .border(1.dp, color, RoundedCornerShape(6.dp)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = "P${idx + 1} (${p.fsType.label})",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = color,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Individual Partition Scheme Cards
+                        itemsIndexed(partitions) { index, config ->
+                            WizardPartitionCard(
+                                index = index,
+                                totalCount = partitions.size,
+                                config = config,
+                                maxTotalKb = totalDiskKb,
+                                onSizeKbChange = { onUpdateSizeKb(index, it) },
+                                onFsChange = { onUpdateFs(index, it) },
+                                onLabelChange = { onUpdateLabel(index, it) },
+                                onRemove = { onRemovePartition(index) }
+                            )
+                        }
+
+                        // 3. Action Buttons: Add Partition & Auto-balance
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = onAddPartition,
+                                    enabled = partitions.size < 4 && !isRepartitioning,
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        stringResource(R.string.storage_wizard_add_partition),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                FilledTonalButton(
+                                    onClick = onAutoBalance,
+                                    enabled = !isRepartitioning,
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                ) {
+                                    Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        "Bagi Rata",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        // 4. Critical Warning & Checkbox
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = NeonCrimson.copy(alpha = 0.08f),
+                                border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(verticalAlignment = Alignment.Top) {
+                                        Icon(
+                                            Icons.Default.Security,
+                                            contentDescription = null,
+                                            tint = NeonCrimson,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = stringResource(R.string.storage_wizard_confirm_warning),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { isConfirmedCheckbox = !isConfirmedCheckbox }
+                                    ) {
+                                        Checkbox(
+                                            checked = isConfirmedCheckbox,
+                                            onCheckedChange = { isConfirmedCheckbox = it },
+                                            colors = CheckboxDefaults.colors(
+                                                checkedColor = NeonCrimson,
+                                                checkmarkColor = Color.White
+                                            )
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = stringResource(R.string.storage_wizard_confirm_checkbox),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (repartitionError != null) {
+                            item {
+                                Text(
+                                    text = stringResource(R.string.storage_wizard_error, repartitionError),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
+                                    color = NeonCrimson,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+
+                    // Bottom Action Bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onClose,
+                            enabled = !isRepartitioning,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                        ) {
+                            Text(stringResource(R.string.common_close), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = onTriggerApply,
+                            enabled = isConfirmedCheckbox && !isRepartitioning && partitions.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = NeonCrimson,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1.4f)
+                                .height(42.dp)
+                        ) {
+                            if (isRepartitioning) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(stringResource(R.string.storage_wizard_progress), fontSize = 11.sp)
+                            } else {
+                                Icon(Icons.Default.AccountTree, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    stringResource(R.string.storage_wizard_apply_btn),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+}
 
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.3f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                // Warning Banner
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(NeonCrimson.copy(alpha = 0.08f))
-                        .padding(10.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Security,
-                        contentDescription = null,
-                        tint = NeonCrimson,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+@Composable
+private fun WizardPartitionCard(
+    index: Int,
+    totalCount: Int,
+    config: PartitionSchemeConfig,
+    maxTotalKb: Long,
+    onSizeKbChange: (Long) -> Unit,
+    onFsChange: (FilesystemType) -> Unit,
+    onLabelChange: (String) -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var rawTextKb by remember(config.sizeKb) { mutableStateOf(config.sizeKb.toString()) }
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Header Row: Partition Number & Role Badge
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = stringResource(R.string.format_warning_desc),
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        text = stringResource(R.string.storage_wizard_partition_n, index + 1),
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (index == 0) ElectricCyan.copy(alpha = 0.15f) else CyberEmerald.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = if (index == 0) stringResource(R.string.storage_badge_portable) else stringResource(R.string.storage_partition_app2sd_target),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (index == 0) ElectricCyan else CyberEmerald,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text(
-                    text = stringResource(R.string.format_filesystem),
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Interactive Filesystem Choice Cards
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilesystemChoiceCard(
-                        type = FilesystemType.F2FS,
-                        isSelected = selectedFs == FilesystemType.F2FS,
-                        isRecommended = true,
-                        title = "F2FS",
-                        subtitle = stringResource(R.string.format_f2fs_desc),
-                        onClick = { onSelectedFsChange(FilesystemType.F2FS) },
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    FilesystemChoiceCard(
-                        type = FilesystemType.EXT4,
-                        isSelected = selectedFs == FilesystemType.EXT4,
-                        isRecommended = false,
-                        title = "Ext4",
-                        subtitle = stringResource(R.string.format_ext4_desc),
-                        onClick = { onSelectedFsChange(FilesystemType.EXT4) },
-                        modifier = Modifier.weight(1f)
-                    )
+                if (totalCount > 1) {
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.storage_wizard_remove_partition),
+                            tint = NeonCrimson,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-                // Partition Label Input Field (38dp Compact Input per AGENTS.md rule 3.5)
-                Column(modifier = Modifier.fillMaxWidth()) {
+            // Size in KB Field (Manual precision input per user requirement)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(R.string.storage_label_field),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold),
+                        text = stringResource(R.string.storage_wizard_size_kb),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1495,15 +2164,55 @@ private fun FilesystemFormatterCard(
                                 .fillMaxSize()
                                 .padding(horizontal = 10.dp)
                         ) {
-                            if (partitionLabel.isBlank()) {
-                                Text(
-                                    text = stringResource(R.string.storage_label_hint),
-                                    style = TextStyle(fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
-                                )
-                            }
                             BasicTextField(
-                                value = partitionLabel,
-                                onValueChange = onPartitionLabelChange,
+                                value = rawTextKb,
+                                onValueChange = { input ->
+                                    val digitsOnly = input.filter { it.isDigit() }
+                                    rawTextKb = digitsOnly
+                                    val parsedKb = digitsOnly.toLongOrNull() ?: 0L
+                                    if (parsedKb > 0) {
+                                        onSizeKbChange(parsedKb)
+                                    }
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                textStyle = TextStyle(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+
+                // Partition Label Input
+                Column(modifier = Modifier.weight(0.7f)) {
+                    Text(
+                        text = stringResource(R.string.storage_label_field),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.CenterStart,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 8.dp)
+                        ) {
+                            BasicTextField(
+                                value = config.label,
+                                onValueChange = onLabelChange,
                                 singleLine = true,
                                 textStyle = TextStyle(
                                     fontSize = 12.sp,
@@ -1516,51 +2225,58 @@ private fun FilesystemFormatterCard(
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(14.dp))
+            // Size Human Readable Conversion Label
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "≈ ${String.format(java.util.Locale.US, "%.1f GB", config.sizeGb)} (${String.format(java.util.Locale.US, "%,d MB", config.sizeMb.toLong())})",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CyberEmerald
+                )
+            )
 
-                // Danger Format Button (40-44dp height)
-                Button(
-                    onClick = onFormatClick,
-                    enabled = devPath.isNotBlank() && !isFormatting,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = NeonCrimson,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(40.dp)
-                ) {
-                    if (isFormatting) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            stringResource(R.string.format_in_progress),
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Filesystem Chips Selector
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(FilesystemType.FAT32, FilesystemType.EXFAT, FilesystemType.F2FS, FilesystemType.EXT4).forEach { fs ->
+                    val isSelected = config.fsType == fs
+                    Surface(
+                        onClick = { onFsChange(fs) },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) {
+                            if (fs == FilesystemType.F2FS) CyberEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        },
+                        border = BorderStroke(
+                            if (isSelected) 1.5.dp else 1.dp,
+                            if (isSelected) (if (fs == FilesystemType.F2FS) CyberEmerald else MaterialTheme.colorScheme.primary) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(30.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Text(
+                                text = fs.label,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isSelected) {
+                                    if (fs == FilesystemType.F2FS) CyberEmerald else MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
-                        )
-                    } else {
-                        Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (devPath.isNotBlank()) {
-                                "${stringResource(R.string.format_button)} (${devPath.substringAfterLast("/")})"
-                            } else {
-                                stringResource(R.string.format_button)
-                            },
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
+                        }
                     }
                 }
             }
@@ -1568,68 +2284,229 @@ private fun FilesystemFormatterCard(
     }
 }
 
+// ── Single Partition Format Dialog ──────────────────────────
 @Composable
-private fun FilesystemChoiceCard(
+private fun SingleFormatDialog(
+    partition: PartitionInfo?,
+    defaultLabel: String,
+    isFormatting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirmFormat: (FilesystemType, String) -> Unit
+) {
+    var chosenFs by remember { mutableStateOf(FilesystemType.F2FS) }
+    var labelInput by remember { mutableStateOf(partition?.label?.takeIf { it.isNotBlank() } ?: defaultLabel) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isFormatting) onDismiss() },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Tune,
+                    contentDescription = null,
+                    tint = NeonCrimson,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.format_title),
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Warning text
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = NeonCrimson.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = stringResource(R.string.format_warning_desc),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.format_filesystem),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Filesystem Options
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FormatFsRadioOption(
+                        type = FilesystemType.F2FS,
+                        isSelected = chosenFs == FilesystemType.F2FS,
+                        isRecommended = true,
+                        title = "F2FS",
+                        subtitle = stringResource(R.string.format_f2fs_desc),
+                        onSelect = { chosenFs = FilesystemType.F2FS }
+                    )
+                    FormatFsRadioOption(
+                        type = FilesystemType.EXT4,
+                        isSelected = chosenFs == FilesystemType.EXT4,
+                        isRecommended = false,
+                        title = "Ext4",
+                        subtitle = stringResource(R.string.format_ext4_desc),
+                        onSelect = { chosenFs = FilesystemType.EXT4 }
+                    )
+                    FormatFsRadioOption(
+                        type = FilesystemType.FAT32,
+                        isSelected = chosenFs == FilesystemType.FAT32,
+                        isRecommended = false,
+                        title = "FAT32",
+                        subtitle = "Universal portable storage",
+                        onSelect = { chosenFs = FilesystemType.FAT32 }
+                    )
+                    FormatFsRadioOption(
+                        type = FilesystemType.EXFAT,
+                        isSelected = chosenFs == FilesystemType.EXFAT,
+                        isRecommended = false,
+                        title = "exFAT",
+                        subtitle = stringResource(R.string.format_exfat_desc),
+                        onSelect = { chosenFs = FilesystemType.EXFAT }
+                    )
+                }
+
+                // Partition Label input
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = stringResource(R.string.storage_label_field),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                            BasicTextField(
+                                value = labelInput,
+                                onValueChange = { labelInput = it },
+                                singleLine = true,
+                                textStyle = TextStyle(
+                                    fontSize = 11.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirmFormat(chosenFs, labelInput) },
+                enabled = !isFormatting,
+                colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson, contentColor = Color.White),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                if (isFormatting) {
+                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.format_in_progress), fontSize = 11.5.sp)
+                } else {
+                    Text(stringResource(R.string.format_confirm_button), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !isFormatting,
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Text(stringResource(R.string.common_close), fontSize = 11.5.sp)
+            }
+        }
+    )
+}
+
+@Composable
+private fun FormatFsRadioOption(
     type: FilesystemType,
     isSelected: Boolean,
     isRecommended: Boolean,
     title: String,
     subtitle: String,
-    onClick: () -> Unit,
+    onSelect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val borderColor = if (isSelected) {
         if (isRecommended) CyberEmerald else MaterialTheme.colorScheme.primary
     } else {
-        MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-    }
-
-    val containerColor = if (isSelected) {
-        if (isRecommended) CyberEmerald.copy(alpha = 0.08f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
     }
 
     Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = containerColor,
-        border = BorderStroke(1.5.dp, borderColor),
-        modifier = modifier.sizeIn(minHeight = 72.dp)
+        onClick = onSelect,
+        shape = RoundedCornerShape(10.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f) else Color.Transparent,
+        border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, borderColor),
+        modifier = modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Black
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (isRecommended) {
-                    Badge(containerColor = CyberEmerald) {
-                        Text(
-                            text = stringResource(R.string.common_recommended),
-                            modifier = Modifier.padding(horizontal = 4.dp),
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black
-                        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            RadioButton(
+                selected = isSelected,
+                onClick = onSelect,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (isRecommended) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = CyberEmerald.copy(alpha = 0.18f)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.common_recommended),
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyberEmerald,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
                     }
                 }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, lineHeight = 13.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2
-            )
         }
     }
 }
@@ -1772,6 +2649,13 @@ private fun StorageScreenPreviewDark() {
                 usedBytes = 45_000_000_000L,
                 freeBytes = 83_000_000_000L
             ),
+            diskInfo = SdCardDiskInfo(
+                devicePath = "/dev/block/mmcblk0",
+                diskName = "mmcblk0",
+                vendorName = "Samsung MicroSD",
+                modelName = "YD4QD",
+                totalSizeBytes = 128_100_000_000L
+            ),
             partitions = listOf(
                 PartitionInfo(
                     path = "/dev/block/mmcblk0p1",
@@ -1781,23 +2665,23 @@ private fun StorageScreenPreviewDark() {
                     sizeBytes = 32_000_000_000L,
                     fsType = "exfat",
                     mountPoint = "/storage/1234-5678",
-                    label = "SD_CARD",
+                    label = "STORAGE",
                     isMounted = true,
                     isTargetMount = false,
-                    isSuitableForApp2sd = false
+                    isMountTargetReady = false
                 ),
                 PartitionInfo(
                     path = "/dev/block/mmcblk0p2",
                     name = "mmcblk0p2",
                     diskName = "mmcblk0",
                     partitionNumber = 2,
-                    sizeBytes = 32_000_000_000L,
+                    sizeBytes = 96_100_000_000L,
                     fsType = "f2fs",
                     mountPoint = "/data/sdext2",
                     label = "sdext2",
                     isMounted = true,
                     isTargetMount = true,
-                    isSuitableForApp2sd = true
+                    isMountTargetReady = true
                 )
             ),
             selectedPartition = PartitionInfo(
@@ -1805,37 +2689,19 @@ private fun StorageScreenPreviewDark() {
                 name = "mmcblk0p2",
                 diskName = "mmcblk0",
                 partitionNumber = 2,
-                sizeBytes = 32_000_000_000L,
+                sizeBytes = 96_100_000_000L,
                 fsType = "f2fs",
                 mountPoint = "/data/sdext2",
                 label = "sdext2",
                 isMounted = true,
                 isTargetMount = true,
-                isSuitableForApp2sd = true
+                isMountTargetReady = true
             ),
             configuredSdBase = "/data/sdext2",
             isScanning = false,
-            isFormatting = false,
             isCheckingFs = false,
-            partitionLabel = "sdext2",
-            selectedFs = FilesystemType.F2FS,
             statusMessage = null,
-            offloadedStats = Pair(3, 42_500_000_000L),
-            onSelectPartition = {},
-            onSelectedFsChange = {},
-            onPartitionLabelChange = {},
-            onRefreshPartitions = {},
-            onMountPartition = { _, _ -> },
-            onUnmountPartition = {},
-            onFormatClick = {},
-            onCheckFilesystem = {},
-            onClearStatusMessage = {},
-            onExportConfig = {},
-            onImportConfig = {},
-            onNavigateToBackup = {},
-            onNavigateToGames = {}
+            offloadedStats = Pair(3, 42_500_000_000L)
         )
     }
 }
-
-

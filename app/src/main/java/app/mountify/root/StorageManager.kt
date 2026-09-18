@@ -5,8 +5,11 @@ import app.mountify.data.model.InternalStorageInfo
 import app.mountify.data.model.MigrationTarget
 import app.mountify.data.model.MoveDirection
 import app.mountify.data.model.PartitionInfo
+import app.mountify.data.model.PartitionSchemeConfig
+import app.mountify.data.model.SdCardDiskInfo
 import app.mountify.data.model.StorageInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -198,7 +201,7 @@ class StorageManager {
                             uuid = uuid,
                             isMounted = isMounted,
                             isTargetMount = isTargetMount,
-                            isSuitableForApp2sd = isSuitable
+                            isMountTargetReady = isSuitable
                         )
                     )
                 }
@@ -222,7 +225,7 @@ class StorageManager {
                         mountPoint = mountInfo?.first,
                         isMounted = isMounted,
                         isTargetMount = mountInfo?.first == targetMountPoint,
-                        isSuitableForApp2sd = true
+                        isMountTargetReady = true
                     )
                 )
             }
@@ -230,7 +233,7 @@ class StorageManager {
 
         partitionItems.sortedWith(
             compareByDescending<PartitionInfo> { it.isTargetMount }
-                .thenByDescending { it.isSuitableForApp2sd }
+                .thenByDescending { it.isMountTargetReady }
                 .thenBy { it.name }
         )
     }
@@ -389,6 +392,77 @@ class StorageManager {
         }
 
     /**
+     * Detect physical MicroSD hardware disk information (manufacturer, model, capacity, partition list).
+     */
+    suspend fun detectSdCardDiskInfo(targetMountPoint: String = "/data/sdext2"): SdCardDiskInfo? = withContext(Dispatchers.IO) {
+        val partitions = detectPartitions(targetMountPoint)
+
+        // Find disk name from detected partitions or fallback to mmcblk0/mmcblk1
+        val candidateDisk = partitions.firstOrNull()?.diskName
+            ?: if (java.io.File("/sys/block/mmcblk0").exists()) "mmcblk0"
+            else if (java.io.File("/sys/block/mmcblk1").exists()) "mmcblk1"
+            else null
+
+        if (candidateDisk == null) return@withContext null
+
+        val diskPath = "/dev/block/$candidateDisk"
+
+        // Read hardware manufacturer ID
+        var manfid = try {
+            val f = java.io.File("/sys/block/$candidateDisk/device/manfid")
+            if (f.exists() && f.canRead()) f.readText().trim() else ""
+        } catch (_: Exception) { "" }
+        if (manfid.isBlank()) {
+            val res = RootShell.exec("cat /sys/block/$candidateDisk/device/manfid 2>/dev/null")
+            if (res.isSuccess) manfid = res.output.trim()
+        }
+
+        // Read hardware model name
+        var model = try {
+            val f = java.io.File("/sys/block/$candidateDisk/device/name")
+            if (f.exists() && f.canRead()) f.readText().trim() else ""
+        } catch (_: Exception) { "" }
+        if (model.isBlank()) {
+            val res = RootShell.exec("cat /sys/block/$candidateDisk/device/name 2>/dev/null")
+            if (res.isSuccess) model = res.output.trim()
+        }
+
+        // Read disk sector count
+        var sizeSectors = try {
+            val f = java.io.File("/sys/block/$candidateDisk/size")
+            if (f.exists() && f.canRead()) f.readText().trim().toLongOrNull() ?: 0L else 0L
+        } catch (_: Exception) { 0L }
+        if (sizeSectors == 0L) {
+            val res = RootShell.exec("cat /sys/block/$candidateDisk/size 2>/dev/null")
+            if (res.isSuccess) sizeSectors = res.output.trim().toLongOrNull() ?: 0L
+        }
+
+        val totalSizeBytes = if (sizeSectors > 0) sizeSectors * 512L else partitions.sumOf { it.sizeBytes }
+
+        val vendor = when (manfid.lowercase()) {
+            "0x00001b" -> "Samsung"
+            "0x000003" -> "SanDisk"
+            "0x000002" -> "Kingston"
+            "0x000074" -> "Transcend"
+            "0x000028" -> "Lexar"
+            "0x000013" -> "Micron"
+            "0x00009c" -> "Sony"
+            "0x000027", "0x000070" -> "Silicon Power"
+            "0x000041" -> "Kingston"
+            else -> "MicroSD"
+        }
+
+        SdCardDiskInfo(
+            devicePath = diskPath,
+            diskName = candidateDisk,
+            vendorName = "$vendor MicroSD",
+            modelName = model,
+            totalSizeBytes = totalSizeBytes,
+            partitions = partitions.filter { it.diskName == candidateDisk }
+        )
+    }
+
+    /**
      * Format a block partition with a chosen filesystem.
      * CAUTION: Destructive operation.
      */
@@ -402,15 +476,115 @@ class StorageManager {
             RootShell.exec("umount -f \"$blockDevice\" 2>/dev/null")
 
             val cmd = when (fsType) {
-                FilesystemType.F2FS -> "mkfs.f2fs -l \"$label\" -f \"$blockDevice\""
-                FilesystemType.EXT4 -> "mkfs.ext4 -L \"$label\" -F \"$blockDevice\""
-                FilesystemType.EXFAT -> "mkfs.exfat -n \"$label\" \"$blockDevice\""
-                FilesystemType.NTFS -> "mkfs.ntfs -f -L \"$label\" \"$blockDevice\""
+                FilesystemType.F2FS -> "mkfs.f2fs -l \"$label\" -f \"$blockDevice\" 2>&1"
+                FilesystemType.EXT4 -> "mke2fs -t ext4 -b 4096 -L \"$label\" -F \"$blockDevice\" 2>&1 || mkfs.ext4 -L \"$label\" -F \"$blockDevice\" 2>&1"
+                FilesystemType.FAT32 -> "newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1 || mkfs.vfat -F 32 -n \"$label\" \"$blockDevice\" 2>&1"
+                FilesystemType.EXFAT -> "mkfs.exfat -n \"$label\" \"$blockDevice\" 2>&1 || newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1"
+                FilesystemType.NTFS -> "mkfs.ntfs -f -L \"$label\" \"$blockDevice\" 2>&1"
             }
 
             val res = RootShell.exec(cmd)
             if (!res.isSuccess) {
                 error("Formatting $blockDevice with ${fsType.label} failed: ${res.output}\n${res.stderr.joinToString("\n")}")
+            }
+        }
+    }
+
+    /**
+     * Repartition the entire MicroSD card with a multi-partition scheme.
+     * CAUTION: Destructive operation. Recreates partition table and formats each partition.
+     */
+    suspend fun repartitionDisk(
+        diskPath: String,
+        partitions: List<PartitionSchemeConfig>
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (partitions.isEmpty()) error("No partitions specified in scheme.")
+
+            // 1. Unmount all partitions currently mounted on this disk
+            val mountsRes = RootShell.exec("grep -F \"$diskPath\" /proc/mounts 2>/dev/null")
+            for (line in mountsRes.stdout) {
+                val mntPoint = line.trim().split(Regex("\\s+")).getOrNull(1)
+                if (!mntPoint.isNullOrBlank()) {
+                    RootShell.exec("umount -f -l \"$mntPoint\" 2>/dev/null")
+                }
+            }
+
+            // 2. Wipe existing partition table signatures
+            RootShell.exec("sgdisk -Z \"$diskPath\" 2>/dev/null || wipefs -a \"$diskPath\" 2>/dev/null || dd if=/dev/zero of=\"$diskPath\" bs=1M count=8 conv=notrunc 2>/dev/null")
+
+            // 3. Create fresh partition table using sgdisk (or fdisk fallback)
+            val sgdiskCheck = RootShell.exec("which sgdisk 2>/dev/null").output.trim()
+            if (sgdiskCheck.isNotBlank()) {
+                RootShell.exec("sgdisk -o \"$diskPath\"")
+
+                partitions.forEachIndexed { index, cfg ->
+                    val partNum = index + 1
+                    val isLast = index == partitions.size - 1
+
+                    // Type code: 0700 for FAT32/exFAT (Basic Data), 8300 for Linux filesystem (F2FS/Ext4)
+                    val typeCode = when (cfg.fsType) {
+                        FilesystemType.FAT32, FilesystemType.EXFAT -> "0700"
+                        else -> "8300"
+                    }
+
+                    val sizeParam = if (isLast) "0" else "+${cfg.sizeKb}K"
+                    val createCmd = "sgdisk -n $partNum:0:$sizeParam -t $partNum:$typeCode -c $partNum:\"${cfg.label}\" \"$diskPath\""
+                    val res = RootShell.exec(createCmd)
+                    if (!res.isSuccess) {
+                        error("Failed creating partition $partNum via sgdisk: ${res.output}")
+                    }
+                }
+            } else {
+                // Fallback via fdisk script
+                val fdiskScript = StringBuilder("o\\n") // create new empty DOS partition table
+                var currentPart = 1
+                partitions.forEachIndexed { index, cfg ->
+                    val isLast = index == partitions.size - 1
+                    fdiskScript.append("n\\np\\n$currentPart\\n\\n")
+                    if (isLast) {
+                        fdiskScript.append("\\n")
+                    } else {
+                        val sizeM = (cfg.sizeKb / 1024L).coerceAtLeast(1L)
+                        fdiskScript.append("+$sizeM" + "M\\n")
+                    }
+                    if (cfg.fsType == FilesystemType.FAT32) {
+                        fdiskScript.append("t\\n")
+                        if (partitions.size > 1) fdiskScript.append("$currentPart\\n")
+                        fdiskScript.append("c\\n")
+                    }
+                    currentPart++
+                }
+                fdiskScript.append("w\\n")
+                val res = RootShell.exec("printf '$fdiskScript' | fdisk \"$diskPath\" 2>/dev/null")
+                if (!res.isSuccess) {
+                    error("Failed to write partition table via fdisk: ${res.output}")
+                }
+            }
+
+            // 4. Force kernel to re-read partition table
+            RootShell.exec("blockdev --rereadpt \"$diskPath\" 2>/dev/null || partprobe \"$diskPath\" 2>/dev/null")
+            delay(1500L)
+
+            // 5. Format each newly created partition
+            partitions.forEachIndexed { index, cfg ->
+                val partNum = index + 1
+                val partDev = "${diskPath}p$partNum"
+
+                var attempts = 0
+                while (attempts < 6 && !RootShell.exists(partDev)) {
+                    delay(500L)
+                    attempts++
+                }
+
+                val formatRes = formatPartition(
+                    blockDevice = partDev,
+                    fsType = cfg.fsType,
+                    label = cfg.label
+                )
+                if (formatRes.isFailure) {
+                    error("Partition $partNum format error: ${formatRes.exceptionOrNull()?.message}")
+                }
             }
         }
     }
