@@ -1,5 +1,6 @@
 package app.mountify.root
 
+import app.mountify.data.model.DiskType
 import app.mountify.data.model.FilesystemType
 import app.mountify.data.model.InternalStorageInfo
 import app.mountify.data.model.MigrationTarget
@@ -99,6 +100,24 @@ class StorageManager {
             }
         }
 
+        // Query df -k for exact filesystem used and available space on mounted partitions
+        val dfMap = mutableMapOf<String, Pair<Long, Long>>() // devPath or mountPoint -> (usedBytes, freeBytes)
+        val dfRes = RootShell.exec("df -k 2>/dev/null")
+        if (dfRes.isSuccess && dfRes.output.isNotBlank()) {
+            for (line in dfRes.stdout.drop(1)) {
+                val tokens = line.trim().split(Regex("\\s+"))
+                if (tokens.size >= 6) {
+                    val dev = tokens[0]
+                    val usedK = tokens[2].toLongOrNull() ?: 0L
+                    val availK = tokens[3].toLongOrNull() ?: 0L
+                    val mnt = tokens[5]
+                    val pair = Pair(usedK * 1024L, availK * 1024L)
+                    dfMap[dev] = pair
+                    dfMap[mnt] = pair
+                }
+            }
+        }
+
         val partitionsRes = RootShell.exec("cat /proc/partitions 2>/dev/null")
         val partitionItems = mutableListOf<PartitionInfo>()
 
@@ -188,6 +207,23 @@ class StorageManager {
                     val isLinuxFs = fsType.equals("f2fs", ignoreCase = true) || fsType.equals("ext4", ignoreCase = true)
                     val isSuitable = isTargetMount || (isRemovable && (isLinuxFs || (partNum >= 2 && !isMounted)))
 
+                    val dfPair = dfMap[path] ?: dfMap[name] ?: if (mountPoint != null) dfMap[mountPoint] else null
+                    val (usedBytes, freeBytes) = if (dfPair != null) {
+                        dfPair
+                    } else if (mountPoint != null && isMounted) {
+                        try {
+                            val stat = android.os.StatFs(mountPoint)
+                            val total = stat.blockCountLong * stat.blockSizeLong
+                            val free = stat.availableBlocksLong * stat.blockSizeLong
+                            val used = (total - free).coerceAtLeast(0L)
+                            Pair(used, free)
+                        } catch (_: Exception) {
+                            Pair(0L, 0L)
+                        }
+                    } else {
+                        Pair(0L, 0L)
+                    }
+
                     partitionItems.add(
                         PartitionInfo(
                             path = path,
@@ -195,6 +231,8 @@ class StorageManager {
                             diskName = diskName,
                             partitionNumber = partNum,
                             sizeBytes = sizeBytes,
+                            usedBytes = usedBytes,
+                            freeBytes = freeBytes,
                             fsType = fsType,
                             mountPoint = mountPoint,
                             label = label,
@@ -214,6 +252,7 @@ class StorageManager {
                 val name = devPath.substringAfterLast("/")
                 val mountInfo = mountedMap[devPath]
                 val isMounted = mountInfo != null
+                val dfPair = dfMap[devPath] ?: dfMap[name] ?: if (mountInfo?.first != null) dfMap[mountInfo.first] else null
                 partitionItems.add(
                     PartitionInfo(
                         path = devPath,
@@ -221,6 +260,8 @@ class StorageManager {
                         diskName = name.substringBeforeLast("p"),
                         partitionNumber = name.filter { it.isDigit() }.toIntOrNull() ?: 1,
                         sizeBytes = 0L,
+                        usedBytes = dfPair?.first ?: 0L,
+                        freeBytes = dfPair?.second ?: 0L,
                         fsType = mountInfo?.second ?: "",
                         mountPoint = mountInfo?.first,
                         isMounted = isMounted,
@@ -392,74 +433,150 @@ class StorageManager {
         }
 
     /**
-     * Detect physical MicroSD hardware disk information (manufacturer, model, capacity, partition list).
+     * Detect all connected physical storage disks (MicroSD, USB OTG flashdrives, etc.)
+     * and their partition hierarchies.
      */
-    suspend fun detectSdCardDiskInfo(targetMountPoint: String = "/data/sdext2"): SdCardDiskInfo? = withContext(Dispatchers.IO) {
+    suspend fun detectAllDisks(targetMountPoint: String = "/data/sdext2"): List<SdCardDiskInfo> = withContext(Dispatchers.IO) {
         val partitions = detectPartitions(targetMountPoint)
 
-        // Find disk name from detected partitions or fallback to mmcblk0/mmcblk1
-        val candidateDisk = partitions.firstOrNull()?.diskName
-            ?: if (java.io.File("/sys/block/mmcblk0").exists()) "mmcblk0"
-            else if (java.io.File("/sys/block/mmcblk1").exists()) "mmcblk1"
-            else null
+        // 1. Discover all disk candidate names from partitions or /sys/block
+        val candidateDiskNames = linkedSetOf<String>()
+        partitions.forEach { candidateDiskNames.add(it.diskName) }
 
-        if (candidateDisk == null) return@withContext null
+        // Also inspect /sys/block for mmcblk* and sd*
+        try {
+            val sysBlock = java.io.File("/sys/block")
+            if (sysBlock.exists() && sysBlock.isDirectory) {
+                sysBlock.listFiles()?.forEach { f ->
+                    val name = f.name
+                    if (name.startsWith("mmcblk") && !name.contains("boot") && !name.contains("rpmb")) {
+                        candidateDiskNames.add(name)
+                    } else if (name.matches(Regex("sd[a-z]"))) {
+                        val rem = try {
+                            java.io.File(f, "removable").readText().trim()
+                        } catch (_: Exception) { "0" }
+                        if (rem == "1") {
+                            candidateDiskNames.add(name)
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
 
-        val diskPath = "/dev/block/$candidateDisk"
-
-        // Read hardware manufacturer ID
-        var manfid = try {
-            val f = java.io.File("/sys/block/$candidateDisk/device/manfid")
-            if (f.exists() && f.canRead()) f.readText().trim() else ""
-        } catch (_: Exception) { "" }
-        if (manfid.isBlank()) {
-            val res = RootShell.exec("cat /sys/block/$candidateDisk/device/manfid 2>/dev/null")
-            if (res.isSuccess) manfid = res.output.trim()
+        if (candidateDiskNames.isEmpty()) {
+            if (java.io.File("/sys/block/mmcblk0").exists()) candidateDiskNames.add("mmcblk0")
+            else if (java.io.File("/sys/block/mmcblk1").exists()) candidateDiskNames.add("mmcblk1")
         }
 
-        // Read hardware model name
-        var model = try {
-            val f = java.io.File("/sys/block/$candidateDisk/device/name")
-            if (f.exists() && f.canRead()) f.readText().trim() else ""
-        } catch (_: Exception) { "" }
-        if (model.isBlank()) {
-            val res = RootShell.exec("cat /sys/block/$candidateDisk/device/name 2>/dev/null")
-            if (res.isSuccess) model = res.output.trim()
+        val disks = mutableListOf<SdCardDiskInfo>()
+
+        for (candidateDisk in candidateDiskNames) {
+            val diskPath = "/dev/block/$candidateDisk"
+            val isMmc = candidateDisk.startsWith("mmcblk")
+            val diskType = if (isMmc) DiskType.MICRO_SD else DiskType.USB_OTG
+
+            // Read hardware manufacturer ID & model
+            var manfid = try {
+                val f = java.io.File("/sys/block/$candidateDisk/device/manfid")
+                if (f.exists() && f.canRead()) f.readText().trim() else ""
+            } catch (_: Exception) { "" }
+            if (manfid.isBlank() && isMmc) {
+                val res = RootShell.exec("cat /sys/block/$candidateDisk/device/manfid 2>/dev/null")
+                if (res.isSuccess) manfid = res.output.trim()
+            }
+
+            var model = try {
+                val f = java.io.File("/sys/block/$candidateDisk/device/name")
+                if (f.exists() && f.canRead()) f.readText().trim() else ""
+            } catch (_: Exception) { "" }
+            if (model.isBlank()) {
+                val res = RootShell.exec("cat /sys/block/$candidateDisk/device/name 2>/dev/null")
+                if (res.isSuccess && res.output.isNotBlank()) {
+                    model = res.output.trim()
+                } else {
+                    val usbModelRes = RootShell.exec("cat /sys/block/$candidateDisk/device/model 2>/dev/null")
+                    if (usbModelRes.isSuccess) model = usbModelRes.output.trim()
+                }
+            }
+
+            var vendor = try {
+                val f = java.io.File("/sys/block/$candidateDisk/device/vendor")
+                if (f.exists() && f.canRead()) f.readText().trim() else ""
+            } catch (_: Exception) { "" }
+            if (vendor.isBlank() && !isMmc) {
+                val res = RootShell.exec("cat /sys/block/$candidateDisk/device/vendor 2>/dev/null")
+                if (res.isSuccess) vendor = res.output.trim()
+            }
+
+            // Read disk sector count
+            var sizeSectors = try {
+                val f = java.io.File("/sys/block/$candidateDisk/size")
+                if (f.exists() && f.canRead()) f.readText().trim().toLongOrNull() ?: 0L else 0L
+            } catch (_: Exception) { 0L }
+            if (sizeSectors == 0L) {
+                val res = RootShell.exec("cat /sys/block/$candidateDisk/size 2>/dev/null")
+                if (res.isSuccess) sizeSectors = res.output.trim().toLongOrNull() ?: 0L
+            }
+
+            val diskPartitions = partitions.filter { it.diskName == candidateDisk }
+            val totalSizeBytes = if (sizeSectors > 0) sizeSectors * 512L else diskPartitions.sumOf { it.sizeBytes }
+
+            if (totalSizeBytes <= 0L && diskPartitions.isEmpty()) {
+                continue
+            }
+
+            val totalUsedBytes = diskPartitions.sumOf { it.usedBytes }
+            val totalFreeBytes = if (totalUsedBytes > 0L) {
+                (totalSizeBytes - totalUsedBytes).coerceAtLeast(0L)
+            } else {
+                diskPartitions.sumOf { it.freeBytes }
+            }
+
+            val vendorDisplayName = when {
+                isMmc -> {
+                    val mVendor = when (manfid.lowercase()) {
+                        "0x00001b" -> "Samsung"
+                        "0x000003" -> "SanDisk"
+                        "0x000002" -> "Kingston"
+                        "0x000074" -> "Transcend"
+                        "0x000028" -> "Lexar"
+                        "0x000013" -> "Micron"
+                        "0x00009c" -> "Sony"
+                        "0x000027", "0x000070" -> "Silicon Power"
+                        "0x000041" -> "Kingston"
+                        else -> "MicroSD"
+                    }
+                    if (mVendor == "MicroSD") "MicroSD Card" else "$mVendor MicroSD"
+                }
+                else -> {
+                    if (vendor.isNotBlank()) "$vendor USB OTG" else "USB OTG Storage"
+                }
+            }
+
+            disks.add(
+                SdCardDiskInfo(
+                    devicePath = diskPath,
+                    diskName = candidateDisk,
+                    vendorName = vendorDisplayName,
+                    modelName = model,
+                    totalSizeBytes = totalSizeBytes,
+                    totalUsedBytes = totalUsedBytes,
+                    totalFreeBytes = totalFreeBytes,
+                    diskType = diskType,
+                    partitions = diskPartitions
+                )
+            )
         }
 
-        // Read disk sector count
-        var sizeSectors = try {
-            val f = java.io.File("/sys/block/$candidateDisk/size")
-            if (f.exists() && f.canRead()) f.readText().trim().toLongOrNull() ?: 0L else 0L
-        } catch (_: Exception) { 0L }
-        if (sizeSectors == 0L) {
-            val res = RootShell.exec("cat /sys/block/$candidateDisk/size 2>/dev/null")
-            if (res.isSuccess) sizeSectors = res.output.trim().toLongOrNull() ?: 0L
-        }
+        disks
+    }
 
-        val totalSizeBytes = if (sizeSectors > 0) sizeSectors * 512L else partitions.sumOf { it.sizeBytes }
-
-        val vendor = when (manfid.lowercase()) {
-            "0x00001b" -> "Samsung"
-            "0x000003" -> "SanDisk"
-            "0x000002" -> "Kingston"
-            "0x000074" -> "Transcend"
-            "0x000028" -> "Lexar"
-            "0x000013" -> "Micron"
-            "0x00009c" -> "Sony"
-            "0x000027", "0x000070" -> "Silicon Power"
-            "0x000041" -> "Kingston"
-            else -> "MicroSD"
-        }
-
-        SdCardDiskInfo(
-            devicePath = diskPath,
-            diskName = candidateDisk,
-            vendorName = "$vendor MicroSD",
-            modelName = model,
-            totalSizeBytes = totalSizeBytes,
-            partitions = partitions.filter { it.diskName == candidateDisk }
-        )
+    /**
+     * Detect primary MicroSD hardware disk information (manufacturer, model, capacity, partition list).
+     */
+    suspend fun detectSdCardDiskInfo(targetMountPoint: String = "/data/sdext2"): SdCardDiskInfo? = withContext(Dispatchers.IO) {
+        detectAllDisks(targetMountPoint).firstOrNull { it.diskType == DiskType.MICRO_SD }
+            ?: detectAllDisks(targetMountPoint).firstOrNull()
     }
 
     /**

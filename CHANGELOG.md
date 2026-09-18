@@ -5,6 +5,24 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.46] - 2026-09-18
+
+### Added
+- **Multi-Disk Partition Telemetry Hero**:
+  - Displays cumulative storage telemetry for Internal Storage (`/data`) and all detected external cards/disks (MicroSD, USB OTG, external SSD/HDD) on the main Storage screen.
+  - Computes and displays whole-disk metrics (`Total`, `Used`, `Free`, and percentage) with gradient progress gauges.
+- **Two-Tier Visual Partition Map per External Disk**:
+  - Implemented multi-disk visual partition map cards on the main Storage screen representing each detected physical external drive.
+  - Proportional partition map segments with two-tier visual fill (solid color indicator for used space, translucent indicator for remaining free space).
+  - Clear metrics summary (`Total: X GB • Used: Y GB • Free: Z GB`) and intuitive tap hint indicating entry into dedicated partition management.
+- **Dedicated Native Disk & Partition Sub-Page (`DiskDetailView`)**:
+  - Created a dedicated, full-featured native sub-page when tapping any disk card, maintaining bottom navigation visibility for seamless tab switching.
+  - Hardware overview card with cumulative capacity gauge and quick access to `Partition Wizard` (`Atur Ulang Partisi`).
+  - Interactive mini visual partition map for the selected disk.
+  - Standalone Partition Cards for every partition on the disk showing hardware device path (`/dev/block/...`), filesystem chip, status badge, used/free space bar, and direct inline actions (`Mount/Unmount`, `Format`, and `Check fsck`).
+- **Clean Architecture & Multi-Disk Detection Engine**:
+  - Expanded `StorageManager.detectAllDisks()` and `StorageRepository.getAllDisks()` to automatically scan all `mmcblk*` and removable `sd*` (USB OTG) block devices, resolving vendor identities, hardware model names, and filesystem usage metrics.
+
 ## [2.1.45] - 2026-09-18
 
 ### Changed

@@ -45,6 +45,21 @@ class StorageViewModel @Inject constructor(
     private val _diskInfo = MutableStateFlow<SdCardDiskInfo?>(null)
     val diskInfo: StateFlow<SdCardDiskInfo?> = _diskInfo.asStateFlow()
 
+    private val _allDisks = MutableStateFlow<List<SdCardDiskInfo>>(emptyList())
+    val allDisks: StateFlow<List<SdCardDiskInfo>> = _allDisks.asStateFlow()
+
+    private val _selectedDiskForDetail = MutableStateFlow<SdCardDiskInfo?>(null)
+    val selectedDiskForDetail: StateFlow<SdCardDiskInfo?> = _selectedDiskForDetail.asStateFlow()
+
+    fun openDiskDetail(disk: SdCardDiskInfo) {
+        _selectedDiskForDetail.value = disk
+        disk.partitions.firstOrNull()?.let { selectPartition(it) }
+    }
+
+    fun closeDiskDetail() {
+        _selectedDiskForDetail.value = null
+    }
+
     private val _partitions = MutableStateFlow<List<PartitionInfo>>(emptyList())
     val partitions: StateFlow<List<PartitionInfo>> = _partitions.asStateFlow()
 
@@ -107,9 +122,16 @@ class StorageViewModel @Inject constructor(
                 _partitions.value = detected
                 _detectedDevices.value = detected.map { it.path }
 
-                // Fetch hardware disk info
-                val disk = storageRepository.getSdCardDiskInfo(sdBase)
-                _diskInfo.value = disk
+                // Fetch hardware disks info
+                val disks = storageRepository.getAllDisks(sdBase)
+                _allDisks.value = disks
+                val primaryDisk = disks.firstOrNull { it.diskType == app.mountify.data.model.DiskType.MICRO_SD } ?: disks.firstOrNull()
+                _diskInfo.value = primaryDisk
+
+                // Update selected disk if active
+                _selectedDiskForDetail.value?.let { currentSelDisk ->
+                    _selectedDiskForDetail.value = disks.firstOrNull { it.devicePath == currentSelDisk.devicePath }
+                }
 
                 // Auto-select active target mount or first suitable partition
                 val currentSel = _selectedPartition.value
@@ -125,8 +147,8 @@ class StorageViewModel @Inject constructor(
         }
     }
 
-    fun openPartitionWizard() {
-        val disk = _diskInfo.value
+    fun openPartitionWizard(targetDisk: SdCardDiskInfo? = null) {
+        val disk = targetDisk ?: _selectedDiskForDetail.value ?: _diskInfo.value
         val totalBytes = if (disk != null && disk.totalSizeBytes > 0) {
             disk.totalSizeBytes
         } else {
@@ -195,7 +217,7 @@ class StorageViewModel @Inject constructor(
         val current = _wizardPartitions.value.toMutableList()
         if (current.size >= 4) return
 
-        val disk = _diskInfo.value
+        val disk = _selectedDiskForDetail.value ?: _diskInfo.value
         val totalKb = (disk?.totalSizeBytes ?: 0L) / 1024L
         val allocatedKb = current.sumOf { it.sizeKb }
         val unallocatedKb = (totalKb - allocatedKb).coerceAtLeast(0L)
@@ -244,7 +266,7 @@ class StorageViewModel @Inject constructor(
     fun autoBalanceWizardPartitions() {
         val current = _wizardPartitions.value
         if (current.isEmpty()) return
-        val disk = _diskInfo.value
+        val disk = _selectedDiskForDetail.value ?: _diskInfo.value
         val totalKb = (disk?.totalSizeBytes ?: 0L) / 1024L
         if (totalKb <= 0) return
         val perPartKb = ((totalKb / current.size) / 2048) * 2048L
@@ -260,7 +282,8 @@ class StorageViewModel @Inject constructor(
         viewModelScope.launch {
             _isRepartitioning.value = true
             _repartitionError.value = null
-            val diskPath = _diskInfo.value?.devicePath ?: "/dev/block/mmcblk0"
+            val targetDisk = _selectedDiskForDetail.value ?: _diskInfo.value
+            val diskPath = targetDisk?.devicePath ?: "/dev/block/mmcblk0"
             val result = storageRepository.repartitionDisk(diskPath, _wizardPartitions.value)
             _isRepartitioning.value = false
             if (result.isSuccess) {

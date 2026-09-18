@@ -55,6 +55,11 @@ data class InternalStorageInfo(
         get() = if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
 }
 
+enum class DiskType {
+    MICRO_SD,
+    USB_OTG
+}
+
 /** Detailed partition metadata from /proc/partitions, blkid, and /proc/mounts */
 data class PartitionInfo(
     val path: String,
@@ -62,6 +67,8 @@ data class PartitionInfo(
     val diskName: String,
     val partitionNumber: Int = 0,
     val sizeBytes: Long = 0L,
+    val usedBytes: Long = 0L,
+    val freeBytes: Long = 0L,
     val fsType: String = "",
     val mountPoint: String? = null,
     val label: String? = null,
@@ -69,15 +76,29 @@ data class PartitionInfo(
     val isMounted: Boolean = false,
     val isTargetMount: Boolean = false,
     val isMountTargetReady: Boolean = false
-)
+) {
+    val usedPercent: Float
+        get() = if (sizeBytes > 0L && usedBytes > 0L) (usedBytes.toFloat() / sizeBytes.toFloat()).coerceIn(0f, 1f) else 0f
 
-/** Physical MicroSD disk hardware metadata */
+    val shortName: String
+        get() = when {
+            isTargetMount -> "Part $partitionNumber (EXT)"
+            partitionNumber == 1 -> "Part 1 (Portable)"
+            partitionNumber > 0 -> "Part $partitionNumber"
+            else -> name.takeLast(6)
+        }
+}
+
+/** Physical MicroSD / USB OTG disk hardware metadata */
 data class SdCardDiskInfo(
     val devicePath: String = "/dev/block/mmcblk0",
     val diskName: String = "mmcblk0",
     val vendorName: String = "MicroSD Card",
     val modelName: String = "",
     val totalSizeBytes: Long = 0L,
+    val totalUsedBytes: Long = 0L,
+    val totalFreeBytes: Long = 0L,
+    val diskType: DiskType = DiskType.MICRO_SD,
     val partitions: List<PartitionInfo> = emptyList()
 ) {
     val displayName: String get() {
@@ -85,6 +106,9 @@ data class SdCardDiskInfo(
         val sizeGb = String.format(java.util.Locale.US, "%.1f GB", totalSizeBytes / (1024.0 * 1024.0 * 1024.0))
         return "$vendorName$modelPart ($sizeGb)"
     }
+
+    val usedPercent: Float
+        get() = if (totalSizeBytes > 0L && totalUsedBytes > 0L) (totalUsedBytes.toFloat() / totalSizeBytes.toFloat()).coerceIn(0f, 1f) else 0f
 }
 
 /** Specification for creating a partition in the Partition Wizard */

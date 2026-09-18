@@ -222,11 +222,8 @@ fun FullAppPreviewLayout(
                         ),
                         internalStorage = null,
                         diskInfo = null,
-                        partitions = emptyList(),
-                        selectedPartition = null,
-                        configuredSdBase = "/data/sdext2",
+                        allDisks = emptyList(),
                         isScanning = false,
-                        isCheckingFs = false,
                         statusMessage = null,
                         offloadedStats = 0 to 0L
                     )

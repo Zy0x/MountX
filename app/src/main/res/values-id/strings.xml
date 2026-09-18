@@ -278,6 +278,16 @@
     <string name="storage_badge_portable">Penyimpanan Portabel</string>
     <string name="storage_badge_target_active">Target Aktif</string>
     <string name="storage_badge_ready">Siap Di-mount</string>
+    <string name="storage_disk_detail_title">Disk &amp; Partisi</string>
+    <string name="storage_disk_detail_subtitle">%1$d partisi terdeteksi</string>
+    <string name="storage_disk_card_tap_hint">Ketuk untuk kelola disk &amp; partisi</string>
+    <string name="storage_disk_hardware_info">Hardware &amp; Kapasitas</string>
+    <string name="storage_disk_partitions_list">Daftar Partisi</string>
+    <string name="storage_partition_item_n">Partisi %1$d</string>
+    <string name="storage_partition_free_used_fmt">Digunakan: %1$s • Bebas: %2$s</string>
+    <string name="storage_disk_total_capacity">Total: %1$s • Terpakai: %2$s • Bebas: %3$s</string>
+    <string name="storage_multi_disk_otg_title">Penyimpanan USB OTG</string>
+    <string name="storage_action_check_fs">Periksa (fsck)</string>
 
 
     <string name="format_title">Format Partisi</string>
