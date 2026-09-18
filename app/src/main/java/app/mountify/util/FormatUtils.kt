@@ -79,15 +79,54 @@ object FormatUtils {
         }
     }
 
+    /**
+     * Generates a continuous 4-tier traffic-light health gradient mapped to the filled portion of a bar:
+     * - 0–60%   : Stable Green (#10B981)
+     * - 60–80%  : Smooth transition Green -> Yellow (#EAB308)
+     * - 80–90%  : Smooth transition Yellow -> Orange (#F97316)
+     * - 90–100% : Smooth transition Orange -> Red (#EF4444)
+     */
     fun getHealthBrush(usedFraction: Float): androidx.compose.ui.graphics.Brush {
-        val f = usedFraction.coerceIn(0f, 1f)
+        val f = usedFraction.coerceIn(0.001f, 1f)
         val endColor = getHealthColor(f)
-        val startColor = when {
-            f <= 0.60f -> HealthGreen.copy(alpha = 0.85f)
-            f <= 0.80f -> HealthGreen
-            f <= 0.90f -> HealthYellow
-            else -> HealthOrange
+
+        val stops = when {
+            f <= 0.60f -> arrayOf(
+                0.0f to HealthGreen,
+                1.0f to HealthGreen
+            )
+            f <= 0.80f -> arrayOf(
+                0.0f to HealthGreen,
+                (0.60f / f).coerceIn(0f, 1f) to HealthGreen,
+                1.0f to endColor
+            )
+            f <= 0.90f -> arrayOf(
+                0.0f to HealthGreen,
+                (0.60f / f).coerceIn(0f, 1f) to HealthGreen,
+                (0.80f / f).coerceIn(0f, 1f) to HealthYellow,
+                1.0f to endColor
+            )
+            else -> arrayOf(
+                0.0f to HealthGreen,
+                (0.60f / f).coerceIn(0f, 1f) to HealthGreen,
+                (0.80f / f).coerceIn(0f, 1f) to HealthYellow,
+                (0.90f / f).coerceIn(0f, 1f) to HealthOrange,
+                1.0f to endColor
+            )
         }
-        return androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(startColor, endColor))
+        return androidx.compose.ui.graphics.Brush.horizontalGradient(*stops)
+    }
+
+    /**
+     * Full-span horizontal gradient covering the entire 0% to 100% scale.
+     */
+    fun getFullHealthBrush(): androidx.compose.ui.graphics.Brush {
+        return androidx.compose.ui.graphics.Brush.horizontalGradient(
+            0.0f to HealthGreen,
+            0.60f to HealthGreen,
+            0.80f to HealthYellow,
+            0.90f to HealthOrange,
+            1.0f to HealthRed
+        )
     }
 }

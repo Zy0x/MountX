@@ -324,7 +324,7 @@ private fun DiskHardwareOverviewCard(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold
                     ),
-                    color = CyberEmerald
+                    color = FormatUtils.getHealthColor(disk.usedPercent)
                 )
             }
 
@@ -449,9 +449,9 @@ private fun DiskMiniVisualMapCard(
                                 .weight(weight)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF131722))
+                                .background(Color(0xFF182030))
                                 .border(
-                                    BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                                    BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
                                     RoundedCornerShape(8.dp)
                                 )
                         ) {

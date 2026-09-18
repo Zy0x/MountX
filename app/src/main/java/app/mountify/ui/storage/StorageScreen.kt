@@ -583,21 +583,30 @@ private fun MultiDiskTelemetryCard(
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = if (isLowSpace) NeonCrimson else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = FormatUtils.getHealthColor(internalUsedPct)
                         )
                     }
 
                     Spacer(modifier = Modifier.height(5.dp))
 
-                    LinearProgressIndicator(
-                        progress = { internalUsedPct },
+                    // 4-Tier Continuous Health Gradient Progress Bar
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = if (isLowSpace) NeonCrimson else MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        if (internalUsedPct > 0.005f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(fraction = internalUsedPct.coerceIn(0f, 1f))
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(FormatUtils.getHealthBrush(internalUsedPct))
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(3.dp))
 
@@ -608,7 +617,7 @@ private fun MultiDiskTelemetryCard(
                         Text(
                             text = "${(internalUsedPct * 100).toInt()}% " + stringResource(R.string.storage_used),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = FormatUtils.getHealthColor(internalUsedPct)
                         )
                         Text(
                             text = "${FormatUtils.formatBytes(internalStorage.freeBytes)} " + stringResource(R.string.storage_free),
@@ -627,7 +636,6 @@ private fun MultiDiskTelemetryCard(
 
                 val diskIcon = if (disk.diskType == DiskType.USB_OTG) Icons.Default.Usb else Icons.Default.SdCard
                 val diskUsedPct = disk.usedPercent
-                val isDiskFull = diskUsedPct > 0.90f
 
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -666,21 +674,30 @@ private fun MultiDiskTelemetryCard(
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = if (isDiskFull) NeonCrimson else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = FormatUtils.getHealthColor(diskUsedPct)
                         )
                     }
 
                     Spacer(modifier = Modifier.height(5.dp))
 
-                    LinearProgressIndicator(
-                        progress = { diskUsedPct },
+                    // 4-Tier Continuous Health Gradient Progress Bar
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = if (isDiskFull) NeonCrimson else CyberEmerald,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        if (diskUsedPct > 0.005f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(fraction = diskUsedPct.coerceIn(0f, 1f))
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(FormatUtils.getHealthBrush(diskUsedPct))
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(3.dp))
 
@@ -691,7 +708,7 @@ private fun MultiDiskTelemetryCard(
                         Text(
                             text = "${(diskUsedPct * 100).toInt()}% " + stringResource(R.string.storage_used),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = FormatUtils.getHealthColor(diskUsedPct)
                         )
                         Text(
                             text = "${FormatUtils.formatBytes(disk.totalFreeBytes)} " + stringResource(R.string.storage_free),
@@ -901,9 +918,9 @@ private fun DiskVisualMapOverviewCard(
                     text = "${stringResource(R.string.storage_used)}: ${FormatUtils.formatBytes(disk.totalUsedBytes)}",
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Bold
                     ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = FormatUtils.getHealthColor(disk.usedPercent)
                 )
                 Text(
                     text = "•",
@@ -947,9 +964,9 @@ private fun DiskVisualMapOverviewCard(
                                 .weight(weightFraction)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF131722))
+                                .background(Color(0xFF182030))
                                 .border(
-                                    BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                                    BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
                                     RoundedCornerShape(6.dp)
                                 )
                         ) {

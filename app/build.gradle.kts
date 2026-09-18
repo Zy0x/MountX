@@ -23,8 +23,8 @@ android {
         applicationId = "app.mountify"
         minSdk = 29
         targetSdk = 35
-        versionCode = 20149
-        versionName = "2.1.49"
+        versionCode = 20150
+        versionName = "2.1.50"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

@@ -5,6 +5,21 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.50] - 2026-09-18
+
+### Fixed
+- **Continuous 4-Tier Health Gradients Across Storage Bars**:
+  - Refactored `FormatUtils.getHealthBrush` to generate a dynamic multi-stop gradient strictly adhering to capacity thresholds:
+    - `0–60%`: Stable Green (`#10B981`).
+    - `60–80%`: Smooth transition from Green to Yellow (`#EAB308`).
+    - `80–90%`: Smooth transition from Yellow to Orange (`#F97316`).
+    - `90–100%`: Smooth transition from Orange to Red (`#EF4444`).
+  - Replaced binary flat-color `LinearProgressIndicator` in `MultiDiskTelemetryCard` with continuous gradient progress bars across Internal Storage and external media.
+  - Dynamically bound percentage and capacity metric text colors to `FormatUtils.getHealthColor`.
+- **Partition Visual Map Contrast Enhancement**:
+  - Enhanced the background tone of unallocated/free partition space (`#182030`) with a reinforced outline border to clearly separate partition bounds from the card container background.
+  - Preserved the high-contrast white divider line highlighting the boundary between used and free partition space.
+
 ## [2.1.49] - 2026-09-18
 
 ### Fixed
