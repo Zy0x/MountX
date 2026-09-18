@@ -80,6 +80,18 @@ class StorageRepository @Inject constructor(
             storageManager.unmountSdPartition(mountPoint)
         }
 
+    suspend fun unmountPartition(partition: PartitionInfo): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            storageManager.unmountPartition(partition)
+        }
+
+    suspend fun mountPartition(
+        partition: PartitionInfo,
+        targetMountPoint: String = "/data/sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.mountPartition(partition, targetMountPoint)
+    }
+
     suspend fun formatPartition(
         blockDevice: String,
         fsType: FilesystemType,

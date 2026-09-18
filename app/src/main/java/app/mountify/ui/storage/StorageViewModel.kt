@@ -317,7 +317,26 @@ class StorageViewModel @Inject constructor(
             if (result.isSuccess) {
                 appPreferences.setSdBlockDevice(blockDevice)
                 _statusMessage.value = "MOUNT_OK"
-                detectPartitions()
+                detectPartitions(force = true)
+            } else {
+                _statusMessage.value = result.exceptionOrNull()?.message ?: "Mount failed"
+            }
+        }
+    }
+
+    fun mountPartition(partition: PartitionInfo) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            val result = storageRepository.mountPartition(partition, sdBase)
+            if (result.isSuccess) {
+                if (partition.fsType.equals("f2fs", ignoreCase = true) ||
+                    partition.fsType.equals("ext4", ignoreCase = true) ||
+                    partition.isTargetMount
+                ) {
+                    appPreferences.setSdBlockDevice(partition.path)
+                }
+                _statusMessage.value = "MOUNT_OK"
+                detectPartitions(force = true)
             } else {
                 _statusMessage.value = result.exceptionOrNull()?.message ?: "Mount failed"
             }
@@ -330,7 +349,19 @@ class StorageViewModel @Inject constructor(
             val result = storageRepository.unmountSdPartition(sdBase)
             if (result.isSuccess) {
                 _statusMessage.value = "UNMOUNT_OK"
-                detectPartitions()
+                detectPartitions(force = true)
+            } else {
+                _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+            }
+        }
+    }
+
+    fun unmountPartition(partition: PartitionInfo) {
+        viewModelScope.launch {
+            val result = storageRepository.unmountPartition(partition)
+            if (result.isSuccess) {
+                _statusMessage.value = "UNMOUNT_OK"
+                detectPartitions(force = true)
             } else {
                 _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
             }
@@ -348,7 +379,7 @@ class StorageViewModel @Inject constructor(
                 // Auto mount after format to sdBase
                 val sdBase = appPreferences.sdBasePath.first()
                 storageRepository.mountSdPartition(blockDevice, sdBase, fsType)
-                detectPartitions()
+                detectPartitions(force = true)
             } else {
                 _statusMessage.value = result.exceptionOrNull()?.message ?: "Format failed"
             }

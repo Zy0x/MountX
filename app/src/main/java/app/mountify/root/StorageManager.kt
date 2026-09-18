@@ -591,6 +591,86 @@ class StorageManager {
         }
 
     /**
+     * Unmount an individual partition cleanly and independently without disturbing other partitions.
+     * Supports both Android Vold public volumes (via `sm unmount`) and direct Linux mountpoints.
+     */
+    suspend fun unmountPartition(partition: PartitionInfo): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val devName = partition.name
+            val blockDev = partition.path
+            val mnt = partition.mountPoint
+
+            if (partition.isTargetMount) {
+                // If it's the target mount (/data/sdext2), unbind game folders and unmount target
+                unmountSdPartition(mnt ?: "/data/sdext2").getOrThrow()
+            } else {
+                // 1. If it has an Android Vold volume (public:major,minor), execute sm unmount
+                val mmRes = RootShell.exec("cat /sys/class/block/$devName/dev 2>/dev/null")
+                val mm = if (mmRes.isSuccess && mmRes.stdout.isNotEmpty()) {
+                    mmRes.stdout.first().trim().replace(":", ",")
+                } else null
+
+                if (mm != null) {
+                    RootShell.exec("sm unmount \"public:$mm\" 2>/dev/null")
+                }
+
+                // 2. Direct Linux umount by mount point if still mounted
+                if (!mnt.isNullOrBlank()) {
+                    RootShell.exec("umount -f -l \"$mnt\" 2>/dev/null")
+                }
+
+                // 3. Direct Linux umount by block device (cleans up any remaining mounts in all namespaces)
+                RootShell.exec("umount -f -l \"$blockDev\" 2>/dev/null")
+            }
+            Unit
+        }
+    }
+
+    /**
+     * Mount an individual partition cleanly and independently.
+     * Supports both Android Vold public volumes (via `sm mount`) and direct target mounting.
+     */
+    suspend fun mountPartition(
+        partition: PartitionInfo,
+        targetMountPoint: String = "/data/sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val devName = partition.name
+            val blockDev = partition.path
+
+            // 1. If it has an Android Vold volume, try sm mount first
+            val mmRes = RootShell.exec("cat /sys/class/block/$devName/dev 2>/dev/null")
+            val mm = if (mmRes.isSuccess && mmRes.stdout.isNotEmpty()) {
+                mmRes.stdout.first().trim().replace(":", ",")
+            } else null
+
+            var smMounted = false
+            if (mm != null) {
+                val smRes = RootShell.exec("sm mount \"public:$mm\" 2>/dev/null")
+                if (smRes.isSuccess) {
+                    val checkRes = RootShell.exec("sm list-volumes 2>/dev/null")
+                    if (checkRes.isSuccess && checkRes.stdout.any { it.contains("public:$mm mounted") }) {
+                        smMounted = true
+                    }
+                }
+            }
+
+            // 2. If not mounted via Vold, mount directly to target mount point
+            if (!smMounted) {
+                val fs = when (partition.fsType.lowercase()) {
+                    "f2fs" -> FilesystemType.F2FS
+                    "ext4" -> FilesystemType.EXT4
+                    "vfat", "fat32" -> FilesystemType.FAT32
+                    "exfat" -> FilesystemType.EXFAT
+                    else -> FilesystemType.F2FS
+                }
+                mountSdPartition(blockDev, targetMountPoint, fs).getOrThrow()
+            }
+            Unit
+        }
+    }
+
+    /**
      * Query storage statistics for the given mount point (total, used, free space).
      */
     suspend fun getStorageInfo(mountPoint: String = "/data/sdext2"): StorageInfo? =

@@ -93,8 +93,8 @@ fun DiskDetailView(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenWizard: () -> Unit,
-    onMountPartition: (blockDevice: String, fsType: FilesystemType) -> Unit,
-    onUnmountPartition: () -> Unit,
+    onMountPartition: (PartitionInfo) -> Unit,
+    onUnmountPartition: (PartitionInfo) -> Unit,
     onFormatPartition: (PartitionInfo) -> Unit,
     onCheckFilesystem: (PartitionInfo) -> Unit,
     modifier: Modifier = Modifier
@@ -197,17 +197,8 @@ fun DiskDetailView(
                         partition = partition,
                         isCheckingFs = isCheckingFs,
                         isFormatting = isFormatting,
-                        onMount = {
-                            val fs = when (partition.fsType.lowercase()) {
-                                "f2fs" -> FilesystemType.F2FS
-                                "ext4" -> FilesystemType.EXT4
-                                "vfat", "fat32" -> FilesystemType.FAT32
-                                "exfat" -> FilesystemType.EXFAT
-                                else -> FilesystemType.F2FS
-                            }
-                            onMountPartition(partition.path, fs)
-                        },
-                        onUnmount = onUnmountPartition,
+                        onMount = { onMountPartition(partition) },
+                        onUnmount = { onUnmountPartition(partition) },
                         onFormat = { onFormatPartition(partition) },
                         onCheckFilesystem = { onCheckFilesystem(partition) }
                     )
@@ -528,7 +519,6 @@ private fun DiskPartitionCard(
 ) {
     var showMountedFsckWarning by remember { mutableStateOf(false) }
     var showMountedFormatWarning by remember { mutableStateOf(false) }
-    var showPortableInfoDialog by remember { mutableStateOf(false) }
 
     val partBadgeColor = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.primary
 
@@ -736,8 +726,8 @@ private fun DiskPartitionCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 1. Mount / Unmount / System Active Button
-                if (partition.isTargetMount) {
+                // 1. Mount / Unmount Button
+                if (partition.isMounted) {
                     OutlinedButton(
                         onClick = onUnmount,
                         shape = RoundedCornerShape(8.dp),
@@ -758,31 +748,6 @@ private fun DiskPartitionCard(
                             text = stringResource(R.string.storage_action_unmount),
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else if (partition.isPortableMount) {
-                    OutlinedButton(
-                        onClick = { showPortableInfoDialog = true },
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0284C7)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(34.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = stringResource(R.string.storage_btn_system_mounted),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 } else {
@@ -910,19 +875,6 @@ private fun DiskPartitionCard(
             confirmText = stringResource(R.string.common_ok),
             onConfirm = { showMountedFormatWarning = false },
             onDismiss = { showMountedFormatWarning = false }
-        )
-    }
-
-    if (showPortableInfoDialog) {
-        ConfirmDialog(
-            title = stringResource(R.string.storage_system_mounted_info_title),
-            message = stringResource(
-                R.string.storage_system_mounted_info_desc,
-                partition.mountPoint ?: partition.path
-            ),
-            confirmText = stringResource(R.string.common_ok),
-            onConfirm = { showPortableInfoDialog = false },
-            onDismiss = { showPortableInfoDialog = false }
         )
     }
 }

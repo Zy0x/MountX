@@ -5,6 +5,15 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.52] - 2026-09-18
+
+### Added
+- **Unified Independent Partition Mount & Unmount Controls**:
+  - Replaced the passive "System Active" informational button with direct, active `[ ▶ Mount ]` and `[ ■ Unmount ]` controls for all partitions across MicroSD and USB OTG drives.
+  - Implemented granular partition unmounting: unmounting one partition (such as Android Vold public volume `mmcblk0p1`) unmounts only that specific partition via `sm unmount` and localized direct namespace unmounts, leaving other partitions (such as `sdext2` on `mmcblk0p3` or USB drives) completely intact and running.
+  - Enabled independent remounting of partitions via `sm mount` (for Vold public storage) or direct target mount (for ext4/f2fs game partitions).
+  - Unmounting partitions allows immediate access to filesystem integrity checks (`fsck`) and maintenance operations directly within Disk Detail View.
+
 ## [2.1.51] - 2026-09-18
 
 ### Changed

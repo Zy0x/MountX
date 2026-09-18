@@ -141,8 +141,8 @@ fun StorageScreen(
             onBack = { viewModel.closeDiskDetail() },
             onRefresh = { viewModel.detectPartitions(force = true) },
             onOpenWizard = { viewModel.openPartitionWizard(selectedDiskForDetail) },
-            onMountPartition = { dev, fs -> viewModel.mountPartition(dev, fs) },
-            onUnmountPartition = { viewModel.unmountPartition() },
+            onMountPartition = { part -> viewModel.mountPartition(part) },
+            onUnmountPartition = { part -> viewModel.unmountPartition(part) },
             onFormatPartition = { part ->
                 viewModel.selectPartition(part)
                 showFormatDialog = true
