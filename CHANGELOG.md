@@ -5,6 +5,16 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.45] - 2026-09-18
+
+### Changed
+- **Storage Screen Header & Action Positioning**:
+  - Embedded Repartition (`Atur Ulang Partisi`) button directly into `SectionHeader` action slot to eliminate horizontal overflow.
+- **Visual Disk Map Label Optimization**:
+  - Implemented adaptive partition naming (`p1`, `p2`, etc.) on narrow visual map segments with single-line ellipsis constraint (`softWrap = false`), preventing awkward text wrapping and truncation.
+- **Codebase Neutrality & Legacy Cleanup**:
+  - Completely purged all remaining legacy string keys and model aliases (`storage_partition_target_mount`, `storage_mount_partition_hub`, `storage_step_*`, `isMountTargetReady`).
+
 ## [2.1.44] - 2026-09-18
 
 ### Added
@@ -112,7 +122,7 @@ and this project adheres to Semantic Versioning.
 
 ### Changed
 - **Storage Breakdown Clarity & Neutral App Terminology**:
-  - **Eliminated Ambiguous Storage Labels**: Replaced legacy, cryptic App2SD categories (`Data`, `Data(Ext) 1`, `Data(Ext) 2`) with clear, human-readable labels:
+  - **Eliminated Ambiguous Storage Labels**: Replaced legacy, cryptic partition categories (`Data`, `Data(Ext) 1`, `Data(Ext) 2`) with clear, human-readable labels:
     - `Data` ➔ **Private Data** (`/data/data` databases, preferences, and private files).
     - `Data(Ext) 1` ➔ **Shared Storage (Internal)** (`Android/data & obb` on phone storage).
     - `Data(Ext) 2` ➔ **Shared Storage (MicroSD)** (`Android/data & obb` on secondary SD card partition).
@@ -125,10 +135,10 @@ and this project adheres to Semantic Versioning.
 ## [2.1.36] - 2026-09-17
 
 ### Added
-- **Storage Screen Overhaul for Partition & App2SD Ecosystem**:
+- **Storage Screen Overhaul for Partition & Mount Ecosystem**:
   - **Dual Storage Telemetry**: Added side-by-side internal storage (`/data`) and MicroSD (`/data/sdext2`) space gauges with gradient progress bars and an offloaded data savings banner (`X games offloaded • Y GB saved`).
   - **Partition Scanner & Inspector**: Built engine parsing `/proc/partitions`, `/proc/mounts`, and `blkid` to detect block devices, parent disks, capacities (in GB/MB), filesystems (F2FS, Ext4, exFAT, VFAT), mount status, and volume labels.
-  - **App2SD & Mount Control Hub**: Added interactive App2SD Readiness Checklist (Root sandbox, Linux F2FS/Ext4 filesystem, target mountpoint), one-tap Mount/Unmount actions, and unmounted partition Filesystem Check (`fsck.f2fs` / `e2fsck`) with terminal output dialog.
+  - **Target Mount Control Hub**: Added interactive Mount Target Readiness Checklist (Root sandbox, Linux F2FS/Ext4 filesystem, target mountpoint), one-tap Mount/Unmount actions, and unmounted partition Filesystem Check (`fsck.f2fs` / `e2fsck`) with terminal output dialog.
   - **Filesystem Formatter Hub**: Modernized Danger Zone with interactive F2FS (Recommended for Flash) and Ext4 selection cards, customizable partition label input (default `sdext2`), and 2-step confirmation dialog with explicit device path.
   - Standardized `BackupRestoreScreen` top header with `CompactScreenHeader` in full compliance with `AGENTS.md` rules.
   - Added complete bilingual string resources across `values/strings.xml` and `values-id/strings.xml`.
@@ -165,7 +175,7 @@ and this project adheres to Semantic Versioning.
 ## [2.1.33] - 2026-09-17
 
 ### Added
-- Implemented exact App Detail breakdown structure inspired by App2SD Pro:
+- Implemented comprehensive App Detail breakdown structure:
   - Added `AppStorageBreakdown` model tracking all 7 Android app storage categories (`Apk`, `Dex`, `Lib`, `Data`, `Cache`, `Data(Ext) 1`, `Data(Ext) 2`) and 3-tier cumulative summaries.
   - Implemented high-performance batch shell root calculation engine in `GameRepository` querying APK, DEX/oat, native lib, internal data, cache, and shared storage in a single non-blocking `Dispatchers.IO` command.
   - Built Concentric Pie / Donut Chart with individual slice percentage labels, multi-slice coloring, and an inner circle representing Internal vs External distribution with dashed center divider.
@@ -176,7 +186,7 @@ and this project adheres to Semantic Versioning.
 ## [2.1.32] - 2026-09-17
 
 ### Added
-- Replaced the bottom sheet modal ("laci") with a dedicated full-screen native `GameDetailView` (App Detail screen) inspired by App2SD Pro.
+- Replaced the bottom sheet modal ("laci") with a dedicated full-screen native `GameDetailView` (App Detail screen).
 - Added App Hero metadata card displaying package version (`version: x.x (code: xxx)`), install timestamp, and system application info shortcut.
 - Introduced visual Donut Chart using native Compose `Canvas` with dynamic percentage arc calculation and a comprehensive storage breakdown table (Internal, MicroSD, and Total Data $\Sigma$).
 

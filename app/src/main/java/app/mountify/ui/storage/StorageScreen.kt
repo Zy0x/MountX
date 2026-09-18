@@ -54,6 +54,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -919,38 +920,35 @@ private fun SdCardVisualDiskMapCard(
     val devicePath = diskInfo?.devicePath ?: "/dev/block/mmcblk0"
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            SectionHeader(title = stringResource(R.string.storage_disk_map_title))
-
-            Button(
-                onClick = onOpenWizard,
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier.height(30.dp)
-            ) {
-                Icon(
-                    Icons.Default.AccountTree,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = stringResource(R.string.storage_action_repartition),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+        SectionHeader(
+            title = stringResource(R.string.storage_disk_map_title),
+            action = {
+                Button(
+                    onClick = onOpenWizard,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Icon(
+                        Icons.Default.AccountTree,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
                     )
-                )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.storage_action_repartition),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
             }
-        }
+        )
 
         Card(
             shape = RoundedCornerShape(18.dp),
@@ -1034,7 +1032,7 @@ private fun SdCardVisualDiskMapCard(
                     ) {
                         DiskMapLegendItem(
                             color = CyberEmerald,
-                            label = stringResource(R.string.storage_partition_app2sd_target)
+                            label = stringResource(R.string.storage_partition_target_mount)
                         )
                         DiskMapLegendItem(
                             color = ElectricCyan,
@@ -1086,6 +1084,14 @@ private fun VisualDiskMapBar(
                     else -> MaterialTheme.colorScheme.secondary
                 }
 
+                val shortName = if (weight < 0.25f && part.name.startsWith("mmcblk0p")) {
+                    "p${part.name.removePrefix("mmcblk0p")}"
+                } else if (weight < 0.20f && part.name.startsWith("mmcblk")) {
+                    part.name.removePrefix("mmcblk")
+                } else {
+                    part.name
+                }
+
                 Box(
                     modifier = Modifier
                         .weight(weight)
@@ -1108,22 +1114,26 @@ private fun VisualDiskMapBar(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = part.name,
+                            text = shortName,
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.5.sp,
+                                fontSize = if (weight < 0.25f) 9.5.sp else 10.5.sp,
                                 fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold
                             ),
                             color = if (isSelected) partColor else MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = if (part.sizeBytes > 0) FormatUtils.formatBytes(part.sizeBytes) else part.fsType.uppercase(),
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 8.5.sp,
+                                fontSize = 8.sp,
                                 fontWeight = FontWeight.Medium
                             ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -1374,7 +1384,7 @@ private fun PartitionListItem(
                             color = CyberEmerald.copy(alpha = 0.15f)
                         ) {
                             Text(
-                                text = stringResource(R.string.storage_partition_app2sd_target),
+                                text = stringResource(R.string.storage_partition_target_mount),
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = CyberEmerald,
@@ -1481,14 +1491,11 @@ private fun PartitionActionHubCard(
                             ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (devPath.isNotBlank()) {
-                                "${selectedPartition?.name ?: devPath} (${FormatUtils.formatBytes(selectedPartition?.sizeBytes ?: 0L)})"
-                            } else {
-                                stringResource(R.string.storage_no_devices_detected)
-                            },
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
+                            text = if (selectedPartition != null) "${selectedPartition.name} (${FormatUtils.formatBytes(selectedPartition.sizeBytes)})" else stringResource(R.string.storage_no_devices_detected),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
                             ),
                             color = MaterialTheme.colorScheme.onSurface
@@ -1496,16 +1503,15 @@ private fun PartitionActionHubCard(
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                     ) {
                         Text(
                             text = configuredSdBase,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
@@ -1521,17 +1527,17 @@ private fun PartitionActionHubCard(
                 ) {
                     Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         ReadinessCheckItem(
-                            label = stringResource(R.string.storage_app2sd_step_root),
+                            label = stringResource(R.string.storage_step_root),
                             isPassed = true,
                             sublabel = "Active"
                         )
                         ReadinessCheckItem(
-                            label = stringResource(R.string.storage_app2sd_step_partition),
+                            label = stringResource(R.string.storage_step_partition),
                             isPassed = isLinuxFs,
                             sublabel = if (isLinuxFs) selectedPartition?.fsType?.uppercase() ?: "Linux" else "Requires F2FS or Ext4"
                         )
                         ReadinessCheckItem(
-                            label = stringResource(R.string.storage_app2sd_step_mounted),
+                            label = stringResource(R.string.storage_step_mounted),
                             isPassed = isMountedCurrently,
                             sublabel = if (isMountedCurrently) "Active at $configuredSdBase" else "Standby"
                         )
@@ -2111,7 +2117,7 @@ private fun WizardPartitionCard(
                         color = if (index == 0) ElectricCyan.copy(alpha = 0.15f) else CyberEmerald.copy(alpha = 0.15f)
                     ) {
                         Text(
-                            text = if (index == 0) stringResource(R.string.storage_badge_portable) else stringResource(R.string.storage_partition_app2sd_target),
+                            text = if (index == 0) stringResource(R.string.storage_badge_portable) else stringResource(R.string.storage_partition_target_mount),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (index == 0) ElectricCyan else CyberEmerald,

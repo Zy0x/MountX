@@ -68,8 +68,7 @@ data class PartitionInfo(
     val uuid: String? = null,
     val isMounted: Boolean = false,
     val isTargetMount: Boolean = false,
-    val isMountTargetReady: Boolean = false,
-    val isSuitableForApp2sd: Boolean = isMountTargetReady
+    val isMountTargetReady: Boolean = false
 )
 
 /** Physical MicroSD disk hardware metadata */
