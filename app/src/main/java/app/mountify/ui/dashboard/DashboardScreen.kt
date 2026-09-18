@@ -254,7 +254,7 @@ fun DashboardContent(
     }
 }
 
-// ── 1. Sleek Compact Header Bar (~48dp height directly under status bar) ──
+// ── 1. Modern Cyber Header Bar (~56dp height directly under status bar) ──
 
 @Composable
 private fun SleekCompactHeader(
@@ -263,97 +263,108 @@ private fun SleekCompactHeader(
 ) {
     val haptic = LocalHapticFeedback.current
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left: Minimalist Brand Mark & Title
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.size(28.dp)
+            // Left: Modern Cyber Brand Mark & Title
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.SdStorage,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(15.dp)
-                    )
-                }
-            }
-
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-
-        // Right: Micro Status Pill & Tactile Refresh Action
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
-                RootSolution.MAGISK -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_magisk))
-                RootSolution.KERNELSU -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_kernelsu))
-                RootSolution.APATCH -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_apatch))
-                RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
-            }
-
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = ledGlow,
-                border = BorderStroke(1.dp, ledColor.copy(alpha = 0.45f)),
-                modifier = Modifier.height(28.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.size(36.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .background(ledColor, CircleShape)
-                    )
-                    Text(
-                        text = engineLabel,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                        fontWeight = FontWeight.SemiBold,
-                        color = ledColor
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.SdStorage,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
-            }
 
-            IconButton(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onRefresh()
-                },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = stringResource(R.string.dashboard_refresh),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.2).sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
+
+            // Right: Modern Status Pill & Tactile Refresh Action
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
+                    RootSolution.MAGISK -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_magisk))
+                    RootSolution.KERNELSU -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_kernelsu))
+                    RootSolution.APATCH -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_apatch))
+                    RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = ledGlow,
+                    border = BorderStroke(1.dp, ledColor.copy(alpha = 0.45f)),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .background(ledColor, CircleShape)
+                        )
+                        Text(
+                            text = engineLabel,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = ledColor
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onRefresh()
+                    },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.dashboard_refresh),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         }
+
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            thickness = 1.dp
+        )
     }
 }
 

@@ -5,6 +5,22 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.1.55] - 2026-09-18
+
+### Changed
+- **Modern Cyber Header (~56dp Height)**:
+  - Redesigned and scaled the app header: enlarged title typography from 15sp to 18sp Bold with improved letter-spacing.
+  - Enlarged brand mark icon container from 28dp to 36dp with rounded corner accent.
+  - Enhanced root status pill to 30dp height with 12sp Bold label and glowing LED halo dot.
+  - Increased tactile refresh button touch target to 38dp with 18dp icon.
+  - Added a subtle bottom outline divider line (`HorizontalDivider`) to cleanly delineate the header from screen content.
+  - Applied the enlarged 18sp bold header styling and divider consistently across all sub-screens via `CompactScreenHeader`.
+- **Floating Cyber Pill Navigation Bar (Anti-Lag Architecture)**:
+  - Replaced the bottom navigation bar with a floating cyber capsule dock with 26dp rounded corners, outer margin padding, and subtle border stroke.
+  - Fixed structural slot per tab (zero dynamic layout shift) eliminating runtime re-layout passes for instantaneous 120 FPS tab switching.
+  - Prominent 22dp icons and permanent 10.5sp labels across all 5 navigation destinations.
+  - Cyber active state featuring a semi-transparent HyperCyan capsule background, vibrant cyan text/icon, and a micro cyber LED indicator bar underneath.
+
 ## [2.1.54] - 2026-09-18
 
 ### Changed
