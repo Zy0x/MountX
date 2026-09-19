@@ -48,16 +48,6 @@ class StorageViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    init {
-        // Eagerly pre-warm partition and filesystem detection in background so tab navigation is instant
-        viewModelScope.launch(Dispatchers.IO) {
-            detectPartitionsInternal(force = false)
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            loadSupportedFilesystems(force = false)
-        }
-    }
-
     val storageInfo: StateFlow<StorageInfo?> = storageRepository.observeStorageInfo()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
@@ -161,8 +151,8 @@ class StorageViewModel @Inject constructor(
     val supportedFilesystems: StateFlow<List<SupportedFilesystemInfo>> = _supportedFilesystems.asStateFlow()
 
     fun loadSupportedFilesystems(force: Boolean = false) {
-        if (!force && _supportedFilesystems.value.isNotEmpty()) return
         viewModelScope.launch {
+            if (!force && _supportedFilesystems.value.isNotEmpty()) return@launch
             _supportedFilesystems.value = storageRepository.detectSupportedFilesystems()
         }
     }
@@ -239,6 +229,16 @@ class StorageViewModel @Inject constructor(
         val totalBytes = games.filter { it.mountStatus == MountStatus.MOUNTED }.sumOf { it.dataSizeBytes }
         Pair(mountedCount, totalBytes)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair(0, 0L))
+
+    init {
+        // Eagerly pre-warm partition and filesystem detection in background so tab navigation is instant
+        viewModelScope.launch(Dispatchers.IO) {
+            detectPartitionsInternal(force = false)
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            loadSupportedFilesystems(force = false)
+        }
+    }
 
     private fun updatePartitionMountedState(path: String, isMounted: Boolean) {
         _partitions.value = _partitions.value.map {
