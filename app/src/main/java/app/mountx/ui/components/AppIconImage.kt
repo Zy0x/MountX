@@ -27,11 +27,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val iconCache = LruCache<String, ImageBitmap>(128)
+private val iconCache = LruCache<String, ImageBitmap>(512)
 
 /**
  * Asynchronously loads and caches an Android application icon for Compose UI.
- * Handles AdaptiveIconDrawable, BitmapDrawable, and vector drawables smoothly.
+ * Handles AdaptiveIconDrawable, BitmapDrawable, and vector drawables smoothly with a 512-slot cache.
  */
 @Composable
 fun AppIconImage(
@@ -93,20 +93,10 @@ fun AppIconImage(
 }
 
 private fun drawableToImageBitmap(drawable: Drawable): ImageBitmap {
-    if (drawable is BitmapDrawable && drawable.bitmap != null) {
-        val bmp = drawable.bitmap
-        if (bmp.width <= 128 && bmp.height <= 128) {
-            return bmp.asImageBitmap()
-        }
-        return Bitmap.createScaledBitmap(bmp, 128, 128, true).asImageBitmap()
-    }
-
-    val width = minOf(if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96, 128)
-    val height = minOf(if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96, 128)
-
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val targetSize = 96
+    val bitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    drawable.setBounds(0, 0, canvas.width, canvas.height)
+    drawable.setBounds(0, 0, targetSize, targetSize)
     drawable.draw(canvas)
     return bitmap.asImageBitmap()
 }

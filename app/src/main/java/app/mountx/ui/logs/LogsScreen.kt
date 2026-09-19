@@ -175,6 +175,7 @@ fun LogsScreen(
                             val textColor = when (line.level) {
                                 LogLevel.ERROR -> NeonCrimson
                                 LogLevel.SUCCESS -> CyberEmerald
+                                LogLevel.WARN -> Color(0xFFFFB74D)
                                 LogLevel.DEBUG -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                 LogLevel.INFO -> MaterialTheme.colorScheme.onSurface
                             }

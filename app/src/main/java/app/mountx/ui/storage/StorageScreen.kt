@@ -244,6 +244,7 @@ fun StorageScreen(
             partitions = wizardPartitions,
             isRepartitioning = isRepartitioning,
             repartitionError = repartitionError,
+            supportedFilesystems = supportedFilesystems,
             onClose = { viewModel.closePartitionWizard() },
             onUpdateSizeKb = { idx, sizeKb -> viewModel.updatePartitionSizeKb(idx, sizeKb) },
             onUpdateFs = { idx, fs -> viewModel.updatePartitionFsType(idx, fs) },
@@ -251,6 +252,7 @@ fun StorageScreen(
             onAddPartition = { viewModel.addPartition() },
             onRemovePartition = { idx -> viewModel.removePartition(idx) },
             onAutoBalance = { viewModel.autoBalanceWizardPartitions() },
+            onAllocateUnallocated = { idx -> viewModel.allocateUnallocatedToPartition(idx) },
             onAdjustAdjacent = { idx, deltaKb -> viewModel.adjustAdjacentWizardPartitions(idx, deltaKb) },
             onAdjustByGb = { idx, deltaGb -> viewModel.adjustPartitionSizeByGb(idx, deltaGb) },
             onTriggerApply = { showRepartitionFinalConfirm = true }
@@ -405,8 +407,15 @@ fun StorageScreen(
 
     // Unmount Partition Confirmation Dialog
     if (partitionToUnmount != null) {
+        val parentDisk = allDisks.find { disk -> disk.partitions.any { it.path == partitionToUnmount?.path } }
+            ?: selectedDiskForDetail
+        val diskTitle = parentDisk?.hardwareTitle?.takeIf { it.isNotBlank() }
+            ?: partitionToUnmount?.diskName?.takeIf { it.isNotBlank() }
+            ?: stringResource(R.string.storage_disk_title)
+
         UnmountPartitionConfirmDialog(
             partition = partitionToUnmount!!,
+            diskName = diskTitle,
             onDismiss = { viewModel.clearUnmountPartitionPrompt() },
             onConfirm = { viewModel.confirmUnmountPartition() }
         )
@@ -433,7 +442,7 @@ fun StorageScreen(
                 viewModel.clearTrimOutput()
                 viewModel.clearGlobalTrimReport()
             },
-            containerColor = Color(0xFF121622),
+            containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(16.dp),
             tonalElevation = 6.dp,
             title = {
@@ -1642,11 +1651,12 @@ private fun DiskVisualMapOverviewCard(
 private fun InteractivePartitionSliderBar(
     partitions: List<PartitionSchemeConfig>,
     totalDiskKb: Long,
+    unallocatedKb: Long = 0L,
     onAdjustAdjacent: (Int, Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var barWidthPx by remember { mutableFloatStateOf(1f) }
-    val validTotalKb = partitions.sumOf { it.sizeKb }.coerceAtLeast(1L)
+    val validTotalKb = totalDiskKb.coerceAtLeast(partitions.sumOf { it.sizeKb }).coerceAtLeast(1L)
     val density = LocalDensity.current
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -1679,7 +1689,7 @@ private fun InteractivePartitionSliderBar(
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF10141E))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
                 .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)), RoundedCornerShape(10.dp))
                 .onGloballyPositioned { coordinates ->
                     barWidthPx = coordinates.size.width.toFloat()
@@ -1728,6 +1738,42 @@ private fun InteractivePartitionSliderBar(
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                // If there is unallocated space, render the unallocated block!
+                if (unallocatedKb > 1024L) {
+                    val unallocatedWeight = (unallocatedKb.toFloat() / validTotalKb.toFloat()).coerceIn(0.04f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .weight(unallocatedWeight)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.storage_wizard_unallocated_short),
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = String.format(java.util.Locale.US, "%.1f GB", unallocatedKb / 1024.0 / 1024.0),
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                                 maxLines = 1
                             )
                         }
@@ -1858,6 +1904,7 @@ private fun PartitionWizardDialog(
     partitions: List<PartitionSchemeConfig>,
     isRepartitioning: Boolean,
     repartitionError: String?,
+    supportedFilesystems: List<SupportedFilesystemInfo> = emptyList(),
     onClose: () -> Unit,
     onUpdateSizeKb: (Int, Long) -> Unit,
     onUpdateFs: (Int, FilesystemType) -> Unit,
@@ -1865,6 +1912,7 @@ private fun PartitionWizardDialog(
     onAddPartition: () -> Unit,
     onRemovePartition: (Int) -> Unit,
     onAutoBalance: () -> Unit,
+    onAllocateUnallocated: (Int) -> Unit = {},
     onAdjustAdjacent: (Int, Long) -> Unit,
     onAdjustByGb: (Int, Long) -> Unit,
     onTriggerApply: () -> Unit
@@ -1988,6 +2036,7 @@ private fun PartitionWizardDialog(
                                     InteractivePartitionSliderBar(
                                         partitions = partitions,
                                         totalDiskKb = totalDiskKb,
+                                        unallocatedKb = unallocatedKb,
                                         onAdjustAdjacent = onAdjustAdjacent
                                     )
                                 }
@@ -2001,8 +2050,11 @@ private fun PartitionWizardDialog(
                                 totalCount = partitions.size,
                                 config = config,
                                 maxTotalKb = totalDiskKb,
+                                unallocatedKb = unallocatedKb,
+                                supportedFilesystems = supportedFilesystems,
                                 onSizeKbChange = { onUpdateSizeKb(index, it) },
                                 onAdjustByGb = { deltaGb -> onAdjustByGb(index, deltaGb) },
+                                onAllocateUnallocated = { onAllocateUnallocated(index) },
                                 onFsChange = { onUpdateFs(index, it) },
                                 onLabelChange = { onUpdateLabel(index, it) },
                                 onRemove = { onRemovePartition(index) }
@@ -2180,8 +2232,11 @@ private fun WizardPartitionCard(
     totalCount: Int,
     config: PartitionSchemeConfig,
     maxTotalKb: Long,
+    unallocatedKb: Long = 0L,
+    supportedFilesystems: List<SupportedFilesystemInfo> = emptyList(),
     onSizeKbChange: (Long) -> Unit,
     onAdjustByGb: (Long) -> Unit,
+    onAllocateUnallocated: () -> Unit = {},
     onFsChange: (FilesystemType) -> Unit,
     onLabelChange: (String) -> Unit,
     onRemove: () -> Unit,
@@ -2243,7 +2298,7 @@ private fun WizardPartitionCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Human readable capacity + Quick Steppers (-1 GB, +1 GB, +5 GB)
+            // Human readable capacity + Quick Steppers (-1 GB, +1 GB, +5 GB, + Sisa)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2293,6 +2348,25 @@ private fun WizardPartitionCard(
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
                             Text("+5 GB", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+
+                    if (unallocatedKb > 1024L) {
+                        Surface(
+                            onClick = onAllocateUnallocated,
+                            shape = RoundedCornerShape(6.dp),
+                            color = CyberEmerald.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.5f)),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
+                                Text(
+                                    stringResource(R.string.storage_wizard_add_remaining, String.format(java.util.Locale.US, "%.1fG", unallocatedKb / 1024.0 / 1024.0)),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberEmerald
+                                )
+                            }
                         }
                     }
                 }
@@ -2420,6 +2494,9 @@ private fun WizardPartitionCard(
             ) {
                 listOf(FilesystemType.FAT32, FilesystemType.EXFAT, FilesystemType.F2FS, FilesystemType.EXT4).forEach { fs ->
                     val isSelected = config.fsType == fs
+                    val fsInfo = supportedFilesystems.firstOrNull { it.fsType == fs }
+                    val isSupported = fsInfo?.isFullySupported ?: true
+
                     Surface(
                         onClick = { onFsChange(fs) },
                         shape = RoundedCornerShape(8.dp),
@@ -2430,28 +2507,56 @@ private fun WizardPartitionCard(
                         },
                         border = BorderStroke(
                             if (isSelected) 1.5.dp else 1.dp,
-                            if (isSelected) (if (fs == FilesystemType.F2FS) CyberEmerald else MaterialTheme.colorScheme.primary) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                            if (isSelected) {
+                                (if (fs == FilesystemType.F2FS) CyberEmerald else MaterialTheme.colorScheme.primary)
+                            } else {
+                                if (!isSupported) NeonCrimson.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                            }
                         ),
                         modifier = Modifier
                             .weight(1f)
                             .height(30.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text(
-                                text = fs.label,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                color = if (isSelected) {
-                                    if (fs == FilesystemType.F2FS) CyberEmerald else MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = fs.label,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    ),
+                                    color = if (isSelected) {
+                                        if (fs == FilesystemType.F2FS) CyberEmerald else MaterialTheme.colorScheme.primary
+                                    } else if (!isSupported) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                                if (!isSupported) {
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(5.dp)
+                                            .clip(CircleShape)
+                                            .background(NeonCrimson)
+                                    )
                                 }
-                            )
+                            }
                         }
                     }
                 }
+            }
+
+            // If selected filesystem has a status note or is not fully supported, show warning note
+            val selectedFsInfo = supportedFilesystems.firstOrNull { it.fsType == config.fsType }
+            if (selectedFsInfo != null && !selectedFsInfo.isFullySupported) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "⚠ ${selectedFsInfo.description}",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                    color = NeonCrimson
+                )
             }
         }
     }
@@ -2898,12 +3003,13 @@ private fun FsckReportDialog(
 @Composable
 private fun UnmountPartitionConfirmDialog(
     partition: PartitionInfo,
+    diskName: String? = null,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF121622),
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
         tonalElevation = 6.dp,
         title = {
@@ -2915,11 +3021,20 @@ private fun UnmountPartitionConfirmDialog(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.storage_unmount_confirm_title),
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Column {
+                    Text(
+                        text = stringResource(R.string.storage_unmount_confirm_title),
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (!diskName.isNullOrBlank()) {
+                        Text(
+                            text = diskName,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         },
         text = {
@@ -2946,6 +3061,28 @@ private fun UnmountPartitionConfirmDialog(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        if (!diskName.isNullOrBlank()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.storage_disk_title),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = diskName,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -3087,7 +3224,7 @@ private fun EjectDiskConfirmDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF121622),
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
         tonalElevation = 6.dp,
         title = {
@@ -3258,7 +3395,7 @@ private fun EditPartitionLabelDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF121622),
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp),
         tonalElevation = 6.dp,
         title = {

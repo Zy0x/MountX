@@ -82,7 +82,8 @@ class GamesViewModel @Inject constructor(
         _sortOption.value = option
     }
 
-    fun loadInstalledApps() {
+    fun loadInstalledApps(force: Boolean = false) {
+        if (!force && _installedApps.value.isNotEmpty()) return
         viewModelScope.launch {
             _installedApps.value = gameRepository.getInstalledApps(context)
         }

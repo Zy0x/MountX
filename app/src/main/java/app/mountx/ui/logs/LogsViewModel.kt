@@ -23,7 +23,9 @@ class LogsViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        const val LOG_PATH = "/storage/emulated/0/mountx.log"
+        const val LOG_PATH = "/storage/emulated/0/mountify.log"
+        const val MOD_LOG_PATH = "/data/adb/modules/Mountify/mountify.log"
+        const val LEGACY_LOG_PATH = "/storage/emulated/0/mountx.log"
     }
 
     private val _logLines = MutableStateFlow<List<LogLine>>(emptyList())
@@ -54,7 +56,7 @@ class LogsViewModel @Inject constructor(
     fun clearLog() {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                RootShell.exec("echo '' > \"$LOG_PATH\"")
+                RootShell.exec("echo '' > \"$LOG_PATH\"; echo '' > \"$MOD_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_LOG_PATH\" 2>/dev/null")
             }
             readLogFile()
         }
@@ -91,13 +93,21 @@ class LogsViewModel @Inject constructor(
     }
 
     private suspend fun readLogFile() = withContext(Dispatchers.IO) {
-        val result = RootShell.exec("cat \"/data/adb/modules/Mountify/mountx.log\" \"$LOG_PATH\" 2>/dev/null | tail -n 250")
-        if (result.isSuccess && result.stdout.isNotEmpty()) {
-            val parsed = result.stdout.map { line ->
+        val cmd = "cat \"$MOD_LOG_PATH\" \"$LOG_PATH\" \"/data/adb/modules/Mountify/mountx.log\" \"$LEGACY_LOG_PATH\" 2>/dev/null | tail -n 350"
+        val result = RootShell.exec(cmd)
+        val rawLines = if (result.isSuccess && result.stdout.isNotEmpty()) {
+            result.stdout.filter { it.isNotBlank() }
+        } else {
+            emptyList()
+        }
+
+        if (rawLines.isNotEmpty()) {
+            val parsed = rawLines.map { line ->
                 val level = when {
                     line.contains("ERROR", ignoreCase = true) || line.contains("failed", ignoreCase = true) -> LogLevel.ERROR
-                    line.contains("Completed", ignoreCase = true) || line.contains("-> drwx", ignoreCase = true) -> LogLevel.SUCCESS
+                    line.contains("SUCCESS", ignoreCase = true) || line.contains("Completed", ignoreCase = true) || line.contains("-> drwx", ignoreCase = true) -> LogLevel.SUCCESS
                     line.contains("DEBUG", ignoreCase = true) -> LogLevel.DEBUG
+                    line.contains("WARN", ignoreCase = true) -> LogLevel.WARN
                     else -> LogLevel.INFO
                 }
                 LogLine(rawText = line, level = level)

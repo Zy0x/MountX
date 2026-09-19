@@ -6,6 +6,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -310,18 +312,53 @@ fun AboutScreen(
     if (showChangelogDialog) {
         AlertDialog(
             onDismissRequest = { showChangelogDialog = false },
-            title = { Text(stringResource(R.string.about_changelog)) },
+            title = {
+                Text(
+                    stringResource(R.string.about_changelog),
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                )
+            },
             text = {
-                Column {
-                    Text(text = "v1.0.0 (Initial Release)", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "• Native Jetpack Compose UI with Material You design")
-                    Text(text = "• Full support for Magisk, KernelSU, and APatch")
-                    Text(text = "• MicroSD partition formatting (F2FS, Ext4, exFAT, NTFS)")
-                    Text(text = "• Bind-mount manager for games without FUSE errors")
-                    Text(text = "• Physical game data migration (Internal <-> MicroSD)")
-                    Text(text = "• Real-time log monitoring with live tail")
-                    Text(text = "• JSON configuration backup and restore")
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(12.dp)
+                    ) {
+                        Text(text = "v2.2.4 (Performance & UX Overhaul)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Disk title telemetry integrated in Unmount Partition confirmation dialog", fontSize = 11.sp)
+                        Text(text = "• AOMEI slider unallocated space block visualization & + Sisa 1-tap absorption", fontSize = 11.sp)
+                        Text(text = "• Real-time filesystem kernel/tool capability badges in Partition Wizard", fontSize = 11.sp)
+                        Text(text = "• Zero-delay instant navigation when switching to Storage screen", fontSize = 11.sp)
+                        Text(text = "• Unified AppLogger logging all root operations in real-time to mountify.log", fontSize = 11.sp)
+                        Text(text = "• 120 FPS buttery smooth app list scrolling & icon memory cache", fontSize = 11.sp)
+                        Text(text = "• Instant runtime language switching without restarting the app", fontSize = 11.sp)
+                        Text(text = "• Standardized Mountify branding across all screens and resources", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(text = "v2.2.3 (Unmount & TRIM Stability)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Deep unmount teardown for mmcblk0p3 across all runtime namespaces", fontSize = 11.sp)
+                        Text(text = "• Deduplicated TRIM results dialog with actionable fsck guidance", fontSize = 11.sp)
+                        Text(text = "• FSCK volume busy (EBUSY) error prevention", fontSize = 11.sp)
+                        Text(text = "• Smooth 60/120 FPS partition divider gesture dragging", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(text = "v2.2.2 (AOMEI Partitioning Engine)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Interactive multi-partition proportional resizing bar", fontSize = 11.sp)
+                        Text(text = "• Direct filesystem path resolution for FSTRIM (FUSE bypass)", fontSize = 11.sp)
+                        Text(text = "• Progress indicators and optimistic UI states for unmount and eject", fontSize = 11.sp)
+                    }
                 }
             },
             confirmButton = {

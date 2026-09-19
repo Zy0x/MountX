@@ -5,7 +5,39 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.4] - 2026-09-19
+
+### Added
+- **Unallocated Space Visualization in Partition Wizard**:
+  - `InteractivePartitionSliderBar` now renders an explicit unallocated space block (amber/yellow color) when total partition sizes fall short of disk capacity, preventing silent space loss.
+  - Each `WizardPartitionCard` shows a **+ Remaining (xGB)** action button when unallocated space exceeds 1 MB, allowing instant one-tap allocation of the remainder to that partition.
+  - `StorageViewModel.allocateUnallocatedToPartition(idx)` calculates leftover disk space and appends it to the chosen partition, clamped to respect minimum partition sizes.
+- **Filesystem Support Badges in Partition Wizard**:
+  - Filesystem type chips within wizard partition cards now display a red dot indicator and dimmed label for kernel-unsupported or tool-unsupported filesystem types.
+  - A contextual warning note (`⚠ <description>`) appears below the chip row when the currently selected filesystem is not fully supported on the device.
+- **Runtime Language Switching (Android 13+)**:
+  - `SettingsViewModel.setLanguage()` now calls `LocaleManager.setApplicationLocales` on API 33+ for per-app locale switching without a full app restart.
+  - `MainActivity` wraps the Compose tree in a `CompositionLocalProvider` supplying a localized `Context` and `Configuration` derived from the active language preference.
+- **Real-time Unified Log Engine (`AppLogger`)**:
+  - New `AppLogger` singleton writes structured log entries to `/storage/emulated/0/mountify.log`, `/data/adb/modules/Mountify/mountify.log`, and the legacy `mountx.log` path simultaneously.
+  - All game repository operations (add, remove, mount, unmount, mode change, enable toggle) now emit structured log entries at appropriate severity levels.
+- **WARN Log Level Support**:
+  - Added `WARN` variant to the `LogLevel` enum and amber color rendering (`#FFB74D`) in the log viewer for warning-level entries.
+- **Disk Hardware Info Cache**:
+  - `StorageManager` caches disk hardware attributes (manufacturer, model, vendor, size) in `diskHardwareCache` after the first sysfs query, eliminating redundant root shell executions on subsequent disk detection calls.
+- **Storage Tab Pre-warming**:
+  - `StorageViewModel` now eagerly starts partition detection and filesystem capability loading in the `init` block on `Dispatchers.IO`, so the Storage tab renders instantly on first navigation.
+
+### Fixed
+- Removed duplicate `updateGameMode` method in `GameRepository` that caused overload resolution ambiguity.
+- Added missing `updateEnabled` DAO method in `GameDao` required by `GameRepository.setGameEnabled`.
+- Fixed missing `AppLogger` import in `GameRepository` that caused ~15 unresolved reference compile errors.
+- Fixed `LogsScreen` `when` expression non-exhaustiveness after `WARN` was added to `LogLevel`.
+- Fixed `StorageScreen` reference to non-existent `SupportedFilesystemInfo.statusNote` field; now correctly uses `description`.
+- Added missing `verticalScroll` and `rememberScrollState` imports to `AboutScreen` for the scrollable changelog dialog.
+
 ## [2.2.3] - 2026-09-19
+
 
 ### Fixed
 - **Deep Unmount & Kernel Lock Teardown**:

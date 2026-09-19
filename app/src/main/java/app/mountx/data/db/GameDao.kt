@@ -33,6 +33,9 @@ interface GameDao {
     @Query("UPDATE games SET mode = :mode WHERE packageName = :pkg")
     suspend fun updateMode(pkg: String, mode: app.mountx.data.model.MountMode)
 
+    @Query("UPDATE games SET isEnabled = :enabled WHERE packageName = :pkg")
+    suspend fun updateEnabled(pkg: String, enabled: Boolean)
+
     @Query("SELECT COUNT(*) FROM games WHERE mountStatus = 'MOUNTED'")
     fun getMountedCount(): Flow<Int>
 

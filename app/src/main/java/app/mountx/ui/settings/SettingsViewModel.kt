@@ -1,11 +1,14 @@
 package app.mountx.ui.settings
-
+ 
+import android.content.Context
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import app.mountx.util.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -14,7 +17,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     val themeMode: StateFlow<ThemeMode> = appPreferences.themeMode
@@ -37,7 +41,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setLanguage(lang: String) {
-        viewModelScope.launch { appPreferences.setLanguage(lang) }
+        viewModelScope.launch {
+            appPreferences.setLanguage(lang)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                try {
+                    val localeManager = context.getSystemService(android.app.LocaleManager::class.java)
+                    localeManager?.applicationLocales = android.os.LocaleList.forLanguageTags(lang)
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     fun setSdBasePath(path: String) {

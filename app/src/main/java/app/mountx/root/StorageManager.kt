@@ -28,6 +28,9 @@ import kotlinx.coroutines.withContext
  */
 class StorageManager {
 
+    private data class HwDiskCache(val manfid: String, val model: String, val vendor: String, val sizeSectors: Long)
+    private val diskHardwareCache = java.util.concurrent.ConcurrentHashMap<String, HwDiskCache>()
+
     private var cachedSupportedFilesystems: List<SupportedFilesystemInfo>? = null
 
     /**
@@ -989,47 +992,56 @@ class StorageManager {
             val isMmc = candidateDisk.startsWith("mmcblk")
             val diskType = if (isMmc) DiskType.MICRO_SD else DiskType.USB_OTG
 
-            // Batch read hardware manufacturer ID, model, vendor, and sector count in 1 shell query
-            val sysfsBatch = RootShell.exec(
-                "echo -n \"MANFID=\"; cat /sys/block/$candidateDisk/device/manfid 2>/dev/null; echo; " +
-                "echo -n \"NAME=\"; cat /sys/block/$candidateDisk/device/name 2>/dev/null; echo; " +
-                "echo -n \"MODEL=\"; cat /sys/block/$candidateDisk/device/model 2>/dev/null; echo; " +
-                "echo -n \"VENDOR=\"; cat /sys/block/$candidateDisk/device/vendor 2>/dev/null; echo; " +
-                "echo -n \"SIZE=\"; cat /sys/block/$candidateDisk/size 2>/dev/null; echo"
-            )
+            val hw = diskHardwareCache[candidateDisk] ?: run {
+                // Batch read hardware manufacturer ID, model, vendor, and sector count in 1 shell query
+                val sysfsBatch = RootShell.exec(
+                    "echo -n \"MANFID=\"; cat /sys/block/$candidateDisk/device/manfid 2>/dev/null; echo; " +
+                    "echo -n \"NAME=\"; cat /sys/block/$candidateDisk/device/name 2>/dev/null; echo; " +
+                    "echo -n \"MODEL=\"; cat /sys/block/$candidateDisk/device/model 2>/dev/null; echo; " +
+                    "echo -n \"VENDOR=\"; cat /sys/block/$candidateDisk/device/vendor 2>/dev/null; echo; " +
+                    "echo -n \"SIZE=\"; cat /sys/block/$candidateDisk/size 2>/dev/null; echo"
+                )
 
-            var manfid = ""
-            var model = ""
-            var vendor = ""
-            var sizeSectors = 0L
+                var mId = ""
+                var mName = ""
+                var vName = ""
+                var sSec = 0L
 
-            if (sysfsBatch.isSuccess) {
-                for (rawLine in sysfsBatch.stdout) {
-                    val line = rawLine.trim()
-                    when {
-                        line.startsWith("MANFID=") -> {
-                            val v = line.substringAfter("MANFID=").trim()
-                            if (v.isNotBlank()) manfid = v
-                        }
-                        line.startsWith("NAME=") && model.isBlank() -> {
-                            val v = line.substringAfter("NAME=").trim()
-                            if (v.isNotBlank()) model = v
-                        }
-                        line.startsWith("MODEL=") && model.isBlank() -> {
-                            val v = line.substringAfter("MODEL=").trim()
-                            if (v.isNotBlank()) model = v
-                        }
-                        line.startsWith("VENDOR=") -> {
-                            val v = line.substringAfter("VENDOR=").trim()
-                            if (v.isNotBlank()) vendor = v
-                        }
-                        line.startsWith("SIZE=") -> {
-                            val v = line.substringAfter("SIZE=").trim()
-                            sizeSectors = v.toLongOrNull() ?: sizeSectors
+                if (sysfsBatch.isSuccess) {
+                    for (rawLine in sysfsBatch.stdout) {
+                        val line = rawLine.trim()
+                        when {
+                            line.startsWith("MANFID=") -> {
+                                val v = line.substringAfter("MANFID=").trim()
+                                if (v.isNotBlank()) mId = v
+                            }
+                            line.startsWith("NAME=") && mName.isBlank() -> {
+                                val v = line.substringAfter("NAME=").trim()
+                                if (v.isNotBlank()) mName = v
+                            }
+                            line.startsWith("MODEL=") && mName.isBlank() -> {
+                                val v = line.substringAfter("MODEL=").trim()
+                                if (v.isNotBlank()) mName = v
+                            }
+                            line.startsWith("VENDOR=") -> {
+                                val v = line.substringAfter("VENDOR=").trim()
+                                if (v.isNotBlank()) vName = v
+                            }
+                            line.startsWith("SIZE=") -> {
+                                val v = line.substringAfter("SIZE=").trim()
+                                sSec = v.toLongOrNull() ?: sSec
+                            }
                         }
                     }
                 }
+                val newHw = HwDiskCache(mId, mName, vName, sSec)
+                diskHardwareCache[candidateDisk] = newHw
+                newHw
             }
+            val manfid = hw.manfid
+            val model = hw.model
+            val vendor = hw.vendor
+            val sizeSectors = hw.sizeSectors
 
             val diskPartitions = partitions.filter { it.diskName == candidateDisk }
             val totalSizeBytes = if (sizeSectors > 0) sizeSectors * 512L else diskPartitions.sumOf { it.sizeBytes }

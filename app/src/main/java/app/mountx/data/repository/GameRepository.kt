@@ -13,6 +13,7 @@ import app.mountx.data.model.MountStatus
 import app.mountx.data.model.SmartGamePresets
 import app.mountx.root.MountManager
 import app.mountx.root.RootShell
+import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
@@ -51,11 +52,24 @@ class GameRepository @Inject constructor(
         )
         gameDao.insertGame(entry)
         syncModuleGamelist()
+        AppLogger.info("Games", "Registered game: $displayName ($packageName) [Mode: ${mode.name}]")
     }
 
     suspend fun updateGame(game: GameEntry) = withContext(Dispatchers.IO) {
         gameDao.updateGame(game)
         syncModuleGamelist()
+    }
+
+    suspend fun updateGameMode(packageName: String, mode: MountMode) = withContext(Dispatchers.IO) {
+        gameDao.updateMode(packageName, mode)
+        syncModuleGamelist()
+        AppLogger.info("Games", "Updated game mode: $packageName -> ${mode.name}")
+    }
+
+    suspend fun setGameEnabled(packageName: String, enabled: Boolean) = withContext(Dispatchers.IO) {
+        gameDao.updateEnabled(packageName, enabled)
+        syncModuleGamelist()
+        AppLogger.info("Games", "Toggled game enabled: $packageName = $enabled")
     }
 
     suspend fun removeGame(packageName: String) = withContext(Dispatchers.IO) {
@@ -65,24 +79,32 @@ class GameRepository @Inject constructor(
         }
         gameDao.deleteGame(packageName)
         syncModuleGamelist()
+        AppLogger.info("Games", "Removed game: $packageName")
     }
 
     suspend fun mountGame(game: GameEntry, sdBase: String = "/data/sdext2"): Result<Unit> =
         withContext(Dispatchers.IO) {
+            AppLogger.info("Games", "Mounting ${game.displayName} (${game.packageName}) [${game.mode.name}]")
             val result = mountManager.mountGame(game, sdBase)
             if (result.isSuccess) {
                 gameDao.updateMountStatus(game.packageName, MountStatus.MOUNTED)
+                AppLogger.success("Games", "Successfully mounted ${game.displayName}")
             } else {
                 gameDao.updateMountStatus(game.packageName, MountStatus.ERROR)
+                AppLogger.error("Games", "Failed to mount ${game.displayName}: ${result.exceptionOrNull()?.message}")
             }
             result
         }
 
     suspend fun unmountGame(game: GameEntry): Result<Unit> =
         withContext(Dispatchers.IO) {
+            AppLogger.info("Games", "Unmounting ${game.displayName} (${game.packageName})")
             val result = mountManager.unmountGame(game)
             if (result.isSuccess) {
                 gameDao.updateMountStatus(game.packageName, MountStatus.UNMOUNTED)
+                AppLogger.success("Games", "Successfully unmounted ${game.displayName}")
+            } else {
+                AppLogger.error("Games", "Failed to unmount ${game.displayName}: ${result.exceptionOrNull()?.message}")
             }
             result
         }
@@ -91,6 +113,7 @@ class GameRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
             var count = 0
+            AppLogger.info("Games", "Mounting all ${games.size} registered games")
             for (g in games) {
                 if (g.isEnabled) {
                     val res = mountManager.mountGame(g, sdBase)
@@ -102,6 +125,7 @@ class GameRepository @Inject constructor(
                     }
                 }
             }
+            AppLogger.success("Games", "Mounted $count/${games.size} games")
             count
         }
 
@@ -109,6 +133,7 @@ class GameRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
             var count = 0
+            AppLogger.info("Games", "Unmounting all registered games")
             for (g in games) {
                 val res = mountManager.unmountGame(g)
                 if (res.isSuccess) {
@@ -117,6 +142,7 @@ class GameRepository @Inject constructor(
                 }
             }
             mountManager.unmountAll(sdBase)
+            AppLogger.success("Games", "Unmounted $count games")
             count
         }
 
@@ -167,11 +193,6 @@ class GameRepository @Inject constructor(
             gameDao.updateDataSize(packageName, sizeBytes)
             sizeBytes
         }
-
-    suspend fun updateGameMode(packageName: String, mode: MountMode) = withContext(Dispatchers.IO) {
-        gameDao.updateMode(packageName, mode)
-        syncModuleGamelist()
-    }
 
     suspend fun getInternalAndSdSizes(packageName: String, sdBase: String = "/data/sdext2"): Pair<Long, Long> =
         withContext(Dispatchers.IO) {
@@ -295,10 +316,21 @@ class GameRepository @Inject constructor(
         )
     }
 
-    fun getInstalledApps(context: Context): List<InstalledAppInfo> {
+    suspend fun getInstalledApps(context: Context): List<InstalledAppInfo> = withContext(Dispatchers.IO) {
         val pm = context.packageManager
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        return apps
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            PackageManager.ApplicationInfoFlags.of(0L)
+        } else {
+            0
+        }
+        val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledApplications(flags as PackageManager.ApplicationInfoFlags)
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledApplications(0)
+        }
+
+        apps
             .map { app ->
                 val label = pm.getApplicationLabel(app).toString()
                 val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||

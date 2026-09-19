@@ -626,7 +626,11 @@ private fun BrowseAppListView(
                 verticalArrangement = Arrangement.spacedBy(5.dp),
                 contentPadding = PaddingValues(bottom = 76.dp)
             ) {
-                items(filteredApps, key = { it.packageName }) { app ->
+                items(
+                    items = filteredApps,
+                    key = { it.packageName },
+                    contentType = { "app_card" }
+                ) { app ->
                     val hasPreset = remember(app.packageName) {
                         SmartGamePresets.findPreset(app.packageName) != null
                     }

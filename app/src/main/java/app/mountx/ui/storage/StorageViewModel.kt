@@ -27,6 +27,7 @@ import app.mountx.util.AppPreferences
 import app.mountx.util.FormatUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +47,16 @@ class StorageViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    init {
+        // Eagerly pre-warm partition and filesystem detection in background so tab navigation is instant
+        viewModelScope.launch(Dispatchers.IO) {
+            detectPartitionsInternal(force = false)
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            loadSupportedFilesystems(force = false)
+        }
+    }
 
     val storageInfo: StateFlow<StorageInfo?> = storageRepository.observeStorageInfo()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -149,7 +160,8 @@ class StorageViewModel @Inject constructor(
     private val _supportedFilesystems = MutableStateFlow<List<SupportedFilesystemInfo>>(emptyList())
     val supportedFilesystems: StateFlow<List<SupportedFilesystemInfo>> = _supportedFilesystems.asStateFlow()
 
-    fun loadSupportedFilesystems() {
+    fun loadSupportedFilesystems(force: Boolean = false) {
+        if (!force && _supportedFilesystems.value.isNotEmpty()) return
         viewModelScope.launch {
             _supportedFilesystems.value = storageRepository.detectSupportedFilesystems()
         }
@@ -325,9 +337,32 @@ class StorageViewModel @Inject constructor(
     fun updatePartitionSizeKb(index: Int, sizeKb: Long) {
         val current = _wizardPartitions.value.toMutableList()
         if (index in current.indices) {
-            val clampedKb = sizeKb.coerceAtLeast(1024L) // Min 1MB
+            val disk = _selectedDiskForDetail.value ?: _diskInfo.value
+            val totalKb = if (disk != null && disk.totalSizeBytes > 0) {
+                disk.totalSizeBytes / 1024L
+            } else {
+                _partitions.value.sumOf { it.sizeBytes }.takeIf { it > 0 }?.div(1024L) ?: (64L * 1024 * 1024)
+            }
+            val minKb = 512L * 1024L // 512MB minimum per partition
+            val otherPartitionsKb = current.filterIndexed { i, _ -> i != index }.sumOf { it.sizeKb }
+            val maxAllowedKb = (totalKb - otherPartitionsKb).coerceAtLeast(minKb)
+            val clampedKb = sizeKb.coerceIn(minKb, maxAllowedKb)
             current[index] = current[index].copy(sizeKb = clampedKb)
             _wizardPartitions.value = current
+        }
+    }
+
+    fun allocateUnallocatedToPartition(index: Int) {
+        val current = _wizardPartitions.value.toMutableList()
+        if (index in current.indices) {
+            val disk = _selectedDiskForDetail.value ?: _diskInfo.value
+            val totalKb = (disk?.totalSizeBytes ?: 0L) / 1024L
+            val allocatedKb = current.sumOf { it.sizeKb }
+            val unallocatedKb = (totalKb - allocatedKb).coerceAtLeast(0L)
+            if (unallocatedKb > 0L) {
+                current[index] = current[index].copy(sizeKb = current[index].sizeKb + unallocatedKb)
+                _wizardPartitions.value = current
+            }
         }
     }
 
