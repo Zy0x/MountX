@@ -39,6 +39,7 @@
 -dontwarn com.topjohnwu.superuser.**
 
 # Data classes / models (preserve for serialization)
+-keep class app.mountx.data.model.** { *; }
 -keep class app.mountify.data.model.** { *; }
 
 # WorkManager

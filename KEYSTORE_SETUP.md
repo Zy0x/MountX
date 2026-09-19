@@ -10,8 +10,8 @@ Jalankan perintah berikut di terminal komputer Anda (pastikan JDK sudah terpasan
 
 ```bash
 keytool -genkey -v \
-    -keystore mountify-release.jks \
-    -alias mountify \
+    -keystore mountx-release.jks \
+    -alias mountx \
     -keyalg RSA \
     -keysize 2048 \
     -validity 10000 \

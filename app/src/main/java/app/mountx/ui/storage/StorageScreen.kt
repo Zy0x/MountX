@@ -213,7 +213,7 @@ fun StorageScreen(
             onRefreshPartitions = { viewModel.detectPartitions(force = true) },
             onOpenDiskDetail = { disk -> viewModel.openDiskDetail(disk) },
             onClearStatusMessage = { viewModel.clearStatusMessage() },
-            onExportConfig = { exportLauncher.launch("mountify_config.json") },
+            onExportConfig = { exportLauncher.launch("mountx_config.json") },
             onImportConfig = { importLauncher.launch(arrayOf("application/json")) },
             onNavigateToBackup = onNavigateToBackup,
             onNavigateToGames = onNavigateToGames,

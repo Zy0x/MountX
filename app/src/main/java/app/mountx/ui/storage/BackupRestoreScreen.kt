@@ -160,7 +160,7 @@ fun BackupRestoreScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Button(
-                                onClick = { exportLauncher.launch("mountify_config.json") },
+                                onClick = { exportLauncher.launch("mountx_config.json") },
                                 shape = RoundedCornerShape(10.dp),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                 colors = ButtonDefaults.buttonColors(

@@ -81,8 +81,8 @@ Untuk melakukan kompilasi proyek secara lokal:
 
 ```bash
 # Clone repositori
-git clone https://github.com/Zy0x/Mountify.git
-cd Mountify
+git clone https://github.com/Zy0x/Mountify.git MountX
+cd MountX
 
 # Kompilasi Debug APK
 ./gradlew assembleDebug

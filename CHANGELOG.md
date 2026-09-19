@@ -5,6 +5,17 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.7] - 2026-09-19
+
+### Changed
+- **Comprehensive Project Rebranding Cleanup**:
+  - Aligned ProGuard obfuscation rules in `app/proguard-rules.pro` to retain `app.mountx.data.model.**` while preserving legacy compatibility.
+  - Updated default backup JSON export filename from `mountify_config.json` to `mountx_config.json` in both `BackupRestoreScreen.kt` and `StorageScreen.kt`.
+  - Updated keytool generation commands and alias in `KEYSTORE_SETUP.md` to `mountx-release.jks` and `mountx`.
+  - Updated `README.md` repository clone and navigation commands to reflect the official `MountX` workspace directory.
+  - Aligned Web preview badges and backup dialog extensions in `preview.html` to `MOUNTX v2.2.6+` and `.mountx-bak`.
+  - Updated technical standards in `AGENTS.md` to declare the primary project folder identity as `MountX`.
+
 ## [2.2.6] - 2026-09-19
 
 ### Changed
