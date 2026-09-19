@@ -44,7 +44,7 @@ class GameRepository @Inject constructor(
                 list.add(
                     MountPointConfig(
                         id = "legacy_${game.packageName}_files",
-                        category = MountPointCategory.GAME_ASSETS,
+                        category = MountPointCategory.EXTERNAL_DATA,
                         sourcePath = "$sdBase/Android/data/${game.packageName}/files",
                         targetPath = "/data/media/0/Android/data/${game.packageName}/files",
                         enabled = true,
@@ -54,7 +54,7 @@ class GameRepository @Inject constructor(
                 list.add(
                     MountPointConfig(
                         id = "legacy_${game.packageName}_obb",
-                        category = MountPointCategory.GAME_ASSETS,
+                        category = MountPointCategory.OBB_STORAGE,
                         sourcePath = "$sdBase/Android/obb/${game.packageName}",
                         targetPath = "/data/media/0/Android/obb/${game.packageName}",
                         enabled = true,
@@ -66,7 +66,7 @@ class GameRepository @Inject constructor(
                 list.add(
                     MountPointConfig(
                         id = "legacy_${game.packageName}_pkg",
-                        category = MountPointCategory.GAME_ASSETS,
+                        category = MountPointCategory.EXTERNAL_DATA,
                         sourcePath = "$sdBase/Android/data/${game.packageName}",
                         targetPath = "/data/media/0/Android/data/${game.packageName}",
                         enabled = true,
@@ -76,7 +76,7 @@ class GameRepository @Inject constructor(
                 list.add(
                     MountPointConfig(
                         id = "legacy_${game.packageName}_obb",
-                        category = MountPointCategory.GAME_ASSETS,
+                        category = MountPointCategory.OBB_STORAGE,
                         sourcePath = "$sdBase/Android/obb/${game.packageName}",
                         targetPath = "/data/media/0/Android/obb/${game.packageName}",
                         enabled = true,
@@ -98,7 +98,19 @@ class GameRepository @Inject constructor(
                 }
                 updated
             } else {
-                g
+                val normalizedPoints = g.mountPoints.map { mp ->
+                    val resolved = mp.resolveCategory()
+                    if (resolved != mp.category) mp.copy(category = resolved) else mp
+                }
+                if (normalizedPoints != g.mountPoints) {
+                    val updated = g.copy(mountPoints = normalizedPoints)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        gameDao.updateGame(updated)
+                    }
+                    updated
+                } else {
+                    g
+                }
             }
         }
     }
@@ -115,7 +127,17 @@ class GameRepository @Inject constructor(
             gameDao.updateGame(updated)
             updated
         } else {
-            game
+            val normalizedPoints = game.mountPoints.map { mp ->
+                val resolved = mp.resolveCategory()
+                if (resolved != mp.category) mp.copy(category = resolved) else mp
+            }
+            if (normalizedPoints != game.mountPoints) {
+                val updated = game.copy(mountPoints = normalizedPoints)
+                gameDao.updateGame(updated)
+                updated
+            } else {
+                game
+            }
         }
     }
 
@@ -551,8 +573,8 @@ class GameRepository @Inject constructor(
             CandidateDirectory(
                 id = "external_data",
                 category = app.mountx.data.model.MountPointCategory.EXTERNAL_DATA,
-                title = "External Data (Android/data/files)",
-                description = "Subdirektori aset game (/Android/data/files). Stabilitas 99% tanpa menyentuh cache.",
+                title = "Data (Android/data)",
+                description = "Data aset dan unduhan in-game (/Android/data). Komponen terbesar game.",
                 relativePath = "Android/data/$packageName/files",
                 internalPath = internalFiles,
                 sdPath = sdFiles,
@@ -571,8 +593,8 @@ class GameRepository @Inject constructor(
             CandidateDirectory(
                 id = "obb_storage",
                 category = app.mountx.data.model.MountPointCategory.OBB_STORAGE,
-                title = "OBB Storage (Android/obb)",
-                description = "Arsip data game utama (/Android/obb). Aman dimount ke MicroSD.",
+                title = "OBB (Android/obb)",
+                description = "Berkas arsip paket instalasi game (/Android/obb). Aman dimount ke MicroSD.",
                 relativePath = "Android/obb/$packageName",
                 internalPath = internalObb,
                 sdPath = sdObb,

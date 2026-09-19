@@ -377,6 +377,15 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.17 (Data vs OBB Naming, Path Visibility & Novice Grouping)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Fixed directory misclassification: Android/data is accurately labeled 'Data' and Android/obb is labeled 'OBB'", fontSize = 11.sp)
+                        Text(text = "• Clear directory path visibility: displays relative target path and MicroSD → Phone Internal flow indicators", fontSize = 11.sp)
+                        Text(text = "• Novice-friendly grouping: Core Game Data (Recommended) and Additional & Custom Data separated cleanly", fontSize = 11.sp)
+                        Text(text = "• Interactive Directory Details Dialog: tap any directory card to inspect absolute paths with 1-tap clipboard copy", fontSize = 11.sp)
+                        Text(text = "• Live telemetry size integration: accurate folder sizes reflecting internal and secondary MicroSD partition status", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.16 (Storage Accuracy & FAB Precision)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• App Detail storage redundancy fix: eliminate double counting when game data is mounted from SD", fontSize = 11.sp)

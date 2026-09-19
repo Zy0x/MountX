@@ -5,6 +5,23 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.17] - 2026-09-20
+
+### Changed & Improved
+- **Directory Classification & Naming Precision (Data vs OBB)**:
+  - Corrected directory misclassification in App Detail Manage tab: directories residing under `Android/data` are clearly named **Data**, and directories residing under `Android/obb` are accurately named **OBB**.
+  - Added robust automatic category resolution (`resolveCategory()`) in `MountPointConfig` and Room database type converters to seamlessly normalize legacy entries.
+- **Novice-Friendly Grouping & Architecture**:
+  - Structured directories into clear, intuitive groups:
+    1. **Core Game Data (Recommended)**: Highlights primary game assets (`Data` and `OBB`) critical for storage offloading.
+    2. **Additional & Custom Data**: Separates optional directories (media downloads, caches, custom user paths).
+  - Added interactive **How MountX Works** educational banner explaining transparent filesystem redirection in simple, non-technical terms.
+- **Enhanced Directory Path Visibility**:
+  - Each directory card presents clean relative paths (e.g., `Android/data/com.kurogame.wutheringwaves.global`) and visual path flow indicators (`MicroSD → Internal HP`).
+  - Added live storage telemetry integration so directories display real sizes, gracefully handling empty OBB folders with `0 B (Kosong)`.
+- **Interactive Directory Details Dialog**:
+  - Tapping any directory card opens a dedicated detail modal with novice-friendly descriptions, live mount status, and full absolute paths with one-tap clipboard copy buttons (`Salin Path`).
+
 ## [2.2.16] - 2026-09-20
 
 ### Fixed

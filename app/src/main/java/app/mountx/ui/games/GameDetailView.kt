@@ -41,6 +41,14 @@ import androidx.compose.material.icons.filled.PermMedia
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import app.mountx.data.repository.CandidateDirectory
 import androidx.compose.runtime.*
@@ -320,6 +328,7 @@ fun GameDetailView(
                         game = game,
                         isDraftMode = isDraftMode,
                         mountPoints = currentMountPoints,
+                        breakdown = breakdown,
                         onMountPointsChanged = { updated ->
                             currentMountPoints = updated
                             onUpdateMountPoints?.invoke(updated)
@@ -655,6 +664,7 @@ private fun ManageTabContent(
     game: GameEntry,
     isDraftMode: Boolean,
     mountPoints: List<MountPointConfig>,
+    breakdown: AppStorageBreakdown? = null,
     onMountPointsChanged: (List<MountPointConfig>) -> Unit,
     sdBase: String,
     isMoving: Boolean,
@@ -666,10 +676,11 @@ private fun ManageTabContent(
     modifier: Modifier = Modifier
 ) {
     var showCustomPathDialog by remember { mutableStateOf(false) }
+    var selectedPointForDetail by remember { mutableStateOf<MountPointConfig?>(null) }
 
     val isMounted = game.mountStatus == MountStatus.MOUNTED
     val activeMountPoints = mountPoints.filter { it.enabled }
-    val totalActiveSizeBytes = activeMountPoints.sumOf { it.sizeBytes }
+    val totalActiveSizeBytes = activeMountPoints.sumOf { getEffectiveMountPointSize(it, breakdown) }
 
     val cyberEmerald = CyberEmerald
     val electricAmber = Color(0xFFFFB300)
@@ -686,6 +697,17 @@ private fun ManageTabContent(
         )
     }
 
+    if (selectedPointForDetail != null) {
+        val point = selectedPointForDetail!!
+        val effSize = getEffectiveMountPointSize(point, breakdown)
+        DirectoryDetailDialog(
+            point = point,
+            effectiveSize = effSize,
+            isMounted = isMounted,
+            onDismiss = { selectedPointForDetail = null }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -693,7 +715,46 @@ private fun ManageTabContent(
             .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // ── TOP HEADER / STATUS CARD ──
+        // ── 1. NOVICE GUIDE BANNER (HOW MOUNTX WORKS) ──
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lightbulb,
+                    contentDescription = null,
+                    tint = electricAmber,
+                    modifier = Modifier.size(20.dp)
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = stringResource(R.string.mount_guide_banner_title),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = stringResource(R.string.mount_guide_banner_desc),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 10.5.sp,
+                            lineHeight = 14.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // ── 2. STATUS & SUMMARY CARD ──
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -825,7 +886,10 @@ private fun ManageTabContent(
             }
         }
 
-        // ── MULTI-TARGET MOUNT DIRECTORIES CARD ──
+        // ── 3. CORE GAME DATA GROUP (RECOMMENDED) ──
+        val coreMountPoints = mountPoints.filter { it.isCoreGameData() }
+        val extraMountPoints = mountPoints.filter { !it.isCoreGameData() }
+
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -843,20 +907,27 @@ private fun ManageTabContent(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = "Direktori Target Mount",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.mount_group_core_title),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = stringResource(R.string.mount_group_core_desc),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Surface(
                         shape = RoundedCornerShape(4.dp),
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                     ) {
                         Text(
-                            text = "${activeMountPoints.size} / ${mountPoints.size} Aktif",
+                            text = "${coreMountPoints.count { it.enabled }} / ${coreMountPoints.size} Aktif",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -867,173 +938,138 @@ private fun ManageTabContent(
                     }
                 }
 
-                if (mountPoints.isEmpty()) {
+                if (coreMountPoints.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp),
+                            .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Belum ada direktori terkonfigurasi.",
+                            text = "Belum ada direktori data utama terkonfigurasi.",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else {
-                    mountPoints.forEachIndexed { index, point ->
-                        val catLabel = when (point.category) {
-                            MountPointCategory.GAME_ASSETS -> stringResource(R.string.gerbong_external_data_title)
-                            MountPointCategory.EXTERNAL_DATA -> stringResource(R.string.gerbong_external_data_title)
-                            MountPointCategory.OBB_STORAGE -> stringResource(R.string.gerbong_obb_title)
-                            MountPointCategory.MEDIA_DOWNLOADS -> stringResource(R.string.gerbong_media_title)
-                            MountPointCategory.CACHE_SHADERS -> stringResource(R.string.gerbong_cache_title)
-                            MountPointCategory.PRIVATE_INTERNAL -> stringResource(R.string.gerbong_private_title)
-                            MountPointCategory.APP_PACKAGE -> stringResource(R.string.gerbong_app_package_title)
-                            MountPointCategory.CUSTOM -> "Kustom: ${point.id}"
-                        }
-                        val isExperimental = point.category == MountPointCategory.APP_PACKAGE
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isExperimental)
-                                Color(0xFFFF6F00).copy(alpha = 0.08f)
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isExperimental) Color(0xFFFF6F00).copy(alpha = 0.5f)
-                                else if (point.enabled) cyberEmerald.copy(alpha = 0.4f)
-                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = when (point.category) {
-                                            MountPointCategory.GAME_ASSETS -> Icons.Default.SportsEsports
-                                            MountPointCategory.EXTERNAL_DATA -> Icons.Default.SportsEsports
-                                            MountPointCategory.OBB_STORAGE -> Icons.Default.SportsEsports
-                                            MountPointCategory.MEDIA_DOWNLOADS -> Icons.Default.PermMedia
-                                            MountPointCategory.CACHE_SHADERS -> Icons.Default.Cached
-                                            MountPointCategory.PRIVATE_INTERNAL -> Icons.Default.Storage
-                                            MountPointCategory.APP_PACKAGE -> Icons.Default.Android
-                                            MountPointCategory.CUSTOM -> Icons.Default.Folder
-                                        },
-                                        contentDescription = null,
-                                        tint = if (point.enabled) cyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = catLabel,
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                ),
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            if (point.isVirtualContainer) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(3.dp),
-                                                    color = electricAmber.copy(alpha = 0.15f)
-                                                ) {
-                                                    Text(
-                                                        text = "ext4 loop",
-                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                                                        color = electricAmber,
-                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Text(
-                                            text = point.targetPath,
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontSize = 9.5.sp,
-                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    if (point.sizeBytes > 0) {
-                                        Text(
-                                            text = FormatUtils.formatBytes(point.sizeBytes),
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Medium
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    Switch(
-                                        checked = point.enabled,
-                                        onCheckedChange = { checked ->
-                                            val updatedList = mountPoints.toMutableList()
-                                            updatedList[index] = point.copy(enabled = checked)
-                                            onMountPointsChanged(updatedList)
-                                        },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = cyberEmerald,
-                                            checkedTrackColor = cyberEmerald.copy(alpha = 0.35f)
-                                        )
-                                    )
-
-                                    if (point.category == MountPointCategory.CUSTOM) {
-                                        IconButton(
-                                            onClick = {
-                                                val updatedList = mountPoints.toMutableList()
-                                                updatedList.removeAt(index)
-                                                onMountPointsChanged(updatedList)
-                                            },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Delete,
-                                                contentDescription = "Hapus",
-                                                tint = neonCrimson.copy(alpha = 0.7f),
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                        }
-                                    }
+                    coreMountPoints.forEach { point ->
+                        val index = mountPoints.indexOf(point)
+                        val effSize = getEffectiveMountPointSize(point, breakdown)
+                        MountPointItemCard(
+                            point = point,
+                            isMounted = isMounted,
+                            effectiveSize = effSize,
+                            onToggleEnabled = { checked ->
+                                val updatedList = mountPoints.toMutableList()
+                                if (index >= 0) {
+                                    updatedList[index] = point.copy(enabled = checked)
+                                    onMountPointsChanged(updatedList)
                                 }
-                            }
-                        }
+                            },
+                            onClick = { selectedPointForDetail = point }
+                        )
                     }
                 }
+            }
+        }
 
-                // Button: Add Custom Path
-                OutlinedButton(
-                    onClick = { showCustomPathDialog = true },
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        // ── 4. ADDITIONAL & CUSTOM DATA GROUP (OPTIONAL) ──
+        if (extraMountPoints.isNotEmpty()) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(34.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = stringResource(R.string.mount_add_custom_path),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.mount_group_extra_title),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = electricAmber
+                            )
+                            Text(
+                                text = stringResource(R.string.mount_group_extra_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = electricAmber.copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "${extraMountPoints.count { it.enabled }} / ${extraMountPoints.size} Aktif",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = electricAmber,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    extraMountPoints.forEach { point ->
+                        val index = mountPoints.indexOf(point)
+                        val effSize = getEffectiveMountPointSize(point, breakdown)
+                        MountPointItemCard(
+                            point = point,
+                            isMounted = isMounted,
+                            effectiveSize = effSize,
+                            onToggleEnabled = { checked ->
+                                val updatedList = mountPoints.toMutableList()
+                                if (index >= 0) {
+                                    updatedList[index] = point.copy(enabled = checked)
+                                    onMountPointsChanged(updatedList)
+                                }
+                            },
+                            onDeleteCustom = if (point.category == MountPointCategory.CUSTOM) {
+                                {
+                                    val updatedList = mountPoints.toMutableList()
+                                    if (index >= 0) {
+                                        updatedList.removeAt(index)
+                                        onMountPointsChanged(updatedList)
+                                    }
+                                }
+                            } else null,
+                            onClick = { selectedPointForDetail = point }
+                        )
+                    }
                 }
             }
+        }
+
+        // Button: Add Custom Path
+        OutlinedButton(
+            onClick = { showCustomPathDialog = true },
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = stringResource(R.string.mount_add_custom_path),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
 
         // ── ACTION BUTTONS ──
@@ -1348,6 +1384,524 @@ private fun CustomPathDialog(
                     ) {
                         Text(stringResource(R.string.custom_path_save), fontSize = 12.sp, color = Color.Black)
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Calculates effective storage size for a mount point taking telemetry breakdown into account
+ * if persisted point.sizeBytes is unmeasured or 0.
+ */
+private fun getEffectiveMountPointSize(point: MountPointConfig, breakdown: AppStorageBreakdown?): Long {
+    if (point.sizeBytes > 0L) return point.sizeBytes
+    if (breakdown == null) return 0L
+    val category = point.resolveCategory()
+    return when (category) {
+        MountPointCategory.OBB_STORAGE -> maxOf(breakdown.ext1ObbBytes, breakdown.ext2ObbBytes)
+        MountPointCategory.EXTERNAL_DATA -> {
+            val dataSize = maxOf(breakdown.ext1DataBytes, breakdown.ext2DataBytes)
+            if (dataSize > 0L) dataSize else maxOf(breakdown.ext1Bytes, breakdown.ext2Bytes)
+        }
+        else -> point.sizeBytes
+    }
+}
+
+/**
+ * Item Card representing a directory mount point with clear title (Data vs OBB),
+ * relative path, MicroSD -> Phone flow indicators, real size, and tap-for-details affordance.
+ */
+@Composable
+private fun MountPointItemCard(
+    point: MountPointConfig,
+    isMounted: Boolean,
+    effectiveSize: Long,
+    onToggleEnabled: (Boolean) -> Unit,
+    onDeleteCustom: (() -> Unit)? = null,
+    onClick: () -> Unit
+) {
+    val category = point.resolveCategory()
+    val categoryTitle = when (category) {
+        MountPointCategory.EXTERNAL_DATA -> stringResource(R.string.gerbong_external_data_title)
+        MountPointCategory.OBB_STORAGE -> stringResource(R.string.gerbong_obb_title)
+        MountPointCategory.MEDIA_DOWNLOADS -> stringResource(R.string.gerbong_media_title)
+        MountPointCategory.CACHE_SHADERS -> stringResource(R.string.gerbong_cache_title)
+        MountPointCategory.PRIVATE_INTERNAL -> stringResource(R.string.gerbong_private_title)
+        MountPointCategory.APP_PACKAGE -> stringResource(R.string.gerbong_app_package_title)
+        MountPointCategory.CUSTOM -> point.id.replace('_', ' ')
+        else -> point.id
+    }
+
+    val iconVector = when (category) {
+        MountPointCategory.EXTERNAL_DATA -> Icons.Default.Folder
+        MountPointCategory.OBB_STORAGE -> Icons.Default.Inventory2
+        MountPointCategory.MEDIA_DOWNLOADS -> Icons.Default.PermMedia
+        MountPointCategory.CACHE_SHADERS -> Icons.Default.Cached
+        MountPointCategory.PRIVATE_INTERNAL -> Icons.Default.Lock
+        MountPointCategory.APP_PACKAGE -> Icons.Default.Android
+        else -> Icons.Default.Storage
+    }
+
+    val iconTint = when (category) {
+        MountPointCategory.EXTERNAL_DATA -> MaterialTheme.colorScheme.primary
+        MountPointCategory.OBB_STORAGE -> Color(0xFFFFB300)
+        MountPointCategory.MEDIA_DOWNLOADS -> Color(0xFF00ACC1)
+        MountPointCategory.CACHE_SHADERS -> Color(0xFFAB47BC)
+        else -> CyberEmerald
+    }
+
+    val cleanRelative = point.getCleanRelativePath()
+    val sizeText = if (effectiveSize > 0L) {
+        FormatUtils.formatBytes(effectiveSize)
+    } else {
+        stringResource(R.string.mount_empty_folder)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (point.enabled) 0.5f else 0.25f),
+        border = BorderStroke(
+            1.dp,
+            if (point.enabled) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = iconTint.copy(alpha = 0.15f),
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = iconVector,
+                        contentDescription = null,
+                        tint = if (point.enabled) iconTint else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = categoryTitle,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = if (point.enabled) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (effectiveSize > 0L) CyberEmerald.copy(alpha = 0.12f)
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(
+                            0.5.dp,
+                            if (effectiveSize > 0L) CyberEmerald.copy(alpha = 0.35f)
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        Text(
+                            text = sizeText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = if (effectiveSize > 0L) CyberEmerald
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = cleanRelative,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.mount_source_microsd),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        imageVector = Icons.Default.SwapHoriz,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.mount_target_phone),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = CyberEmerald
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = if (!point.enabled) "Nonaktif"
+                        else if (isMounted) stringResource(R.string.mount_status_active_sd)
+                        else stringResource(R.string.mount_status_phone_only),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                        color = if (!point.enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        else if (isMounted) CyberEmerald
+                        else MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (onDeleteCustom != null) {
+                    IconButton(
+                        onClick = onDeleteCustom,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus",
+                            tint = NeonCrimson.copy(alpha = 0.8f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = point.enabled,
+                    onCheckedChange = onToggleEnabled,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = CyberEmerald,
+                        checkedTrackColor = CyberEmerald.copy(alpha = 0.35f),
+                        uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    modifier = Modifier.height(28.dp)
+                )
+
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = "Lihat Detail",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Novice-friendly Directory Detail Dialog displaying explanation,
+ * absolute paths (MicroSD & Phone), live status, and one-tap copy buttons.
+ */
+@Composable
+private fun DirectoryDetailDialog(
+    point: MountPointConfig,
+    effectiveSize: Long,
+    isMounted: Boolean,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val category = point.resolveCategory()
+    val categoryTitle = when (category) {
+        MountPointCategory.EXTERNAL_DATA -> stringResource(R.string.gerbong_external_data_title)
+        MountPointCategory.OBB_STORAGE -> stringResource(R.string.gerbong_obb_title)
+        MountPointCategory.MEDIA_DOWNLOADS -> stringResource(R.string.gerbong_media_title)
+        MountPointCategory.CACHE_SHADERS -> stringResource(R.string.gerbong_cache_title)
+        MountPointCategory.PRIVATE_INTERNAL -> stringResource(R.string.gerbong_private_title)
+        MountPointCategory.APP_PACKAGE -> stringResource(R.string.gerbong_app_package_title)
+        MountPointCategory.CUSTOM -> point.id.replace('_', ' ')
+        else -> point.id
+    }
+
+    val noviceExplanation = when (category) {
+        MountPointCategory.EXTERNAL_DATA -> stringResource(R.string.gerbong_external_data_desc)
+        MountPointCategory.OBB_STORAGE -> stringResource(R.string.gerbong_obb_desc)
+        MountPointCategory.MEDIA_DOWNLOADS -> stringResource(R.string.gerbong_media_desc)
+        MountPointCategory.CACHE_SHADERS -> stringResource(R.string.gerbong_cache_desc)
+        MountPointCategory.PRIVATE_INTERNAL -> stringResource(R.string.gerbong_private_desc)
+        MountPointCategory.APP_PACKAGE -> stringResource(R.string.gerbong_app_package_desc)
+        else -> "Direktori penyimpanan kustom yang dihubungkan secara langsung ke partisi MicroSD."
+    }
+
+    val copyToClipboard: (String) -> Unit = { text ->
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val clip = ClipData.newPlainText("MountX Path", text)
+        clipboard?.setPrimaryClip(clip)
+        Toast.makeText(context, context.getString(R.string.mount_path_copied), Toast.LENGTH_SHORT).show()
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "${stringResource(R.string.mount_details_title)}: $categoryTitle",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = point.getCleanRelativePath(),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // Size Pill Badge
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (effectiveSize > 0L) CyberEmerald.copy(alpha = 0.15f)
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(
+                            1.dp,
+                            if (effectiveSize > 0L) CyberEmerald.copy(alpha = 0.45f)
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Text(
+                            text = if (effectiveSize > 0L) FormatUtils.formatBytes(effectiveSize)
+                            else stringResource(R.string.mount_empty_folder),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = if (effectiveSize > 0L) CyberEmerald
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
+                // Novice Explanation Card
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = noviceExplanation,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 10.5.sp,
+                                lineHeight = 14.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Path Detail 1: Source (MicroSD)
+                PathDetailBlock(
+                    label = stringResource(R.string.mount_details_source_label),
+                    path = point.sourcePath,
+                    icon = Icons.Default.SdCard,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    onCopy = { copyToClipboard(point.sourcePath) }
+                )
+
+                // Path Detail 2: Target (Ponsel Internal)
+                PathDetailBlock(
+                    label = stringResource(R.string.mount_details_target_label),
+                    path = point.targetPath,
+                    icon = Icons.Default.Smartphone,
+                    iconTint = CyberEmerald,
+                    onCopy = { copyToClipboard(point.targetPath) }
+                )
+
+                // Mount Status Summary
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(R.string.mount_details_status_label),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (!point.enabled) "Nonaktif"
+                        else if (isMounted) stringResource(R.string.mount_status_active_sd)
+                        else stringResource(R.string.mount_status_phone_only),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = if (!point.enabled) MaterialTheme.colorScheme.onSurfaceVariant
+                        else if (isMounted) CyberEmerald
+                        else MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                // Close Button
+                Button(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        text = stringResource(R.string.mount_close),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Compact Path Detail Block with 1-tap copy button and monospace path display.
+ */
+@Composable
+private fun PathDetailBlock(
+    label: String,
+    path: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: Color,
+    onCopy: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(13.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = iconTint
+            )
+        }
+
+        Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = path,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = onCopy,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = stringResource(R.string.mount_copy_path),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
         }

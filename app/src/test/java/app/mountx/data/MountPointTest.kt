@@ -164,4 +164,83 @@ class MountPointTest {
         // FAB needs to glide down and rest above system navigation bar (-navBarsBottomPx).
         assertEquals(-120f, computeFabTargetOffsetY(isBottomBarVisible = false, insetsBottomPx = navBarsBottomPx), 0.001f)
     }
+
+    @Test
+    fun testResolveCategory_dataAndObb() {
+        val legacyObb = MountPointConfig(
+            id = "legacy_com.test.app_obb",
+            category = MountPointCategory.GAME_ASSETS,
+            sourcePath = "/data/sdext2/Android/obb/com.test.app",
+            targetPath = "/data/media/0/Android/obb/com.test.app",
+            enabled = true
+        )
+        val legacyData = MountPointConfig(
+            id = "legacy_com.test.app_files",
+            category = MountPointCategory.GAME_ASSETS,
+            sourcePath = "/data/sdext2/Android/data/com.test.app/files",
+            targetPath = "/data/media/0/Android/data/com.test.app/files",
+            enabled = true
+        )
+        val directObb = MountPointConfig(
+            id = "obb_storage",
+            category = MountPointCategory.OBB_STORAGE,
+            sourcePath = "/data/sdext2/Android/obb/com.test.app",
+            targetPath = "/data/media/0/Android/obb/com.test.app",
+            enabled = true
+        )
+
+        assertEquals(MountPointCategory.OBB_STORAGE, legacyObb.resolveCategory())
+        assertEquals(MountPointCategory.EXTERNAL_DATA, legacyData.resolveCategory())
+        assertEquals(MountPointCategory.OBB_STORAGE, directObb.resolveCategory())
+    }
+
+    @Test
+    fun testCleanRelativePath() {
+        val dataPoint = MountPointConfig(
+            id = "data",
+            category = MountPointCategory.EXTERNAL_DATA,
+            sourcePath = "/data/sdext2/Android/data/com.kurogame.wutheringwaves.global",
+            targetPath = "/data/media/0/Android/data/com.kurogame.wutheringwaves.global",
+            enabled = true
+        )
+        val obbPoint = MountPointConfig(
+            id = "obb",
+            category = MountPointCategory.OBB_STORAGE,
+            sourcePath = "/data/sdext2/Android/obb/com.kurogame.wutheringwaves.global",
+            targetPath = "/data/media/0/Android/obb/com.kurogame.wutheringwaves.global",
+            enabled = true
+        )
+
+        assertEquals("Android/data/com.kurogame.wutheringwaves.global", dataPoint.getCleanRelativePath())
+        assertEquals("Android/obb/com.kurogame.wutheringwaves.global", obbPoint.getCleanRelativePath())
+    }
+
+    @Test
+    fun testIsCoreGameData() {
+        val dataPoint = MountPointConfig(
+            id = "data",
+            category = MountPointCategory.EXTERNAL_DATA,
+            sourcePath = "/data/sdext2/Android/data/com.kurogame.wutheringwaves.global",
+            targetPath = "/data/media/0/Android/data/com.kurogame.wutheringwaves.global",
+            enabled = true
+        )
+        val obbPoint = MountPointConfig(
+            id = "obb",
+            category = MountPointCategory.OBB_STORAGE,
+            sourcePath = "/data/sdext2/Android/obb/com.kurogame.wutheringwaves.global",
+            targetPath = "/data/media/0/Android/obb/com.kurogame.wutheringwaves.global",
+            enabled = true
+        )
+        val customPoint = MountPointConfig(
+            id = "custom_path",
+            category = MountPointCategory.CUSTOM,
+            sourcePath = "/data/sdext2/custom",
+            targetPath = "/data/media/0/custom",
+            enabled = true
+        )
+
+        assertTrue("Data point must be core game data", dataPoint.isCoreGameData())
+        assertTrue("OBB point must be core game data", obbPoint.isCoreGameData())
+        assertFalse("Custom point must not be core game data", customPoint.isCoreGameData())
+    }
 }

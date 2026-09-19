@@ -51,18 +51,17 @@ class Converters {
                 } catch (_: Exception) {
                     MountPointCategory.GAME_ASSETS
                 }
-                list.add(
-                    MountPointConfig(
-                        id = obj.optString("id", "mp_$i"),
-                        category = cat,
-                        sourcePath = obj.optString("sourcePath", ""),
-                        targetPath = obj.optString("targetPath", ""),
-                        enabled = obj.optBoolean("enabled", true),
-                        isVirtualContainer = obj.optBoolean("isVirtualContainer", false),
-                        containerImgPath = if (obj.has("containerImgPath") && !obj.isNull("containerImgPath")) obj.getString("containerImgPath") else null,
-                        sizeBytes = obj.optLong("sizeBytes", 0L)
-                    )
+                val config = MountPointConfig(
+                    id = obj.optString("id", "mp_$i"),
+                    category = cat,
+                    sourcePath = obj.optString("sourcePath", ""),
+                    targetPath = obj.optString("targetPath", ""),
+                    enabled = obj.optBoolean("enabled", true),
+                    isVirtualContainer = obj.optBoolean("isVirtualContainer", false),
+                    containerImgPath = if (obj.has("containerImgPath") && !obj.isNull("containerImgPath")) obj.getString("containerImgPath") else null,
+                    sizeBytes = obj.optLong("sizeBytes", 0L)
                 )
+                list.add(config.copy(category = config.resolveCategory()))
             }
         } catch (_: Exception) {
             return emptyList()
