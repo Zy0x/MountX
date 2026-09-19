@@ -171,6 +171,7 @@
     <string name="game_detail_chart_all_internal">100% Phone</string>
     <string name="game_detail_chart_all_microsd">100% MicroSD</string>
     <string name="game_detail_badge_mounted">MOUNTED</string>
+    <string name="game_detail_badge_offloaded">OFFLOADED</string>
     <string name="game_detail_mode_title">Mount Mode</string>
     <string name="game_detail_mode_switch_desc">Switching mode updates configuration instantly without re-adding the app.</string>
     <string name="game_detail_move_title">Physical Data Transfer</string>

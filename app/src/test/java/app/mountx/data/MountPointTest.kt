@@ -114,4 +114,54 @@ class MountPointTest {
         assertEquals("/data/media/0/Telegram", customPoint.targetPath)
         assertFalse(customPoint.targetPath.contains("/Android/data"))
     }
+
+    @Test
+    fun testStorageBreakdownMountedZeroRedundancy() {
+        val breakdown = app.mountx.data.model.AppStorageBreakdown(
+            apkBytes = 1_000_000_000L,     // 1 GB
+            dexBytes = 10_000_000L,        // 10 MB
+            libBytes = 1_000_000_000L,     // 1 GB
+            dataBytes = 10_000_000L,       // 10 MB
+            cacheBytes = 1_000_000L,       // 1 MB
+            ext1Bytes = 0L,                // 0 B because it's mounted to SD
+            ext2Bytes = 10_000_000_000L,   // 10 GB on MicroSD
+            ext1DataBytes = 0L,
+            ext1ObbBytes = 0L,
+            ext2DataBytes = 10_000_000_000L,
+            ext2ObbBytes = 0L,
+            isExt1Mounted = true
+        )
+
+        val expectedPhoneInternal = 1_000_000_000L + 10_000_000L + 1_000_000_000L + 10_000_000L + 1_000_000L // 2.021 GB
+        val expectedMicroSd = 10_000_000_000L // 10 GB
+        val expectedTotal = expectedPhoneInternal + expectedMicroSd // 12.021 GB (NOT 22.021 GB!)
+
+        assertEquals(expectedPhoneInternal, breakdown.phoneInternalBytes)
+        assertEquals(expectedMicroSd, breakdown.microSdBytes)
+        assertEquals(expectedTotal, breakdown.totalBytes)
+        assertTrue("isExt1Mounted must be true", breakdown.isExt1Mounted)
+        assertEquals(17, breakdown.internalPercent)
+        assertEquals(83, breakdown.externalPercent)
+    }
+
+    @Test
+    fun testFabGlidingOffsetLogic() {
+        val navBarsBottomPx = 120f
+
+        fun computeFabTargetOffsetY(isBottomBarVisible: Boolean, insetsBottomPx: Float): Float {
+            return if (isBottomBarVisible) {
+                0f
+            } else {
+                -insetsBottomPx
+            }
+        }
+
+        // When bottom bar is visible: outer HorizontalPager already has bottom padding.
+        // FAB slot sits at bottom of inner Scaffold directly above bottom bar. Extra offset must be 0f!
+        assertEquals(0f, computeFabTargetOffsetY(isBottomBarVisible = true, insetsBottomPx = navBarsBottomPx), 0.001f)
+
+        // When bottom bar is hidden: outer HorizontalPager expands to screen edge.
+        // FAB needs to glide down and rest above system navigation bar (-navBarsBottomPx).
+        assertEquals(-120f, computeFabTargetOffsetY(isBottomBarVisible = false, insetsBottomPx = navBarsBottomPx), 0.001f)
+    }
 }

@@ -23,7 +23,8 @@ data class AppStorageBreakdown(
     val ext1DataBytes: Long = 0L,
     val ext1ObbBytes: Long = 0L,
     val ext2DataBytes: Long = 0L,
-    val ext2ObbBytes: Long = 0L
+    val ext2ObbBytes: Long = 0L,
+    val isExt1Mounted: Boolean = false
 ) {
     /** System & private storage (/data/app + /data/data) */
     val internalBytes: Long

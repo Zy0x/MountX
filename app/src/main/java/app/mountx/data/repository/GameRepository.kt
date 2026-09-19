@@ -360,8 +360,18 @@ class GameRepository @Inject constructor(
             val sdData = "$sdBase/Android/data/$packageName"
             val sdObb = "$sdBase/Android/obb/$packageName"
 
-            val internalRes = RootShell.exec("du -sck \"$internalData\" \"$internalObb\" 2>/dev/null | tail -n1 | cut -f1")
-            val internalKb = internalRes.output.trim().toLongOrNull() ?: 0L
+            val mountedPaths = mountManager.getMountedPaths()
+            val isDataMounted = mountedPaths.any { it.endsWith("/Android/data/$packageName") || it.endsWith("/Android/data/$packageName/files") }
+            val isObbMounted = mountedPaths.any { it.endsWith("/Android/obb/$packageName") }
+
+            val internalTargets = mutableListOf<String>()
+            if (!isDataMounted) internalTargets.add("\"$internalData\"")
+            if (!isObbMounted) internalTargets.add("\"$internalObb\"")
+
+            val internalKb = if (internalTargets.isEmpty()) 0L else {
+                val internalRes = RootShell.exec("du -sck ${internalTargets.joinToString(" ")} 2>/dev/null | tail -n1 | cut -f1")
+                internalRes.output.trim().toLongOrNull() ?: 0L
+            }
 
             val sdRes = RootShell.exec("du -sck \"$sdData\" \"$sdObb\" 2>/dev/null | tail -n1 | cut -f1")
             val sdKb = sdRes.output.trim().toLongOrNull() ?: 0L
@@ -431,8 +441,19 @@ class GameRepository @Inject constructor(
         val ext2Data = "$sdBase/Android/data/$packageName"
         val ext2Obb = "$sdBase/Android/obb/$packageName"
 
-        // Single batch du invocation for all remaining directories
-        val targets = listOf(oatDir, dataDir, cacheDir, codeCacheDir, ext1Data, ext1Obb, ext2Data, ext2Obb)
+        // Dynamic mount check to prevent double-counting when game data is mounted from SD to internal
+        val mountedPaths = mountManager.getMountedPaths()
+        val isDataMounted = mountedPaths.any { it.endsWith("/Android/data/$packageName") || it.endsWith("/Android/data/$packageName/files") }
+        val isObbMounted = mountedPaths.any { it.endsWith("/Android/obb/$packageName") }
+        val isAnyMounted = isDataMounted || isObbMounted
+
+        // Single batch du invocation for remaining directories
+        // When mounted, ext1 targets are excluded from du scanning because the underlying files are physically on SD (already counted in ext2)
+        val targetsList = mutableListOf(oatDir, dataDir, cacheDir, codeCacheDir, ext2Data, ext2Obb)
+        if (!isDataMounted) targetsList.add(ext1Data)
+        if (!isObbMounted) targetsList.add(ext1Obb)
+
+        val targets = targetsList
             .filter { it.isNotBlank() }
             .joinToString(" ") { "\"$it\"" }
 
@@ -448,8 +469,8 @@ class GameRepository @Inject constructor(
                     path.endsWith("/oat") || path.contains("/oat/") -> dexBytes = bytes
                     path.endsWith("/cache") || path.endsWith("/code_cache") -> cacheBytes += bytes
                     path == dataDir -> rawPrivateDataBytes = bytes
-                    path == ext1Data -> ext1DataBytes = bytes
-                    path == ext1Obb -> ext1ObbBytes = bytes
+                    path == ext1Data && !isDataMounted -> ext1DataBytes = bytes
+                    path == ext1Obb && !isObbMounted -> ext1ObbBytes = bytes
                     path == ext2Data -> ext2DataBytes = bytes
                     path == ext2Obb -> ext2ObbBytes = bytes
                 }
@@ -457,7 +478,7 @@ class GameRepository @Inject constructor(
         }
 
         val dataBytes = (rawPrivateDataBytes - cacheBytes).coerceAtLeast(0L)
-        val ext1Bytes = ext1DataBytes + ext1ObbBytes
+        val ext1Bytes = if (isAnyMounted) 0L else (ext1DataBytes + ext1ObbBytes)
         val ext2Bytes = ext2DataBytes + ext2ObbBytes
 
         AppStorageBreakdown(
@@ -471,7 +492,8 @@ class GameRepository @Inject constructor(
             ext1DataBytes = ext1DataBytes,
             ext1ObbBytes = ext1ObbBytes,
             ext2DataBytes = ext2DataBytes,
-            ext2ObbBytes = ext2ObbBytes
+            ext2ObbBytes = ext2ObbBytes,
+            isExt1Mounted = isAnyMounted
         )
     }
 

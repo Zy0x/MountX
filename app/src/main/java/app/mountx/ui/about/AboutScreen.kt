@@ -377,6 +377,15 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.16 (Storage Accuracy & FAB Precision)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• App Detail storage redundancy fix: eliminate double counting when game data is mounted from SD", fontSize = 11.sp)
+                        Text(text = "• Shared storage reflects true physical flash allocation: 0 B on internal memory with [OFFLOADED] badge", fontSize = 11.sp)
+                        Text(text = "• Donut chart accuracy: 100% physically aligned internal vs MicroSD partition ratio without duplicate slices", fontSize = 11.sp)
+                        Text(text = "• FAB layout precision: fixed double-offset, FAB now sits directly above bottom nav bar", fontSize = 11.sp)
+                        Text(text = "• FAB touch target enlarged to 52dp with smooth responsive glide down above Android gesture bar", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.15 (UI Polish, Delete Flow & FAB Fix)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• FAB glide fix: floating button stays visible when bottom bar hides, slides down smoothly", fontSize = 11.sp)

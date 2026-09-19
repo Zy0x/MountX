@@ -635,6 +635,7 @@
     <string name="notif_games_unmounted">Seluruh Game Telah Dilepas</string>
     <string name="notif_subtext_kernel">Kernel Namespace</string>
     <string name="mount_add_custom_path">Tambah Direktori Kustom</string>
+    <string name="game_detail_badge_offloaded">DIALIHKAN</string>
 </resources>
 
 

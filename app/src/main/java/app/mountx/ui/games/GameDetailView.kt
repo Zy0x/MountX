@@ -625,7 +625,8 @@ private fun StorageTabContent(
                     sizeText = FormatUtils.formatExactBytes(breakdown.ext1Bytes),
                     bytes = breakdown.ext1Bytes,
                     vectorIcon = Icons.Default.Smartphone,
-                    customIconTint = Color(0xFF3149FF)
+                    customIconTint = Color(0xFF3149FF),
+                    statusBadge = if (breakdown.isExt1Mounted) stringResource(R.string.game_detail_badge_offloaded) else null
                 )
 
                 BreakdownRow(
@@ -636,7 +637,7 @@ private fun StorageTabContent(
                     bytes = breakdown.ext2Bytes,
                     vectorIcon = Icons.Default.SdCard,
                     customIconTint = Color(0xFF3BA71A),
-                    statusBadge = if (breakdown.ext2Bytes > 0L) stringResource(R.string.game_detail_badge_mounted) else null
+                    statusBadge = if (breakdown.ext2Bytes > 0L && breakdown.isExt1Mounted) stringResource(R.string.game_detail_badge_mounted) else null
                 )
             }
         }

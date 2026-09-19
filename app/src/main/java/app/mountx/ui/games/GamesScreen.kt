@@ -415,15 +415,17 @@ fun GamesContent(
             val density = LocalDensity.current
             val navBarsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             val navBarsBottomPx = with(density) { navBarsBottom.toPx() }
-            val bottomBarHeightPx = with(density) { 72.dp.toPx() }
-            // When bar is visible: FAB is above the bottom bar (navBars + bottomBar height above screen edge)
-            // When bar is hidden: FAB is just above navBars (glides down with the bar)
-            // Since contentWindowInsets=0, FAB slot is at very bottom. We push it up manually.
+
+            // When bottom bar is visible: NavGraph's HorizontalPager is already padded by
+            // animatedBottomPadding (equal to ModernNavigationBar + navBars insets).
+            // So GamesScreen's inner Scaffold bottom is already placed directly on top of ModernNavigationBar.
+            // Therefore, targetOffsetY is 0f (FAB rests cleanly with standard padding right above the bottom bar).
+            // When bottom bar is hidden: NavGraph's animatedBottomPadding animates to 0dp, extending
+            // GamesScreen to the screen bottom. We then apply -navBarsBottomPx so the FAB glides down
+            // with the bar, resting cleanly above the Android system gesture navigation bar.
             val targetOffsetY = if (isBottomBarVisible) {
-                // Move FAB up: above nav bar + above bottom bar
-                -(navBarsBottomPx + bottomBarHeightPx)
+                0f
             } else {
-                // Move FAB up: only above nav bar so it stays visible
                 -navBarsBottomPx
             }
             val animatedOffsetY by animateFloatAsState(
@@ -436,8 +438,8 @@ fun GamesContent(
                 onClick = onAddClick,
                 modifier = Modifier
                     .offset { IntOffset(x = 0, y = animatedOffsetY.roundToInt()) }
-                    .padding(end = 4.dp, bottom = 4.dp)
-                    .size(42.dp),
+                    .padding(end = 16.dp, bottom = 12.dp)
+                    .size(52.dp),
                 shape = CircleShape,
                 containerColor = Color.Transparent,
                 contentColor = Color.White,
@@ -453,7 +455,7 @@ fun GamesContent(
                         imageVector = Icons.Default.Add,
                         contentDescription = stringResource(R.string.games_add),
                         tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }

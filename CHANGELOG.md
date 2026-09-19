@@ -5,7 +5,27 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
-## [2.2.14] - 2026-09-19
+## [2.2.16] - 2026-09-20
+
+### Fixed
+- **App Detail Storage Redundancy & Double-Counting Elimination**:
+  - Dynamically detects active mounts in `/proc/mounts`. When an app's directory is mounted from MicroSD, internal targets (`/data/media/0/Android/data|obb/<pkg>`) are excluded from `du` recursion, ensuring physical flash storage on phone memory is accurately reported as `0 B` with an `[OFFLOADED]` badge.
+  - Aligns physical Phone Memory and MicroSD byte calculations, completely eliminating duplicate storage reporting (e.g. Wuthering Waves accurately reported as 12.13 GB total instead of 22.2 GB).
+  - Concentric donut chart renders exact physical storage ratios (e.g. 17% Phone / 83% MicroSD) without duplicate or overlapping slices.
+- **Floating Action Button (FAB) Positioning & Touch Target**:
+  - Fixed double-offset calculation in `GamesScreen`: FAB now rests cleanly 12dp above `ModernNavigationBar` when visible, and glides down smoothly above Android system navigation insets when the bar is hidden.
+  - Enlarged FAB touch target from 42dp to 52dp with a 24dp centered icon, fully satisfying mobile accessibility standards (>= 48px target).
+
+## [2.2.15] - 2026-09-20
+
+### Added
+- **Interactive Delete App Confirmation Dialog**:
+  - Replaced abrupt removal with a 2-option confirmation dialog: *Restore to Internal & Delete* vs *Unmount Only & Delete*.
+  - Added real-time data transfer progress tracking with Android WakeLock protection.
+- **Strict Physical Disk Validation**:
+  - Enforced strict regex (`^(mmcblk[0-9]+|sd[a-z]+|nvme[0-9]+n[0-9]+)$`) and valid volume UUID checks in `StorageManager`, permanently eliminating phantom USB OTG disks.
+
+
 
 ### Added
 - **Full Directory-Driven Architecture Unification (App Detail & Add Flow)**:
