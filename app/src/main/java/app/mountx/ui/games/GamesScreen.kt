@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +60,7 @@ fun GamesScreen(
     onBottomBarVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val games by viewModel.games.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val discoveredGames by viewModel.discoveredGames.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val filterStatus by viewModel.filterStatus.collectAsState()
@@ -120,6 +122,8 @@ fun GamesScreen(
     } else {
         GamesContent(
             games = games,
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refresh() },
             discoveredGames = discoveredGames,
             onImportAllDiscovered = { viewModel.importAllDiscoveredGames() },
             onDismissDiscovered = { viewModel.dismissDiscovered() },
@@ -166,6 +170,8 @@ fun GamesContent(
     searchQuery: String,
     filterStatus: GameFilterStatus,
     sortOption: GameSortOption,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onSearchQueryChange: (String) -> Unit,
     onFilterStatusChange: (GameFilterStatus) -> Unit,
     onSortOptionChange: (GameSortOption) -> Unit,
@@ -362,12 +368,18 @@ fun GamesContent(
         containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier
     ) { paddingValues ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 14.dp)
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 14.dp)
+            ) {
             if (discoveredGames.isNotEmpty()) {
                 DiscoveredGamesBanner(
                     discoveredGames = discoveredGames,
@@ -565,6 +577,7 @@ fun GamesContent(
             }
         }
     }
+}
 }
 
 @Composable

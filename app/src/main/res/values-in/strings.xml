@@ -599,8 +599,41 @@
     <string name="dashboard_master_namespace_ready">Master Mount Namespace: Siap</string>
     <string name="dashboard_master_namespace_desc">Kernel Linux mengizinkan isolasi master mount namespace untuk propagasi global.</string>
     <string name="dashboard_live_canary_verified">Integritas Canary: Terverifikasi</string>
-    <string name="dashboard_live_canary_not_verified">Integritas Canary: Belum Ada Canary</string>
+    <string name="dashboard_live_canary_not_verified">Integritas Canary: Siaga</string>
     <string name="dashboard_recalculate_size_btn">Perbarui Ukuran Data</string>
+    <!-- v2.2.12 Permissions Onboarding, Modern Notifications & UI Polish -->
+    <string name="dashboard_recalculating_size_btn">Menghitung…</string>
+    <string name="dashboard_recalculate_done">Ukuran data berhasil diperbarui</string>
+    <string name="dashboard_mount_points_expand">Lihat Selengkapnya (%1$d Titik Mount) ▼</string>
+    <string name="dashboard_mount_points_collapse">Sembunyikan ▲</string>
+    <string name="dashboard_mount_points_copy">Salin Ringkasan Mount</string>
+    <string name="dashboard_mount_points_copied">Tersalin ke papan klip</string>
+    <string name="permissions_title">Perizinan &amp; Hak Akses Aplikasi</string>
+    <string name="permissions_subtitle">MountX memerlukan perizinan berikut untuk mengelola penyimpanan dan namespace secara aman.</string>
+    <string name="permissions_root_title">Akses Superuser (Root)</string>
+    <string name="permissions_root_desc">Diperlukan untuk bind-mount Linux, isolasi namespace kernel, dan kontrol partisi.</string>
+    <string name="permissions_storage_title">Akses Seluruh Berkas (Penyimpanan)</string>
+    <string name="permissions_storage_desc">Diperlukan untuk membaca katalog MicroSD, mengelola folder OBB/Data, dan skrip pemulihan.</string>
+    <string name="permissions_notif_title">Notifikasi Sistem</string>
+    <string name="permissions_notif_desc">Menampilkan proses sinkronisasi game dan status pemantauan sentinel di laci notifikasi.</string>
+    <string name="permissions_battery_title">Optimasi Baterai Tanpa Batas</string>
+    <string name="permissions_battery_desc">Mencegah Android mematikan pemantauan integritas mount saat ponsel dalam keadaan istirahat.</string>
+    <string name="permissions_status_granted">Diberikan</string>
+    <string name="permissions_status_missing">Belum Diberikan</string>
+    <string name="permissions_btn_grant">Izinkan</string>
+    <string name="permissions_btn_continue">Lanjutkan ke Aplikasi</string>
+    <string name="settings_permissions_title">Perizinan &amp; Hak Akses</string>
+    <string name="settings_permissions_desc">Periksa status Superuser, Akses Berkas, Notifikasi, dan Baterai</string>
+    <string name="notif_channel_name">Layanan &amp; Sentinel MountX</string>
+    <string name="notif_channel_desc">Menampilkan status bind-mount game dan pemantauan sentinel sistem secara langsung.</string>
+    <string name="notif_action_open">Buka MountX</string>
+    <string name="notif_action_unmount_all">Lepas Semua</string>
+    <string name="notif_mounting_games">Menyinkronkan Direktori Game…</string>
+    <string name="notif_syncing_game">Menyinkronkan %1$s ke MicroSD…</string>
+    <string name="notif_unmounting_games">Melepas Kaitan Game Secara Aman…</string>
+    <string name="notif_games_mounted_active">%1$d Game Ter-mount Aktif • MicroSD Terjaga</string>
+    <string name="notif_games_unmounted">Seluruh Game Telah Dilepas</string>
+    <string name="notif_subtext_kernel">Kernel Namespace</string>
 </resources>
 
 

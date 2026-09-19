@@ -124,7 +124,9 @@ fun AddAppPicker(
             .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
         ) {
         // Standard Compact Screen Header
         CompactScreenHeader(

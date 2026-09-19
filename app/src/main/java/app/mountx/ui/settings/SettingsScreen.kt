@@ -1,6 +1,7 @@
 package app.mountx.ui.settings
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,7 @@ fun SettingsScreen(
 
     var showResetDialog by remember { mutableStateOf(false) }
     var showEmergencyPanicDialog by remember { mutableStateOf(false) }
+    var showPermissionSheet by remember { mutableStateOf(false) }
     val isExecutingRescue by viewModel.isExecutingRescue.collectAsState()
     val rescueMessage by viewModel.rescueMessage.collectAsState()
 
@@ -278,6 +280,50 @@ fun SettingsScreen(
                 }
             }
 
+            // Permissions & System Access Section
+            item {
+                SectionHeader(title = stringResource(R.string.settings_permissions_title))
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showPermissionSheet = true }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.settings_permissions_title),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = stringResource(R.string.settings_permissions_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
             // Emergency Rescue Section
             item {
                 SectionHeader(title = stringResource(R.string.settings_emergency_title))
@@ -390,6 +436,12 @@ fun SettingsScreen(
                 showEmergencyPanicDialog = false
             },
             onDismiss = { showEmergencyPanicDialog = false }
+        )
+    }
+
+    if (showPermissionSheet) {
+        app.mountx.ui.components.PermissionOnboardingSheet(
+            onDismiss = { showPermissionSheet = false }
         )
     }
 }

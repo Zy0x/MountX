@@ -616,8 +616,41 @@
     <string name="dashboard_master_namespace_ready">Master Mount Namespace: Ready</string>
     <string name="dashboard_master_namespace_desc">Linux kernel permits master mount namespace isolation for global propagation.</string>
     <string name="dashboard_live_canary_verified">Canary Integrity: Verified</string>
-    <string name="dashboard_live_canary_not_verified">Canary Integrity: Not Present</string>
+    <string name="dashboard_live_canary_not_verified">Canary Integrity: Standby</string>
     <string name="dashboard_recalculate_size_btn">Refresh Data Sizes</string>
+    <!-- v2.2.12 Permissions Onboarding, Modern Notifications & UI Polish -->
+    <string name="dashboard_recalculating_size_btn">Recalculating…</string>
+    <string name="dashboard_recalculate_done">Storage data sizes updated</string>
+    <string name="dashboard_mount_points_expand">View Full Mounts (%1$d) ▼</string>
+    <string name="dashboard_mount_points_collapse">Show Less ▲</string>
+    <string name="dashboard_mount_points_copy">Copy Mount Summary</string>
+    <string name="dashboard_mount_points_copied">Copied to clipboard</string>
+    <string name="permissions_title">App Permissions &amp; Access</string>
+    <string name="permissions_subtitle">MountX requires these permissions to manage storage and namespaces safely.</string>
+    <string name="permissions_root_title">Superuser (Root) Access</string>
+    <string name="permissions_root_desc">Required for Linux bind-mounts, namespace isolation, and storage management.</string>
+    <string name="permissions_storage_title">All Files Access (Storage)</string>
+    <string name="permissions_storage_desc">Required to detect MicroSD catalogs, manage OBB/Data folders, and create rescue scripts.</string>
+    <string name="permissions_notif_title">System Notifications</string>
+    <string name="permissions_notif_desc">Displays mounting progress and watchdog sentinel status in notification drawer.</string>
+    <string name="permissions_battery_title">Unrestricted Battery</string>
+    <string name="permissions_battery_desc">Prevents Android from terminating background mount integrity monitoring during sleep.</string>
+    <string name="permissions_status_granted">Granted</string>
+    <string name="permissions_status_missing">Not Granted</string>
+    <string name="permissions_btn_grant">Grant</string>
+    <string name="permissions_btn_continue">Continue to App</string>
+    <string name="settings_permissions_title">Permissions &amp; System Access</string>
+    <string name="settings_permissions_desc">Check Superuser, All Files Access, Notifications, and Battery status</string>
+    <string name="notif_channel_name">MountX Sentinel &amp; Operations</string>
+    <string name="notif_channel_desc">Displays real-time game mount status and background sentinel alerts.</string>
+    <string name="notif_action_open">Open MountX</string>
+    <string name="notif_action_unmount_all">Unmount All</string>
+    <string name="notif_mounting_games">Mounting Game Directories…</string>
+    <string name="notif_syncing_game">Syncing %1$s to MicroSD…</string>
+    <string name="notif_unmounting_games">Safely Unmounting Game Directories…</string>
+    <string name="notif_games_mounted_active">%1$d Game(s) Active • MicroSD Protected</string>
+    <string name="notif_games_unmounted">All Games Safely Unmounted</string>
+    <string name="notif_subtext_kernel">Kernel Namespace</string>
 </resources>
 
 

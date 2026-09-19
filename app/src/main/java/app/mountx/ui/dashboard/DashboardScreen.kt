@@ -57,7 +57,21 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -122,6 +136,8 @@ fun DashboardScreen(
 ) {
     val status by viewModel.appStatus.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val isRecalculating by viewModel.isRecalculating.collectAsState()
+    val isRefreshingTelemetry by viewModel.isRefreshingTelemetry.collectAsState()
     val games by viewModel.games.collectAsState()
     val allDisks by viewModel.allDisks.collectAsState()
     val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
@@ -131,6 +147,8 @@ fun DashboardScreen(
     DashboardContent(
         status = status,
         isRefreshing = isRefreshing,
+        isRecalculating = isRecalculating,
+        isRefreshingTelemetry = isRefreshingTelemetry,
         games = games,
         allDisks = allDisks,
         internalStorageInfo = internalStorageInfo,
@@ -149,10 +167,13 @@ fun DashboardScreen(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardContent(
     status: AppStatus,
     isRefreshing: Boolean,
+    isRecalculating: Boolean = false,
+    isRefreshingTelemetry: Boolean = false,
     games: List<GameEntry>,
     allDisks: List<SdCardDiskInfo> = emptyList(),
     internalStorageInfo: InternalStorageInfo? = null,
@@ -176,21 +197,26 @@ fun DashboardContent(
     Scaffold(
         topBar = {
             SleekCompactHeader(
-                status = status,
-                onRefresh = onRefresh
+                status = status
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier.fillMaxSize()
     ) { paddingValues ->
-        if (isLandscape) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            if (isLandscape) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                 LazyColumn(
                     modifier = Modifier
                         .weight(1f)
@@ -241,9 +267,7 @@ fun DashboardContent(
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -279,10 +303,13 @@ fun DashboardContent(
                 }
             }
         }
+        }
 
         if (showNamespaceSheet) {
             NamespaceVerificationBottomSheet(
                 telemetry = liveTelemetry,
+                isRecalculating = isRecalculating,
+                isRefreshingTelemetry = isRefreshingTelemetry,
                 onRecalculateSizes = onRecalculateSizes,
                 onRefreshTelemetry = onRefreshTelemetry,
                 onDismiss = { showNamespaceSheet = false }
@@ -295,11 +322,8 @@ fun DashboardContent(
 
 @Composable
 private fun SleekCompactHeader(
-    status: AppStatus,
-    onRefresh: () -> Unit
+    status: AppStatus
 ) {
-    val haptic = LocalHapticFeedback.current
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -351,58 +375,38 @@ private fun SleekCompactHeader(
                 )
             }
 
-            // Right: Modern Status Pill & Tactile Refresh Action
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Right: Modern Status Pill (Clean without redundant refresh button)
+            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+            val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+            val activeEmeraldGlow = if (isDark) EmeraldGlow else EmeraldActive.copy(alpha = 0.12f)
+            val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
+                RootSolution.MAGISK -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_magisk))
+                RootSolution.KERNELSU -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_kernelsu))
+                RootSolution.APATCH -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_apatch))
+                RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
+            }
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = ledGlow,
+                border = BorderStroke(1.dp, ledColor.copy(alpha = 0.45f)),
+                modifier = Modifier.height(30.dp)
             ) {
-                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
-                val activeEmeraldGlow = if (isDark) EmeraldGlow else EmeraldActive.copy(alpha = 0.12f)
-                val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
-                    RootSolution.MAGISK -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_magisk))
-                    RootSolution.KERNELSU -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_kernelsu))
-                    RootSolution.APATCH -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_apatch))
-                    RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = ledGlow,
-                    border = BorderStroke(1.dp, ledColor.copy(alpha = 0.45f)),
-                    modifier = Modifier.height(30.dp)
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .background(ledColor, CircleShape)
-                        )
-                        Text(
-                            text = engineLabel,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = ledColor
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onRefresh()
-                    },
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.dashboard_refresh),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(ledColor, CircleShape)
+                    )
+                    Text(
+                        text = engineLabel,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                        fontWeight = FontWeight.Bold,
+                        color = ledColor
                     )
                 }
             }
@@ -1229,6 +1233,8 @@ private fun DashboardMetricsRow(
 @Composable
 private fun NamespaceVerificationBottomSheet(
     telemetry: LiveNamespaceTelemetry,
+    isRecalculating: Boolean = false,
+    isRefreshingTelemetry: Boolean = false,
     onRecalculateSizes: () -> Unit,
     onRefreshTelemetry: () -> Unit,
     onDismiss: () -> Unit
@@ -1236,6 +1242,17 @@ private fun NamespaceVerificationBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+
+    val infiniteTransition = rememberInfiniteTransition(label = "sheet_spin_anim")
+    val spinAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(750, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sheet_spin"
+    )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1289,9 +1306,13 @@ private fun NamespaceVerificationBottomSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.dashboard_refresh),
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier
+                            .size(16.dp)
+                            .graphicsLayer {
+                                if (isRefreshingTelemetry) rotationZ = spinAngle
+                            }
                     )
                 }
             }
@@ -1331,7 +1352,12 @@ private fun NamespaceVerificationBottomSheet(
                 }
             }
 
-            // Card 2: Kernel /proc/mounts Live Bind Mounts
+            // Card 2: Kernel /proc/mounts Live Bind Mounts (Expandable Accordion)
+            var isMountListExpanded by remember { mutableStateOf(false) }
+            val clipboardManager = LocalClipboardManager.current
+            val haptic = LocalHapticFeedback.current
+            val context = LocalContext.current
+
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
@@ -1339,31 +1365,98 @@ private fun NamespaceVerificationBottomSheet(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = if (telemetry.kernelMountPoints.isNotEmpty()) {
-                            stringResource(R.string.dashboard_live_mounts_found, telemetry.kernelMountPoints.size)
-                        } else {
-                            stringResource(R.string.dashboard_live_mounts_none)
-                        },
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = if (telemetry.kernelMountPoints.isNotEmpty()) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (telemetry.kernelMountPoints.isNotEmpty()) {
+                                stringResource(R.string.dashboard_live_mounts_found, telemetry.kernelMountPoints.size)
+                            } else {
+                                stringResource(R.string.dashboard_live_mounts_none)
+                            },
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = if (telemetry.kernelMountPoints.isNotEmpty()) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        if (telemetry.kernelMountPoints.isNotEmpty()) {
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    val summary = telemetry.kernelMountPoints.joinToString("\n")
+                                    clipboardManager.setText(AnnotatedString(summary))
+                                    android.widget.Toast.makeText(context, context.getString(R.string.dashboard_mount_points_copied), android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = stringResource(R.string.dashboard_mount_points_copy),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
 
                     if (telemetry.kernelMountPoints.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(6.dp))
-                        for (mount in telemetry.kernelMountPoints.take(6)) {
+
+                        val displayMounts = if (isMountListExpanded) {
+                            telemetry.kernelMountPoints
+                        } else {
+                            telemetry.kernelMountPoints.take(4)
+                        }
+
+                        Box(
+                            modifier = if (isMountListExpanded) {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp)
+                                    .verticalScroll(rememberScrollState())
+                            } else {
+                                Modifier.fillMaxWidth()
+                            }
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                for (mount in displayMounts) {
+                                    Text(
+                                        text = mount,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                        maxLines = if (isMountListExpanded) 2 else 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        if (telemetry.kernelMountPoints.size > 4) {
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = mount,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace
+                                text = if (isMountListExpanded) {
+                                    stringResource(R.string.dashboard_mount_points_collapse)
+                                } else {
+                                    stringResource(R.string.dashboard_mount_points_expand, telemetry.kernelMountPoints.size)
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 ),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        isMountListExpanded = !isMountListExpanded
+                                    }
+                                    .padding(vertical = 4.dp)
                             )
                         }
                     }
@@ -1407,17 +1500,23 @@ private fun NamespaceVerificationBottomSheet(
             ) {
                 OutlinedButton(
                     onClick = onRecalculateSizes,
+                    enabled = !isRecalculating,
                     modifier = Modifier.weight(1f).height(38.dp),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = null,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier
+                            .size(14.dp)
+                            .graphicsLayer {
+                                if (isRecalculating) rotationZ = spinAngle
+                            }
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = stringResource(R.string.dashboard_recalculate_size_btn),
+                        text = if (isRecalculating) stringResource(R.string.dashboard_recalculating_size_btn)
+                               else stringResource(R.string.dashboard_recalculate_size_btn),
                         style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

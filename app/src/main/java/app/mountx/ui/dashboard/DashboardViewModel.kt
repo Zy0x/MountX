@@ -48,6 +48,12 @@ class DashboardViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _isRecalculating = MutableStateFlow(false)
+    val isRecalculating: StateFlow<Boolean> = _isRecalculating.asStateFlow()
+
+    private val _isRefreshingTelemetry = MutableStateFlow(false)
+    val isRefreshingTelemetry: StateFlow<Boolean> = _isRefreshingTelemetry.asStateFlow()
+
     private val _rootSolution = MutableStateFlow(RootSolution.NONE)
     val rootSolution: StateFlow<RootSolution> = _rootSolution.asStateFlow()
 
@@ -125,37 +131,47 @@ class DashboardViewModel @Inject constructor(
 
     fun loadLiveTelemetry() {
         viewModelScope.launch(Dispatchers.IO) {
-            val sdBase = appPreferences.sdBasePath.first()
-            val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null | grep -E '(/data/media/0/Android|/data/sdext2|${sdBase})' | cut -d' ' -f1,2,3")
-            val mountLines = if (mountsRes.isSuccess) mountsRes.stdout.filter { it.isNotBlank() } else emptyList()
+            _isRefreshingTelemetry.value = true
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null | grep -E '(/data/media/0/Android|/data/sdext2|${sdBase})' | cut -d' ' -f1,2,3")
+                val mountLines = if (mountsRes.isSuccess) mountsRes.stdout.filter { it.isNotBlank() } else emptyList()
 
-            val currentGames = games.value
-            val mountedGames = currentGames.filter { it.mountStatus == MountStatus.MOUNTED }
-            var canariesVerified = 0
-            for (g in mountedGames) {
-                if (mountManager.verifyCanary(g.packageName)) {
-                    canariesVerified++
+                val currentGames = games.value
+                val mountedGames = currentGames.filter { it.mountStatus == MountStatus.MOUNTED }
+                var canariesVerified = 0
+                for (g in mountedGames) {
+                    if (mountManager.verifyCanary(g.packageName)) {
+                        canariesVerified++
+                    }
                 }
-            }
 
-            _liveTelemetry.value = LiveNamespaceTelemetry(
-                isMasterNamespaceActive = Shell.isAppGrantedRoot() == true,
-                kernelMountPoints = mountLines,
-                mountedGamesCount = mountedGames.size,
-                canaryVerifiedCount = canariesVerified,
-                totalCanariesExpected = mountedGames.size
-            )
+                _liveTelemetry.value = LiveNamespaceTelemetry(
+                    isMasterNamespaceActive = Shell.isAppGrantedRoot() == true,
+                    kernelMountPoints = mountLines,
+                    mountedGamesCount = mountedGames.size,
+                    canaryVerifiedCount = canariesVerified,
+                    totalCanariesExpected = mountedGames.size
+                )
+            } finally {
+                _isRefreshingTelemetry.value = false
+            }
         }
     }
 
     fun recalculateAllSizes() {
         viewModelScope.launch(Dispatchers.IO) {
-            val sdBase = appPreferences.sdBasePath.first()
-            val currentGames = games.value
-            for (g in currentGames) {
-                gameRepository.calculateDataSize(g.packageName, sdBase)
+            _isRecalculating.value = true
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val currentGames = games.value
+                for (g in currentGames) {
+                    gameRepository.calculateDataSize(g.packageName, sdBase)
+                }
+                refresh()
+            } finally {
+                _isRecalculating.value = false
             }
-            refresh()
         }
     }
 

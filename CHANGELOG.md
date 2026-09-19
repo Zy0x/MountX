@@ -5,6 +5,30 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.12] - 2026-09-19
+
+### Added
+- **Comprehensive Permissions Onboarding & Live Audit Sheet**:
+  - Implemented centralized `PermissionManager` and modern `PermissionOnboardingSheet` covering Superuser Root access, All Files Access (`MANAGE_EXTERNAL_STORAGE`), System Notifications (`POST_NOTIFICATIONS`), and Unrestricted Battery Optimization exemption.
+  - Automatically guides new users with live status badges and 1-tap direct intent launchers on launch if essential permissions are missing.
+  - Added dedicated "Perizinan & Hak Akses" entry in Settings for on-demand auditing and reconfiguration anytime.
+- **Swipe-To-Refresh Across Core Tabs (Pull-To-Refresh Gesture)**:
+  - Integrated Material3 `PullToRefreshBox` across Dashboard, Games, and Storage tabs for swift, natural pull-down reloading.
+  - Streamlined Dashboard header by removing redundant top-right refresh icon button in favor of natural gesture interaction.
+- **Modernized Android System Notification Drawer & Quick Actions**:
+  - Completely revamped foreground service notification (`MountService.kt`) with sleek, professional copywriting in Indonesian and English, free from AI-slop patterns.
+  - Embedded instant quick action buttons `[Buka MountX]` and `[Lepas Semua]` directly into the system drawer for rapid unmounting without entering the app.
+- **Kernel Mounts Live Telemetry Expansion & Clipboard Export**:
+  - Introduced scrollable accordion view for live `/proc/mounts` bind entries with "Lihat Selengkapnya (N Titik Mount) ▼" / "Sembunyikan ▲" toggle.
+  - Added 1-tap "Salin Ringkasan Mount" button to copy active kernel bind configurations directly to clipboard.
+- **Tactile Refresh Feedback & 360° Rotation Animations**:
+  - Added fluid 360-degree spin animations and live recalculating text feedback ("Menghitung…") across all reload buttons in the app (Namespace Verification sheet, About update check, Logs screen, and Disk Detail partition refresher).
+
+### Changed
+- **Total Elimination of App Picker Bottom Void Gap**:
+  - Resolved `innerPadding` discrepancy in `NavGraph.kt` by setting bottom pager padding to 0.dp when sub-screens (`AddAppPicker`, `GameDetailView`) are active.
+  - Enhanced edge-to-edge flow down to the Android system navigation bar with proper `.navigationBarsPadding()`.
+
 ## [2.2.11] - 2026-09-19
 
 ### Added

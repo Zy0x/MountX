@@ -14,6 +14,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,6 +58,13 @@ fun LogsScreen(
         }
     }
 
+    var refreshRotation by remember { mutableStateOf(0f) }
+    val animatedRefreshRotation by animateFloatAsState(
+        targetValue = refreshRotation,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "logs_refresh_spin"
+    )
+
     Scaffold(
         topBar = {
             CompactScreenHeader(
@@ -83,14 +94,19 @@ fun LogsScreen(
                         )
                     }
                     IconButton(
-                        onClick = { viewModel.refreshLogs() },
+                        onClick = {
+                            refreshRotation += 360f
+                            viewModel.refreshLogs()
+                        },
                         modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
-                            Icons.Default.Refresh,
+                            imageVector = Icons.Default.Refresh,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier
+                                .size(16.dp)
+                                .graphicsLayer { rotationZ = animatedRefreshRotation }
                         )
                     }
                 }

@@ -113,8 +113,19 @@ class MainActivity : ComponentActivity() {
                 androidx.compose.ui.platform.LocalContext provides localizedContext
             ) {
                 MountXTheme(themeMode = themeMode) {
+                    var showPermissionSheet by remember {
+                        val state = app.mountx.util.PermissionManager.checkAllPermissions(this@MainActivity)
+                        mutableStateOf(!state.areEssentialGranted)
+                    }
+
                     Surface(modifier = Modifier.fillMaxSize()) {
                         NavGraph()
+
+                        if (showPermissionSheet) {
+                            app.mountx.ui.components.PermissionOnboardingSheet(
+                                onDismiss = { showPermissionSheet = false }
+                            )
+                        }
                     }
                 }
             }

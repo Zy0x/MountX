@@ -122,7 +122,7 @@ fun GameDetailView(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
             CompactScreenHeader(
                 title = stringResource(R.string.game_detail_app_title),
                 navigationIcon = {

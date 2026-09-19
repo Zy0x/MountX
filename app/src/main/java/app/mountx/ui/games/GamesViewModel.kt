@@ -53,6 +53,9 @@ class GamesViewModel @Inject constructor(
     private val _isScanningDiscovered = MutableStateFlow(false)
     val isScanningDiscovered: StateFlow<Boolean> = _isScanningDiscovered.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -158,6 +161,21 @@ class GamesViewModel @Inject constructor(
             val sdBase = appPreferences.sdBasePath.first()
             games.value.forEach { g ->
                 gameRepository.calculateDataSize(g.packageName, sdBase)
+            }
+        }
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                games.value.forEach { g ->
+                    gameRepository.calculateDataSize(g.packageName, sdBase)
+                }
+                scanDiscoveredGames()
+            } finally {
+                _isRefreshing.value = false
             }
         }
     }

@@ -56,6 +56,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -109,6 +113,13 @@ fun DiskDetailView(
 ) {
     BackHandler(onBack = onBack)
 
+    var refreshRotation by remember { mutableStateOf(0f) }
+    val animatedRotation by animateFloatAsState(
+        targetValue = refreshRotation,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "disk_refresh_rotation"
+    )
+
     Scaffold(
         topBar = {
             CompactScreenHeader(
@@ -129,14 +140,19 @@ fun DiskDetailView(
                 },
                 actions = {
                     IconButton(
-                        onClick = onRefresh,
+                        onClick = {
+                            refreshRotation += 360f
+                            onRefresh()
+                        },
                         modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = stringResource(R.string.storage_detect_devices),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(19.dp)
+                            modifier = Modifier
+                                .size(19.dp)
+                                .graphicsLayer { rotationZ = animatedRotation }
                         )
                     }
                 }

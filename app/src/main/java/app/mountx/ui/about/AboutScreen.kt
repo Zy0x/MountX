@@ -27,6 +27,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.luminance
 import app.mountx.BuildConfig
 import app.mountx.R
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.SectionHeader
 import app.mountx.ui.theme.CyberEmerald
@@ -188,6 +195,17 @@ fun AboutScreen(
                             )
                         }
 
+                        val infiniteTransition = rememberInfiniteTransition(label = "about_spin")
+                        val spinAngle by infiniteTransition.animateFloat(
+                            initialValue = 0f,
+                            targetValue = 360f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(750, easing = LinearEasing),
+                                repeatMode = RepeatMode.Restart
+                            ),
+                            label = "about_spin_angle"
+                        )
+
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = { viewModel.checkForUpdate() },
@@ -199,7 +217,15 @@ fun AboutScreen(
                                 .fillMaxWidth()
                                 .height(36.dp)
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .graphicsLayer {
+                                        if (isChecking) rotationZ = spinAngle
+                                    }
+                            )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(stringResource(R.string.about_update_check), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }

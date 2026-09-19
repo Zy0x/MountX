@@ -63,7 +63,7 @@ class MountService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Initializing MountX service..."))
+        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.notif_mounting_games)))
         watchdogDaemon.start()
     }
 
@@ -74,13 +74,15 @@ class MountService : Service() {
                     val sdBase = appPreferences.sdBasePath.first()
                     val blockDevice = appPreferences.sdBlockDevice.first()
 
-                    updateNotification("Checking storage partition...")
+                    updateNotification(getString(R.string.notif_mounting_games))
                     storageRepository.mountSdPartition(blockDevice, sdBase)
 
-                    updateNotification("Mounting games...")
                     val mountedCount = gameRepository.mountAll(sdBase)
 
-                    updateNotification("MountX: $mountedCount game(s) mounted.")
+                    updateNotification(
+                        getString(R.string.notif_games_mounted_active, mountedCount),
+                        isFinished = false
+                    )
                     stopForeground(STOP_FOREGROUND_DETACH)
                     stopSelf()
                 }
@@ -88,8 +90,9 @@ class MountService : Service() {
             ACTION_UNMOUNT_ALL -> {
                 serviceScope.launch {
                     val sdBase = appPreferences.sdBasePath.first()
-                    updateNotification("Unmounting games...")
+                    updateNotification(getString(R.string.notif_unmounting_games))
                     gameRepository.unmountAll(sdBase)
+                    updateNotification(getString(R.string.notif_games_unmounted), isFinished = true)
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
@@ -117,28 +120,67 @@ class MountService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "MountX Background Service",
+                getString(R.string.notif_channel_name),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows status of MountX game mounting operations"
+                description = getString(R.string.notif_channel_desc)
+                setShowBadge(false)
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
     }
 
-    private fun buildNotification(text: String): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("MountX")
+    private fun buildNotification(text: String, isFinished: Boolean = false): Notification {
+        val openAppIntent = Intent(this, app.mountx.MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openPendingIntent = android.app.PendingIntent.getActivity(
+            this,
+            0,
+            openAppIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val unmountIntent = Intent(this, MountService::class.java).apply {
+            action = ACTION_UNMOUNT_ALL
+        }
+        val unmountPendingIntent = android.app.PendingIntent.getService(
+            this,
+            1,
+            unmountIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_mountx_emblem)
+            .setColor(0xFF00E5FF.toInt())
+            .setContentTitle("MountX Sentinel Engine")
             .setContentText(text)
-            .setOngoing(true)
+            .setSubText(getString(R.string.notif_subtext_kernel))
+            .setContentIntent(openPendingIntent)
+            .setOngoing(!isFinished)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+            .addAction(
+                0,
+                getString(R.string.notif_action_open),
+                openPendingIntent
+            )
+
+        if (!isFinished) {
+            builder.addAction(
+                0,
+                getString(R.string.notif_action_unmount_all),
+                unmountPendingIntent
+            )
+        }
+
+        return builder.build()
     }
 
-    private fun updateNotification(text: String) {
+    private fun updateNotification(text: String, isFinished: Boolean = false) {
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, buildNotification(text))
+        manager.notify(NOTIFICATION_ID, buildNotification(text, isFinished))
     }
 }
