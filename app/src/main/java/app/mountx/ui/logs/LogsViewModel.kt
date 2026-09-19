@@ -57,7 +57,7 @@ class LogsViewModel @Inject constructor(
     fun clearLog() {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                RootShell.exec("echo '' > \"$LOG_PATH\"; echo '' > \"$MOD_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_MOD_LOG_PATH\" 2>/dev/null")
+                RootShell.exec("echo '' > \"$LOG_PATH\"; echo '' > \"$MOD_LOG_PATH\" 2>/dev/null; rm -f \"$LEGACY_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_MOD_LOG_PATH\" 2>/dev/null")
             }
             readLogFile()
         }

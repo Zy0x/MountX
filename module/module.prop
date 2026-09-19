@@ -1,6 +1,6 @@
 id=MountX
 name=MountX
-version=v2.2.7
-versionCode=20207
+version=v2.2.8
+versionCode=20208
 author=Noir
 description=Android Game Storage Bind-Mount Engine & Advanced I/O Optimization.

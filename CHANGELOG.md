@@ -5,6 +5,15 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.8] - 2026-09-19
+
+### Changed
+- **Storage & Logging Engine Total Purge of Legacy Names**:
+  - Ceased generation of `/storage/emulated/0/mountify.log` in `AppLogger`; user logs are now written exclusively to `/storage/emulated/0/mountx.log`.
+  - Added automatic purge of legacy `mountify.log` in user storage during log clear operations in `LogsViewModel`.
+  - Cleaned ProGuard rules in `app/proguard-rules.pro` to strictly enforce `app.mountx.data.model.**`.
+  - Fully updated official repository clauses in `AGENTS.md` to reference `https://github.com/Zy0x/MountX`.
+
 ## [2.2.7] - 2026-09-19
 
 ### Changed

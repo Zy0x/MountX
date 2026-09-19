@@ -13,9 +13,7 @@ import java.util.Locale
  * Real-time unified logging engine for MountX.
  * Appends formatted log entries to persistent logs:
  * - /storage/emulated/0/mountx.log
- * - /data/adb/modules/MountX/mountx.log
- * - /data/adb/modules/Mountify/mountify.log (backward compatibility)
- * - /storage/emulated/0/mountify.log (backward compatibility)
+ * - /data/adb/modules/MountX/mountx.log (or /data/adb/modules/Mountify/mountx.log fallback)
  */
 object AppLogger {
 
@@ -24,8 +22,7 @@ object AppLogger {
 
     private const val USER_LOG_FILE = "/storage/emulated/0/mountx.log"
     private const val MOD_LOG_FILE = "/data/adb/modules/MountX/mountx.log"
-    private const val LEGACY_USER_LOG = "/storage/emulated/0/mountify.log"
-    private const val LEGACY_MOD_LOG = "/data/adb/modules/Mountify/mountify.log"
+    private const val FALLBACK_MOD_LOG = "/data/adb/modules/Mountify/mountx.log"
 
     fun info(tag: String, message: String) = log("INFO ", tag, message)
     fun success(tag: String, message: String) = log("SUCCESS", tag, message)
@@ -41,9 +38,11 @@ object AppLogger {
         loggerScope.launch {
             val cmd = buildString {
                 append("echo \"").append(formattedLine).append("\" >> \"").append(USER_LOG_FILE).append("\" 2>/dev/null; ")
+                append("if [ -d /data/adb/modules/MountX ]; then ")
                 append("echo \"").append(formattedLine).append("\" >> \"").append(MOD_LOG_FILE).append("\" 2>/dev/null; ")
-                append("echo \"").append(formattedLine).append("\" >> \"").append(LEGACY_USER_LOG).append("\" 2>/dev/null; ")
-                append("echo \"").append(formattedLine).append("\" >> \"").append(LEGACY_MOD_LOG).append("\" 2>/dev/null")
+                append("elif [ -d /data/adb/modules/Mountify ]; then ")
+                append("echo \"").append(formattedLine).append("\" >> \"").append(FALLBACK_MOD_LOG).append("\" 2>/dev/null; ")
+                append("fi")
             }
             RootShell.exec(cmd)
         }
