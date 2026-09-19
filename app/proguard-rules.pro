@@ -32,7 +32,9 @@
 -keep class * implements com.google.gson.TypeAdapterFactory { *; }
 -keep class * implements com.google.gson.JsonSerializer { *; }
 -keep class * implements com.google.gson.JsonDeserializer { *; }
--keepattributes EnclosingMethod
+-keep class * extends com.google.gson.reflect.TypeToken { *; }
+-keepclassmembers class * extends com.google.gson.reflect.TypeToken { *; }
+-keepattributes Signature,InnerClasses,EnclosingMethod
 
 # libsu
 -keep class com.topjohnwu.superuser.** { *; }

@@ -31,7 +31,8 @@ data class GameEntry(
     val mountStatus: MountStatus = MountStatus.UNKNOWN,
     val dataSizeBytes: Long = 0L,
     val isEnabled: Boolean = true,
-    val addedAt: Long = System.currentTimeMillis()
+    val addedAt: Long = System.currentTimeMillis(),
+    val mountPoints: List<MountPointConfig> = emptyList()
 )
 
 /**

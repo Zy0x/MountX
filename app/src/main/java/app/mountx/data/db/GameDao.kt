@@ -12,6 +12,9 @@ interface GameDao {
     @Query("SELECT * FROM games ORDER BY addedAt DESC")
     fun getAllGames(): Flow<List<GameEntry>>
 
+    @Query("SELECT * FROM games ORDER BY addedAt DESC")
+    suspend fun getAllGamesSync(): List<GameEntry>
+
     @Query("SELECT * FROM games WHERE packageName = :pkg LIMIT 1")
     suspend fun getGameByPackage(pkg: String): GameEntry?
 

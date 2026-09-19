@@ -651,6 +651,7 @@
     <string name="notif_games_mounted_active">%1$d Game(s) Active • MicroSD Protected</string>
     <string name="notif_games_unmounted">All Games Safely Unmounted</string>
     <string name="notif_subtext_kernel">Kernel Namespace</string>
+    <string name="mount_add_custom_path">Add Custom Directory</string>
 </resources>
 
 

@@ -58,6 +58,17 @@ class MountService : Service() {
                 context.startService(intent)
             }
         }
+
+        fun startUnmountAll(context: Context) {
+            val intent = Intent(context, MountService::class.java).apply {
+                action = ACTION_UNMOUNT_ALL
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
     }
 
     override fun onCreate() {
@@ -155,9 +166,8 @@ class MountService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_mountx_emblem)
             .setColor(0xFF00E5FF.toInt())
-            .setContentTitle("MountX Sentinel Engine")
+            .setContentTitle("MountX")
             .setContentText(text)
-            .setSubText(getString(R.string.notif_subtext_kernel))
             .setContentIntent(openPendingIntent)
             .setOngoing(!isFinished)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

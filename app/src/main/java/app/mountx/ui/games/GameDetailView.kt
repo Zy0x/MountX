@@ -31,6 +31,11 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Cached
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PermMedia
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -55,6 +60,7 @@ import app.mountx.data.model.AppStorageBreakdown
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MigrationTarget
 import app.mountx.data.model.MountMode
+import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
 import app.mountx.ui.components.AppIconImage
@@ -902,6 +908,137 @@ private fun ManageTabContent(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── MULTI-TARGET MOUNT DIRECTORIES CARD ──
+        if (game.mountPoints.isNotEmpty()) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Direktori Target Mount",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "${game.mountPoints.count { it.enabled }} / ${game.mountPoints.size} Aktif",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    game.mountPoints.forEach { point ->
+                        val catLabel = when (point.category) {
+                            MountPointCategory.GAME_ASSETS -> "Game Assets & Data"
+                            MountPointCategory.MEDIA_DOWNLOADS -> "Media & Downloads"
+                            MountPointCategory.CACHE_SHADERS -> "Cache & Shaders"
+                            MountPointCategory.PRIVATE_INTERNAL -> "Large Private Data"
+                            MountPointCategory.CUSTOM -> "Custom Binding"
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = when (point.category) {
+                                        MountPointCategory.GAME_ASSETS -> Icons.Default.SportsEsports
+                                        MountPointCategory.MEDIA_DOWNLOADS -> Icons.Default.PermMedia
+                                        MountPointCategory.CACHE_SHADERS -> Icons.Default.Cached
+                                        MountPointCategory.PRIVATE_INTERNAL -> Icons.Default.Storage
+                                        MountPointCategory.CUSTOM -> Icons.Default.Folder
+                                    },
+                                    contentDescription = null,
+                                    tint = if (point.enabled) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = catLabel,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (point.isVirtualContainer) {
+                                            Surface(
+                                                shape = RoundedCornerShape(3.dp),
+                                                color = Color(0xFFFFB300).copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = "ext4 loop",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                                    color = Color(0xFFFFB300),
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = point.sourcePath,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 9.5.sp,
+                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                if (point.sizeBytes > 0) {
+                                    Text(
+                                        text = FormatUtils.formatBytes(point.sizeBytes),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     }
                 }

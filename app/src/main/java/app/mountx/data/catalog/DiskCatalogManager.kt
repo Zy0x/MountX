@@ -2,6 +2,8 @@ package app.mountx.data.catalog
 
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountMode
+import app.mountx.data.model.MountPointCategory
+import app.mountx.data.model.MountPointConfig
 import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
@@ -16,7 +18,7 @@ import javax.inject.Singleton
  * Data structure representing the portable disk catalog stored at $sdBase/.mountx/catalog.json
  */
 data class DiskCatalog(
-    val version: Int = 1,
+    val version: Int = 2,
     val lastUpdated: Long = System.currentTimeMillis(),
     val games: List<DiskCatalogGameEntry> = emptyList()
 )
@@ -24,10 +26,11 @@ data class DiskCatalog(
 data class DiskCatalogGameEntry(
     val packageName: String,
     val displayName: String,
-    val mode: String, // "PKG" or "FILES"
+    val mode: String = "PKG", // "PKG" or "FILES"
     val isEnabled: Boolean = true,
     val lastKnownSizeBytes: Long = 0L,
-    val lastMountedAt: Long = 0L
+    val lastMountedAt: Long = 0L,
+    val mountPoints: List<MountPointConfig> = emptyList()
 )
 
 enum class DiscoverySource {
@@ -45,7 +48,8 @@ data class DiscoveredGame(
     val hasDataOnSd: Boolean,
     val hasObbOnSd: Boolean,
     val sizeBytes: Long = 0L,
-    val canaryPresent: Boolean = false
+    val canaryPresent: Boolean = false,
+    val mountPoints: List<MountPointConfig> = emptyList()
 )
 
 /**
@@ -75,20 +79,54 @@ class DiskCatalogManager @Inject constructor(
         }
         try {
             val json = JSONObject(contentRes.output.trim())
-            val version = json.optInt("version", 1)
+            val version = json.optInt("version", 2)
             val lastUpdated = json.optLong("lastUpdated", System.currentTimeMillis())
             val gamesArray = json.optJSONArray("games") ?: JSONArray()
             val games = mutableListOf<DiskCatalogGameEntry>()
             for (i in 0 until gamesArray.length()) {
                 val item = gamesArray.getJSONObject(i)
+                val pkgName = item.optString("package_name", item.optString("packageName", ""))
+                val appName = item.optString("app_name", item.optString("displayName", pkgName))
+                val modeStr = item.optString("mode", "PKG")
+                val isEnabled = item.optBoolean("isEnabled", true)
+                val lastKnownSizeBytes = item.optLong("lastKnownSizeBytes", item.optLong("dataSizeBytes", 0L))
+                val lastMountedAt = item.optLong("lastMountedAt", 0L)
+
+                val mpList = mutableListOf<MountPointConfig>()
+                val mpArray = item.optJSONArray("mount_points") ?: item.optJSONArray("mountPoints")
+                if (mpArray != null) {
+                    for (j in 0 until mpArray.length()) {
+                        val mpObj = mpArray.getJSONObject(j)
+                        val catStr = mpObj.optString("category", "GAME_ASSETS")
+                        val cat = try {
+                            MountPointCategory.valueOf(catStr)
+                        } catch (_: Exception) {
+                            MountPointCategory.GAME_ASSETS
+                        }
+                        mpList.add(
+                            MountPointConfig(
+                                id = mpObj.optString("id", "mp_$j"),
+                                category = cat,
+                                sourcePath = mpObj.optString("source_path", mpObj.optString("sourcePath", "")),
+                                targetPath = mpObj.optString("target_path", mpObj.optString("targetPath", "")),
+                                enabled = mpObj.optBoolean("enabled", true),
+                                isVirtualContainer = mpObj.optBoolean("is_virtual_container", mpObj.optBoolean("isVirtualContainer", false)),
+                                containerImgPath = if (mpObj.has("container_img_path") && !mpObj.isNull("container_img_path")) mpObj.getString("container_img_path") else null,
+                                sizeBytes = mpObj.optLong("size_bytes", 0L)
+                            )
+                        )
+                    }
+                }
+
                 games.add(
                     DiskCatalogGameEntry(
-                        packageName = item.getString("packageName"),
-                        displayName = item.optString("displayName", item.getString("packageName")),
-                        mode = item.optString("mode", "PKG"),
-                        isEnabled = item.optBoolean("isEnabled", true),
-                        lastKnownSizeBytes = item.optLong("lastKnownSizeBytes", 0L),
-                        lastMountedAt = item.optLong("lastMountedAt", 0L)
+                        packageName = pkgName,
+                        displayName = appName,
+                        mode = modeStr,
+                        isEnabled = isEnabled,
+                        lastKnownSizeBytes = lastKnownSizeBytes,
+                        lastMountedAt = lastMountedAt,
+                        mountPoints = mpList
                     )
                 )
             }
@@ -115,12 +153,27 @@ class DiskCatalogManager @Inject constructor(
                 val gamesArr = JSONArray()
                 for (g in catalog.games) {
                     val gObj = JSONObject().apply {
-                        put("packageName", g.packageName)
-                        put("displayName", g.displayName)
+                        put("package_name", g.packageName)
+                        put("app_name", g.displayName)
                         put("mode", g.mode)
                         put("isEnabled", g.isEnabled)
                         put("lastKnownSizeBytes", g.lastKnownSizeBytes)
                         put("lastMountedAt", g.lastMountedAt)
+
+                        val mpArr = JSONArray()
+                        for (mp in g.mountPoints) {
+                            mpArr.put(JSONObject().apply {
+                                put("id", mp.id)
+                                put("category", mp.category.name)
+                                put("source_path", mp.sourcePath)
+                                put("target_path", mp.targetPath)
+                                put("enabled", mp.enabled)
+                                put("is_virtual_container", mp.isVirtualContainer)
+                                if (mp.containerImgPath != null) put("container_img_path", mp.containerImgPath)
+                                put("size_bytes", mp.sizeBytes)
+                            })
+                        }
+                        put("mount_points", mpArr)
                     }
                     gamesArr.put(gObj)
                 }
@@ -175,58 +228,51 @@ class DiskCatalogManager @Inject constructor(
                     hasDataOnSd = hasData,
                     hasObbOnSd = hasObb,
                     sizeBytes = cg.lastKnownSizeBytes,
-                    canaryPresent = canary
+                    canaryPresent = canary,
+                    mountPoints = cg.mountPoints
                 )
             }
         }
 
-        // 2. Shallow scan of Android/data
-        val dataRes = RootShell.exec("ls -1 \"$sdBase/Android/data\" 2>/dev/null")
-        if (dataRes.isSuccess) {
-            for (pkg in dataRes.stdout) {
+        // 2. Shallow scan $sdBase/Android/data
+        val dataOut = RootShell.execForOutput("ls -1 \"$sdBase/Android/data\" 2>/dev/null")
+        if (dataOut.isNotBlank()) {
+            for (pkg in dataOut.lines()) {
                 val cleanPkg = pkg.trim()
-                if (cleanPkg.isBlank() || cleanPkg.startsWith(".")) continue
-                if (!cleanPkg.contains(".")) continue // filter non-packages
+                if (cleanPkg.isBlank() || cleanPkg == ".mountx_canary" || cleanPkg == ".nomedia") continue
+                if (detected.containsKey(cleanPkg)) continue
 
                 val isInstalled = installedApps.containsKey(cleanPkg)
                 val isRegistered = registeredPackages.contains(cleanPkg)
                 val hasObb = RootShell.exists("$sdBase/Android/obb/$cleanPkg")
                 val canary = RootShell.exists("$sdBase/Android/data/$cleanPkg/$CANARY_FILE")
 
-                val existing = detected[cleanPkg]
-                if (existing == null) {
-                    detected[cleanPkg] = DiscoveredGame(
-                        packageName = cleanPkg,
-                        displayName = installedApps[cleanPkg] ?: cleanPkg,
-                        mode = MountMode.PKG,
-                        source = DiscoverySource.SHALLOW_SCAN,
-                        isInstalledOnDevice = isInstalled,
-                        isAlreadyRegistered = isRegistered,
-                        hasDataOnSd = true,
-                        hasObbOnSd = hasObb,
-                        canaryPresent = canary
-                    )
-                } else {
-                    detected[cleanPkg] = existing.copy(hasDataOnSd = true, canaryPresent = canary || existing.canaryPresent)
-                }
+                detected[cleanPkg] = DiscoveredGame(
+                    packageName = cleanPkg,
+                    displayName = installedApps[cleanPkg] ?: cleanPkg,
+                    mode = MountMode.PKG,
+                    source = DiscoverySource.SHALLOW_SCAN,
+                    isInstalledOnDevice = isInstalled,
+                    isAlreadyRegistered = isRegistered,
+                    hasDataOnSd = true,
+                    hasObbOnSd = hasObb,
+                    canaryPresent = canary
+                )
             }
         }
 
-        // 3. Shallow scan of Android/obb
-        val obbRes = RootShell.exec("ls -1 \"$sdBase/Android/obb\" 2>/dev/null")
-        if (obbRes.isSuccess) {
-            for (pkg in obbRes.stdout) {
+        // 3. Shallow scan $sdBase/Android/obb
+        val obbOut = RootShell.execForOutput("ls -1 \"$sdBase/Android/obb\" 2>/dev/null")
+        if (obbOut.isNotBlank()) {
+            for (pkg in obbOut.lines()) {
                 val cleanPkg = pkg.trim()
-                if (cleanPkg.isBlank() || cleanPkg.startsWith(".")) continue
-                if (!cleanPkg.contains(".")) continue
-
-                val isInstalled = installedApps.containsKey(cleanPkg)
-                val isRegistered = registeredPackages.contains(cleanPkg)
-                val hasData = RootShell.exists("$sdBase/Android/data/$cleanPkg")
-                val canary = RootShell.exists("$sdBase/Android/data/$cleanPkg/$CANARY_FILE")
-
+                if (cleanPkg.isBlank() || cleanPkg == ".nomedia") continue
                 val existing = detected[cleanPkg]
                 if (existing == null) {
+                    val isInstalled = installedApps.containsKey(cleanPkg)
+                    val isRegistered = registeredPackages.contains(cleanPkg)
+                    val hasData = RootShell.exists("$sdBase/Android/data/$cleanPkg")
+
                     detected[cleanPkg] = DiscoveredGame(
                         packageName = cleanPkg,
                         displayName = installedApps[cleanPkg] ?: cleanPkg,
@@ -236,7 +282,7 @@ class DiskCatalogManager @Inject constructor(
                         isAlreadyRegistered = isRegistered,
                         hasDataOnSd = hasData,
                         hasObbOnSd = true,
-                        canaryPresent = canary
+                        canaryPresent = false
                     )
                 } else {
                     detected[cleanPkg] = existing.copy(hasObbOnSd = true)
@@ -293,11 +339,12 @@ class DiskCatalogManager @Inject constructor(
                 mode = g.mode.name,
                 isEnabled = g.isEnabled,
                 lastKnownSizeBytes = g.dataSizeBytes,
-                lastMountedAt = if (g.mountStatus == app.mountx.data.model.MountStatus.MOUNTED) System.currentTimeMillis() else 0L
+                lastMountedAt = if (g.mountStatus == app.mountx.data.model.MountStatus.MOUNTED) System.currentTimeMillis() else 0L,
+                mountPoints = g.mountPoints
             )
         }
         val catalog = DiskCatalog(
-            version = 1,
+            version = 2,
             lastUpdated = System.currentTimeMillis(),
             games = catalogEntries
         )

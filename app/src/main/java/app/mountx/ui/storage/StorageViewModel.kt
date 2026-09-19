@@ -46,6 +46,7 @@ class StorageViewModel @Inject constructor(
     private val storageRepository: StorageRepository,
     private val gameRepository: GameRepository,
     private val appPreferences: AppPreferences,
+    private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -238,6 +239,23 @@ class StorageViewModel @Inject constructor(
         }
         viewModelScope.launch(Dispatchers.IO) {
             loadSupportedFilesystems(force = false)
+        }
+        viewModelScope.launch {
+            systemSyncMonitor.events.collect { event ->
+                when (event) {
+                    is app.mountx.service.SystemSyncEvent.StorageMounted,
+                    is app.mountx.service.SystemSyncEvent.RefreshAll -> {
+                        detectPartitionsInternal(force = true)
+                    }
+                    is app.mountx.service.SystemSyncEvent.StorageDisconnected -> {
+                        _diskInfo.value = null
+                        _allDisks.value = emptyList()
+                        _selectedDiskForDetail.value = null
+                        _partitions.value = emptyList()
+                    }
+                    else -> {}
+                }
+            }
         }
     }
 

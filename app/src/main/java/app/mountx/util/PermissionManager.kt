@@ -47,8 +47,10 @@ object PermissionManager {
     }
 
     fun checkRootAccess(): Boolean {
+        val cached = Shell.isAppGrantedRoot()
+        if (cached != null) return cached
         return try {
-            Shell.isAppGrantedRoot() == true
+            app.mountx.root.RootShell.isAvailable
         } catch (_: Exception) {
             false
         }

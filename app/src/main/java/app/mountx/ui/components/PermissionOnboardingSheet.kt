@@ -75,11 +75,28 @@ fun PermissionOnboardingSheet(
         mutableStateOf(PermissionManager.checkAllPermissions(context))
     }
 
+    // Asynchronously verify root and permissions upon entering composition
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            try {
+                app.mountx.root.RootShell.isAvailable
+            } catch (_: Exception) {}
+        }
+        permState = PermissionManager.checkAllPermissions(context)
+    }
+
     // Auto-refresh permission status when app returns to foreground
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                permState = PermissionManager.checkAllPermissions(context)
+                coroutineScope.launch {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            app.mountx.root.RootShell.isAvailable
+                        } catch (_: Exception) {}
+                    }
+                    permState = PermissionManager.checkAllPermissions(context)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

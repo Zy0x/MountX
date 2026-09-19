@@ -43,19 +43,22 @@ class GameRepository @Inject constructor(
     suspend fun addGame(
         packageName: String,
         displayName: String,
-        mode: MountMode
+        mode: MountMode = MountMode.PKG,
+        mountPoints: List<app.mountx.data.model.MountPointConfig> = emptyList(),
+        initialSizeBytes: Long = 0L
     ) = withContext(Dispatchers.IO) {
         val entry = GameEntry(
             packageName = packageName,
             displayName = displayName.ifBlank { packageName },
             mode = mode,
             mountStatus = MountStatus.UNMOUNTED,
-            dataSizeBytes = 0L,
-            isEnabled = true
+            dataSizeBytes = initialSizeBytes,
+            isEnabled = true,
+            mountPoints = mountPoints
         )
         gameDao.insertGame(entry)
         syncModuleGamelist()
-        AppLogger.info("Games", "Registered game: $displayName ($packageName) [Mode: ${mode.name}]")
+        AppLogger.info("Games", "Registered game: $displayName ($packageName) [Mode: ${mode.name}, MountPoints: ${mountPoints.size}]")
     }
 
     suspend fun updateGame(game: GameEntry) = withContext(Dispatchers.IO) {
@@ -390,4 +393,139 @@ class GameRepository @Inject constructor(
                     .thenBy { it.displayName.lowercase() }
             )
     }
+
+    suspend fun scanCandidateDirectories(
+        packageName: String,
+        displayName: String,
+        sdBase: String = "/data/sdext2"
+    ): List<CandidateDirectory> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<CandidateDirectory>()
+
+        // 1. GAME_ASSETS: files and obb
+        val internalFiles = "/data/media/0/Android/data/$packageName/files"
+        val sdFiles = "$sdBase/Android/data/$packageName/files"
+        val internalObb = "/data/media/0/Android/obb/$packageName"
+        val sdObb = "$sdBase/Android/obb/$packageName"
+
+        val filesSize = getDirSizeBytes(if (RootShell.exists(sdFiles)) sdFiles else internalFiles)
+        val obbSize = getDirSizeBytes(if (RootShell.exists(sdObb)) sdObb else internalObb)
+        val totalAssetsSize = filesSize + obbSize
+
+        list.add(
+            CandidateDirectory(
+                id = "game_assets",
+                category = app.mountx.data.model.MountPointCategory.GAME_ASSETS,
+                title = "Game Assets & Data (99% Stabilitas)",
+                description = "Memetakan subdirektori aset /Android/data/files dan berkas arsip /Android/obb. Mengosongkan ruang tanpa menyentuh cache internal.",
+                relativePath = "Android/data/$packageName/files",
+                internalPath = internalFiles,
+                sdPath = sdFiles,
+                sizeBytes = totalAssetsSize,
+                defaultEnabled = true
+            )
+        )
+
+        // 2. MEDIA_DOWNLOADS: Android/media or public app folder
+        val internalMedia = "/data/media/0/Android/media/$packageName"
+        val sdMedia = "$sdBase/Android/media/$packageName"
+        val pubFolder = "/data/media/0/${displayName.replace(" ", "")}"
+        val pubSize = if (RootShell.exists(pubFolder)) getDirSizeBytes(pubFolder) else 0L
+        val mediaSize = getDirSizeBytes(if (RootShell.exists(sdMedia)) sdMedia else internalMedia) + pubSize
+
+        list.add(
+            CandidateDirectory(
+                id = "media_downloads",
+                category = app.mountx.data.model.MountPointCategory.MEDIA_DOWNLOADS,
+                title = "Media & Unduhan",
+                description = "Memetakan folder media publik (/Android/media/). Otomatis menyertakan berkas .nomedia agar MediaStore tidak menduplikasi galeri.",
+                relativePath = "Android/media/$packageName",
+                internalPath = internalMedia,
+                sdPath = sdMedia,
+                sizeBytes = mediaSize,
+                defaultEnabled = mediaSize > 0L
+            )
+        )
+
+        // 3. CACHE_SHADERS: Android/data/cache
+        val internalCache = "/data/media/0/Android/data/$packageName/cache"
+        val sdCache = "$sdBase/Android/data/$packageName/cache"
+        val cacheSize = getDirSizeBytes(if (RootShell.exists(sdCache)) sdCache else internalCache)
+
+        list.add(
+            CandidateDirectory(
+                id = "cache_shaders",
+                category = app.mountx.data.model.MountPointCategory.CACHE_SHADERS,
+                title = "Cache & Shaders (Opsional)",
+                description = "Memetakan folder cache dan GPU shader. Disarankan tetap di memori internal UFS agar tidak terjadi stuttering kompilasi shader grafis.",
+                relativePath = "Android/data/$packageName/cache",
+                internalPath = internalCache,
+                sdPath = sdCache,
+                sizeBytes = cacheSize,
+                defaultEnabled = false
+            )
+        )
+
+        // 4. PRIVATE_INTERNAL: /data/data/<pkg>
+        val privateDataDir = "/data/user/0/$packageName"
+        val privateSize = getDirSizeBytes(privateDataDir)
+        val oneGb = 1024L * 1024L * 1024L
+
+        if (privateSize >= oneGb) {
+            list.add(
+                CandidateDirectory(
+                    id = "private_internal",
+                    category = app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL,
+                    title = "Private Internal Data (Virtual Ext4 Container)",
+                    description = "Data gajah > 1 GB terdeteksi di /data/data/. Menggunakan sparse image ext4 terisolasi di MicroSD untuk menjaga integritas SQLite WAL & SELinux.",
+                    relativePath = "data/user/0/$packageName",
+                    internalPath = privateDataDir,
+                    sdPath = "$sdBase/.mountx/containers/${packageName}_data.img",
+                    sizeBytes = privateSize,
+                    defaultEnabled = false,
+                    isLocked = false,
+                    isVirtualContainer = true
+                )
+            )
+        } else if (privateSize > 0L) {
+            list.add(
+                CandidateDirectory(
+                    id = "private_internal_locked",
+                    category = app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL,
+                    title = "Private Internal Data (/data/data)",
+                    description = "Terkunci: Data internal < 1 GB wajib berada di internal flash untuk mencegah error SQLite WAL database lock.",
+                    relativePath = "data/user/0/$packageName",
+                    internalPath = privateDataDir,
+                    sdPath = "$sdBase/.mountx/containers/${packageName}_data.img",
+                    sizeBytes = privateSize,
+                    defaultEnabled = false,
+                    isLocked = true,
+                    lockReason = "Ukuran < 1 GB dikunci demi keselamatan database"
+                )
+            )
+        }
+
+        list
+    }
+
+    private suspend fun getDirSizeBytes(path: String): Long {
+        if (!RootShell.exists(path)) return 0L
+        val res = RootShell.exec("du -sk \"$path\" 2>/dev/null | cut -f1")
+        val kb = res.output.trim().toLongOrNull() ?: 0L
+        return kb * 1024L
+    }
 }
+
+data class CandidateDirectory(
+    val id: String,
+    val category: app.mountx.data.model.MountPointCategory,
+    val title: String,
+    val description: String,
+    val relativePath: String,
+    val internalPath: String,
+    val sdPath: String,
+    val sizeBytes: Long,
+    val defaultEnabled: Boolean,
+    val isLocked: Boolean = false,
+    val lockReason: String? = null,
+    val isVirtualContainer: Boolean = false
+)

@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import app.mountx.R
 import app.mountx.data.catalog.DiscoveredGame
 import app.mountx.data.model.GameEntry
+import app.mountx.data.model.InstalledAppInfo
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
 import app.mountx.ui.components.AppIconImage
@@ -77,11 +78,39 @@ fun GamesScreen(
     var showAddSheet by remember { mutableStateOf(false) }
     var selectedGameForDetail by remember { mutableStateOf<GameEntry?>(null) }
     var gameToDelete by remember { mutableStateOf<GameEntry?>(null) }
+    var configuringApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
 
-    LaunchedEffect(showAddSheet, selectedGameForDetail) {
-        val isPickerOrDetail = showAddSheet || selectedGameForDetail != null
+    LaunchedEffect(showAddSheet, selectedGameForDetail, configuringApp) {
+        val isPickerOrDetail = showAddSheet || selectedGameForDetail != null || configuringApp != null
         onPagerScrollEnabled(!isPickerOrDetail)
         onBottomBarVisibilityChanged(!isPickerOrDetail)
+    }
+
+    if (configuringApp != null) {
+        val app = configuringApp!!
+        val candidateDirectories by viewModel.candidateDirectories.collectAsState()
+        val isScanningCandidates by viewModel.isScanningCandidates.collectAsState()
+
+        LaunchedEffect(app.packageName) {
+            viewModel.scanCandidates(app.packageName, app.displayName)
+        }
+
+        AppMountConfigSheet(
+            appInfo = app,
+            candidateDirectories = candidateDirectories,
+            isLoadingCandidates = isScanningCandidates,
+            isFat32 = false,
+            onDismiss = { configuringApp = null },
+            onConfirm = { mountPoints, totalSize ->
+                viewModel.addGameWithMountPoints(
+                    packageName = app.packageName,
+                    displayName = app.displayName,
+                    mountPoints = mountPoints,
+                    initialSizeBytes = totalSize
+                )
+                configuringApp = null
+            }
+        )
     }
 
     if (showAddSheet) {
@@ -91,6 +120,10 @@ fun GamesScreen(
             onAdd = { pkg, name, mode ->
                 viewModel.addGame(pkg, name, mode)
                 showAddSheet = false
+            },
+            onConfigureApp = { appInfo ->
+                showAddSheet = false
+                configuringApp = appInfo
             },
             modifier = modifier
         )

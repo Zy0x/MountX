@@ -1,5 +1,6 @@
 package app.mountx.ui.dashboard
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mountx.data.model.AppStatus
@@ -14,6 +15,7 @@ import app.mountx.util.AppPreferences
 import app.mountx.root.MountManager
 import com.topjohnwu.superuser.Shell
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,7 +41,9 @@ class DashboardViewModel @Inject constructor(
     private val gameRepository: GameRepository,
     private val storageRepository: StorageRepository,
     private val appPreferences: AppPreferences,
-    private val mountManager: MountManager
+    private val mountManager: MountManager,
+    private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _liveTelemetry = MutableStateFlow(LiveNamespaceTelemetry())
@@ -99,6 +103,11 @@ class DashboardViewModel @Inject constructor(
 
     init {
         refresh()
+        viewModelScope.launch {
+            systemSyncMonitor.events.collect {
+                refresh()
+            }
+        }
     }
 
     fun refresh() {
@@ -176,21 +185,13 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun mountAll() {
-        viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            val blockDev = appPreferences.sdBlockDevice.first()
-            storageRepository.mountSdPartition(blockDev, sdBase)
-            gameRepository.mountAll(sdBase)
-            refresh()
-        }
+        app.mountx.service.MountService.startMountAll(context)
+        refresh()
     }
 
     fun unmountAll() {
-        viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            gameRepository.unmountAll(sdBase)
-            refresh()
-        }
+        app.mountx.service.MountService.startUnmountAll(context)
+        refresh()
     }
 
     fun toggleMount(game: GameEntry) {

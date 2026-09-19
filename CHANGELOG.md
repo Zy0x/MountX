@@ -5,6 +5,33 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.13] - 2026-09-19
+
+### Added
+- **Universal Smart Directory Classification Engine**:
+  - Expanded from legacy binary mode (`PKG` vs `FILES`) into a structured **Multi-Target Array** architecture (`mount_points: [{ id, category, source_path, target_path, enabled, ... }]`).
+  - Introduced 4 Human-Readable UI Preset Categories:
+    1. *Game Assets & Data* (Default: Checked [✔] - 99% stability, maps `files` and `obb`).
+    2. *Media & Downloads* (Default: Checked [✔] if detected, maps `/sdcard/<App>/` or `/Android/media/<pkg>/`, with auto `.nomedia` placement in target).
+    3. *Cache & Shaders* (Default: Unchecked [ ], with UI warning regarding shader compilation stutter on external storage).
+    4. *Custom Path Binding* (Manual Advanced targeting with `[+ Tambah Direktori Kustom]`).
+  - Implemented **Virtual Ext4 Loop Container** option (`.img` sparse image in `$sdBase/.mountx/containers/` via loop device `losetup`) for large private data (`/data/data/<pkg>`) exceeding 1 GB, safeguarding against SQLite WAL database locks on exFAT/FAT32 partitions.
+- **Event-Driven Real-Time Auto-Sync Engine (`SystemSyncMonitor`)**:
+  - Continuous reactive monitoring for hardware events (`ACTION_MEDIA_MOUNTED`, `ACTION_MEDIA_UNMOUNTED`, `ACTION_MEDIA_EJECT`, `ACTION_MEDIA_BAD_REMOVAL`) and package lifecycle events (`ACTION_PACKAGE_ADDED`, `ACTION_PACKAGE_REMOVED`, `ACTION_PACKAGE_REPLACED`).
+  - Automatically updates storage partitions, package lists, and mounted game states instantly across Dashboard, Games, and Storage screens without waiting for manual swipe or refresh gestures.
+  - Emergency Eject Protocol: Instant `umount -f -l`, graceful game process termination via `am force-stop`, and immediate Heads-Up warning notification upon external storage ejection.
+- **Clean Module Ecosystem & Zero-Residue Policy**:
+  - Integrated official `$MODDIR/uninstall.sh` lifecycle hook cleanly unmounting active namespaces, detaching loop containers, restoring `/data/media/0/Android` POSIX permissions (`chmod 775` & `restorecon -FR`), and safely pruning runtime state.
+  - Strict isolation of supplementary binaries within `$MODDIR/bin/` without leaving residues in Android root partitions.
+
+### Changed
+- **Notification Drawer Header Polish**:
+  - Cleaned system drawer notification header to pure **"MountX"**, removing technical kernel namespace labels.
+- **Superuser Root Audit Resolution**:
+  - Resolved cold-launch false negative in root permission audit by actively querying `RootShell.isAvailable` on startup.
+- **Room Database Schema v2 & Catalog Synchronization**:
+  - Seamless automated migration (`MIGRATION_1_2`) serializing multi-target configurations into Room and `.mountx/catalog.json`.
+
 ## [2.2.12] - 2026-09-19
 
 ### Added

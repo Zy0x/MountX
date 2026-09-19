@@ -67,6 +67,7 @@ fun AddAppPicker(
     installedApps: List<InstalledAppInfo>,
     onDismiss: () -> Unit,
     onAdd: (packageName: String, displayName: String, mode: MountMode) -> Unit,
+    onConfigureApp: ((InstalledAppInfo) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onDismiss)
@@ -232,7 +233,16 @@ fun AddAppPicker(
                         onModeChange = { selectedMode = it },
                         onConfirm = {
                             if (manualPackage.isNotBlank()) {
-                                onAdd(manualPackage.trim(), manualName.trim(), selectedMode)
+                                if (onConfigureApp != null) {
+                                    val manualApp = InstalledAppInfo(
+                                        packageName = manualPackage.trim(),
+                                        displayName = manualName.trim().ifBlank { manualPackage.trim() },
+                                        isSystemApp = false
+                                    )
+                                    onConfigureApp(manualApp)
+                                } else {
+                                    onAdd(manualPackage.trim(), manualName.trim(), selectedMode)
+                                }
                             }
                         }
                     )
@@ -248,7 +258,11 @@ fun AddAppPicker(
                             if (app.isSystemApp) {
                                 pendingSystemApp = app
                             } else {
-                                selectedApp = app
+                                if (onConfigureApp != null) {
+                                    onConfigureApp(app)
+                                } else {
+                                    selectedApp = app
+                                }
                             }
                         }
                     )
@@ -452,7 +466,11 @@ fun AddAppPicker(
 
                         Button(
                             onClick = {
-                                selectedApp = sysApp
+                                if (onConfigureApp != null) {
+                                    onConfigureApp(sysApp)
+                                } else {
+                                    selectedApp = sysApp
+                                }
                                 pendingSystemApp = null
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson),
@@ -485,12 +503,14 @@ fun AddGameSheet(
     installedApps: List<InstalledAppInfo>,
     onDismiss: () -> Unit,
     onAdd: (packageName: String, displayName: String, mode: MountMode) -> Unit,
+    onConfigureApp: ((InstalledAppInfo) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     AddAppPicker(
         installedApps = installedApps,
         onDismiss = onDismiss,
         onAdd = onAdd,
+        onConfigureApp = onConfigureApp,
         modifier = modifier
     )
 }

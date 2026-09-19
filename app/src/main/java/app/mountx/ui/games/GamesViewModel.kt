@@ -41,6 +41,7 @@ class GamesViewModel @Inject constructor(
     private val gameRepository: GameRepository,
     private val storageRepository: StorageRepository,
     private val appPreferences: AppPreferences,
+    private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -50,11 +51,36 @@ class GamesViewModel @Inject constructor(
     private val _discoveredGames = MutableStateFlow<List<DiscoveredGame>>(emptyList())
     val discoveredGames: StateFlow<List<DiscoveredGame>> = _discoveredGames.asStateFlow()
 
+    private val _candidateDirectories = MutableStateFlow<List<app.mountx.data.repository.CandidateDirectory>>(emptyList())
+    val candidateDirectories: StateFlow<List<app.mountx.data.repository.CandidateDirectory>> = _candidateDirectories.asStateFlow()
+
+    private val _isScanningCandidates = MutableStateFlow(false)
+    val isScanningCandidates: StateFlow<Boolean> = _isScanningCandidates.asStateFlow()
+
     private val _isScanningDiscovered = MutableStateFlow(false)
     val isScanningDiscovered: StateFlow<Boolean> = _isScanningDiscovered.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            systemSyncMonitor.events.collect { event ->
+                when (event) {
+                    is app.mountx.service.SystemSyncEvent.StorageMounted,
+                    is app.mountx.service.SystemSyncEvent.StorageDisconnected,
+                    is app.mountx.service.SystemSyncEvent.RefreshAll -> {
+                        refresh()
+                    }
+                    is app.mountx.service.SystemSyncEvent.PackageInstalled,
+                    is app.mountx.service.SystemSyncEvent.PackageRemoved -> {
+                        loadInstalledApps()
+                        refresh()
+                    }
+                }
+            }
+        }
+    }
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -143,17 +169,13 @@ class GamesViewModel @Inject constructor(
     }
 
     fun mountAllGames() {
-        viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            gameRepository.mountAll(sdBase)
-        }
+        app.mountx.service.MountService.startMountAll(context)
+        refresh()
     }
 
     fun unmountAllGames() {
-        viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            gameRepository.unmountAll(sdBase)
-        }
+        app.mountx.service.MountService.startUnmountAll(context)
+        refresh()
     }
 
     fun refreshSizes() {
@@ -255,5 +277,32 @@ class GamesViewModel @Inject constructor(
 
     fun dismissDiscovered() {
         _discoveredGames.value = emptyList()
+    }
+
+    fun scanCandidates(packageName: String, displayName: String) {
+        viewModelScope.launch {
+            _isScanningCandidates.value = true
+            val sdBase = appPreferences.sdBasePath.first()
+            _candidateDirectories.value = gameRepository.scanCandidateDirectories(packageName, displayName, sdBase)
+            _isScanningCandidates.value = false
+        }
+    }
+
+    fun addGameWithMountPoints(
+        packageName: String,
+        displayName: String,
+        mountPoints: List<app.mountx.data.model.MountPointConfig>,
+        initialSizeBytes: Long
+    ) {
+        viewModelScope.launch {
+            gameRepository.addGame(
+                packageName = packageName,
+                displayName = displayName,
+                mode = MountMode.PKG,
+                mountPoints = mountPoints,
+                initialSizeBytes = initialSizeBytes
+            )
+            refresh()
+        }
     }
 }
