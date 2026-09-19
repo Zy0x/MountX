@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import app.mountx.R
 import javax.inject.Inject
 
 @HiltViewModel
@@ -598,8 +599,8 @@ class StorageViewModel @Inject constructor(
             _isFormatting.value = true
             _statusMessage.value = null
             _operationProgress.value = OperationState.InProgress(
-                title = "Format Partisi",
-                stepMessage = "Menyiapkan dan memformat $blockDevice ke ${fsType.label}..."
+                title = context.getString(R.string.op_format_title),
+                stepMessage = context.getString(R.string.op_format_step, blockDevice, fsType.label)
             )
             val result = storageRepository.formatPartition(blockDevice, fsType, label.ifBlank { "sdext2" })
             _isFormatting.value = false
@@ -610,20 +611,20 @@ class StorageViewModel @Inject constructor(
                 storageRepository.mountSdPartition(blockDevice, sdBase, fsType)
                 detectPartitions(force = true)
                 _operationProgress.value = OperationState.Success(
-                    title = "Format Partisi Berhasil",
-                    message = "Partisi berhasil diformat ke ${fsType.label} dan di-mount kembali.",
+                    title = context.getString(R.string.op_format_success_title),
+                    message = context.getString(R.string.op_format_success_msg, fsType.label),
                     details = listOf(
-                        "Perangkat" to blockDevice,
-                        "Filesystem" to fsType.label,
-                        "Label" to label.ifBlank { "sdext2" },
-                        "Mount Point" to sdBase
+                        context.getString(R.string.op_detail_device) to blockDevice,
+                        context.getString(R.string.op_detail_filesystem) to fsType.label,
+                        context.getString(R.string.op_detail_label) to label.ifBlank { "sdext2" },
+                        context.getString(R.string.op_detail_mount_point) to sdBase
                     )
                 )
             } else {
-                val err = result.exceptionOrNull()?.message ?: "Format failed"
+                val err = result.exceptionOrNull()?.message ?: context.getString(R.string.op_format_error_title)
                 _statusMessage.value = err
                 _operationProgress.value = OperationState.Error(
-                    title = "Format Gagal",
+                    title = context.getString(R.string.op_format_error_title),
                     errorMessage = err
                 )
             }
@@ -635,25 +636,25 @@ class StorageViewModel @Inject constructor(
             val cleanLabel = newLabel.trim()
             if (cleanLabel.isBlank()) return@launch
             _operationProgress.value = OperationState.InProgress(
-                title = "Ganti Label Partisi",
-                stepMessage = "Menulis label \"$cleanLabel\" ke ${partition.name} (${partition.fsType.uppercase()})..."
+                title = context.getString(R.string.op_rename_label_title),
+                stepMessage = context.getString(R.string.op_rename_label_step, cleanLabel, partition.name, partition.fsType.uppercase())
             )
             val result = storageRepository.setPartitionLabel(partition.path, partition.fsType, cleanLabel)
             if (result.isSuccess) {
                 _operationProgress.value = OperationState.Success(
-                    title = "Label Partisi Diperbarui",
-                    message = "Label volume berhasil disimpan ke superblok filesystem tanpa memformat data.",
+                    title = context.getString(R.string.op_rename_label_success_title),
+                    message = context.getString(R.string.op_rename_label_success_msg),
                     details = listOf(
-                        "Perangkat" to partition.name,
-                        "Filesystem" to partition.fsType.uppercase(),
-                        "Label Baru" to cleanLabel
+                        context.getString(R.string.op_detail_device) to partition.name,
+                        context.getString(R.string.op_detail_filesystem) to partition.fsType.uppercase(),
+                        context.getString(R.string.op_detail_label) to cleanLabel
                     )
                 )
                 detectPartitions(force = true)
             } else {
-                val err = result.exceptionOrNull()?.message ?: "Perintah gagal dieksekusi"
+                val err = result.exceptionOrNull()?.message ?: context.getString(R.string.op_rename_label_error_title)
                 _operationProgress.value = OperationState.Error(
-                    title = "Gagal Mengubah Label",
+                    title = context.getString(R.string.op_rename_label_error_title),
                     errorMessage = err
                 )
             }
@@ -665,8 +666,8 @@ class StorageViewModel @Inject constructor(
             _isCheckingFs.value = true
             _fsCheckOutput.value = null
             _operationProgress.value = OperationState.InProgress(
-                title = "Pemeriksaan Filesystem",
-                stepMessage = "Menjalankan diagnostik integritas ${partition.fsType.uppercase()} pada ${partition.name}..."
+                title = context.getString(R.string.op_fs_check_title),
+                stepMessage = context.getString(R.string.op_fs_check_step, partition.fsType.uppercase(), partition.name)
             )
             val result = storageRepository.checkFilesystem(partition.path, partition.fsType)
             _isCheckingFs.value = false
@@ -676,10 +677,10 @@ class StorageViewModel @Inject constructor(
                 _fsckReport.value = report
                 _fsCheckOutput.value = report?.rawLog
             } else {
-                val err = result.exceptionOrNull()?.message ?: "Check failed"
+                val err = result.exceptionOrNull()?.message ?: context.getString(R.string.op_fs_check_error_title)
                 _statusMessage.value = err
                 _operationProgress.value = OperationState.Error(
-                    title = "Pemeriksaan Gagal",
+                    title = context.getString(R.string.op_fs_check_error_title),
                     errorMessage = err
                 )
             }
@@ -766,8 +767,8 @@ class StorageViewModel @Inject constructor(
         viewModelScope.launch {
             _isApplyingIo.value = true
             _operationProgress.value = OperationState.InProgress(
-                title = "Menerapkan I/O Optimization",
-                stepMessage = "Mengonfigurasi buffer ${config.readAheadKb} KB dan scheduler [${config.scheduler}]..."
+                title = context.getString(R.string.op_io_booster_title),
+                stepMessage = context.getString(R.string.op_io_booster_step, config.readAheadKb, config.scheduler)
             )
             val res = storageRepository.applyDiskIoConfig(disk.diskName, config)
             _isApplyingIo.value = false
@@ -777,21 +778,24 @@ class StorageViewModel @Inject constructor(
                 appPreferences.setIoScheduler(config.scheduler)
                 _statusMessage.value = "IO_APPLY_OK"
                 _operationProgress.value = OperationState.Success(
-                    title = "I/O Booster Aktif",
-                    message = "Parameter I/O kernel berhasil disinkronkan ke subsistem blok disk.",
+                    title = context.getString(R.string.op_io_booster_success_title),
+                    message = "I/O kernel parameters synced to the block device subsystem.",
                     details = listOf(
-                        "Read-Ahead Buffer" to "${config.readAheadKb} KB",
-                        "I/O Scheduler" to config.scheduler,
-                        "Request Affinity" to "Level ${config.rqAffinity}",
-                        "Queue Depth" to "${config.nrRequests} reqs",
-                        "Boot Persistence" to if (config.isBootPersistent) "Aktif (MountX Module)" else "Non-aktif"
+                        context.getString(R.string.op_detail_read_ahead) to "${config.readAheadKb} KB",
+                        context.getString(R.string.op_detail_scheduler) to config.scheduler,
+                        context.getString(R.string.op_detail_request_affinity) to "Level ${config.rqAffinity}",
+                        context.getString(R.string.op_detail_queue_depth) to "${config.nrRequests} reqs",
+                        context.getString(R.string.op_detail_boot_persistence) to if (config.isBootPersistent)
+                            context.getString(R.string.op_detail_boot_persist_active)
+                        else
+                            context.getString(R.string.op_detail_boot_persist_inactive)
                     )
                 )
             } else {
-                val err = res.exceptionOrNull()?.message ?: "Failed to apply I/O config"
+                val err = res.exceptionOrNull()?.message ?: context.getString(R.string.op_io_booster_error_title)
                 _statusMessage.value = err
                 _operationProgress.value = OperationState.Error(
-                    title = "Gagal Menerapkan I/O",
+                    title = context.getString(R.string.op_io_booster_error_title),
                     errorMessage = err
                 )
             }
@@ -856,8 +860,8 @@ class StorageViewModel @Inject constructor(
             _isBenchmarking.value = true
             _benchmarkResult.value = null
             _operationProgress.value = OperationState.InProgress(
-                title = "Uji Kecepatan Disk",
-                stepMessage = "Menguji sequential read & latency pada sampel 64 MB..."
+                title = context.getString(R.string.op_benchmark_title),
+                stepMessage = context.getString(R.string.op_benchmark_step)
             )
             val res = storageRepository.runQuickDiskBenchmark(blockDevice)
             _isBenchmarking.value = false
@@ -865,19 +869,19 @@ class StorageViewModel @Inject constructor(
                 val benchResult = res.getOrNull()
                 _benchmarkResult.value = benchResult
                 _operationProgress.value = OperationState.Success(
-                    title = "Uji Kecepatan Selesai",
-                    message = "Pengujian I/O berhasil dilaksanakan.",
+                    title = context.getString(R.string.op_benchmark_success_title),
+                    message = "I/O test completed successfully.",
                     details = listOf(
-                        "Sequential Read" to "${String.format(java.util.Locale.US, "%.1f", benchResult?.sequentialReadMbPerSec ?: 0.0)} MB/s",
-                        "Akses Latency" to "${String.format(java.util.Locale.US, "%.2f", benchResult?.accessLatencyMs ?: 0.0)} ms",
-                        "Ukuran Sampel" to "64 MB (Direct I/O)"
+                        context.getString(R.string.op_detail_seq_read) to "${String.format(java.util.Locale.US, "%.1f", benchResult?.sequentialReadMbPerSec ?: 0.0)} MB/s",
+                        context.getString(R.string.op_detail_latency) to "${String.format(java.util.Locale.US, "%.2f", benchResult?.accessLatencyMs ?: 0.0)} ms",
+                        context.getString(R.string.op_detail_sample_size) to "64 MB (Direct I/O)"
                     )
                 )
             } else {
-                val err = res.exceptionOrNull()?.message ?: "Benchmark failed"
+                val err = res.exceptionOrNull()?.message ?: context.getString(R.string.op_benchmark_error_title)
                 _statusMessage.value = err
                 _operationProgress.value = OperationState.Error(
-                    title = "Uji Kecepatan Gagal",
+                    title = context.getString(R.string.op_benchmark_error_title),
                     errorMessage = err
                 )
             }
@@ -894,8 +898,8 @@ class StorageViewModel @Inject constructor(
             _trimOutput.value = null
             _globalTrimReport.value = null
             _operationProgress.value = OperationState.InProgress(
-                title = "Flash Storage TRIM",
-                stepMessage = "Mengirim sinyal fstrim ke seluruh blok memori ${disk.hardwareTitle}..."
+                title = context.getString(R.string.op_trim_title),
+                stepMessage = context.getString(R.string.op_trim_step, disk.hardwareTitle)
             )
             val res = storageRepository.executeGlobalTrimStructured(disk)
             _isTrimming.value = false
@@ -906,25 +910,26 @@ class StorageViewModel @Inject constructor(
 
                 val details = report.partitionResults.map {
                     val statusText = when {
-                        it.needsCleaning -> "Perlu dibersihkan (fsck)"
-                        it.notImplemented -> "Tidak didukung"
-                        it.bytesTrimmed > 0 -> "${FormatUtils.formatBytes(it.bytesTrimmed)} dibebaskan"
-                        else -> "Selesai"
+                        it.needsCleaning -> context.getString(R.string.op_detail_needs_cleaning)
+                        it.notImplemented -> context.getString(R.string.op_detail_unsupported)
+                        it.bytesTrimmed > 0 -> "${FormatUtils.formatBytes(it.bytesTrimmed)} ${context.getString(R.string.op_detail_freed)}"
+                        else -> context.getString(R.string.op_detail_done)
                     }
                     "${it.partitionName} (${it.mountPoint})" to statusText
                 }
 
                 _operationProgress.value = OperationState.Success(
-                    title = if (report.hasNeedsCleaning) "Peringatan Struktur Filesystem" else "Global TRIM Selesai",
+                    title = if (report.hasNeedsCleaning) context.getString(R.string.op_trim_warn_title)
+                            else context.getString(R.string.op_trim_success_title),
                     message = report.summary,
                     details = details,
                     rawLog = report.rawLog
                 )
             } else {
-                val err = res.exceptionOrNull()?.message ?: "TRIM failed"
+                val err = res.exceptionOrNull()?.message ?: context.getString(R.string.op_trim_error_title)
                 _statusMessage.value = err
                 _operationProgress.value = OperationState.Error(
-                    title = "TRIM Gagal",
+                    title = context.getString(R.string.op_trim_error_title),
                     errorMessage = err
                 )
             }
@@ -934,27 +939,27 @@ class StorageViewModel @Inject constructor(
     fun executeGuidedFsckRepair(partition: PartitionInfo) {
         viewModelScope.launch {
             _operationProgress.value = OperationState.InProgress(
-                title = "Perbaikan fsck Terpandu",
-                stepMessage = "Melepas mount ${partition.cleanShortName} secara aman dan menjalankan perbaikan fsck..."
+                title = context.getString(R.string.op_fsck_guided_title),
+                stepMessage = context.getString(R.string.op_fsck_guided_step, partition.cleanShortName)
             )
             val res = storageRepository.safeUnmountCheckAndRemount(partition)
             if (res.isSuccess) {
                 val report = res.getOrThrow()
                 _fsckReport.value = report
                 _operationProgress.value = OperationState.Success(
-                    title = "Perbaikan fsck Selesai",
-                    message = "Partisi ${partition.cleanShortName} berhasil diperiksa dan dipasang kembali.",
+                    title = context.getString(R.string.op_fsck_guided_success_title),
+                    message = context.getString(R.string.op_fsck_guided_success_msg, partition.cleanShortName),
                     details = listOf(
-                        "Status Integritas" to report.status.name,
-                        "Hasil" to report.summary
+                        context.getString(R.string.op_detail_integrity_status) to report.status.name,
+                        context.getString(R.string.op_detail_result) to report.summary
                     ),
                     rawLog = report.rawLog
                 )
                 detectPartitions(force = true)
             } else {
-                val err = res.exceptionOrNull()?.message ?: "Perbaikan fsck gagal"
+                val err = res.exceptionOrNull()?.message ?: context.getString(R.string.op_fsck_guided_error_title)
                 _operationProgress.value = OperationState.Error(
-                    title = "Perbaikan fsck Gagal",
+                    title = context.getString(R.string.op_fsck_guided_error_title),
                     errorMessage = err
                 )
             }
@@ -971,8 +976,8 @@ class StorageViewModel @Inject constructor(
             _isTrimming.value = true
             _trimOutput.value = null
             _operationProgress.value = OperationState.InProgress(
-                title = "TRIM Partisi",
-                stepMessage = "Menjalankan fstrim pada titik mount $mnt..."
+                title = context.getString(R.string.op_trim_title),
+                stepMessage = context.getString(R.string.op_trim_step, partition.cleanShortName)
             )
             val res = storageRepository.executePartitionTrim(mnt)
             _isTrimming.value = false
@@ -981,10 +986,10 @@ class StorageViewModel @Inject constructor(
                 val out = res.getOrNull() ?: "TRIM complete."
                 _trimOutput.value = out
             } else {
-                val err = res.exceptionOrNull()?.message ?: "TRIM failed"
+                val err = res.exceptionOrNull()?.message ?: context.getString(R.string.op_trim_error_title)
                 _statusMessage.value = err
                 _operationProgress.value = OperationState.Error(
-                    title = "TRIM Partisi Gagal",
+                    title = context.getString(R.string.op_trim_error_title),
                     errorMessage = err
                 )
             }
@@ -999,26 +1004,26 @@ class StorageViewModel @Inject constructor(
         viewModelScope.launch {
             _isUrgentGcRunning.value = true
             _operationProgress.value = OperationState.InProgress(
-                title = "F2FS Flash Defragmentasi",
-                stepMessage = "Menjalankan F2FS Urgent Garbage Collection pada sektor flash..."
+                title = context.getString(R.string.op_f2fs_gc_title),
+                stepMessage = context.getString(R.string.op_f2fs_gc_step, disk.hardwareTitle)
             )
             val res = storageRepository.executeF2fsUrgentGc(disk.diskName)
             _isUrgentGcRunning.value = false
             if (res.isSuccess) {
                 _statusMessage.value = "F2FS_GC_OK"
                 _operationProgress.value = OperationState.Success(
-                    title = "Defragmentasi F2FS Selesai",
-                    message = "F2FS Garbage Collection berhasil dijalankan, ruang blok flash telah dipadatkan.",
+                    title = context.getString(R.string.op_f2fs_gc_success_title),
+                    message = "F2FS Garbage Collection completed, flash blocks consolidated.",
                     details = listOf(
                         "Disk" to disk.hardwareTitle,
                         "Mode GC" to "Urgent (Level 1)"
                     )
                 )
             } else {
-                val err = res.exceptionOrNull()?.message ?: "F2FS Urgent GC failed"
+                val err = res.exceptionOrNull()?.message ?: context.getString(R.string.op_f2fs_gc_error_title)
                 _statusMessage.value = err
                 _operationProgress.value = OperationState.Error(
-                    title = "Defragmentasi Gagal",
+                    title = context.getString(R.string.op_f2fs_gc_error_title),
                     errorMessage = err
                 )
             }

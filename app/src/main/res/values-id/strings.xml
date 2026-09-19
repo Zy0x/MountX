@@ -504,5 +504,66 @@
     <string name="storage_action_mounting">Memasang…</string>
     <string name="storage_wizard_drag_hint">Geser pembatas antar partisi untuk membagi ruang</string>
     <string name="storage_wizard_quick_adjust">Penyesuaian Cepat</string>
+
+    <!-- Operation State Strings (semua operasi StorageViewModel) -->
+    <string name="op_fsck_guided_title">Perbaikan fsck Terpandu</string>
+    <string name="op_fsck_guided_step">Melepas mount %1$s secara aman dan menjalankan perbaikan fsck…</string>
+    <string name="op_fsck_guided_success_title">Perbaikan fsck Selesai</string>
+    <string name="op_fsck_guided_success_msg">Partisi %1$s berhasil diperiksa dan dipasang kembali.</string>
+    <string name="op_fsck_guided_error_title">Perbaikan fsck Gagal</string>
+    <string name="op_fs_check_title">Pemeriksaan Filesystem</string>
+    <string name="op_fs_check_step">Menjalankan diagnostik integritas %1$s pada %2$s…</string>
+    <string name="op_fs_check_error_title">Pemeriksaan Gagal</string>
+    <string name="op_format_title">Format Partisi</string>
+    <string name="op_format_step">Menyiapkan dan memformat %1$s ke %2$s…</string>
+    <string name="op_format_success_title">Format Partisi Berhasil</string>
+    <string name="op_format_success_msg">Partisi berhasil diformat ke %1$s dan di-mount kembali.</string>
+    <string name="op_format_error_title">Format Gagal</string>
+    <string name="op_rename_label_title">Ganti Label Partisi</string>
+    <string name="op_rename_label_step">Menulis label \"%1$s\" ke %2$s (%3$s)…</string>
+    <string name="op_rename_label_success_title">Label Partisi Diperbarui</string>
+    <string name="op_rename_label_success_msg">Label volume berhasil disimpan ke superblok filesystem tanpa memformat data.</string>
+    <string name="op_rename_label_error_title">Gagal Mengubah Label</string>
+    <string name="op_io_booster_title">Menerapkan I/O Optimization</string>
+    <string name="op_io_booster_step">Mengonfigurasi buffer %1$d KB dan scheduler [%2$s]…</string>
+    <string name="op_io_booster_success_title">I/O Booster Aktif</string>
+    <string name="op_io_booster_error_title">Gagal Menerapkan I/O</string>
+    <string name="op_benchmark_title">Uji Kecepatan Disk</string>
+    <string name="op_benchmark_step">Menguji sequential read &amp; latency pada sampel 64 MB…</string>
+    <string name="op_benchmark_success_title">Uji Kecepatan Selesai</string>
+    <string name="op_benchmark_error_title">Uji Kecepatan Gagal</string>
+    <string name="op_trim_title">Flash Storage TRIM</string>
+    <string name="op_trim_step">Mengirim sinyal fstrim ke seluruh blok memori %1$s…</string>
+    <string name="op_trim_warn_title">Peringatan Struktur Filesystem</string>
+    <string name="op_trim_success_title">Global TRIM Selesai</string>
+    <string name="op_trim_error_title">TRIM Gagal</string>
+    <string name="op_f2fs_gc_title">F2FS Urgent GC</string>
+    <string name="op_f2fs_gc_step">Menjalankan F2FS urgent garbage collection pada %1$s…</string>
+    <string name="op_f2fs_gc_success_title">GC Selesai</string>
+    <string name="op_f2fs_gc_error_title">GC Gagal</string>
+    <string name="op_mount_unmount_all_title">Mount / Unmount Semua</string>
+    <string name="op_mount_all_step">Memasang semua partisi terdaftar…</string>
+    <string name="op_unmount_all_step">Melepas semua partisi terdaftar…</string>
+    <string name="op_detail_device">Perangkat</string>
+    <string name="op_detail_filesystem">Filesystem</string>
+    <string name="op_detail_label">Label</string>
+    <string name="op_detail_mount_point">Titik Mount</string>
+    <string name="op_detail_read_ahead">Buffer Read-Ahead</string>
+    <string name="op_detail_scheduler">Scheduler I/O</string>
+    <string name="op_detail_request_affinity">Request Affinity</string>
+    <string name="op_detail_queue_depth">Kedalaman Antrean</string>
+    <string name="op_detail_boot_persistence">Persistensi Boot</string>
+    <string name="op_detail_boot_persist_active">Aktif (MountX Module)</string>
+    <string name="op_detail_boot_persist_inactive">Tidak aktif</string>
+    <string name="op_detail_seq_read">Sequential Read</string>
+    <string name="op_detail_latency">Latensi Akses</string>
+    <string name="op_detail_sample_size">Ukuran Sampel</string>
+    <string name="op_detail_integrity_status">Status Integritas</string>
+    <string name="op_detail_result">Hasil</string>
+    <string name="op_detail_needs_cleaning">Perlu Dibersihkan (fsck)</string>
+    <string name="op_detail_unsupported">Tidak Didukung</string>
+    <string name="op_detail_freed">dibebaskan</string>
+    <string name="op_detail_done">Selesai</string>
 </resources>
+
 

@@ -5,6 +5,31 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.9] - 2026-09-19
+
+### Added
+- **Dynamic Island Floating Notification (Top-Center)**:
+  - Designed and deployed an intelligent floating capsule/pill notification at top-center (`DynamicIslandFeedback`) with smooth entry/exit slide animations.
+  - Automatic 4-second dismissal timer for successful operations and persistent warning/error badges with manual dismiss action.
+  - Completely replaced static inline feedback banners in the Storages screen.
+
+### Changed
+- **I/O Booster Preset Workflow Decoupling**:
+  - Selecting an I/O Booster preset (Gaming Ultra, Balanced, Default System) now only dynamically populates the scheduler, buffer, and persistence controls in the sheet.
+  - Root command execution is deferred until the user intentionally clicks the "Apply Optimization" / "Terapkan Optimasi" button.
+- **Settings Screen Visual & Layout Polish**:
+  - Center-aligned typography and full-width touch zones across all Theme (Light, Dark, System) and Language (English, Indonesia) FilterChips.
+  - Removed redundant "Storage Paths" section from Settings, consolidating storage path configuration exclusively within the Storages tab.
+
+### Fixed
+- **Systemic Anti-Lag & Frame-Rate Stabilization (120 FPS Optimization)**:
+  - Eliminated full-tree layout and measurement churn in `NavGraph` by replacing `AnimatedVisibility` on the bottom navigation bar with GPU hardware-accelerated `graphicsLayer` translation (`translationY = animatedOffset * size.height`).
+  - Serialized app icon loading in `AppIconManager` to `Dispatchers.IO.limitedParallelism(1)` to eliminate Binder IPC queue saturation on `PackageManagerService`.
+  - Added scroll-aware icon loading throttle (`isScrollingFast = listState.isScrollInProgress`) to pause asynchronous icon decoding during active high-speed fling gestures.
+  - Removed unused CPU-intensive DP animation from `AddGameSheet` and memoized surface luminance computations in `AppPickerItemCard`.
+- **Complete Operation Localization Fix**:
+  - Eliminated hardcoded Indonesian text leaks in `StorageViewModel` operations (Guided fsck repair, filesystem integrity checks, formatting, partition label changes, I/O parameter tuning, flash TRIM, and F2FS garbage collection) by integrating string resources across English (`values`), Indonesian (`values-id`), and system fallback (`values-in`).
+
 ## [2.2.8] - 2026-09-19
 
 ### Changed

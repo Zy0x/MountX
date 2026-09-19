@@ -23,8 +23,8 @@ android {
         applicationId = "app.mountx"
         minSdk = 29
         targetSdk = 35
-        versionCode = 20208
-        versionName = "2.2.8"
+        versionCode = 20209
+        versionName = "2.2.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

@@ -102,7 +102,7 @@ fun DiskToolsBottomSheet(
     trimOutput: String?,
     isUrgentGcRunning: Boolean,
     onDismiss: () -> Unit,
-    onApplyPreset: (IoPreset) -> Unit,
+    onApplyPreset: (IoPreset) -> Unit = {},
     onApplyCustomConfig: (DiskIoConfig) -> Unit,
     onRunBenchmark: () -> Unit,
     onRunGlobalTrim: () -> Unit,
@@ -172,7 +172,6 @@ fun DiskToolsBottomSheet(
                         DiskIoBoosterSubPage(
                             ioConfig = ioConfig,
                             isApplyingIo = isApplyingIo,
-                            onApplyPreset = onApplyPreset,
                             onApplyCustomConfig = onApplyCustomConfig
                         )
                     }
@@ -504,7 +503,6 @@ private fun CyberMenuTile(
 private fun DiskIoBoosterSubPage(
     ioConfig: DiskIoConfig?,
     isApplyingIo: Boolean,
-    onApplyPreset: (IoPreset) -> Unit,
     onApplyCustomConfig: (DiskIoConfig) -> Unit
 ) {
     val currentConfig = ioConfig ?: DiskIoConfig()
@@ -532,58 +530,49 @@ private fun DiskIoBoosterSubPage(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            OutlinedButton(
-                onClick = { onApplyPreset(IoPreset.GAMING_ULTRA) },
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.7f)),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = ElectricCyan.copy(alpha = 0.1f),
-                    contentColor = ElectricCyan
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(34.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.storage_io_preset_gaming),
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            OutlinedButton(
-                onClick = { onApplyPreset(IoPreset.BALANCED) },
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(34.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.storage_io_preset_balanced),
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
-            OutlinedButton(
-                onClick = { onApplyPreset(IoPreset.DEFAULT_SYSTEM) },
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(34.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.storage_io_preset_default),
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Medium
-                )
+            IoPreset.entries.forEach { preset ->
+                val isActive = selectedReadAhead == preset.readAheadKb
+                OutlinedButton(
+                    onClick = {
+                        // Only populate state — user still needs to press Apply button
+                        selectedReadAhead = preset.readAheadKb
+                        // Pick best matching scheduler from available list or fall back to "none"
+                        selectedScheduler = when (preset) {
+                            IoPreset.GAMING_ULTRA -> currentConfig.availableSchedulers
+                                .firstOrNull { it == "deadline" || it == "mq-deadline" }
+                                ?: currentConfig.availableSchedulers.firstOrNull()
+                                ?: selectedScheduler
+                            IoPreset.BALANCED -> currentConfig.availableSchedulers
+                                .firstOrNull { it == "cfq" || it == "bfq" }
+                                ?: currentConfig.availableSchedulers.firstOrNull()
+                                ?: selectedScheduler
+                            IoPreset.DEFAULT_SYSTEM -> currentConfig.availableSchedulers
+                                .firstOrNull { it == "none" || it == "noop" }
+                                ?: currentConfig.availableSchedulers.firstOrNull()
+                                ?: selectedScheduler
+                        }
+                        isPersistent = preset != IoPreset.DEFAULT_SYSTEM
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isActive) ElectricCyan else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    ),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (isActive) ElectricCyan.copy(alpha = 0.15f) else Color.Transparent,
+                        contentColor = if (isActive) ElectricCyan else MaterialTheme.colorScheme.onSurface
+                    ),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp)
+                ) {
+                    Text(
+                        text = preset.label,
+                        fontSize = 10.5.sp,
+                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
             }
         }
 

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -117,25 +118,14 @@ fun AddAppPicker(
 
     BackHandler(onBack = handleBackPress)
 
-    val blurRadius by animateDpAsState(
-        targetValue = if (pendingSystemApp != null) 16.dp else 0.dp,
-        animationSpec = tween(durationMillis = 200),
-        label = "dialog_blur"
-    )
-
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .navigationBarsPadding()
     ) {
-        val contentModifier = if (pendingSystemApp != null && blurRadius > 0.dp) {
-            Modifier.fillMaxSize().blur(blurRadius)
-        } else {
-            Modifier.fillMaxSize()
-        }
         Column(
-            modifier = contentModifier
+            modifier = Modifier.fillMaxSize()
         ) {
         // Standard Compact Screen Header
         CompactScreenHeader(
@@ -629,7 +619,10 @@ private fun BrowseAppListView(
                 { app -> onAppSelected(app) }
             }
 
+            val listState = rememberLazyListState()
+
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -643,7 +636,8 @@ private fun BrowseAppListView(
                 ) { app ->
                     AppPickerItemCard(
                         app = app,
-                        onSelect = onSelectCallback
+                        onSelect = onSelectCallback,
+                        isScrollingFast = listState.isScrollInProgress
                     )
                 }
             }
@@ -655,10 +649,13 @@ private fun BrowseAppListView(
 private fun AppPickerItemCard(
     app: InstalledAppInfo,
     onSelect: (InstalledAppInfo) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isScrollingFast: Boolean = false
 ) {
-    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val gameBadgeColor = if (isDark) CyberEmerald else EmeraldActive
+    // Hoist expensive luminance calculation outside recomposition hot path
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val isDark = remember(surfaceColor) { surfaceColor.luminance() < 0.5f }
+    val gameBadgeColor = remember(isDark) { if (isDark) CyberEmerald else EmeraldActive }
 
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -684,7 +681,8 @@ private fun AppPickerItemCard(
         ) {
             AppIconImage(
                 packageName = app.packageName,
-                size = 36.dp
+                size = 36.dp,
+                isScrollingFast = isScrollingFast
             )
 
             Column(

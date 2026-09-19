@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountx.R
@@ -31,8 +32,6 @@ fun SettingsScreen(
 ) {
     val themeMode by viewModel.themeMode.collectAsState()
     val language by viewModel.language.collectAsState()
-    val sdBasePath by viewModel.sdBasePath.collectAsState()
-    val sdBlockDevice by viewModel.sdBlockDevice.collectAsState()
     val autoMount by viewModel.autoMountOnBoot.collectAsState()
 
     var showResetDialog by remember { mutableStateOf(false) }
@@ -92,19 +91,40 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = themeMode == ThemeMode.LIGHT,
                                 onClick = { viewModel.setThemeMode(ThemeMode.LIGHT) },
-                                label = { Text(stringResource(R.string.settings_theme_light), fontSize = 11.sp) },
+                                label = {
+                                    Text(
+                                        text = stringResource(R.string.settings_theme_light),
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = themeMode == ThemeMode.DARK,
                                 onClick = { viewModel.setThemeMode(ThemeMode.DARK) },
-                                label = { Text(stringResource(R.string.settings_theme_dark), fontSize = 11.sp) },
+                                label = {
+                                    Text(
+                                        text = stringResource(R.string.settings_theme_dark),
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = themeMode == ThemeMode.SYSTEM,
                                 onClick = { viewModel.setThemeMode(ThemeMode.SYSTEM) },
-                                label = { Text(stringResource(R.string.settings_theme_system), fontSize = 11.sp) },
+                                label = {
+                                    Text(
+                                        text = stringResource(R.string.settings_theme_system),
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -127,59 +147,30 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = language == "en",
                                 onClick = { viewModel.setLanguage("en") },
-                                label = { Text("English (EN)", fontSize = 11.sp) },
+                                label = {
+                                    Text(
+                                        text = "English (EN)",
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                             FilterChip(
                                 selected = language == "id",
                                 onClick = { viewModel.setLanguage("id") },
-                                label = { Text("Indonesia (ID)", fontSize = 11.sp) },
+                                label = {
+                                    Text(
+                                        text = "Indonesia (ID)",
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                    }
-                }
-            }
-
-            // Storage Paths
-            item {
-                SectionHeader(title = stringResource(R.string.settings_storage))
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        OutlinedTextField(
-                            value = sdBasePath,
-                            onValueChange = { viewModel.setSdBasePath(it) },
-                            label = { Text(stringResource(R.string.settings_sd_base_path), fontSize = 12.sp) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        OutlinedTextField(
-                            value = sdBlockDevice,
-                            onValueChange = { viewModel.setSdBlockDevice(it) },
-                            label = { Text(stringResource(R.string.settings_sd_block_device), fontSize = 12.sp) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                            )
-                        )
                     }
                 }
             }

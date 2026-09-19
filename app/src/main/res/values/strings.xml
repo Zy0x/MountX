@@ -521,5 +521,66 @@
     <string name="storage_action_mounting">Mounting…</string>
     <string name="storage_wizard_drag_hint">Drag handles between partitions to resize</string>
     <string name="storage_wizard_quick_adjust">Quick Adjust</string>
+
+    <!-- Operation State Strings (all StorageViewModel operations) -->
+    <string name="op_fsck_guided_title">Guided fsck Repair</string>
+    <string name="op_fsck_guided_step">Safely unmounting %1$s and running fsck repair…</string>
+    <string name="op_fsck_guided_success_title">fsck Repair Complete</string>
+    <string name="op_fsck_guided_success_msg">Partition %1$s was successfully checked and remounted.</string>
+    <string name="op_fsck_guided_error_title">fsck Repair Failed</string>
+    <string name="op_fs_check_title">Filesystem Check</string>
+    <string name="op_fs_check_step">Running %1$s integrity diagnostics on %2$s…</string>
+    <string name="op_fs_check_error_title">Check Failed</string>
+    <string name="op_format_title">Format Partition</string>
+    <string name="op_format_step">Preparing and formatting %1$s to %2$s…</string>
+    <string name="op_format_success_title">Format Successful</string>
+    <string name="op_format_success_msg">Partition successfully formatted to %1$s and remounted.</string>
+    <string name="op_format_error_title">Format Failed</string>
+    <string name="op_rename_label_title">Rename Partition Label</string>
+    <string name="op_rename_label_step">Writing label \"%1$s\" to %2$s (%3$s)…</string>
+    <string name="op_rename_label_success_title">Label Updated</string>
+    <string name="op_rename_label_success_msg">Volume label successfully saved to the filesystem superblock without formatting data.</string>
+    <string name="op_rename_label_error_title">Label Change Failed</string>
+    <string name="op_io_booster_title">Applying I/O Optimization</string>
+    <string name="op_io_booster_step">Configuring %1$d KB buffer and [%2$s] scheduler…</string>
+    <string name="op_io_booster_success_title">I/O Booster Active</string>
+    <string name="op_io_booster_error_title">I/O Application Failed</string>
+    <string name="op_benchmark_title">Disk Speed Test</string>
+    <string name="op_benchmark_step">Testing sequential read &amp; latency on a 64 MB sample…</string>
+    <string name="op_benchmark_success_title">Speed Test Complete</string>
+    <string name="op_benchmark_error_title">Speed Test Failed</string>
+    <string name="op_trim_title">Flash Storage TRIM</string>
+    <string name="op_trim_step">Sending fstrim signal to all memory blocks of %1$s…</string>
+    <string name="op_trim_warn_title">Filesystem Structure Warning</string>
+    <string name="op_trim_success_title">Global TRIM Complete</string>
+    <string name="op_trim_error_title">TRIM Failed</string>
+    <string name="op_f2fs_gc_title">F2FS Urgent GC</string>
+    <string name="op_f2fs_gc_step">Running F2FS urgent garbage collection on %1$s…</string>
+    <string name="op_f2fs_gc_success_title">GC Complete</string>
+    <string name="op_f2fs_gc_error_title">GC Failed</string>
+    <string name="op_mount_unmount_all_title">Mount / Unmount All</string>
+    <string name="op_mount_all_step">Mounting all registered partitions…</string>
+    <string name="op_unmount_all_step">Unmounting all registered partitions…</string>
+    <string name="op_detail_device">Device</string>
+    <string name="op_detail_filesystem">Filesystem</string>
+    <string name="op_detail_label">Label</string>
+    <string name="op_detail_mount_point">Mount Point</string>
+    <string name="op_detail_read_ahead">Read-Ahead Buffer</string>
+    <string name="op_detail_scheduler">I/O Scheduler</string>
+    <string name="op_detail_request_affinity">Request Affinity</string>
+    <string name="op_detail_queue_depth">Queue Depth</string>
+    <string name="op_detail_boot_persistence">Boot Persistence</string>
+    <string name="op_detail_boot_persist_active">Active (MountX Module)</string>
+    <string name="op_detail_boot_persist_inactive">Inactive</string>
+    <string name="op_detail_seq_read">Sequential Read</string>
+    <string name="op_detail_latency">Access Latency</string>
+    <string name="op_detail_sample_size">Sample Size</string>
+    <string name="op_detail_integrity_status">Integrity Status</string>
+    <string name="op_detail_result">Result</string>
+    <string name="op_detail_needs_cleaning">Needs Cleaning (fsck)</string>
+    <string name="op_detail_unsupported">Not Supported</string>
+    <string name="op_detail_freed">freed</string>
+    <string name="op_detail_done">Done</string>
 </resources>
+
 

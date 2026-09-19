@@ -5,8 +5,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -55,6 +58,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -655,74 +659,64 @@ fun StorageContent(
         containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier.fillMaxSize()
     ) { paddingValues ->
-        PullToRefreshBox(
-            isRefreshing = isScanning,
-            onRefresh = onRefreshPartitions,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (isLandscape) {
-                // Dual-Column Responsive Layout for Landscape / Tablet
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    LazyColumn(
+            PullToRefreshBox(
+                isRefreshing = isScanning,
+                onRefresh = onRefreshPartitions,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (isLandscape) {
+                    // Dual-Column Responsive Layout for Landscape / Tablet
+                    Row(
                         modifier = Modifier
-                            .weight(1.1f)
-                            .fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item {
-                            StatusFeedbackBanner(
-                                statusMessage = statusMessage,
-                                onDismiss = onClearStatusMessage
-                            )
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(1.1f)
+                                .fillMaxHeight(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
+                        ) {
+                            item {
+                                MultiDiskVisualMapSection(
+                                    internalStorage = internalStorage,
+                                    disks = effectiveDisks,
+                                    onOpenDiskDetail = onOpenDiskDetail
+                                )
+                            }
+                            item {
+                                QuickBackupCard(
+                                    onExport = onExportConfig,
+                                    onImport = onImportConfig,
+                                    onOpenFullBackup = onNavigateToBackup
+                                )
+                            }
                         }
-                        item {
-                            MultiDiskVisualMapSection(
-                                internalStorage = internalStorage,
-                                disks = effectiveDisks,
-                                onOpenDiskDetail = onOpenDiskDetail
-                            )
-                        }
-                        item {
-                            QuickBackupCard(
-                                onExport = onExportConfig,
-                                onImport = onImportConfig,
-                                onOpenFullBackup = onNavigateToBackup
-                            )
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
+                        ) {
+                            // Right column placeholder — will be used for future content
                         }
                     }
-
+                } else {
+                    // Single-Column Responsive Layout for Portrait
                     LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(top = 2.dp, bottom = 24.dp)
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 28.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // Right column placeholder — will be used for future content
-                    }
-                }
-            } else {
-                // Single-Column Responsive Layout for Portrait
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 28.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    item {
-                        StatusFeedbackBanner(
-                            statusMessage = statusMessage,
-                            onDismiss = onClearStatusMessage
-                        )
-                    }
-
                     item {
                         MultiDiskVisualMapSection(
                             internalStorage = internalStorage,
@@ -738,43 +732,61 @@ fun StorageContent(
                             onOpenFullBackup = onNavigateToBackup
                         )
                     }
+                    }
                 }
             }
+
+            // ── Dynamic Island Floating Notification ─────────
+            DynamicIslandFeedback(
+                statusMessage = statusMessage,
+                onDismiss = onClearStatusMessage,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+            )
         }
     }
 }
 
-// ── Contextual Feedback Banner ──────────────────────────────
+// ── Dynamic Island Floating Pill Notification ─────────────────
 @Composable
-private fun StatusFeedbackBanner(
+private fun DynamicIslandFeedback(
     statusMessage: String?,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Auto-dismiss for success messages after 4 seconds
+    val isSuccess = statusMessage?.contains("OK") == true
+    LaunchedEffect(statusMessage) {
+        if (statusMessage != null && isSuccess) {
+            delay(4000L)
+            onDismiss()
+        }
+    }
+
     AnimatedVisibility(
         visible = statusMessage != null,
-        enter = fadeIn(),
-        exit = fadeOut(),
+        enter = slideInVertically(animationSpec = tween(280)) { -it } + fadeIn(animationSpec = tween(200)),
+        exit = slideOutVertically(animationSpec = tween(240)) { -it } + fadeOut(animationSpec = tween(200)),
         modifier = modifier
     ) {
         if (statusMessage == null) return@AnimatedVisibility
 
-        val isSuccess = statusMessage.contains("OK")
-        val containerColor = if (isSuccess) CyberEmerald.copy(alpha = 0.12f) else NeonCrimson.copy(alpha = 0.12f)
-        val borderColor = if (isSuccess) CyberEmerald.copy(alpha = 0.4f) else NeonCrimson.copy(alpha = 0.4f)
+        val containerColor = if (isSuccess) CyberEmerald.copy(alpha = 0.15f) else NeonCrimson.copy(alpha = 0.15f)
+        val borderColor = if (isSuccess) CyberEmerald.copy(alpha = 0.6f) else NeonCrimson.copy(alpha = 0.6f)
         val contentColor = if (isSuccess) CyberEmerald else NeonCrimson
 
-        Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = containerColor),
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = containerColor,
             border = BorderStroke(1.dp, borderColor),
-            modifier = Modifier.fillMaxWidth()
+            shadowElevation = 6.dp,
+            modifier = Modifier.widthIn(min = 200.dp, max = 360.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Icon(
                     imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Warning,
@@ -782,7 +794,6 @@ private fun StatusFeedbackBanner(
                     tint = contentColor,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = when (statusMessage) {
                         "MOUNT_OK" -> stringResource(R.string.storage_mount_success)
@@ -791,27 +802,38 @@ private fun StatusFeedbackBanner(
                         "REPARTITION_OK" -> stringResource(R.string.storage_wizard_success)
                         "EXPORT_OK" -> stringResource(R.string.backup_success, "JSON")
                         "IMPORT_OK" -> stringResource(R.string.restore_success)
+                        "IO_APPLY_OK" -> stringResource(R.string.op_io_booster_success_title)
+                        "MOUNT_ALL_OK" -> stringResource(R.string.storage_mount_success)
+                        "UNMOUNT_ALL_OK" -> stringResource(R.string.storage_unmount_success)
+                        "F2FS_GC_OK" -> stringResource(R.string.op_f2fs_gc_success_title)
                         else -> statusMessage
                     },
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
                     color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f, fill = false)
                 )
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = stringResource(R.string.common_close),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
-                    )
+                // Manual dismiss button only for errors (success auto-dismisses)
+                if (!isSuccess) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = stringResource(R.string.common_close),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }
     }
 }
+
 
 // ── Multi-Disk Cumulative Telemetry Card ────────────────────
 @Composable
