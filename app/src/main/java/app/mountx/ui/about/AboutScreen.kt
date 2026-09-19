@@ -31,7 +31,7 @@ import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.SectionHeader
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.EmeraldActive
-import app.mountx.ui.theme.NeonCrimson
+import androidx.compose.ui.graphics.Brush
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,13 +80,29 @@ fun AboutScreen(
         ) {
             // App Header & Logo
             item {
-                Spacer(modifier = Modifier.height(10.dp))
-                Image(
-                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                    contentDescription = stringResource(R.string.app_name),
-                    modifier = Modifier.size(64.dp)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                    border = BorderStroke(
+                        1.dp,
+                        Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        )
+                    ),
+                    modifier = Modifier.size(68.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_mountx_emblem),
+                            contentDescription = stringResource(R.string.app_name),
+                            modifier = Modifier.size(42.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = stringResource(R.string.app_name),
                     style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp),

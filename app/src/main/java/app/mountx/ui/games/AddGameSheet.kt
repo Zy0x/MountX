@@ -122,7 +122,6 @@ fun AddAppPicker(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .navigationBarsPadding()
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
@@ -627,7 +626,7 @@ private fun BrowseAppListView(
                     .fillMaxWidth()
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
-                contentPadding = PaddingValues(bottom = 76.dp)
+                contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 2.dp, bottom = 48.dp)
             ) {
                 items(
                     items = filteredApps,

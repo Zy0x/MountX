@@ -588,6 +588,19 @@
     <string name="portability_ready_label">Siap Disinkronkan</string>
     <string name="portability_restore_all">Pulihkan Semua Game</string>
     <string name="portability_restore_success">Berhasil memulihkan dan menyinkronkan izin %1$d game.</string>
+    <!-- v2.2.11 Dashboard Active Games & Live Namespace Verification -->
+    <string name="dashboard_view_all_games_count">Lihat Semua Game (%1$d)</string>
+    <string name="dashboard_metric_namespaces_standby_ready">Standby (Sistem Siap)</string>
+    <string name="dashboard_metric_namespaces_active_format">Aktif (%1$d Game)</string>
+    <string name="dashboard_active_games_preview_title">Game Terkelola Aktif</string>
+    <string name="dashboard_live_verification_title">Verifikasi Live Mount Namespace</string>
+    <string name="dashboard_live_mounts_found">%1$d Titik Mount Aktif di Kernel</string>
+    <string name="dashboard_live_mounts_none">Belum ada titik mount aktif di /proc/mounts</string>
+    <string name="dashboard_master_namespace_ready">Master Mount Namespace: Siap</string>
+    <string name="dashboard_master_namespace_desc">Kernel Linux mengizinkan isolasi master mount namespace untuk propagasi global.</string>
+    <string name="dashboard_live_canary_verified">Integritas Canary: Terverifikasi</string>
+    <string name="dashboard_live_canary_not_verified">Integritas Canary: Belum Ada Canary</string>
+    <string name="dashboard_recalculate_size_btn">Perbarui Ukuran Data</string>
 </resources>
 
 

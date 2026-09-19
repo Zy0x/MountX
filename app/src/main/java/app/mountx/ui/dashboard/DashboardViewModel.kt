@@ -11,7 +11,10 @@ import app.mountx.data.repository.StorageRepository
 import app.mountx.root.RootDetector
 import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
+import app.mountx.root.MountManager
+import com.topjohnwu.superuser.Shell
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,12 +26,24 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class LiveNamespaceTelemetry(
+    val isMasterNamespaceActive: Boolean = true,
+    val kernelMountPoints: List<String> = emptyList(),
+    val mountedGamesCount: Int = 0,
+    val canaryVerifiedCount: Int = 0,
+    val totalCanariesExpected: Int = 0
+)
+
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val gameRepository: GameRepository,
     private val storageRepository: StorageRepository,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val mountManager: MountManager
 ) : ViewModel() {
+
+    private val _liveTelemetry = MutableStateFlow(LiveNamespaceTelemetry())
+    val liveTelemetry: StateFlow<LiveNamespaceTelemetry> = _liveTelemetry.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -91,9 +106,56 @@ class DashboardViewModel @Inject constructor(
                 val sdBase = appPreferences.sdBasePath.first()
                 _allDisks.value = storageRepository.getAllDisks(sdBase)
                 gameRepository.refreshMountStatuses()
+
+                // Background calculate zero-size games so real storage is displayed
+                launch(Dispatchers.IO) {
+                    val current = games.value
+                    for (g in current) {
+                        if (g.dataSizeBytes == 0L) {
+                            gameRepository.calculateDataSize(g.packageName, sdBase)
+                        }
+                    }
+                }
+                loadLiveTelemetry()
             } finally {
                 _isRefreshing.value = false
             }
+        }
+    }
+
+    fun loadLiveTelemetry() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val sdBase = appPreferences.sdBasePath.first()
+            val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null | grep -E '(/data/media/0/Android|/data/sdext2|${sdBase})' | cut -d' ' -f1,2,3")
+            val mountLines = if (mountsRes.isSuccess) mountsRes.stdout.filter { it.isNotBlank() } else emptyList()
+
+            val currentGames = games.value
+            val mountedGames = currentGames.filter { it.mountStatus == MountStatus.MOUNTED }
+            var canariesVerified = 0
+            for (g in mountedGames) {
+                if (mountManager.verifyCanary(g.packageName)) {
+                    canariesVerified++
+                }
+            }
+
+            _liveTelemetry.value = LiveNamespaceTelemetry(
+                isMasterNamespaceActive = Shell.isAppGrantedRoot() == true,
+                kernelMountPoints = mountLines,
+                mountedGamesCount = mountedGames.size,
+                canaryVerifiedCount = canariesVerified,
+                totalCanariesExpected = mountedGames.size
+            )
+        }
+    }
+
+    fun recalculateAllSizes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val sdBase = appPreferences.sdBasePath.first()
+            val currentGames = games.value
+            for (g in currentGames) {
+                gameRepository.calculateDataSize(g.packageName, sdBase)
+            }
+            refresh()
         }
     }
 

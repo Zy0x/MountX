@@ -5,6 +5,29 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.11] - 2026-09-19
+
+### Added
+- **Dashboard Active Games Mini-List & Quick Mount Management**:
+  - Embedded an interactive 4-game preview section directly within the Dashboard Master Control card.
+  - Displays game icon, app label, real package data size, and live mount status badge.
+  - Instant one-tap mount/unmount switches per game directly from the Dashboard.
+  - "Lihat Semua Game (N) →" shortcut facilitating seamless navigation straight to the full Games management library.
+- **Kernel-Level Live Namespace & Telemetry Verification Sheet**:
+  - Interactive tap on dashboard metrics (Active Namespaces / Offloaded Data) unveils an in-depth live diagnostics bottom sheet.
+  - Inspects real `/proc/mounts` bind entries, Master Mount Namespace readiness (`Shell.FLAG_MOUNT_MASTER`), and live canary sentinel status.
+  - Includes on-demand dynamic storage recalculation tool for zero-size games using background multi-threaded kernel stats.
+
+### Changed
+- **Adaptive Squircle Brand Emblem (`ic_mountx_emblem`)**:
+  - Re-engineered app icon rendering across Dashboard and About screens to use a clean transparent alpha emblem.
+  - Nested within an adaptive squircle container with dynamic aurora gradient border, eliminating unsightly opaque bounding boxes.
+- **Add Game Sheet Layout Precision & Void Gap Elimination**:
+  - Resolved redundant window insets padding in the App Picker view (`AddGameSheet.kt`).
+  - Optimized list bottom padding to 48.dp, eliminating the large blank void on 1080×2460 and tall aspect-ratio displays.
+- **Automatic Background Game Data Size Resolution**:
+  - Enhanced repository layer to automatically compute real offloaded storage footprints for newly imported or restored games via background coroutines.
+
 ## [2.2.10] - 2026-09-19
 
 ### Added

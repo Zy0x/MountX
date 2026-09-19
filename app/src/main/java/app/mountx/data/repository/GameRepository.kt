@@ -180,12 +180,13 @@ class GameRepository @Inject constructor(
     suspend fun importDiscoveredGame(game: DiscoveredGame, sdBase: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
+                val realSize = if (game.sizeBytes > 0L) game.sizeBytes else calculateDataSize(game.packageName, sdBase)
                 val entry = GameEntry(
                     packageName = game.packageName,
                     displayName = game.displayName,
                     mode = game.mode,
                     mountStatus = MountStatus.UNMOUNTED,
-                    dataSizeBytes = game.sizeBytes,
+                    dataSizeBytes = realSize,
                     isEnabled = true
                 )
                 gameDao.insertGame(entry)
@@ -193,7 +194,7 @@ class GameRepository @Inject constructor(
                 diskCatalogManager.reconcileGame(sdBase, entry)
                 syncModuleGamelist()
                 syncDiskCatalog(sdBase)
-                AppLogger.success("Games", "Imported & reconciled portable game: ${game.displayName} (${game.packageName})")
+                AppLogger.success("Games", "Imported & reconciled portable game: ${game.displayName} (${game.packageName}), size: $realSize bytes")
             }
         }
 

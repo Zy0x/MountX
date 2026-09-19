@@ -605,6 +605,19 @@
     <string name="portability_ready_label">Ready to Sync</string>
     <string name="portability_restore_all">Restore All Games</string>
     <string name="portability_restore_success">Restored and reconciled %1$d game(s) successfully.</string>
+    <!-- v2.2.11 Dashboard Active Games & Live Namespace Verification -->
+    <string name="dashboard_view_all_games_count">View All Games (%1$d)</string>
+    <string name="dashboard_metric_namespaces_standby_ready">Standby (System Ready)</string>
+    <string name="dashboard_metric_namespaces_active_format">Active (%1$d Games)</string>
+    <string name="dashboard_active_games_preview_title">Active Managed Games</string>
+    <string name="dashboard_live_verification_title">Live Mount Namespace Verification</string>
+    <string name="dashboard_live_mounts_found">%1$d Active Kernel Mount Point(s)</string>
+    <string name="dashboard_live_mounts_none">No active mount points in /proc/mounts</string>
+    <string name="dashboard_master_namespace_ready">Master Mount Namespace: Ready</string>
+    <string name="dashboard_master_namespace_desc">Linux kernel permits master mount namespace isolation for global propagation.</string>
+    <string name="dashboard_live_canary_verified">Canary Integrity: Verified</string>
+    <string name="dashboard_live_canary_not_verified">Canary Integrity: Not Present</string>
+    <string name="dashboard_recalculate_size_btn">Refresh Data Sizes</string>
 </resources>
 
 

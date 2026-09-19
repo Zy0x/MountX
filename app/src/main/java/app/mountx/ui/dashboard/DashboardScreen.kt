@@ -42,17 +42,30 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.font.FontFamily
+import app.mountx.ui.components.AppIconImage
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,6 +126,7 @@ fun DashboardScreen(
     val allDisks by viewModel.allDisks.collectAsState()
     val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
     val offloadedStats by viewModel.offloadedStats.collectAsState()
+    val liveTelemetry by viewModel.liveTelemetry.collectAsState()
 
     DashboardContent(
         status = status,
@@ -121,6 +135,7 @@ fun DashboardScreen(
         allDisks = allDisks,
         internalStorageInfo = internalStorageInfo,
         offloadedStats = offloadedStats,
+        liveTelemetry = liveTelemetry,
         onRefresh = { viewModel.refresh() },
         onNavigateToGames = onNavigateToGames,
         onNavigateToStorage = onNavigateToStorage,
@@ -128,6 +143,8 @@ fun DashboardScreen(
         onMountAll = { viewModel.mountAll() },
         onUnmountAll = { viewModel.unmountAll() },
         onToggleGameMount = { viewModel.toggleMount(it) },
+        onRecalculateSizes = { viewModel.recalculateAllSizes() },
+        onRefreshTelemetry = { viewModel.loadLiveTelemetry() },
         modifier = modifier
     )
 }
@@ -140,6 +157,7 @@ fun DashboardContent(
     allDisks: List<SdCardDiskInfo> = emptyList(),
     internalStorageInfo: InternalStorageInfo? = null,
     offloadedStats: Pair<Int, Long> = Pair(0, 0L),
+    liveTelemetry: LiveNamespaceTelemetry = LiveNamespaceTelemetry(),
     onRefresh: () -> Unit,
     onNavigateToGames: () -> Unit,
     onNavigateToStorage: () -> Unit,
@@ -147,10 +165,13 @@ fun DashboardContent(
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onToggleGameMount: (GameEntry) -> Unit,
+    onRecalculateSizes: () -> Unit = {},
+    onRefreshTelemetry: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var showNamespaceSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -187,7 +208,8 @@ fun DashboardContent(
                             totalCount = status.totalGamesCount,
                             onMountAll = onMountAll,
                             onUnmountAll = onUnmountAll,
-                            onNavigateToGames = onNavigateToGames
+                            onNavigateToGames = onNavigateToGames,
+                            onToggleGameMount = onToggleGameMount
                         )
                     }
                     item {
@@ -211,7 +233,8 @@ fun DashboardContent(
                     item {
                         DashboardMetricsRow(
                             games = games,
-                            mountedCount = status.mountedGamesCount
+                            mountedCount = status.mountedGamesCount,
+                            onOpenNamespaceSheet = { showNamespaceSheet = true }
                         )
                     }
                 }
@@ -234,7 +257,8 @@ fun DashboardContent(
                         totalCount = status.totalGamesCount,
                         onMountAll = onMountAll,
                         onUnmountAll = onUnmountAll,
-                        onNavigateToGames = onNavigateToGames
+                        onNavigateToGames = onNavigateToGames,
+                        onToggleGameMount = onToggleGameMount
                     )
                 }
                 item {
@@ -249,10 +273,20 @@ fun DashboardContent(
                 item {
                     DashboardMetricsRow(
                         games = games,
-                        mountedCount = status.mountedGamesCount
+                        mountedCount = status.mountedGamesCount,
+                        onOpenNamespaceSheet = { showNamespaceSheet = true }
                     )
                 }
             }
+        }
+
+        if (showNamespaceSheet) {
+            NamespaceVerificationBottomSheet(
+                telemetry = liveTelemetry,
+                onRecalculateSizes = onRecalculateSizes,
+                onRefreshTelemetry = onRefreshTelemetry,
+                onDismiss = { showNamespaceSheet = false }
+            )
         }
     }
 }
@@ -285,15 +319,23 @@ private fun SleekCompactHeader(
             ) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                    border = BorderStroke(
+                        1.dp,
+                        Brush.horizontalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        )
+                    ),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Image(
-                            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                            painter = painterResource(id = R.drawable.ic_mountx_emblem),
                             contentDescription = stringResource(R.string.app_name),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -489,7 +531,8 @@ private fun SmartMasterControlCard(
     totalCount: Int,
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
-    onNavigateToGames: () -> Unit
+    onNavigateToGames: () -> Unit,
+    onToggleGameMount: (GameEntry) -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
     val allMounted = totalCount > 0 && mountedCount == totalCount
@@ -593,6 +636,108 @@ private fun SmartMasterControlCard(
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )
+
+            // Active / Managed Games Mini-List (up to 4 games)
+            if (totalCount > 0) {
+                Spacer(modifier = Modifier.height(10.dp))
+                val previewGames = remember(games) {
+                    games.sortedByDescending { it.mountStatus == MountStatus.MOUNTED }.take(4)
+                }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    for (game in previewGames) {
+                        val isMounted = game.mountStatus == MountStatus.MOUNTED
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isMounted) activeEmerald.copy(alpha = 0.35f)
+                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onToggleGameMount(game)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                AppIconImage(
+                                    packageName = game.packageName,
+                                    size = 30.dp
+                                )
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = game.displayName,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = if (game.dataSizeBytes > 0) {
+                                            FormatUtils.formatBytes(game.dataSizeBytes)
+                                        } else {
+                                            game.packageName
+                                        },
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.sp
+                                        ),
+                                        color = if (isMounted) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isMounted) activeEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isMounted) activeEmerald.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
+                                    ),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .background(
+                                                    if (isMounted) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    CircleShape
+                                                )
+                                        )
+                                        Text(
+                                            text = if (isMounted) stringResource(R.string.status_mounted) else stringResource(R.string.status_unmounted),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isMounted) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -708,6 +853,36 @@ private fun SmartMasterControlCard(
                             )
                         )
                     }
+                }
+            }
+
+            // View All Games Link
+            if (totalCount > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onNavigateToGames)
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.dashboard_view_all_games_count, totalCount),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
         }
@@ -940,22 +1115,27 @@ private fun DiskTelemetryRow(
 @Composable
 private fun DashboardMetricsRow(
     games: List<GameEntry>,
-    mountedCount: Int
+    mountedCount: Int,
+    onOpenNamespaceSheet: () -> Unit = {}
 ) {
     val totalOffloadedBytes = games
         .filter { it.mountStatus == MountStatus.MOUNTED }
         .sumOf { it.dataSizeBytes }
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Tile 1: Offloaded Data
+        // Tile 1: Offloaded Data (Clickable for details)
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onOpenNamespaceSheet() }
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Surface(
@@ -980,7 +1160,9 @@ private fun DashboardMetricsRow(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = stringResource(R.string.dashboard_metric_offloaded),
@@ -990,14 +1172,14 @@ private fun DashboardMetricsRow(
             }
         }
 
-        // Tile 2: Runtime Namespaces
-        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-        val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+        // Tile 2: Runtime Namespaces (Clickable for live kernel verification)
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onOpenNamespaceSheet() }
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Surface(
@@ -1021,15 +1203,17 @@ private fun DashboardMetricsRow(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = if (mountedCount > 0) {
-                        stringResource(R.string.dashboard_metric_namespaces_active)
+                        stringResource(R.string.dashboard_metric_namespaces_active_format, mountedCount)
                     } else {
-                        stringResource(R.string.dashboard_metric_namespaces_idle)
+                        stringResource(R.string.dashboard_metric_namespaces_standby_ready)
                     },
                     style = MaterialTheme.typography.titleSmall.copy(
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = stringResource(R.string.dashboard_metric_namespaces),
@@ -1037,6 +1221,222 @@ private fun DashboardMetricsRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NamespaceVerificationBottomSheet(
+    telemetry: LiveNamespaceTelemetry,
+    onRecalculateSizes: () -> Unit,
+    onRefreshTelemetry: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(activeEmerald.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = activeEmerald,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.dashboard_live_verification_title),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                IconButton(
+                    onClick = onRefreshTelemetry,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            // Card 1: Master Mount Namespace Status
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, activeEmerald.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .background(activeEmerald, CircleShape)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.dashboard_master_namespace_ready),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = stringResource(R.string.dashboard_master_namespace_desc),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                        )
+                    }
+                }
+            }
+
+            // Card 2: Kernel /proc/mounts Live Bind Mounts
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = if (telemetry.kernelMountPoints.isNotEmpty()) {
+                            stringResource(R.string.dashboard_live_mounts_found, telemetry.kernelMountPoints.size)
+                        } else {
+                            stringResource(R.string.dashboard_live_mounts_none)
+                        },
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = if (telemetry.kernelMountPoints.isNotEmpty()) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (telemetry.kernelMountPoints.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        for (mount in telemetry.kernelMountPoints.take(6)) {
+                            Text(
+                                text = mount,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Card 3: Canary Integrity
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = if (telemetry.canaryVerifiedCount > 0) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = if (telemetry.canaryVerifiedCount > 0) {
+                            "${stringResource(R.string.dashboard_live_canary_verified)} (${telemetry.canaryVerifiedCount}/${telemetry.totalCanariesExpected})"
+                        } else {
+                            stringResource(R.string.dashboard_live_canary_not_verified)
+                        },
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onRecalculateSizes,
+                    modifier = Modifier.weight(1f).height(38.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.dashboard_recalculate_size_btn),
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f).height(38.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.common_close),
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
