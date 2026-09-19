@@ -4,11 +4,14 @@ package app.mountx.data.model
  * High-level categories for Universal Smart Directory Classification
  */
 enum class MountPointCategory {
-    GAME_ASSETS,       // /Android/data/<pkg>/files and /Android/obb/<pkg>
+    EXTERNAL_DATA,     // /Android/data/<pkg>/files
+    OBB_STORAGE,       // /Android/obb/<pkg>
+    GAME_ASSETS,       // Legacy compatibility category (files/obb)
     MEDIA_DOWNLOADS,   // /sdcard/<App>/ and /Android/media/<pkg>/ with auto .nomedia
     CACHE_SHADERS,     // /Android/data/<pkg>/cache and GPU shaders
     CUSTOM,            // User-defined manual path binding
-    PRIVATE_INTERNAL   // /data/data/<pkg> (>1GB) using Virtual Ext4 Loop Container
+    PRIVATE_INTERNAL,  // /data/data/<pkg> (>1GB) using Virtual Ext4 Loop Container
+    APP_PACKAGE        // /data/app/<pkg> Advanced Experimental
 }
 
 /**

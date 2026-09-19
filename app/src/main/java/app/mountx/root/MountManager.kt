@@ -55,14 +55,14 @@ class MountManager {
                     for (mp in game.mountPoints) {
                         if (!mp.enabled) continue
 
-                        // Security Hard-Lock: reject /data/app (APK & LIB)
-                        if (mp.targetPath.startsWith("/data/app") || mp.sourcePath.startsWith("/data/app")) {
-                            AppLogger.error("MountManager", "Security violation: blocked mount target in /data/app (${mp.id})")
+                        // Security Hard-Lock: reject /data/app unless explicitly marked as APP_PACKAGE
+                        if ((mp.targetPath.startsWith("/data/app") || mp.sourcePath.startsWith("/data/app")) && mp.category != MountPointCategory.APP_PACKAGE) {
+                            AppLogger.error("MountManager", "Security violation: blocked unverified mount target in /data/app (${mp.id})")
                             continue
                         }
 
                         when (mp.category) {
-                            MountPointCategory.GAME_ASSETS -> {
+                            MountPointCategory.EXTERNAL_DATA, MountPointCategory.OBB_STORAGE, MountPointCategory.GAME_ASSETS -> {
                                 mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
                             }
                             MountPointCategory.MEDIA_DOWNLOADS -> {
@@ -79,6 +79,14 @@ class MountManager {
                             }
                             MountPointCategory.PRIVATE_INTERNAL -> {
                                 mountVirtualExt4Container(game.packageName, mp, sdBase, uid, gid)
+                            }
+                            MountPointCategory.APP_PACKAGE -> {
+                                RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
+                                RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\"")
+                                for (ns in namespaces) {
+                                    RootShell.exec("nsenter --mount=\"$ns\" mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\" 2>/dev/null")
+                                }
+                                RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                             }
                         }
                     }

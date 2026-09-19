@@ -206,17 +206,29 @@ fun GamesScreen(
     }
 
     // Delete Confirmation Dialog
+    val isRestoring by viewModel.isRestoring.collectAsState()
+    val restoreProgress by viewModel.restoreProgress.collectAsState()
+    val restoreMessage by viewModel.restoreMessage.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     gameToDelete?.let { game ->
-        ConfirmDialog(
-            title = stringResource(R.string.games_delete),
-            message = stringResource(R.string.games_delete_confirm, game.displayName.ifBlank { game.packageName }),
-            isDestructive = true,
-            confirmText = stringResource(R.string.games_delete),
-            onConfirm = {
-                viewModel.removeGame(game.packageName)
+        DeleteAppConfirmDialog(
+            appName = game.displayName.ifBlank { game.packageName },
+            packageName = game.packageName,
+            requiredRestoreBytes = game.dataSizeBytes,
+            internalFreeBytes = android.os.Environment.getDataDirectory().freeSpace,
+            isRestoring = isRestoring,
+            restoreProgress = restoreProgress,
+            restoreMessage = restoreMessage,
+            onConfirmRestoreAndDelete = {
+                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = true)
                 gameToDelete = null
             },
-            onDismiss = { gameToDelete = null }
+            onConfirmUnmountAndDelete = {
+                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = false)
+                gameToDelete = null
+            },
+            onDismiss = { if (!isRestoring) gameToDelete = null }
         )
     }
 }
@@ -271,6 +283,7 @@ fun GamesContent(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CompactScreenHeader(
                 title = stringResource(R.string.games_title),
@@ -403,9 +416,18 @@ fun GamesContent(
             val navBarsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             val navBarsBottomPx = with(density) { navBarsBottom.toPx() }
             val bottomBarHeightPx = with(density) { 72.dp.toPx() }
-
+            // When bar is visible: FAB is above the bottom bar (navBars + bottomBar height above screen edge)
+            // When bar is hidden: FAB is just above navBars (glides down with the bar)
+            // Since contentWindowInsets=0, FAB slot is at very bottom. We push it up manually.
+            val targetOffsetY = if (isBottomBarVisible) {
+                // Move FAB up: above nav bar + above bottom bar
+                -(navBarsBottomPx + bottomBarHeightPx)
+            } else {
+                // Move FAB up: only above nav bar so it stays visible
+                -navBarsBottomPx
+            }
             val animatedOffsetY by animateFloatAsState(
-                targetValue = if (isBottomBarVisible) 0f else (bottomBarHeightPx - navBarsBottomPx).coerceAtLeast(0f),
+                targetValue = targetOffsetY,
                 animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
                 label = "fab_bottom_bar_offset"
             )
@@ -718,28 +740,8 @@ fun ModernGameCard(
                         modifier = Modifier.weight(1f, fill = false)
                     )
 
-                    Text(
-                        text = "•",
-                        fontSize = 9.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
 
-                    // Mode badge inline
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                    ) {
-                        Text(
-                            text = game.mode.name,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-                    }
 
-                    // Size badge inline if available
                     if (game.dataSizeBytes > 0) {
                         Text(
                             text = "•",

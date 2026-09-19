@@ -32,7 +32,8 @@ import javax.inject.Singleton
 class GameRepository @Inject constructor(
     private val gameDao: GameDao,
     private val mountManager: MountManager,
-    private val diskCatalogManager: DiskCatalogManager
+    private val diskCatalogManager: DiskCatalogManager,
+    private val storageManager: app.mountx.root.StorageManager
 ) {
 
     fun synthesizeLegacyMountPoints(game: GameEntry, sdBase: String = "/data/sdext2"): List<MountPointConfig> {
@@ -164,6 +165,46 @@ class GameRepository @Inject constructor(
         gameDao.deleteGame(packageName)
         syncModuleGamelist()
         AppLogger.info("Games", "Removed game: $packageName")
+    }
+
+    suspend fun removeGameWithOption(
+        context: Context,
+        packageName: String,
+        restoreToInternal: Boolean,
+        sdBase: String = "/data/sdext2",
+        onProgress: (Float, String) -> Unit = { _, _ -> }
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val game = gameDao.getGameByPackage(packageName)
+            if (game != null) {
+                if (game.mountStatus == MountStatus.MOUNTED) {
+                    mountManager.unmountGame(game)
+                }
+
+                if (restoreToInternal) {
+                    val points = game.mountPoints.ifEmpty { synthesizeLegacyMountPoints(game, sdBase) }
+                    storageManager.restoreAndCleanGame(
+                        context = context,
+                        packageName = packageName,
+                        mountPoints = points,
+                        sdBase = sdBase,
+                        onProgress = onProgress
+                    ).getOrThrow()
+                } else {
+                    onProgress(0.5f, "Melepaskan mount sistem...")
+                    RootShell.exec("am force-stop \"$packageName\"")
+                    for (point in game.mountPoints) {
+                        RootShell.exec("umount -l \"${point.targetPath}\" 2>/dev/null")
+                    }
+                    RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+                }
+            }
+
+            gameDao.deleteGame(packageName)
+            syncModuleGamelist()
+            AppLogger.info("Games", "Removed game: $packageName (restoreToInternal=$restoreToInternal)")
+        }
     }
 
     suspend fun mountGame(game: GameEntry, sdBase: String = "/data/sdext2"): Result<Unit> =
@@ -479,89 +520,109 @@ class GameRepository @Inject constructor(
     ): List<CandidateDirectory> = withContext(Dispatchers.IO) {
         val list = mutableListOf<CandidateDirectory>()
 
-        // 1. GAME_ASSETS: files and obb
+        // 1. EXTERNAL_DATA: Android/data/<pkg>/files
         val internalFiles = "/data/media/0/Android/data/$packageName/files"
         val sdFiles = "$sdBase/Android/data/$packageName/files"
-        val internalObb = "/data/media/0/Android/obb/$packageName"
-        val sdObb = "$sdBase/Android/obb/$packageName"
-
         val filesSize = getDirSizeBytes(if (RootShell.exists(sdFiles)) sdFiles else internalFiles)
-        val obbSize = getDirSizeBytes(if (RootShell.exists(sdObb)) sdObb else internalObb)
-        val totalAssetsSize = filesSize + obbSize
-
+        val filesChildren = scanSubItems(if (RootShell.exists(internalFiles)) internalFiles else sdFiles, sdFiles)
         list.add(
             CandidateDirectory(
-                id = "game_assets",
-                category = app.mountx.data.model.MountPointCategory.GAME_ASSETS,
-                title = "Game Assets & Data (99% Stabilitas)",
-                description = "Memetakan subdirektori aset /Android/data/files dan berkas arsip /Android/obb. Mengosongkan ruang tanpa menyentuh cache internal.",
+                id = "external_data",
+                category = app.mountx.data.model.MountPointCategory.EXTERNAL_DATA,
+                title = "External Data (Android/data/files)",
+                description = "Subdirektori aset game (/Android/data/files). Stabilitas 99% tanpa menyentuh cache.",
                 relativePath = "Android/data/$packageName/files",
                 internalPath = internalFiles,
                 sdPath = sdFiles,
-                sizeBytes = totalAssetsSize,
-                defaultEnabled = true
+                sizeBytes = filesSize,
+                defaultEnabled = true,
+                childItems = filesChildren
             )
         )
 
-        // 2. MEDIA_DOWNLOADS: Android/media or public app folder
+        // 2. OBB_STORAGE: Android/obb/<pkg>
+        val internalObb = "/data/media/0/Android/obb/$packageName"
+        val sdObb = "$sdBase/Android/obb/$packageName"
+        val obbSize = getDirSizeBytes(if (RootShell.exists(sdObb)) sdObb else internalObb)
+        val obbChildren = scanSubItems(if (RootShell.exists(internalObb)) internalObb else sdObb, sdObb)
+        list.add(
+            CandidateDirectory(
+                id = "obb_storage",
+                category = app.mountx.data.model.MountPointCategory.OBB_STORAGE,
+                title = "OBB Storage (Android/obb)",
+                description = "Arsip data game utama (/Android/obb). Aman dimount ke MicroSD.",
+                relativePath = "Android/obb/$packageName",
+                internalPath = internalObb,
+                sdPath = sdObb,
+                sizeBytes = obbSize,
+                defaultEnabled = true,
+                childItems = obbChildren
+            )
+        )
+
+        // 3. MEDIA_DOWNLOADS: Android/media or public app folder
         val internalMedia = "/data/media/0/Android/media/$packageName"
         val sdMedia = "$sdBase/Android/media/$packageName"
         val pubFolder = "/data/media/0/${displayName.replace(" ", "")}"
         val pubSize = if (RootShell.exists(pubFolder)) getDirSizeBytes(pubFolder) else 0L
         val mediaSize = getDirSizeBytes(if (RootShell.exists(sdMedia)) sdMedia else internalMedia) + pubSize
-
+        val mediaChildren = scanSubItems(if (RootShell.exists(internalMedia)) internalMedia else sdMedia, sdMedia)
         list.add(
             CandidateDirectory(
                 id = "media_downloads",
                 category = app.mountx.data.model.MountPointCategory.MEDIA_DOWNLOADS,
-                title = "Media & Unduhan",
-                description = "Memetakan folder media publik (/Android/media/). Otomatis menyertakan berkas .nomedia agar MediaStore tidak menduplikasi galeri.",
+                title = "Media & Unduhan (Android/media & Publik)",
+                description = "Folder media publik dan unduhan. Otomatis menyertakan berkas .nomedia di MicroSD.",
                 relativePath = "Android/media/$packageName",
                 internalPath = internalMedia,
                 sdPath = sdMedia,
                 sizeBytes = mediaSize,
-                defaultEnabled = mediaSize > 0L
+                defaultEnabled = mediaSize > 0L,
+                childItems = mediaChildren
             )
         )
 
-        // 3. CACHE_SHADERS: Android/data/cache
+        // 4. CACHE_SHADERS: Android/data/cache
         val internalCache = "/data/media/0/Android/data/$packageName/cache"
         val sdCache = "$sdBase/Android/data/$packageName/cache"
         val cacheSize = getDirSizeBytes(if (RootShell.exists(sdCache)) sdCache else internalCache)
-
+        val cacheChildren = scanSubItems(if (RootShell.exists(internalCache)) internalCache else sdCache, sdCache)
         list.add(
             CandidateDirectory(
                 id = "cache_shaders",
                 category = app.mountx.data.model.MountPointCategory.CACHE_SHADERS,
-                title = "Cache & Shaders (Opsional)",
-                description = "Memetakan folder cache dan GPU shader. Disarankan tetap di memori internal UFS agar tidak terjadi stuttering kompilasi shader grafis.",
+                title = "Cache & Temporary (Android/data/cache)",
+                description = "Cache dan file sementara. Disarankan tetap di internal UFS agar tidak memicu micro-stuttering.",
                 relativePath = "Android/data/$packageName/cache",
                 internalPath = internalCache,
                 sdPath = sdCache,
                 sizeBytes = cacheSize,
-                defaultEnabled = false
+                defaultEnabled = false,
+                childItems = cacheChildren
             )
         )
 
-        // 4. PRIVATE_INTERNAL: /data/data/<pkg>
+        // 5. PRIVATE_INTERNAL: /data/data/<pkg>
         val privateDataDir = "/data/user/0/$packageName"
         val privateSize = getDirSizeBytes(privateDataDir)
         val oneGb = 1024L * 1024L * 1024L
+        val privateChildren = scanSubItems(privateDataDir, "$sdBase/.mountx/containers/${packageName}_data.img")
 
         if (privateSize >= oneGb) {
             list.add(
                 CandidateDirectory(
                     id = "private_internal",
                     category = app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL,
-                    title = "Private Internal Data (Virtual Ext4 Container)",
-                    description = "Data gajah > 1 GB terdeteksi di /data/data/. Menggunakan sparse image ext4 terisolasi di MicroSD untuk menjaga integritas SQLite WAL & SELinux.",
+                    title = "Private Data (/data/data)",
+                    description = "Data internal aplikasi. Folder gajah (> 1 GB) menggunakan Virtual Ext4 Loop Container.",
                     relativePath = "data/user/0/$packageName",
                     internalPath = privateDataDir,
                     sdPath = "$sdBase/.mountx/containers/${packageName}_data.img",
                     sizeBytes = privateSize,
                     defaultEnabled = false,
                     isLocked = false,
-                    isVirtualContainer = true
+                    isVirtualContainer = true,
+                    childItems = privateChildren
                 )
             )
         } else if (privateSize > 0L) {
@@ -569,7 +630,7 @@ class GameRepository @Inject constructor(
                 CandidateDirectory(
                     id = "private_internal_locked",
                     category = app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL,
-                    title = "Private Internal Data (/data/data)",
+                    title = "Private Data (/data/data)",
                     description = "Terkunci: Data internal < 1 GB wajib berada di internal flash untuk mencegah error SQLite WAL database lock.",
                     relativePath = "data/user/0/$packageName",
                     internalPath = privateDataDir,
@@ -577,12 +638,62 @@ class GameRepository @Inject constructor(
                     sizeBytes = privateSize,
                     defaultEnabled = false,
                     isLocked = true,
-                    lockReason = "Ukuran < 1 GB dikunci demi keselamatan database"
+                    lockReason = "Ukuran < 1 GB dikunci demi keselamatan database",
+                    childItems = privateChildren
                 )
             )
         }
 
+        // 6. ADVANCED EXPERIMENTAL: App Package (APK & Libs)
+        val apkPathRes = RootShell.exec("pm path \"$packageName\" 2>/dev/null | head -n 1")
+        if (apkPathRes.isSuccess && apkPathRes.output.contains("package:")) {
+            val fullApkPath = apkPathRes.output.substringAfter("package:").trim()
+            val apkDir = java.io.File(fullApkPath).parent ?: ""
+            if (apkDir.isNotBlank() && RootShell.exists(apkDir)) {
+                val apkSize = getDirSizeBytes(apkDir)
+                val apkChildren = scanSubItems(apkDir, "$sdBase/Android/app/$packageName")
+                list.add(
+                    CandidateDirectory(
+                        id = "app_package_experimental",
+                        category = app.mountx.data.model.MountPointCategory.APP_PACKAGE,
+                        title = "App Package (APK & Native Libs)",
+                        description = "Biner APK dan file library (.so) di /data/app/. Membutuhkan partisi MicroSD bertipe Linux (ext4/f2fs) dan proteksi SELinux.",
+                        relativePath = "data/app/$packageName",
+                        internalPath = apkDir,
+                        sdPath = "$sdBase/Android/app/$packageName",
+                        sizeBytes = apkSize,
+                        defaultEnabled = false,
+                        isExperimental = true,
+                        childItems = apkChildren
+                    )
+                )
+            }
+        }
+
         list
+    }
+
+    private suspend fun scanSubItems(parentDir: String, sdParentDir: String): List<CandidateSubItem> {
+        if (!RootShell.exists(parentDir)) return emptyList()
+        val res = RootShell.exec("ls -1 \"$parentDir\" 2>/dev/null")
+        if (!res.isSuccess || res.stdout.isEmpty()) return emptyList()
+        val items = mutableListOf<CandidateSubItem>()
+        for (name in res.stdout.map { it.trim() }.filter { it.isNotBlank() }) {
+            val childPath = "$parentDir/$name"
+            val childSd = "$sdParentDir/$name"
+            val sz = getDirSizeBytes(childPath)
+            items.add(
+                CandidateSubItem(
+                    id = name,
+                    name = name,
+                    internalPath = childPath,
+                    sdPath = childSd,
+                    sizeBytes = sz,
+                    enabled = true
+                )
+            )
+        }
+        return items
     }
 
     private suspend fun getDirSizeBytes(path: String): Long {
@@ -592,6 +703,15 @@ class GameRepository @Inject constructor(
         return kb * 1024L
     }
 }
+
+data class CandidateSubItem(
+    val id: String,
+    val name: String,
+    val internalPath: String,
+    val sdPath: String,
+    val sizeBytes: Long,
+    val enabled: Boolean = true
+)
 
 data class CandidateDirectory(
     val id: String,
@@ -605,5 +725,7 @@ data class CandidateDirectory(
     val defaultEnabled: Boolean,
     val isLocked: Boolean = false,
     val lockReason: String? = null,
-    val isVirtualContainer: Boolean = false
+    val isVirtualContainer: Boolean = false,
+    val isExperimental: Boolean = false,
+    val childItems: List<CandidateSubItem> = emptyList()
 )

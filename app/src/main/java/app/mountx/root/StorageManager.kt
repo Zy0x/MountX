@@ -408,10 +408,26 @@ class StorageManager {
         }
 
         // Supplementary pass: Guarantee any mounted /storage/<UUID> or Android public volumes are registered
+        // Strictly exclude internal system prefixes, user 0 FUSE layers, and app-specific bind mounts
+        val blacklistedStoragePrefixes = listOf(
+            "/storage/emulated",
+            "/storage/self",
+            "/storage/primary",
+            "/storage/sdcard0",
+            "/mnt/user",
+            "/mnt/runtime",
+            "/mnt/media_rw",
+            "/mnt/installer",
+            "/mnt/androidwritable",
+            "/mnt/pass_through"
+        )
+        val validVolumeRegex = Regex("^/storage/([0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}|[a-f0-9\\-]{36})$")
         val externalStorageMounts = allMounts.filter { m ->
             m.file.startsWith("/storage/") &&
-            !m.file.startsWith("/storage/emulated") &&
-            !m.file.startsWith("/storage/self")
+            !m.file.contains("/Android/") &&
+            !m.file.contains("/.") &&
+            blacklistedStoragePrefixes.none { m.file.startsWith(it) } &&
+            (validVolumeRegex.matches(m.file) || (m.file.removePrefix("/storage/").split("/").size == 1 && !m.file.contains(".")))
         }.distinctBy { it.file }
 
         for (smMount in externalStorageMounts) {
@@ -428,7 +444,19 @@ class StorageManager {
                 devMajorMinorMap.entries.firstOrNull { it.value == majorMinor }?.key
             } else null
 
-            val devName = resolvedDevName ?: "usb_${mntUuid.take(6)}"
+            // Safeguard: Never invent fake disk devices like usb_com.Ho. Require a verified block device.
+            val devPathCandidate = when {
+                resolvedDevName != null -> "/dev/block/$resolvedDevName"
+                smMount.spec.startsWith("/dev/block/") -> smMount.spec
+                else -> null
+            } ?: continue
+
+            val devName = resolvedDevName ?: devPathCandidate.substringAfterLast("/")
+            // Exclude virtual loop or mapper devices
+            if (devName.startsWith("loop") || devName.startsWith("dm-") || devName.startsWith("ram") || devName.contains(".")) {
+                continue
+            }
+
             val diskName = if (devName.startsWith("sd") && devName.length >= 3) {
                 devName.filter { it.isLetter() }
             } else if (devName.startsWith("mmcblk")) {
@@ -437,7 +465,7 @@ class StorageManager {
                 devName
             }
             val partNum = devName.filter { it.isDigit() }.toIntOrNull() ?: 1
-            val devPath = if (resolvedDevName != null) "/dev/block/$resolvedDevName" else (voldMount?.spec ?: smMount.spec)
+            val devPath = devPathCandidate
 
             val fsType = blkidMap[devPath]?.first ?: blkidMap[devName]?.first ?: smMount.vfstype
             val label = blkidMap[devPath]?.second ?: blkidMap[devName]?.second
@@ -1097,7 +1125,95 @@ class StorageManager {
             )
         }
 
+        disks.removeAll { it.diskName.contains(".") || it.devicePath.contains("usb_com.") || it.diskName.startsWith("loop") || it.diskName.startsWith("dm-") }
         disks
+    }
+
+    /**
+     * Get free bytes available on internal storage (/data).
+     */
+    fun getInternalFreeBytes(): Long {
+        return try {
+            val stat = android.os.StatFs("/data")
+            stat.availableBlocksLong * stat.blockSizeLong
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
+    /**
+     * Completely restore an app's offloaded data from MicroSD back to internal storage,
+     * restoring ownership and SELinux contexts, protected by a Partial WakeLock.
+     */
+    suspend fun restoreAndCleanGame(
+        context: android.content.Context,
+        packageName: String,
+        mountPoints: List<MountPointConfig>,
+        sdBase: String = "/data/sdext2",
+        onProgress: (Float, String) -> Unit = { _, _ -> }
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+            val wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "MountX:RestoreWakeLock")
+            wakeLock?.acquire(15 * 60 * 1000L) // 15 mins safeguard against deep sleep
+            try {
+                onProgress(0.05f, "Menghentikan proses aplikasi ($packageName)...")
+                RootShell.exec("am force-stop \"$packageName\"")
+
+                // Unmount active target points
+                for (point in mountPoints) {
+                    RootShell.exec("umount -l \"${point.targetPath}\" 2>/dev/null")
+                    RootShell.exec("umount -l \"${point.sourcePath}\" 2>/dev/null")
+                }
+
+                val totalPoints = mountPoints.size.coerceAtLeast(1)
+                mountPoints.forEachIndexed { index, point ->
+                    val progressBase = 0.1f + (index.toFloat() / totalPoints.toFloat()) * 0.75f
+                    val folderName = point.targetPath.substringAfterLast('/')
+                    onProgress(progressBase, "Memulihkan berkas: $folderName...")
+
+                    if (point.isVirtualContainer) {
+                        val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
+                        if (RootShell.exists(imgFile)) {
+                            val tempMount = "/dev/mountx_temp_${packageName}"
+                            RootShell.exec("mkdir -p \"$tempMount\"")
+                            val loopDev = RootShell.exec("losetup -f --show \"$imgFile\" 2>/dev/null").output.trim()
+                            if (loopDev.isNotEmpty()) {
+                                RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
+                                RootShell.exec("mkdir -p \"${point.targetPath}\"")
+                                RootShell.exec("cp -a \"$tempMount\"/* \"${point.targetPath}\"/ 2>/dev/null")
+                                RootShell.exec("umount -l \"$tempMount\"")
+                                RootShell.exec("losetup -d \"$loopDev\"")
+                            }
+                            RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
+                            RootShell.exec("rm -f \"$imgFile\"")
+                            RootShell.exec("restorecon -FR \"${point.targetPath}\" 2>/dev/null")
+                        }
+                    } else {
+                        val src = point.sourcePath
+                        val tgt = point.targetPath
+                        if (RootShell.exists(src)) {
+                            val parentInternal = java.io.File(tgt).parent ?: "/data/media/0"
+                            RootShell.exec("mkdir -p \"$parentInternal\"")
+                            RootShell.exec("cp -a -f \"$src\" \"$tgt\"")
+                            RootShell.exec("chmod -R 775 \"$tgt\" 2>/dev/null")
+                            RootShell.exec("restorecon -FR \"$tgt\" 2>/dev/null")
+                            RootShell.exec("rm -rf \"$src\"")
+                        }
+                    }
+                }
+
+                onProgress(0.92f, "Memulihkan perizinan dan konteks keamanan SELinux...")
+                RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
+                RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+                RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
+                onProgress(1.0f, "Selesai")
+            } finally {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock.release()
+                }
+            }
+        }
     }
 
     /**

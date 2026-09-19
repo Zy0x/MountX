@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.window.Dialog
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.Folder
@@ -880,18 +882,26 @@ private fun ManageTabContent(
                 } else {
                     mountPoints.forEachIndexed { index, point ->
                         val catLabel = when (point.category) {
-                            MountPointCategory.GAME_ASSETS -> "Game Assets & Data (files/obb)"
-                            MountPointCategory.MEDIA_DOWNLOADS -> "Media & Unduhan (.nomedia)"
-                            MountPointCategory.CACHE_SHADERS -> "Cache & Shaders"
-                            MountPointCategory.PRIVATE_INTERNAL -> "Large Private Data"
+                            MountPointCategory.GAME_ASSETS -> stringResource(R.string.gerbong_external_data_title)
+                            MountPointCategory.EXTERNAL_DATA -> stringResource(R.string.gerbong_external_data_title)
+                            MountPointCategory.OBB_STORAGE -> stringResource(R.string.gerbong_obb_title)
+                            MountPointCategory.MEDIA_DOWNLOADS -> stringResource(R.string.gerbong_media_title)
+                            MountPointCategory.CACHE_SHADERS -> stringResource(R.string.gerbong_cache_title)
+                            MountPointCategory.PRIVATE_INTERNAL -> stringResource(R.string.gerbong_private_title)
+                            MountPointCategory.APP_PACKAGE -> stringResource(R.string.gerbong_app_package_title)
                             MountPointCategory.CUSTOM -> "Kustom: ${point.id}"
                         }
+                        val isExperimental = point.category == MountPointCategory.APP_PACKAGE
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            color = if (isExperimental)
+                                Color(0xFFFF6F00).copy(alpha = 0.08f)
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             border = BorderStroke(
                                 1.dp,
-                                if (point.enabled) cyberEmerald.copy(alpha = 0.4f)
+                                if (isExperimental) Color(0xFFFF6F00).copy(alpha = 0.5f)
+                                else if (point.enabled) cyberEmerald.copy(alpha = 0.4f)
                                 else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                             ),
                             modifier = Modifier.fillMaxWidth()
@@ -905,9 +915,12 @@ private fun ManageTabContent(
                                     Icon(
                                         imageVector = when (point.category) {
                                             MountPointCategory.GAME_ASSETS -> Icons.Default.SportsEsports
+                                            MountPointCategory.EXTERNAL_DATA -> Icons.Default.SportsEsports
+                                            MountPointCategory.OBB_STORAGE -> Icons.Default.SportsEsports
                                             MountPointCategory.MEDIA_DOWNLOADS -> Icons.Default.PermMedia
                                             MountPointCategory.CACHE_SHADERS -> Icons.Default.Cached
                                             MountPointCategory.PRIVATE_INTERNAL -> Icons.Default.Storage
+                                            MountPointCategory.APP_PACKAGE -> Icons.Default.Android
                                             MountPointCategory.CUSTOM -> Icons.Default.Folder
                                         },
                                         contentDescription = null,
@@ -1222,25 +1235,49 @@ private fun CustomPathDialog(
     val rawInternal = internalPath.trim()
     val isPathSafe = !rawInternal.startsWith("/data/app") && !rawInternal.startsWith("/system")
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(stringResource(R.string.mount_add_custom_path), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xFF111625),
+            border = BorderStroke(1.dp, Color(0xFF232B3E)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
-                    "Tentukan direktori kustom yang ingin dipetakan secara presisi ke MicroSD.",
+                    text = stringResource(R.string.custom_path_dialog_title),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Color.White
+                )
+                Text(
+                    text = stringResource(R.string.custom_path_dialog_desc),
                     fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color.White.copy(alpha = 0.6f)
                 )
 
                 OutlinedTextField(
                     value = customLabel,
                     onValueChange = { customLabel = it },
-                    label = { Text("Label / Nama Direktori (misal: Downloads)", fontSize = 11.sp) },
+                    label = { Text(stringResource(R.string.custom_path_label_hint), fontSize = 11.sp) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CyberEmerald,
+                        unfocusedBorderColor = Color(0xFF232B3E),
+                        focusedLabelColor = CyberEmerald,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(alpha = 0.85f),
+                        cursorColor = CyberEmerald
+                    )
                 )
 
                 OutlinedTextField(
@@ -1249,14 +1286,22 @@ private fun CustomPathDialog(
                         internalPath = it
                         errorMsg = null
                     },
-                    label = { Text("Path Internal Lengkap (misal: /data/media/0/Telegram)", fontSize = 11.sp) },
+                    label = { Text(stringResource(R.string.custom_path_internal_hint), fontSize = 11.sp) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CyberEmerald,
+                        unfocusedBorderColor = Color(0xFF232B3E),
+                        focusedLabelColor = CyberEmerald,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White.copy(alpha = 0.85f),
+                        cursorColor = CyberEmerald
+                    )
                 )
 
                 if (!isPathSafe && rawInternal.isNotBlank()) {
                     Text(
-                        "Keamanan Sistem: Direktori /data/app dan /system dilindungi dan tidak dapat dimount.",
+                        text = stringResource(R.string.custom_path_error_security),
                         color = NeonCrimson,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium
@@ -1266,42 +1311,46 @@ private fun CustomPathDialog(
                 errorMsg?.let {
                     Text(it, color = NeonCrimson, fontSize = 10.sp)
                 }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (customLabel.isBlank() || internalPath.isBlank()) {
-                        errorMsg = "Semua kolom wajib diisi"
-                        return@Button
+
+                Row(
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.custom_path_cancel), color = Color.White.copy(alpha = 0.6f))
                     }
-                    if (!isPathSafe) {
-                        errorMsg = "Target path melanggar kebijakan keamanan"
-                        return@Button
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (customLabel.isBlank() || internalPath.isBlank()) {
+                                errorMsg = "Semua kolom wajib diisi"
+                                return@Button
+                            }
+                            if (!isPathSafe) {
+                                errorMsg = "Target path melanggar kebijakan keamanan"
+                                return@Button
+                            }
+                            val cleanLabel = customLabel.trim().replace(" ", "_")
+                            val cleanInternal = internalPath.trim().removeSuffix("/")
+                            val customPoint = MountPointConfig(
+                                id = cleanLabel,
+                                category = MountPointCategory.CUSTOM,
+                                sourcePath = "$sdBase/$cleanLabel",
+                                targetPath = cleanInternal,
+                                enabled = true,
+                                sizeBytes = 0L
+                            )
+                            onAdd(customPoint)
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald)
+                    ) {
+                        Text(stringResource(R.string.custom_path_save), fontSize = 12.sp, color = Color.Black)
                     }
-                    val cleanLabel = customLabel.trim().replace(" ", "_")
-                    val cleanInternal = internalPath.trim().removeSuffix("/")
-                    val customPoint = MountPointConfig(
-                        id = cleanLabel,
-                        category = MountPointCategory.CUSTOM,
-                        sourcePath = "$sdBase/$cleanLabel",
-                        targetPath = cleanInternal,
-                        enabled = true,
-                        sizeBytes = 0L
-                    )
-                    onAdd(customPoint)
-                },
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("Simpan", fontSize = 12.sp)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Batal", fontSize = 12.sp)
+                }
             }
         }
-    )
+    }
 }
 
 /**

@@ -377,6 +377,17 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.15 (UI Polish, Delete Flow & FAB Fix)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• FAB glide fix: floating button stays visible when bottom bar hides, slides down smoothly", fontSize = 11.sp)
+                        Text(text = "• Delete dialog upgraded: choose Restore to Internal or Unmount Only with progress tracking", fontSize = 11.sp)
+                        Text(text = "• Custom Path dialog now uses dark theme (#111625) consistent with app design system", fontSize = 11.sp)
+                        Text(text = "• Mount point cards: removed raw PKG badge, added color-coded Experimental APK section", fontSize = 11.sp)
+                        Text(text = "• Phantom USB OTG disk fix: strict UUID validation prevents fake disk entries", fontSize = 11.sp)
+                        Text(text = "• New mount categories: EXTERNAL_DATA, OBB_STORAGE, APP_PACKAGE with proper icons", fontSize = 11.sp)
+                        Text(text = "• WakeLock protection during restore operations prevents CPU sleep mid-transfer", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.4 (Performance & UX Overhaul)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Disk title telemetry integrated in Unmount Partition confirmation dialog", fontSize = 11.sp)

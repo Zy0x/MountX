@@ -652,6 +652,41 @@
     <string name="notif_games_unmounted">All Games Safely Unmounted</string>
     <string name="notif_subtext_kernel">Kernel Namespace</string>
     <string name="mount_add_custom_path">Add Custom Directory</string>
+    <!-- v2.2.15 5 Hierarchical Gerbong, Delete Flow, & Localization -->
+    <string name="gerbong_external_data_title">External Data (Android/data/files)</string>
+    <string name="gerbong_external_data_desc">Subdirektori aset game (/Android/data/files). Stabilitas 99% tanpa menyentuh cache.</string>
+    <string name="gerbong_obb_title">OBB Storage (Android/obb)</string>
+    <string name="gerbong_obb_desc">Arsip data game utama (/Android/obb). Aman dimount ke MicroSD.</string>
+    <string name="gerbong_media_title">Media &amp; Unduhan (Android/media &amp; Publik)</string>
+    <string name="gerbong_media_desc">Folder media publik dan unduhan. Otomatis menyertakan berkas .nomedia di MicroSD.</string>
+    <string name="gerbong_cache_title">Cache &amp; Temporary (Android/data/cache)</string>
+    <string name="gerbong_cache_desc">Cache dan file sementara. Disarankan tetap di internal UFS agar tidak memicu micro-stuttering.</string>
+    <string name="gerbong_private_title">Private Data (/data/data)</string>
+    <string name="gerbong_private_desc">Data internal aplikasi. Folder gajah (> 1 GB) menggunakan Virtual Ext4 Loop Container.</string>
+    <string name="gerbong_app_package_title">App Package (APK &amp; Native Libs)</string>
+    <string name="gerbong_app_package_desc">Biner APK dan file library (.so) di /data/app/. Membutuhkan proteksi SELinux.</string>
+    <string name="gerbong_experimental_section">Opsi Lanjutan / Eksperimental</string>
+    <string name="gerbong_experimental_warning_title">⚠️ Peringatan Risiko Eksperimental</string>
+    <string name="gerbong_experimental_warning_msg">Memindahkan biner aplikasi/lib dapat memicu force close (kernel noexec/SELinux) atau error update Play Store. Fitur ini ditujukan untuk pengguna tingkat lanjut dengan partisi ext4. Risiko ditanggung sendiri sepenuhnya.</string>
+    <string name="gerbong_experimental_confirm">Saya Mengerti Risikonya</string>
+    <string name="dialog_delete_app_title">Hapus Aplikasi dari MountX</string>
+    <string name="dialog_delete_app_subtitle">Pilih opsi pembersihan data untuk %1$s:</string>
+    <string name="dialog_delete_restore_btn">Pulihkan ke Internal &amp; Hapus</string>
+    <string name="dialog_delete_restore_desc">Salin kembali seluruh data MicroSD ke memori internal, perbaiki perizinan (chmod 775 &amp; restorecon -FR), lalu hapus dari MountX.</string>
+    <string name="dialog_delete_unmount_btn">Lepas Mount Saja &amp; Hapus</string>
+    <string name="dialog_delete_unmount_desc">Hanya unmount partisi. Data fisik tetap aman di MicroSD, lalu bersihkan entri dari MountX.</string>
+    <string name="dialog_delete_storage_insufficient">Penyimpanan internal tidak mencukupi (Tersedia: %1$s, Dibutuhkan: %2$s). Pemulihan ke internal dicegah untuk menghindari memori penuh.</string>
+    <string name="dialog_delete_restoring_title">Memulihkan Data ke Internal…</string>
+    <string name="dialog_delete_restoring_msg">Sedang menyalin berkas fisik dan memperbaiki perizinan. Jangan menutup aplikasi atau mematikan perangkat.</string>
+    <string name="custom_path_dialog_title">Tambah Direktori Kustom</string>
+    <string name="custom_path_dialog_desc">Tentukan direktori kustom internal yang ingin dipetakan secara presisi ke MicroSD.</string>
+    <string name="custom_path_label_hint">Label / Nama Direktori (misal: Downloads)</string>
+    <string name="custom_path_internal_hint">Path Internal Lengkap (misal: /data/media/0/Telegram)</string>
+    <string name="custom_path_error_required">Semua kolom wajib diisi</string>
+    <string name="custom_path_error_security">Keamanan Sistem: Direktori /data/app dan /system dilindungi dan tidak dapat dimount.</string>
+    <string name="custom_path_save">Simpan</string>
+    <string name="custom_path_cancel">Batal</string>
+    <string name="mount_targets_count_badge">%1$d Target</string>
 </resources>
 
 

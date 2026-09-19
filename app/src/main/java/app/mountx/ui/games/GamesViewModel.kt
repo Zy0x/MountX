@@ -151,9 +151,37 @@ class GamesViewModel @Inject constructor(
         }
     }
 
+    private val _isRestoring = MutableStateFlow(false)
+    val isRestoring: StateFlow<Boolean> = _isRestoring.asStateFlow()
+    private val _restoreProgress = MutableStateFlow(0f)
+    val restoreProgress: StateFlow<Float> = _restoreProgress.asStateFlow()
+    private val _restoreMessage = MutableStateFlow("")
+    val restoreMessage: StateFlow<String> = _restoreMessage.asStateFlow()
+
     fun removeGame(packageName: String) {
         viewModelScope.launch {
             gameRepository.removeGame(packageName)
+        }
+    }
+
+    fun removeGameWithOption(context: Context, packageName: String, restoreToInternal: Boolean) {
+        viewModelScope.launch {
+            _isRestoring.value = restoreToInternal
+            _restoreProgress.value = 0f
+            _restoreMessage.value = ""
+            val sdBase = appPreferences.sdBasePath.first()
+            gameRepository.removeGameWithOption(
+                context = context,
+                packageName = packageName,
+                restoreToInternal = restoreToInternal,
+                sdBase = sdBase
+            ) { progress, msg ->
+                _restoreProgress.value = progress
+                _restoreMessage.value = msg
+            }
+            _isRestoring.value = false
+            _restoreProgress.value = 0f
+            refresh()
         }
     }
 
