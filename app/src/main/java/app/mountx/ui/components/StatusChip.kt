@@ -28,18 +28,23 @@ import app.mountx.data.model.MountStatus
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.NeonCrimson
 
+import androidx.compose.ui.graphics.luminance
+import app.mountx.ui.theme.EmeraldActive
+
 @Composable
 fun StatusChip(
     status: MountStatus,
     modifier: Modifier = Modifier
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val mountedColor = if (isDark) CyberEmerald else EmeraldActive
     val (labelRes, icon, containerColor, borderColor, contentColor) = when (status) {
         MountStatus.MOUNTED -> Quintuple(
             R.string.status_mounted,
             Icons.Default.Check,
-            CyberEmerald.copy(alpha = 0.14f),
-            CyberEmerald.copy(alpha = 0.45f),
-            CyberEmerald
+            if (isDark) CyberEmerald.copy(alpha = 0.14f) else EmeraldActive.copy(alpha = 0.12f),
+            if (isDark) CyberEmerald.copy(alpha = 0.45f) else EmeraldActive.copy(alpha = 0.35f),
+            mountedColor
         )
         MountStatus.UNMOUNTED -> Quintuple(
             R.string.status_unmounted,

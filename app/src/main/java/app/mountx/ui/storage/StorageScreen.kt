@@ -64,6 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -1284,6 +1285,9 @@ private fun InternalDiskVisualMapCard(
 
             // Single-partition visual map bar
             val usedFrac = internalStorage.usedPercent.coerceIn(0f, 1f)
+            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+            val emptyBg = if (isDark) Color(0xFF182030) else Color(0xFFE2E8F0)
+            val labelColor = if (isDark || usedFrac > 0.45f) Color.White else MaterialTheme.colorScheme.onSurface
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1294,7 +1298,7 @@ private fun InternalDiskVisualMapCard(
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF182030))
+                        .background(emptyBg)
                         .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)), RoundedCornerShape(8.dp))
                 ) {
                     if (usedFrac > 0.001f) {
@@ -1321,14 +1325,14 @@ private fun InternalDiskVisualMapCard(
                         Text(
                             text = "userdata",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-                            color = Color.White,
+                            color = labelColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = FormatUtils.formatBytes(internalStorage.totalBytes),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                            color = Color.White.copy(alpha = 0.75f),
+                            color = labelColor.copy(alpha = 0.85f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1504,12 +1508,16 @@ private fun DiskVisualMapOverviewCard(
                             (part.usedBytes.toFloat() / part.sizeBytes.toFloat()).coerceIn(0f, 1f)
                         } else 0f
 
+                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                        val emptyBg = if (isDark) Color(0xFF182030) else Color(0xFFE2E8F0)
+                        val labelColor = if (isDark || usedFraction > 0.45f) Color.White else MaterialTheme.colorScheme.onSurface
+
                         Box(
                             modifier = Modifier
                                 .weight(weightFraction)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF182030))
+                                .background(emptyBg)
                                 .border(
                                     BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
                                     RoundedCornerShape(6.dp)
@@ -1550,7 +1558,7 @@ private fun DiskVisualMapOverviewCard(
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold
                                     ),
-                                    color = Color.White,
+                                    color = labelColor,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -1560,7 +1568,7 @@ private fun DiskVisualMapOverviewCard(
                                         fontSize = 8.5.sp,
                                         fontWeight = FontWeight.Medium
                                     ),
-                                    color = Color.White.copy(alpha = 0.85f),
+                                    color = labelColor.copy(alpha = 0.85f),
                                     maxLines = 1
                                 )
                             }

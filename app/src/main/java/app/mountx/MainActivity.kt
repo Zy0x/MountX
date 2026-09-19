@@ -75,17 +75,42 @@ class MainActivity : ComponentActivity() {
             val themeMode by appPreferences.themeMode.collectAsState(initial = app.mountx.util.ThemeMode.SYSTEM)
             val language by appPreferences.language.collectAsState(initial = "en")
 
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val localizedResources = remember(language, context) {
-                val locale = java.util.Locale(language)
+            val localizedContext = remember(language) {
+                val locale = if (language == "id") java.util.Locale("id", "ID") else java.util.Locale("en", "US")
+                val fallbackLocale = if (language == "id") java.util.Locale("in", "ID") else java.util.Locale("en", "GB")
                 java.util.Locale.setDefault(locale)
-                val config = android.content.res.Configuration(context.resources.configuration)
+
+                val config = android.content.res.Configuration(this@MainActivity.resources.configuration)
                 config.setLocale(locale)
-                context.createConfigurationContext(config).resources
+                config.setLocales(android.os.LocaleList(locale, fallbackLocale))
+                config.setLayoutDirection(locale)
+
+                @Suppress("DEPRECATION")
+                this@MainActivity.resources.updateConfiguration(config, this@MainActivity.resources.displayMetrics)
+                @Suppress("DEPRECATION")
+                this@MainActivity.applicationContext.resources.updateConfiguration(config, this@MainActivity.applicationContext.resources.displayMetrics)
+
+                LocalizedActivityContext(this@MainActivity, config)
+            }
+
+            val darkTheme = when (themeMode) {
+                app.mountx.util.ThemeMode.LIGHT -> false
+                app.mountx.util.ThemeMode.DARK -> true
+                app.mountx.util.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+
+            val view = androidx.compose.ui.platform.LocalView.current
+            androidx.compose.runtime.DisposableEffect(darkTheme) {
+                val window = this@MainActivity.window
+                val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
+                insetsController.isAppearanceLightStatusBars = !darkTheme
+                insetsController.isAppearanceLightNavigationBars = !darkTheme
+                onDispose {}
             }
 
             androidx.compose.runtime.CompositionLocalProvider(
-                androidx.compose.ui.platform.LocalConfiguration provides localizedResources.configuration
+                androidx.compose.ui.platform.LocalConfiguration provides localizedContext.resources.configuration,
+                androidx.compose.ui.platform.LocalContext provides localizedContext
             ) {
                 MountXTheme(themeMode = themeMode) {
                     Surface(modifier = Modifier.fillMaxSize()) {
@@ -95,6 +120,17 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+private class LocalizedActivityContext(
+    base: android.app.Activity,
+    private val localizedConfig: android.content.res.Configuration
+) : android.content.ContextWrapper(base) {
+    private val localizedResources: android.content.res.Resources by lazy {
+        base.createConfigurationContext(localizedConfig).resources
+    }
+
+    override fun getResources(): android.content.res.Resources = localizedResources
 }
 
 // ── Full App Compose Previews (Android Studio Design / Split View) ──

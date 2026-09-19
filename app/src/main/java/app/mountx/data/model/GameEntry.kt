@@ -36,10 +36,13 @@ data class GameEntry(
 
 /**
  * Metadata for installed application item shown in AddGameSheet.
+ * Marked @Immutable for zero-recomposition 120 FPS LazyColumn scrolling.
  */
+@androidx.compose.runtime.Immutable
 data class InstalledAppInfo(
     val packageName: String,
     val displayName: String,
     val isGame: Boolean = false,
-    val isSystemApp: Boolean = false
+    val isSystemApp: Boolean = false,
+    val hasPreset: Boolean = false
 )

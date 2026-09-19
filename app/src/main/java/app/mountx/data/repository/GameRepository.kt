@@ -335,13 +335,14 @@ class GameRepository @Inject constructor(
                 val label = pm.getApplicationLabel(app).toString()
                 val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
                     (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                val isGame = (app.category == ApplicationInfo.CATEGORY_GAME) ||
-                    (SmartGamePresets.findPreset(app.packageName) != null)
+                val preset = SmartGamePresets.findPreset(app.packageName)
+                val isGame = (app.category == ApplicationInfo.CATEGORY_GAME) || (preset != null)
                 InstalledAppInfo(
                     packageName = app.packageName,
                     displayName = label.ifBlank { app.packageName },
                     isGame = isGame,
-                    isSystemApp = isSystem
+                    isSystemApp = isSystem,
+                    hasPreset = preset != null
                 )
             }
             .sortedWith(

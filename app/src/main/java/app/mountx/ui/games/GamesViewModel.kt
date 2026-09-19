@@ -85,7 +85,10 @@ class GamesViewModel @Inject constructor(
     fun loadInstalledApps(force: Boolean = false) {
         if (!force && _installedApps.value.isNotEmpty()) return
         viewModelScope.launch {
-            _installedApps.value = gameRepository.getInstalledApps(context)
+            val apps = gameRepository.getInstalledApps(context)
+            _installedApps.value = apps
+            // Background pre-warming of all app icons into memory cache
+            app.mountx.ui.components.AppIconManager.prewarmIcons(context, apps.map { it.packageName })
         }
     }
 

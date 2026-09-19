@@ -48,6 +48,12 @@
     <string name="dashboard_metric_namespaces">Namespaces</string>
     <string name="dashboard_metric_namespaces_active">7 Active</string>
     <string name="dashboard_metric_namespaces_idle">Standby</string>
+    <string name="dashboard_disk_overview">Disk Overview</string>
+    <string name="dashboard_internal_storage">Internal Storage</string>
+    <string name="dashboard_games_offloaded_format">%1$d game offloaded · %2$s freed</string>
+    <string name="dashboard_free_suffix">%1$s free</string>
+    <string name="dashboard_active_count_format">%1$d / %2$d Active</string>
+    <string name="dashboard_mounted_count_format">%1$d / %2$d Mounted</string>
 
     <!-- Root Solutions -->
     <string name="root_magisk">Magisk</string>
@@ -412,6 +418,8 @@
     <string name="about_update_available">Update Available: %1$s</string>
     <string name="about_download_update">Download</string>
     <string name="about_checking_update">Checking…</string>
+    <string name="about_software_updates">Software Updates</string>
+    <string name="about_resources">Resources</string>
 
     <!-- Common -->
     <string name="common_ok">OK</string>

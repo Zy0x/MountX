@@ -61,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -529,12 +530,16 @@ private fun DiskMiniVisualMapCard(
                             part.cleanShortName
                         }
 
+                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                        val emptyBg = if (isDark) Color(0xFF182030) else Color(0xFFE2E8F0)
+                        val labelColor = if (isDark || part.usedPercent > 0.45f) Color.White else MaterialTheme.colorScheme.onSurface
+
                         Box(
                             modifier = Modifier
                                 .weight(weight)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF182030))
+                                .background(emptyBg)
                                 .border(
                                     BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
                                     RoundedCornerShape(8.dp)
@@ -574,7 +579,7 @@ private fun DiskMiniVisualMapCard(
                                         fontSize = if (weight < 0.25f) 9.5.sp else 10.5.sp,
                                         fontWeight = FontWeight.Bold
                                     ),
-                                    color = Color.White,
+                                    color = labelColor,
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis
@@ -585,7 +590,7 @@ private fun DiskMiniVisualMapCard(
                                         fontSize = 8.sp,
                                         fontWeight = FontWeight.Medium
                                     ),
-                                    color = Color.White.copy(alpha = 0.85f),
+                                    color = labelColor.copy(alpha = 0.85f),
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis

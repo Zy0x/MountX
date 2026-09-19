@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -70,8 +71,11 @@ fun ModernNavigationBar(
 ) {
     val haptic = LocalHapticFeedback.current
     val barShape = RoundedCornerShape(26.dp)
-    val dockBgColor = Color(0xFF131620)
-    val dockBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
+    val dockBgColor = if (isDark) Color(0xFF131620) else Color(0xFFFFFFFF)
+    val dockBorderColor = if (isDark) Color(0xFF232838) else Color(0xFFE2E8F0)
+    val shadowSpotColor = if (isDark) HyperCyan.copy(alpha = 0.20f) else Color(0xFF0F172A).copy(alpha = 0.08f)
 
     Box(
         modifier = modifier
@@ -83,7 +87,7 @@ fun ModernNavigationBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(66.dp)
-                .shadow(elevation = 8.dp, shape = barShape, spotColor = HyperCyan.copy(alpha = 0.15f))
+                .shadow(elevation = 8.dp, shape = barShape, spotColor = shadowSpotColor)
                 .border(
                     width = 1.dp,
                     color = dockBorderColor,
@@ -128,11 +132,11 @@ private fun CyberNavItem(
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     val activeColor = if (isDark) HyperCyanBright else MaterialTheme.colorScheme.primary
-    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.60f)
-    val activePillBg = if (isDark) HyperCyan.copy(alpha = 0.14f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+    val inactiveColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.60f) else Color(0xFF64748B)
+    val activePillBg = if (isDark) HyperCyan.copy(alpha = 0.14f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
 
     val containerColor = if (selected) activePillBg else Color.Transparent
     val contentColor = if (selected) activeColor else inactiveColor

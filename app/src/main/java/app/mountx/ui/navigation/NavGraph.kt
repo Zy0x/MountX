@@ -2,9 +2,12 @@ package app.mountx.ui.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -12,12 +15,17 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -147,6 +155,38 @@ fun MainTabsScreen(
     val currentRoute = screens.getOrNull(activeIndex)?.route ?: Screen.Dashboard.route
 
     var isOuterPagerScrollEnabled by remember { mutableStateOf(true) }
+    var isGamesSubScreenActive by remember { mutableStateOf(false) }
+    var isScrollingUp by remember { mutableStateOf(true) }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (isGamesSubScreenActive) return Offset.Zero
+                val delta = available.y
+                if (delta < -14f) {
+                    isScrollingUp = false
+                } else if (delta > 14f) {
+                    isScrollingUp = true
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        isScrollingUp = true
+    }
+
+    LaunchedEffect(isGamesSubScreenActive) {
+        if (!isGamesSubScreenActive) {
+            isScrollingUp = true
+        }
+    }
+
+    val isBottomBarVisible = isScrollingUp && !isGamesSubScreenActive
 
     // Natural Android back gesture returns to Dashboard tab first
     BackHandler(enabled = pagerState.currentPage != 0 && isOuterPagerScrollEnabled) {
@@ -157,25 +197,39 @@ fun MainTabsScreen(
 
     Scaffold(
         bottomBar = {
-            ModernNavigationBar(
-                screens = screens,
-                currentRoute = currentRoute,
-                onNavigate = { screen ->
-                    val targetIndex = screens.indexOf(screen)
-                    if (targetIndex >= 0) {
-                        coroutineScope.launch {
-                            if (kotlin.math.abs(pagerState.currentPage - targetIndex) <= 1) {
-                                pagerState.animateScrollToPage(targetIndex)
-                            } else {
-                                pagerState.scrollToPage(targetIndex)
+            AnimatedVisibility(
+                visible = isBottomBarVisible,
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = tween(220)
+                ) + fadeIn(animationSpec = tween(180)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = tween(220)
+                ) + fadeOut(animationSpec = tween(180))
+            ) {
+                ModernNavigationBar(
+                    screens = screens,
+                    currentRoute = currentRoute,
+                    onNavigate = { screen ->
+                        val targetIndex = screens.indexOf(screen)
+                        if (targetIndex >= 0) {
+                            coroutineScope.launch {
+                                if (kotlin.math.abs(pagerState.currentPage - targetIndex) <= 1) {
+                                    pagerState.animateScrollToPage(targetIndex)
+                                } else {
+                                    pagerState.scrollToPage(targetIndex)
+                                }
                             }
                         }
                     }
-                }
-            )
+                )
+            }
         },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(nestedScrollConnection)
     ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
@@ -200,7 +254,8 @@ fun MainTabsScreen(
                     val gamesVm = hiltViewModel<GamesViewModel>()
                     GamesScreen(
                         viewModel = gamesVm,
-                        onPagerScrollEnabled = { isOuterPagerScrollEnabled = it }
+                        onPagerScrollEnabled = { isOuterPagerScrollEnabled = it },
+                        onBottomBarVisibilityChanged = { isVisible -> isGamesSubScreenActive = !isVisible }
                     )
                 }
                 2 -> {

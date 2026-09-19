@@ -5,6 +5,32 @@ All notable changes to Mountify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.5] - 2026-09-19
+
+### Added
+- **Instant App-Wide Localization Engine**:
+  - Configured `LocalContext` in Compose to supply dynamic `localizedContext` created from `createConfigurationContext`, enabling instantaneous translation of 100% of UI strings across all screens upon language selection without restarting.
+  - Aligned locale synchronization across Android 10 through 15+ using `LocaleManager` and `applyOverrideConfiguration`.
+  - Comprehensive English (EN) and Indonesian (ID) coverage across all navigation labels, settings, picker headers, and dialogs.
+- **High-Performance App Picker Architecture (120 FPS Anti-Lag)**:
+  - Background asynchronous icon pre-warming: Proactively decodes application icons in memory via a dedicated background coroutine immediately following app discovery.
+  - Optimized in-memory icon `LruCache` with 72x72/96x96 px rendering dimensions, eliminating repeat Binder IPC calls to `PackageManagerService`.
+  - Isolated `@Composable fun AppPickerItemCard` with `@Stable` parameters to enable Compose smart recomposition skipping during high-speed flings.
+  - Native Full-Screen sub-screen architecture: Automatically hides the floating bottom navigation bar when opening the App Picker, maximizing screen real estate and eliminating redundant view rendering.
+- **Smart Auto-Hide Navigation Bar**:
+  - Implemented directional scroll detection that smoothly translates the bottom navigation bar out of view on downward scroll and restores it on upward scroll.
+- **Polished Light Theme & System Insets Audit**:
+  - Adaptive status bar icons: Integrated `WindowInsetsControllerCompat` to render crisp, dark system icons (`isAppearanceLightStatusBars = true`) in Light Mode, eliminating invisible white-on-white text.
+  - Dedicated *Frost Light* dock container for `ModernNavigationBar`: Clean white/frost surface (`#FFFFFF`) with subtle border (`#E2E8F0`) and soft ambient shadow, replacing the dark navy block in Light Mode.
+  - High-contrast card backgrounds, borders, and text labels for WCAG AAA accessibility compliance in Light Mode.
+  - Preserved high-contrast dark *Cyber Terminal* container (`#090D16`) for the Logs tab and filesystem check (fsck/trim) diagnostic output across all themes.
+
+### Fixed
+- Fixed Compose `stringResource` ignoring runtime language change due to `LocalContext` retaining system base context.
+- Fixed catastrophic frame drops and stuttering when scrolling through 200+ apps in the Add Game picker.
+- Fixed bottom navigation bar dock background remaining hardcoded to dark navy (`#131620`) in Light Theme.
+- Fixed status bar icons becoming unreadable white-on-white in Light Theme.
+
 ## [2.2.4] - 2026-09-19
 
 ### Added

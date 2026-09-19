@@ -160,9 +160,9 @@ fun LogsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(bottom = 12.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF090D16))
+                        .border(1.dp, Color(0xFF222C44), RoundedCornerShape(14.dp))
                         .padding(10.dp)
                 ) {
                     LazyColumn(
@@ -176,8 +176,8 @@ fun LogsScreen(
                                 LogLevel.ERROR -> NeonCrimson
                                 LogLevel.SUCCESS -> CyberEmerald
                                 LogLevel.WARN -> Color(0xFFFFB74D)
-                                LogLevel.DEBUG -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                LogLevel.INFO -> MaterialTheme.colorScheme.onSurface
+                                LogLevel.DEBUG -> Color(0xFF94A3B8)
+                                LogLevel.INFO -> Color(0xFFF1F5F9)
                             }
                             Text(
                                 text = line.rawText,

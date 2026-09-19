@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +49,7 @@ import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.theme.AuroraGradientBrush
 import app.mountx.ui.theme.CyberEmerald
+import app.mountx.ui.theme.EmeraldActive
 import app.mountx.ui.theme.NeonCrimson
 
 /**
@@ -122,6 +125,7 @@ fun AddAppPicker(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .navigationBarsPadding()
     ) {
         val contentModifier = if (pendingSystemApp != null && blurRadius > 0.dp) {
             Modifier.fillMaxSize().blur(blurRadius)
@@ -619,6 +623,10 @@ private fun BrowseAppListView(
                 }
             }
         } else {
+            val onSelectCallback = remember<(InstalledAppInfo) -> Unit> {
+                { app -> onAppSelected(app) }
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -631,130 +639,139 @@ private fun BrowseAppListView(
                     key = { it.packageName },
                     contentType = { "app_card" }
                 ) { app ->
-                    val hasPreset = remember(app.packageName) {
-                        SmartGamePresets.findPreset(app.packageName) != null
+                    AppPickerItemCard(
+                        app = app,
+                        onSelect = onSelectCallback
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppPickerItemCard(
+    app: InstalledAppInfo,
+    onSelect: (InstalledAppInfo) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val gameBadgeColor = if (isDark) CyberEmerald else EmeraldActive
+
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (app.isSystemApp) {
+                NeonCrimson.copy(alpha = 0.28f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            }
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onSelect(app) }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            AppIconImage(
+                packageName = app.packageName,
+                size = 36.dp
+            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        text = app.displayName,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+
+                    if (app.isSystemApp) {
+                        Box(
+                            modifier = Modifier
+                                .background(NeonCrimson.copy(alpha = 0.14f), RoundedCornerShape(3.dp))
+                                .border(1.dp, NeonCrimson.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 3.5.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.add_app_tag_system),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = NeonCrimson
+                            )
+                        }
+                    } else if (app.isGame) {
+                        Box(
+                            modifier = Modifier
+                                .background(gameBadgeColor.copy(alpha = 0.14f), RoundedCornerShape(3.dp))
+                                .border(1.dp, gameBadgeColor.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 3.5.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.add_app_tag_game),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = gameBadgeColor
+                            )
+                        }
                     }
 
-                    Card(
-                        shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        ),
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = if (app.isSystemApp) {
-                                NeonCrimson.copy(alpha = 0.28f)
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                            }
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onAppSelected(app) }
-                    ) {
-                        Row(
+                    if (app.hasPreset) {
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), RoundedCornerShape(3.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 3.5.dp, vertical = 1.dp)
                         ) {
-                            AppIconImage(
-                                packageName = app.packageName,
-                                size = 36.dp
-                            )
-
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Text(
-                                        text = app.displayName,
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        ),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-
-                                    if (app.isSystemApp) {
-                                        Surface(
-                                            shape = RoundedCornerShape(3.dp),
-                                            color = NeonCrimson.copy(alpha = 0.14f),
-                                            border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f))
-                                        ) {
-                                            Text(
-                                                text = stringResource(R.string.add_app_tag_system),
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                                                fontWeight = FontWeight.Bold,
-                                                color = NeonCrimson,
-                                                modifier = Modifier.padding(horizontal = 3.5.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    } else if (app.isGame) {
-                                        Surface(
-                                            shape = RoundedCornerShape(3.dp),
-                                            color = CyberEmerald.copy(alpha = 0.14f),
-                                            border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.35f))
-                                        ) {
-                                            Text(
-                                                text = stringResource(R.string.add_app_tag_game),
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                                                fontWeight = FontWeight.Bold,
-                                                color = CyberEmerald,
-                                                modifier = Modifier.padding(horizontal = 3.5.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    }
-
-                                    if (hasPreset) {
-                                        Surface(
-                                            shape = RoundedCornerShape(3.dp),
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                                        ) {
-                                            Text(
-                                                text = "SMART",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(horizontal = 3.5.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(1.dp))
-
-                                Text(
-                                    text = app.packageName,
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 10.5.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                                modifier = Modifier.size(16.dp)
+                            Text(
+                                text = "SMART",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(1.dp))
+
+                Text(
+                    text = app.packageName,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 10.5.sp,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }

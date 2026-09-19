@@ -54,7 +54,8 @@ import app.mountx.util.FormatUtils
 fun GamesScreen(
     viewModel: GamesViewModel,
     modifier: Modifier = Modifier,
-    onPagerScrollEnabled: (Boolean) -> Unit = {}
+    onPagerScrollEnabled: (Boolean) -> Unit = {},
+    onBottomBarVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val games by viewModel.games.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -70,7 +71,9 @@ fun GamesScreen(
     var gameToDelete by remember { mutableStateOf<GameEntry?>(null) }
 
     LaunchedEffect(showAddSheet, selectedGameForDetail) {
-        onPagerScrollEnabled(!showAddSheet && selectedGameForDetail == null)
+        val isPickerOrDetail = showAddSheet || selectedGameForDetail != null
+        onPagerScrollEnabled(!isPickerOrDetail)
+        onBottomBarVisibilityChanged(!isPickerOrDetail)
     }
 
     if (showAddSheet) {

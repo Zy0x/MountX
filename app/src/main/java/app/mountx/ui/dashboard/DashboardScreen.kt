@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -312,10 +313,13 @@ private fun SleekCompactHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+                val activeEmeraldGlow = if (isDark) EmeraldGlow else EmeraldActive.copy(alpha = 0.12f)
                 val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
-                    RootSolution.MAGISK -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_magisk))
-                    RootSolution.KERNELSU -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_kernelsu))
-                    RootSolution.APATCH -> Triple(CyberEmerald, EmeraldGlow, stringResource(R.string.root_apatch))
+                    RootSolution.MAGISK -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_magisk))
+                    RootSolution.KERNELSU -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_kernelsu))
+                    RootSolution.APATCH -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_apatch))
                     RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
                 }
 
@@ -488,13 +492,15 @@ private fun SmartMasterControlCard(
 ) {
     val haptic = LocalHapticFeedback.current
     val allMounted = totalCount > 0 && mountedCount == totalCount
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (allMounted) CyberEmerald.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline
+            if (allMounted) activeEmerald.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -517,14 +523,14 @@ private fun SmartMasterControlCard(
                     shape = RoundedCornerShape(10.dp),
                     color = when {
                         totalCount == 0 -> MaterialTheme.colorScheme.surfaceVariant
-                        allMounted -> CyberEmerald.copy(alpha = 0.15f)
+                        allMounted -> activeEmerald.copy(alpha = 0.15f)
                         else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                     },
                     border = BorderStroke(
                         1.dp,
                         when {
                             totalCount == 0 -> MaterialTheme.colorScheme.outlineVariant
-                            allMounted -> CyberEmerald.copy(alpha = 0.4f)
+                            allMounted -> activeEmerald.copy(alpha = 0.4f)
                             else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                         }
                     )
@@ -538,20 +544,20 @@ private fun SmartMasterControlCard(
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
-                                    .background(CyberEmerald, CircleShape)
+                                    .background(activeEmerald, CircleShape)
                             )
                         }
                         Text(
                             text = when {
                                 totalCount == 0 -> "0 / 0"
-                                allMounted -> "$mountedCount / $totalCount Active"
-                                else -> "$mountedCount / $totalCount Mounted"
+                                allMounted -> stringResource(R.string.dashboard_active_count_format, mountedCount, totalCount)
+                                else -> stringResource(R.string.dashboard_mounted_count_format, mountedCount, totalCount)
                             },
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             fontWeight = FontWeight.Bold,
                             color = when {
                                 totalCount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
-                                allMounted -> CyberEmerald
+                                allMounted -> activeEmerald
                                 else -> MaterialTheme.colorScheme.primary
                             }
                         )
@@ -601,7 +607,7 @@ private fun SmartMasterControlCard(
                             .fillMaxWidth()
                             .height(38.dp)
                             .background(
-                                brush = AuroraGradientBrush,
+                                brush = if (isDark) AuroraGradientBrush else AuroraGradientBrushLight,
                                 shape = RoundedCornerShape(10.dp)
                             ),
                         shape = RoundedCornerShape(10.dp),
@@ -747,7 +753,7 @@ private fun DashboardTelemetryCard(
                         }
                     }
                     Text(
-                        text = "Disk Overview",
+                        text = stringResource(R.string.dashboard_disk_overview),
                         style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     )
                 }
@@ -774,10 +780,11 @@ private fun DashboardTelemetryCard(
             // Internal Storage Row
             if (internalStorage != null) {
                 val intUsedRatio = internalStorage.usedPercent.coerceIn(0f, 1f)
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                 DiskTelemetryRow(
                     icon = Icons.Default.PhoneAndroid,
-                    iconTint = ElectricCyan,
-                    label = "Internal Storage",
+                    iconTint = if (isDark) ElectricCyan else MaterialTheme.colorScheme.primary,
+                    label = stringResource(R.string.dashboard_internal_storage),
                     subLabel = "/data",
                     usedRatio = intUsedRatio,
                     usedBytes = internalStorage.usedBytes,
@@ -840,7 +847,7 @@ private fun DashboardTelemetryCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${offloadedStats.first} game offloaded · ${FormatUtils.formatBytes(offloadedStats.second)} freed",
+                        text = stringResource(R.string.dashboard_games_offloaded_format, offloadedStats.first, FormatUtils.formatBytes(offloadedStats.second)),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                         color = EmeraldActive
                     )
@@ -887,7 +894,7 @@ private fun DiskTelemetryRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (totalBytes > 0) FormatUtils.formatBytes(freeBytes) + " free" else "—",
+                    text = if (totalBytes > 0) stringResource(R.string.dashboard_free_suffix, FormatUtils.formatBytes(freeBytes)) else "—",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
@@ -983,6 +990,8 @@ private fun DashboardMetricsRow(
         }
 
         // Tile 2: Runtime Namespaces
+        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -992,10 +1001,10 @@ private fun DashboardMetricsRow(
             Column(modifier = Modifier.padding(12.dp)) {
                 Surface(
                     shape = CircleShape,
-                    color = if (mountedCount > 0) CyberEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                    color = if (mountedCount > 0) activeEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
                     border = BorderStroke(
                         1.dp,
-                        if (mountedCount > 0) CyberEmerald.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant
+                        if (mountedCount > 0) activeEmerald.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant
                     ),
                     modifier = Modifier.size(28.dp)
                 ) {
@@ -1003,7 +1012,7 @@ private fun DashboardMetricsRow(
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = if (mountedCount > 0) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = if (mountedCount > 0) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(14.dp)
                         )
                     }

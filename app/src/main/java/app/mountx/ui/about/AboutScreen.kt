@@ -24,11 +24,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.luminance
 import app.mountx.BuildConfig
 import app.mountx.R
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.SectionHeader
 import app.mountx.ui.theme.CyberEmerald
+import app.mountx.ui.theme.EmeraldActive
 import app.mountx.ui.theme.NeonCrimson
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,7 +121,7 @@ fun AboutScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Software Updates",
+                                text = stringResource(R.string.about_software_updates),
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -156,10 +158,11 @@ fun AboutScreen(
                                     Text(stringResource(R.string.about_download_update), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             } else {
+                                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                                 Text(
                                     text = stringResource(R.string.about_up_to_date),
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                    color = CyberEmerald
+                                    color = if (isDark) CyberEmerald else EmeraldActive
                                 )
                             }
                         } else if (checkError != null) {
@@ -191,7 +194,7 @@ fun AboutScreen(
 
             // Links & Resources
             item {
-                SectionHeader(title = "Resources")
+                SectionHeader(title = stringResource(R.string.about_resources))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
