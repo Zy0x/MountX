@@ -426,8 +426,7 @@ class StorageManager {
             m.file.startsWith("/storage/") &&
             !m.file.contains("/Android/") &&
             !m.file.contains("/.") &&
-            blacklistedStoragePrefixes.none { m.file.startsWith(it) } &&
-            (validVolumeRegex.matches(m.file) || (m.file.removePrefix("/storage/").split("/").size == 1 && !m.file.contains(".")))
+            validVolumeRegex.matches(m.file)
         }.distinctBy { it.file }
 
         for (smMount in externalStorageMounts) {
@@ -1016,8 +1015,12 @@ class StorageManager {
         }
 
         val disks = mutableListOf<SdCardDiskInfo>()
+        val physicalDiskRegex = Regex("^(mmcblk[0-9]+|sd[a-z]+|nvme[0-9]+n[0-9]+)$")
 
         for (candidateDisk in candidateDiskNames) {
+            if (!physicalDiskRegex.matches(candidateDisk) || candidateDisk.contains("boot") || candidateDisk.contains("rpmb")) {
+                continue
+            }
             val diskPath = "/dev/block/$candidateDisk"
             val isMmc = candidateDisk.startsWith("mmcblk")
             val diskType = if (isMmc) DiskType.MICRO_SD else DiskType.USB_OTG
