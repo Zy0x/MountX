@@ -371,7 +371,10 @@
     <string name="settings_theme_dark">Gelap</string>
     <string name="settings_theme_system">Ikuti Sistem</string>
     <string name="settings_language">Bahasa</string>
+    <string name="settings_language_en">English (EN)</string>
+    <string name="settings_language_id">Indonesia (ID)</string>
     <string name="settings_storage">Penyimpanan</string>
+    <string name="settings_storage_config">Penyimpanan</string>
     <string name="settings_sd_base_path">Path Dasar SD</string>
     <string name="settings_sd_base_path_hint">/data/sdext2</string>
     <string name="settings_sd_block_device">Block Device (Manual)</string>
@@ -564,6 +567,27 @@
     <string name="op_detail_unsupported">Tidak Didukung</string>
     <string name="op_detail_freed">dibebaskan</string>
     <string name="op_detail_done">Selesai</string>
+
+    <!-- Pemulihan Darurat -->
+    <string name="settings_emergency_title">Pemulihan Darurat</string>
+    <string name="settings_emergency_desc">Pemulihan bencana: lepas paksa seluruh bind mount, reset izin penyimpanan internal, dan pulihkan SELinux.</string>
+    <string name="settings_emergency_panic_btn">Reset Panik Darurat (Unmount Total &amp; Reset Izin)</string>
+    <string name="settings_emergency_panic_confirm_title">Reset Panik Darurat</string>
+    <string name="settings_emergency_panic_confirm_msg">Tindakan ini akan melepas paksa seluruh direktori game, menutup proses terkait, dan mengembalikan izin default penyimpanan internal Android. Lanjutkan?</string>
+    <string name="settings_emergency_generate_script">Buat Skrip Pemulihan (/sdcard)</string>
+    <string name="settings_emergency_script_success">Skrip pemulihan berhasil dibuat di /sdcard/MountX_Emergency_Restore.sh</string>
+
+    <!-- Portabilitas MicroSD & Deteksi Cerdas -->
+    <string name="portability_banner_title">Ditemukan %1$d Game di MicroSD</string>
+    <string name="portability_banner_desc">Data game terdeteksi pada MicroSD Anda. Ketuk untuk memulihkan dan menyinkronkan izin secara instan.</string>
+    <string name="portability_btn_restore">Pulihkan &amp; Sinkronkan</string>
+    <string name="portability_btn_dismiss">Abaikan</string>
+    <string name="portability_sheet_title">Deteksi Game MicroSD</string>
+    <string name="portability_unlinked_label">Data Belum Terhubung</string>
+    <string name="portability_not_installed_label">APK Belum Terpasang</string>
+    <string name="portability_ready_label">Siap Disinkronkan</string>
+    <string name="portability_restore_all">Pulihkan Semua Game</string>
+    <string name="portability_restore_success">Berhasil memulihkan dan menyinkronkan izin %1$d game.</string>
 </resources>
 
 

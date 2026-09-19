@@ -352,9 +352,35 @@ process_game() {
     fi
 }
 
+# ── Safe-Uninstall Guard ──────────────────────────────────────────────────────
+# Detects if MountX app was uninstalled. If so, unmounts all bind-mounts,
+# restores internal Android storage permissions, and disables module self-reliantly.
+check_safe_uninstall() {
+    log_info "Validating MountX application installation…"
+    if ! pm path app.mountx >/dev/null 2>&1 && ! pm path app.mountx.debug >/dev/null 2>&1; then
+        log_warn "MountX app is not installed! Safe-Uninstall protocol triggered."
+        # Unmount all active bind mounts pointing to SD_BASE
+        for m in $(grep "${SD_BASE}" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
+            if [ "${m}" != "${SD_BASE}" ]; then
+                umount -l "${m}" 2>/dev/null
+            fi
+        done
+        # Restore ownership & permissions on internal Android directories
+        chmod 775 /data/media/0/Android/data 2>/dev/null
+        chmod 775 /data/media/0/Android/obb 2>/dev/null
+        restorecon -R /data/media/0/Android 2>/dev/null
+        # Disable Magisk module to avoid stale mounts
+        touch "${MODULE_DIR}/disable" 2>/dev/null
+        log_warn "MountX module disabled automatically. Safe-uninstall cleanup completed."
+        exit 0
+    fi
+    log_info "MountX app verified present."
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
     wait_for_boot
+    check_safe_uninstall
     load_config
     mount_sd
     apply_io_tweaks

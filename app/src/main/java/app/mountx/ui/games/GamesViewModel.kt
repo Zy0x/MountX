@@ -3,6 +3,7 @@ package app.mountx.ui.games
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.mountx.data.catalog.DiscoveredGame
 import app.mountx.data.model.AppStorageBreakdown
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.InstalledAppInfo
@@ -45,6 +46,12 @@ class GamesViewModel @Inject constructor(
 
     val games: StateFlow<List<GameEntry>> = gameRepository.observeGames()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _discoveredGames = MutableStateFlow<List<DiscoveredGame>>(emptyList())
+    val discoveredGames: StateFlow<List<DiscoveredGame>> = _discoveredGames.asStateFlow()
+
+    private val _isScanningDiscovered = MutableStateFlow(false)
+    val isScanningDiscovered: StateFlow<Boolean> = _isScanningDiscovered.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -193,5 +200,42 @@ class GamesViewModel @Inject constructor(
 
     fun clearMoveMessage() {
         _moveMessage.value = null
+    }
+
+    fun scanDiscoveredGames() {
+        viewModelScope.launch {
+            _isScanningDiscovered.value = true
+            val sdBase = appPreferences.sdBasePath.first()
+            if (_installedApps.value.isEmpty()) {
+                val apps = gameRepository.getInstalledApps(context)
+                _installedApps.value = apps
+            }
+            val installedMap = _installedApps.value.associate { it.packageName to it.displayName }
+            val discovered = gameRepository.scanMicroSdGames(sdBase, installedMap)
+            _discoveredGames.value = discovered.filter { !it.isAlreadyRegistered }
+            _isScanningDiscovered.value = false
+        }
+    }
+
+    fun importDiscoveredGame(game: DiscoveredGame) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            gameRepository.importDiscoveredGame(game, sdBase)
+            scanDiscoveredGames()
+        }
+    }
+
+    fun importAllDiscoveredGames() {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            for (g in _discoveredGames.value) {
+                gameRepository.importDiscoveredGame(g, sdBase)
+            }
+            scanDiscoveredGames()
+        }
+    }
+
+    fun dismissDiscovered() {
+        _discoveredGames.value = emptyList()
     }
 }

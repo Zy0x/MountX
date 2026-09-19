@@ -35,6 +35,9 @@ fun SettingsScreen(
     val autoMount by viewModel.autoMountOnBoot.collectAsState()
 
     var showResetDialog by remember { mutableStateOf(false) }
+    var showEmergencyPanicDialog by remember { mutableStateOf(false) }
+    val isExecutingRescue by viewModel.isExecutingRescue.collectAsState()
+    val rescueMessage by viewModel.rescueMessage.collectAsState()
 
     Scaffold(
         topBar = {
@@ -54,6 +57,20 @@ fun SettingsScreen(
                     }
                 }
             )
+        },
+        snackbarHost = {
+            if (rescueMessage != null) {
+                Snackbar(
+                    action = {
+                        TextButton(onClick = { viewModel.clearRescueMessage() }) {
+                            Text(stringResource(R.string.common_ok), color = MaterialTheme.colorScheme.primary)
+                        }
+                    },
+                    modifier = Modifier.padding(14.dp)
+                ) {
+                    Text(rescueMessage ?: "")
+                }
+            }
         },
         containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier
@@ -128,18 +145,20 @@ fun SettingsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                    }
+                }
+            }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Text(
-                            text = stringResource(R.string.settings_language),
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
+            // Language
+            item {
+                SectionHeader(title = stringResource(R.string.settings_language))
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -149,7 +168,7 @@ fun SettingsScreen(
                                 onClick = { viewModel.setLanguage("en") },
                                 label = {
                                     Text(
-                                        text = "English (EN)",
+                                        text = stringResource(R.string.settings_language_en),
                                         fontSize = 11.sp,
                                         textAlign = TextAlign.Center,
                                         modifier = Modifier.fillMaxWidth()
@@ -162,7 +181,7 @@ fun SettingsScreen(
                                 onClick = { viewModel.setLanguage("id") },
                                 label = {
                                     Text(
-                                        text = "Indonesia (ID)",
+                                        text = stringResource(R.string.settings_language_id),
                                         fontSize = 11.sp,
                                         textAlign = TextAlign.Center,
                                         modifier = Modifier.fillMaxWidth()
@@ -171,6 +190,51 @@ fun SettingsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                    }
+                }
+            }
+
+            // Storage Config
+            item {
+                SectionHeader(title = stringResource(R.string.settings_storage_config))
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = stringResource(R.string.settings_sd_base_path),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "/data/sdext2",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Text(
+                            text = stringResource(R.string.settings_sd_block_device),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "/dev/block/mmcblk0p3",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -214,6 +278,67 @@ fun SettingsScreen(
                 }
             }
 
+            // Emergency Rescue Section
+            item {
+                SectionHeader(title = stringResource(R.string.settings_emergency_title))
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_emergency_desc),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.generateRescueScript() },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(36.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Text(
+                                    stringResource(R.string.settings_emergency_generate_script),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                )
+                            }
+
+                            Button(
+                                onClick = { showEmergencyPanicDialog = true },
+                                enabled = !isExecutingRescue,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(36.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Text(
+                                    stringResource(R.string.settings_emergency_panic_confirm_title),
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Advanced / Reset
             item {
                 SectionHeader(title = stringResource(R.string.settings_advanced))
@@ -224,8 +349,8 @@ fun SettingsScreen(
                         .height(36.dp),
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                    border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
                 ) {
                     Text(
                         stringResource(R.string.settings_reset),
@@ -251,6 +376,20 @@ fun SettingsScreen(
                 showResetDialog = false
             },
             onDismiss = { showResetDialog = false }
+        )
+    }
+
+    if (showEmergencyPanicDialog) {
+        ConfirmDialog(
+            title = stringResource(R.string.settings_emergency_panic_confirm_title),
+            message = stringResource(R.string.settings_emergency_panic_confirm_msg),
+            isDestructive = true,
+            confirmText = stringResource(R.string.common_confirm),
+            onConfirm = {
+                viewModel.executeEmergencyReset()
+                showEmergencyPanicDialog = false
+            },
+            onDismiss = { showEmergencyPanicDialog = false }
         )
     }
 }

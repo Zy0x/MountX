@@ -81,10 +81,9 @@ fun AboutScreen(
             // App Header & Logo
             item {
                 Spacer(modifier = Modifier.height(10.dp))
-                Icon(
+                Image(
                     painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    contentDescription = stringResource(R.string.app_name),
                     modifier = Modifier.size(64.dp)
                 )
                 Spacer(modifier = Modifier.height(4.dp))

@@ -386,7 +386,10 @@
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_language">Language</string>
+    <string name="settings_language_en">English (EN)</string>
+    <string name="settings_language_id">Indonesia (ID)</string>
     <string name="settings_storage">Storage</string>
+    <string name="settings_storage_config">Storage</string>
     <string name="settings_sd_base_path">SD Base Path</string>
     <string name="settings_sd_base_path_hint">/data/sdext2</string>
     <string name="settings_sd_block_device">Block Device (Manual)</string>
@@ -581,6 +584,27 @@
     <string name="op_detail_unsupported">Not Supported</string>
     <string name="op_detail_freed">freed</string>
     <string name="op_detail_done">Done</string>
+
+    <!-- Emergency Rescue -->
+    <string name="settings_emergency_title">Emergency Rescue</string>
+    <string name="settings_emergency_desc">Disaster recovery: force unmount all games, reset internal storage permissions, and restore SELinux.</string>
+    <string name="settings_emergency_panic_btn">Emergency Panic Reset (Unmount &amp; Reset Permissions)</string>
+    <string name="settings_emergency_panic_confirm_title">Emergency Panic Reset</string>
+    <string name="settings_emergency_panic_confirm_msg">This will force unmount all game directories, terminate related background locks, and restore default internal Android storage permissions. Continue?</string>
+    <string name="settings_emergency_generate_script">Generate Rescue Script (/sdcard)</string>
+    <string name="settings_emergency_script_success">Rescue script created at /sdcard/MountX_Emergency_Restore.sh</string>
+
+    <!-- MicroSD Portability & Smart Discovery -->
+    <string name="portability_banner_title">Discovered %1$d Game(s) on MicroSD</string>
+    <string name="portability_banner_desc">Existing game data was detected on your MicroSD card. Tap to import and reconcile permissions.</string>
+    <string name="portability_btn_restore">Restore &amp; Sync</string>
+    <string name="portability_btn_dismiss">Dismiss</string>
+    <string name="portability_sheet_title">MicroSD Game Discovery</string>
+    <string name="portability_unlinked_label">Unlinked Data</string>
+    <string name="portability_not_installed_label">APK Not Installed</string>
+    <string name="portability_ready_label">Ready to Sync</string>
+    <string name="portability_restore_all">Restore All Games</string>
+    <string name="portability_restore_success">Restored and reconciled %1$d game(s) successfully.</string>
 </resources>
 
 

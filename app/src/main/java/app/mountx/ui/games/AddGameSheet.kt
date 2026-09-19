@@ -636,8 +636,7 @@ private fun BrowseAppListView(
                 ) { app ->
                     AppPickerItemCard(
                         app = app,
-                        onSelect = onSelectCallback,
-                        isScrollingFast = listState.isScrollInProgress
+                        onSelect = onSelectCallback
                     )
                 }
             }
@@ -649,8 +648,7 @@ private fun BrowseAppListView(
 private fun AppPickerItemCard(
     app: InstalledAppInfo,
     onSelect: (InstalledAppInfo) -> Unit,
-    modifier: Modifier = Modifier,
-    isScrollingFast: Boolean = false
+    modifier: Modifier = Modifier
 ) {
     // Hoist expensive luminance calculation outside recomposition hot path
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -681,8 +679,7 @@ private fun AppPickerItemCard(
         ) {
             AppIconImage(
                 packageName = app.packageName,
-                size = 36.dp,
-                isScrollingFast = isScrollingFast
+                size = 36.dp
             )
 
             Column(

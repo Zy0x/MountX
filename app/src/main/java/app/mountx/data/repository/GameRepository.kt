@@ -10,6 +10,8 @@ import app.mountx.data.model.GameEntry
 import app.mountx.data.model.InstalledAppInfo
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
+import app.mountx.data.catalog.DiskCatalogManager
+import app.mountx.data.catalog.DiscoveredGame
 import app.mountx.data.model.SmartGamePresets
 import app.mountx.root.MountManager
 import app.mountx.root.RootShell
@@ -24,7 +26,8 @@ import javax.inject.Singleton
 @Singleton
 class GameRepository @Inject constructor(
     private val gameDao: GameDao,
-    private val mountManager: MountManager
+    private val mountManager: MountManager,
+    private val diskCatalogManager: DiskCatalogManager
 ) {
 
     fun observeGames(): Flow<List<GameEntry>> = gameDao.getAllGames()
@@ -162,6 +165,37 @@ class GameRepository @Inject constructor(
             }
         }
     }
+
+    suspend fun syncDiskCatalog(sdBase: String = "/data/sdext2") = withContext(Dispatchers.IO) {
+        val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+        diskCatalogManager.syncCatalogFromRegisteredGames(sdBase, games)
+    }
+
+    suspend fun scanMicroSdGames(sdBase: String, installedApps: Map<String, String>): List<DiscoveredGame> =
+        withContext(Dispatchers.IO) {
+            val registered = (gameDao.getAllGames().firstOrNull() ?: emptyList()).map { it.packageName }.toSet()
+            diskCatalogManager.scanSdCardForGames(sdBase, registered, installedApps)
+        }
+
+    suspend fun importDiscoveredGame(game: DiscoveredGame, sdBase: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val entry = GameEntry(
+                    packageName = game.packageName,
+                    displayName = game.displayName,
+                    mode = game.mode,
+                    mountStatus = MountStatus.UNMOUNTED,
+                    dataSizeBytes = game.sizeBytes,
+                    isEnabled = true
+                )
+                gameDao.insertGame(entry)
+                // Reconcile dynamic UID/GID and SELinux
+                diskCatalogManager.reconcileGame(sdBase, entry)
+                syncModuleGamelist()
+                syncDiskCatalog(sdBase)
+                AppLogger.success("Games", "Imported & reconciled portable game: ${game.displayName} (${game.packageName})")
+            }
+        }
 
     suspend fun refreshMountStatuses() = withContext(Dispatchers.IO) {
         val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
@@ -331,6 +365,8 @@ class GameRepository @Inject constructor(
             @Suppress("DEPRECATION")
             pm.getInstalledApplications(0)
         }
+
+        app.mountx.ui.components.AppIconManager.registerAppInfos(apps)
 
         apps
             .map { app ->

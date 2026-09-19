@@ -47,11 +47,13 @@ class MountManager {
                     error("Neither data nor obb source path exists on MicroSD for ${game.packageName}")
                 }
 
-                // Get app UID
-                val uid = getGameUid(game.packageName)
+                // Dynamic UID/GID resolution directly from stat /data/data/$pkg
+                val identity = resolveAppIdentity(game.packageName)
+                val uid = identity.uid
+                val gid = identity.gid
 
                 // Set ownership on internal data dir
-                RootShell.exec("chown -R $uid:$uid \"/data/user/0/${game.packageName}\" 2>/dev/null")
+                RootShell.exec("chown -R $uid:$gid \"/data/user/0/${game.packageName}\" 2>/dev/null")
                 RootShell.exec("chmod -R 775 \"/data/user/0/${game.packageName}\" 2>/dev/null")
 
                 if (game.mode == MountMode.FILES) {
@@ -63,9 +65,11 @@ class MountManager {
 
                 // Bind mount Android/data if available on SD
                 if (hasData) {
-                    RootShell.exec("chown -R $uid:1023 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                    RootShell.exec("chmod -R 777 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("chown -R $uid:$gid \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("chmod -R 775 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+                    // Canary marker inside game source folder
+                    RootShell.exec("touch \"$sdBase/Android/data/${game.packageName}/.mountx_canary\" 2>/dev/null")
 
                     for (namespace in MOUNT_NAMESPACES) {
                         val targetPath = "$namespace/$dataRelPath"
@@ -76,8 +80,8 @@ class MountManager {
 
                 // Bind mount Android/obb if available on SD
                 if (hasObb) {
-                    RootShell.exec("chown -R $uid:1023 \"$obbSrcPath\" 2>/dev/null")
-                    RootShell.exec("chmod -R 777 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chown -R $uid:$gid \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chmod -R 775 \"$obbSrcPath\" 2>/dev/null")
                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
 
                     for (namespace in MOUNT_NAMESPACES) {
@@ -91,10 +95,17 @@ class MountManager {
 
     /**
      * Unmount a single game from all runtime namespaces (both data and obb).
+     * Includes Process Lock: stops active game process before unmounting to prevent data corruption.
      */
     suspend fun unmountGame(game: GameEntry): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
+                // Process Lock Guard: force-stop active process if running
+                val pgrepRes = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
+                if (pgrepRes.isSuccess && pgrepRes.output.isNotBlank()) {
+                    RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
+                }
+
                 val relPaths = listOf(
                     "Android/data/${game.packageName}/files",
                     "Android/data/${game.packageName}",
@@ -158,4 +169,55 @@ class MountManager {
         )
         result.output.trim().toIntOrNull() ?: 10000
     }
+
+    /**
+     * Resolves dynamic UID and GID directly from stat /data/data/$packageName
+     * to ensure full compatibility with Android 11-14+ app isolation.
+     */
+    suspend fun resolveAppIdentity(packageName: String): AppIdentity = withContext(Dispatchers.IO) {
+        val statRes = RootShell.exec(
+            "stat -c \"%u %g\" \"/data/data/$packageName\" 2>/dev/null || " +
+            "stat -c \"%u %g\" \"/data/user/0/$packageName\" 2>/dev/null"
+        )
+        if (statRes.isSuccess && statRes.output.isNotBlank()) {
+            val tokens = statRes.output.trim().split("\\s+".toRegex())
+            val uid = tokens.getOrNull(0)?.toIntOrNull()
+            val gid = tokens.getOrNull(1)?.toIntOrNull()
+            if (uid != null && gid != null && uid > 0) {
+                return@withContext AppIdentity(uid, gid)
+            }
+        }
+        val fallbackUid = getGameUid(packageName)
+        AppIdentity(fallbackUid, fallbackUid)
+    }
+
+    /**
+     * Dynamic I/O priority boost for game execution.
+     * Sets Real-Time/Best-Effort ionice and elevates scheduling niceness.
+     */
+    suspend fun boostGameIo(packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val pgrep = RootShell.exec("pgrep -f \"$packageName\" 2>/dev/null")
+            if (pgrep.isSuccess && pgrep.output.isNotBlank()) {
+                val pids = pgrep.stdout.map { it.trim() }.filter { it.isNotBlank() }
+                for (pid in pids) {
+                    RootShell.exec("ionice -c 1 -n 0 -p $pid 2>/dev/null || ionice -c 2 -n 0 -p $pid 2>/dev/null")
+                    RootShell.exec("renice -n -10 -p $pid 2>/dev/null")
+                }
+            }
+        }
+    }
+
+    /**
+     * Canary verification check: verifies if the canary file is visible in target namespace.
+     */
+    suspend fun verifyCanary(packageName: String): Boolean = withContext(Dispatchers.IO) {
+        val primaryCanary = "/storage/emulated/0/Android/data/$packageName/.mountx_canary"
+        val dataMediaCanary = "/data/media/0/Android/data/$packageName/.mountx_canary"
+        RootShell.exists(primaryCanary) || RootShell.exists(dataMediaCanary)
+    }
 }
+
+/** Dynamic identity representing UID and GID for modern Android sandboxes */
+data class AppIdentity(val uid: Int, val gid: Int)
+

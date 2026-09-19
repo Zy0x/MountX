@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountx.R
+import app.mountx.data.catalog.DiscoveredGame
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
@@ -58,6 +59,7 @@ fun GamesScreen(
     onBottomBarVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val games by viewModel.games.collectAsState()
+    val discoveredGames by viewModel.discoveredGames.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val filterStatus by viewModel.filterStatus.collectAsState()
     val sortOption by viewModel.sortOption.collectAsState()
@@ -65,6 +67,10 @@ fun GamesScreen(
     val detailedStorage by viewModel.detailedStorage.collectAsState()
     val isMovingData by viewModel.isMovingData.collectAsState()
     val moveMessage by viewModel.moveMessage.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.scanDiscoveredGames()
+    }
 
     var showAddSheet by remember { mutableStateOf(false) }
     var selectedGameForDetail by remember { mutableStateOf<GameEntry?>(null) }
@@ -114,6 +120,9 @@ fun GamesScreen(
     } else {
         GamesContent(
             games = games,
+            discoveredGames = discoveredGames,
+            onImportAllDiscovered = { viewModel.importAllDiscoveredGames() },
+            onDismissDiscovered = { viewModel.dismissDiscovered() },
             searchQuery = searchQuery,
             filterStatus = filterStatus,
             sortOption = sortOption,
@@ -165,7 +174,10 @@ fun GamesContent(
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onSelectGameForDetail: (GameEntry) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    discoveredGames: List<DiscoveredGame> = emptyList(),
+    onImportAllDiscovered: () -> Unit = {},
+    onDismissDiscovered: () -> Unit = {}
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
 
@@ -356,6 +368,14 @@ fun GamesContent(
                 .padding(paddingValues)
                 .padding(horizontal = 14.dp)
         ) {
+            if (discoveredGames.isNotEmpty()) {
+                DiscoveredGamesBanner(
+                    discoveredGames = discoveredGames,
+                    onImportAll = onImportAllDiscovered,
+                    onDismiss = onDismissDiscovered
+                )
+            }
+
             if (games.isEmpty()) {
                 // ── CLEAN EMPTY STATE WITH GUIDANCE TEXT ──
                 Box(
@@ -685,3 +705,117 @@ fun ModernGameCard(
         }
     }
 }
+
+@Composable
+private fun DiscoveredGamesBanner(
+    discoveredGames: List<DiscoveredGame>,
+    onImportAll: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.5f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .background(CyberEmerald.copy(alpha = 0.15f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SportsEsports,
+                        contentDescription = null,
+                        tint = CyberEmerald,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.portability_banner_title, discoveredGames.size),
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.portability_banner_desc),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Mini chips of discovered packages
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                discoveredGames.forEach { dg ->
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = dg.displayName,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.height(30.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.portability_btn_dismiss),
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Button(
+                    onClick = onImportAll,
+                    modifier = Modifier.height(30.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.portability_btn_restore),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+

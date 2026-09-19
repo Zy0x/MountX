@@ -5,6 +5,31 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.10] - 2026-09-19
+
+### Added
+- **MicroSD Disk Portability & Smart Discovery Engine**:
+  - Implemented portable catalog management (`.mountx/catalog.json`) stored directly on external storage with atomic write protection (`.tmp -> mv`).
+  - Added ultra-fast shallow directory scanning of MicroSD `Android/data` and `Android/obb` to automatically identify portable game assets without heavy recursive traversal.
+  - 1-Click Game Restoration & Reconciliation: dynamically resolves sandbox UID and GID (`stat -c "%u %g" /data/data/$PACKAGE_NAME`) and restores SELinux contexts, enabling effortless plug-and-play across devices and fresh installs.
+- **Passive Event-Driven Integrity Watchdog (`MountWatchdogDaemon`)**:
+  - Battery-friendly passive monitoring hooked into `ACTION_SCREEN_ON`, storage ejects, and pre-launch triggers.
+  - Canary file verification (`.mountx_canary`) ensures mounts never silently drop after deep sleep.
+  - Instant lazy unmount safeguard (`umount -l`) upon `ACTION_MEDIA_EJECT` to protect the Linux kernel from deadlocks.
+- **Safe-Uninstall & Emergency Rescue Protocol**:
+  - Enhanced module `service.sh` to autonomously detect app removal (`pm path`), cleanly unmount active binds, restore default internal Android storage permissions, and self-disable.
+  - Added standalone emergency restore script generator (`/sdcard/MountX_Emergency_Restore.sh`) for ADB and Termux recovery.
+  - Added Emergency Panic Reset button in Settings for instant 1-click unmount and permission restoration.
+- **Official Brand Icon Integration**:
+  - Added full animated splash screen utilizing MountX brand foreground icon on dark cyber background.
+  - Integrated official brand icon in the Dashboard top header and About screen.
+
+### Changed
+- **Extreme App Picker Performance Overhaul (MT Manager-Grade 120 FPS)**:
+  - Eliminated recomposition cascade by removing scroll-state dependencies from item cards and leveraging stable Compose skipping.
+  - Implemented application metadata caching (`registerAppInfos`) to completely bypass repetitive `PackageManager` Binder IPC during icon rendering.
+  - Enabled release build R8 optimization and minification with automatic debug signing fallback for real-world performance verification.
+
 ## [2.2.9] - 2026-09-19
 
 ### Added

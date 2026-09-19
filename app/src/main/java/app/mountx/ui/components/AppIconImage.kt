@@ -31,17 +31,23 @@ import kotlinx.coroutines.withContext
 
 /**
  * High-performance 120 FPS application icon loader and memory cache for MountX.
+ * - In-memory ApplicationInfo cache eliminates repeated Binder IPC calls to system_server
  * - 1024-slot in-memory LruCache for instant synchronous rendering
- * - Single-threaded IO dispatcher (limitedParallelism=1) preventing Binder IPC saturation
- * - Proactive background pre-warming mechanism with background thread priority
+ * - Serialized IO dispatcher preventing thread pool exhaustion
+ * - Background pre-warming mechanism with thread priority management
  */
 object AppIconManager {
+    private val appInfoCache = java.util.concurrent.ConcurrentHashMap<String, android.content.pm.ApplicationInfo>()
     val iconCache = LruCache<String, ImageBitmap>(1024)
 
-    // CRITICAL: Using limitedParallelism(1) — PackageManagerService Binder IPC is serial;
-    // concurrent calls from 3+ threads saturate the IPC buffer causing systemic frame drops
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val iconDispatcher = Dispatchers.IO.limitedParallelism(1)
+
+    fun registerAppInfos(apps: List<android.content.pm.ApplicationInfo>) {
+        for (app in apps) {
+            appInfoCache[app.packageName] = app
+        }
+    }
 
     fun getCached(packageName: String): ImageBitmap? = iconCache.get(packageName)
 
@@ -51,7 +57,7 @@ object AppIconManager {
 
         return try {
             val pm = context.packageManager
-            val appInfo = pm.getApplicationInfo(packageName, 0)
+            val appInfo = appInfoCache[packageName] ?: pm.getApplicationInfo(packageName, 0)
             val drawable = appInfo.loadIcon(pm)
             val bitmap = drawableToImageBitmap(drawable)
             iconCache.put(packageName, bitmap)
@@ -64,20 +70,9 @@ object AppIconManager {
     suspend fun prewarmIcons(context: Context, packageNames: List<String>) {
         withContext(iconDispatcher) {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
-            // Load first 30 at background priority, then yield between each to avoid blocking
-            val topList = packageNames.take(30)
-            for (pkg in topList) {
+            for (pkg in packageNames) {
                 if (iconCache.get(pkg) == null) {
                     loadIcon(context, pkg)
-                }
-            }
-            // Remaining: load one at a time with coroutine yield to avoid starving other jobs
-            val remaining = packageNames.drop(30)
-            for (pkg in remaining) {
-                if (iconCache.get(pkg) == null) {
-                    loadIcon(context, pkg)
-                    // Small backoff to avoid hammering IPC on large lists
-                    withContext(Dispatchers.IO) { /* yield to other coroutines */ }
                 }
             }
         }
@@ -103,27 +98,22 @@ object AppIconManager {
 }
 
 /**
- * @param isScrollingFast When true (user is actively flinging), defer loading to prevent
- * frame drops caused by synchronous Binder IPC calls during scroll momentum.
+ * High-performance App Icon Composable.
+ * Keys strictly on packageName to guarantee zero-recomposition during fling scrolls.
  */
 @Composable
 fun AppIconImage(
     packageName: String,
     modifier: Modifier = Modifier,
-    size: Dp = 42.dp,
-    isScrollingFast: Boolean = false
+    size: Dp = 42.dp
 ) {
     val context = LocalContext.current
     var iconBitmap by remember(packageName) {
         mutableStateOf(AppIconManager.getCached(packageName))
     }
 
-    LaunchedEffect(packageName, isScrollingFast) {
+    LaunchedEffect(packageName) {
         if (iconBitmap == null) {
-            // During active fling, wait until scroll settles to avoid competing with rendering
-            if (isScrollingFast) {
-                delay(80L)
-            }
             val loaded = withContext(AppIconManager.iconDispatcher) {
                 AppIconManager.loadIcon(context, packageName)
             }

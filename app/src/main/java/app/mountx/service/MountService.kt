@@ -34,6 +34,9 @@ class MountService : Service() {
     @Inject
     lateinit var appPreferences: AppPreferences
 
+    @Inject
+    lateinit var watchdogDaemon: MountWatchdogDaemon
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
@@ -42,6 +45,8 @@ class MountService : Service() {
 
         const val ACTION_MOUNT_ALL = "app.mountx.ACTION_MOUNT_ALL"
         const val ACTION_UNMOUNT_ALL = "app.mountx.ACTION_UNMOUNT_ALL"
+        const val ACTION_BOOST_GAME = "app.mountx.ACTION_BOOST_GAME"
+        const val EXTRA_PACKAGE_NAME = "extra_package_name"
 
         fun startMountAll(context: Context) {
             val intent = Intent(context, MountService::class.java).apply {
@@ -59,6 +64,7 @@ class MountService : Service() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification("Initializing MountX service..."))
+        watchdogDaemon.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -86,6 +92,14 @@ class MountService : Service() {
                     gameRepository.unmountAll(sdBase)
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
+                }
+            }
+            ACTION_BOOST_GAME -> {
+                val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME)
+                if (!pkg.isNullOrBlank()) {
+                    serviceScope.launch {
+                        watchdogDaemon.prepareGameForLaunch(pkg)
+                    }
                 }
             }
         }
