@@ -65,6 +65,7 @@ import app.mountx.ui.theme.NeonCrimson
 @Composable
 fun AddAppPicker(
     installedApps: List<InstalledAppInfo>,
+    addedPackageNames: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onAdd: (packageName: String, displayName: String, mode: MountMode) -> Unit,
     onConfigureApp: ((InstalledAppInfo) -> Unit)? = null,
@@ -86,13 +87,15 @@ fun AddAppPicker(
     // Real-time search query
     var searchQuery by remember { mutableStateOf("") }
 
-    val baseApps = remember(installedApps, showSystemApps) {
+    val baseApps = remember(installedApps, showSystemApps, addedPackageNames) {
         val list = if (showSystemApps) {
             installedApps
         } else {
             installedApps.filter { !it.isSystemApp }
         }
-        list.sortedBy { it.displayName.lowercase() }
+        list
+            .filter { it.packageName !in addedPackageNames }
+            .sortedBy { it.displayName.lowercase() }
     }
 
     val filteredApps = remember(baseApps, searchQuery) {

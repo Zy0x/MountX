@@ -14,6 +14,7 @@ import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.SupportedFilesystemInfo
 import app.mountx.data.model.GlobalTrimReport
+import app.mountx.data.model.MountPointConfig
 import app.mountx.root.StorageManager
 import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
@@ -191,6 +192,15 @@ class StorageRepository @Inject constructor(
             AppLogger.error("Repartition", "Repartition failed on $diskPath: ${res.exceptionOrNull()?.message}")
         }
         res
+    }
+
+    suspend fun moveGameMountPoints(
+        packageName: String,
+        mountPoints: List<MountPointConfig>,
+        direction: MoveDirection,
+        sdBase: String = "/data/sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        storageManager.moveMountPoints(packageName, mountPoints, direction, sdBase)
     }
 
     suspend fun moveGameData(

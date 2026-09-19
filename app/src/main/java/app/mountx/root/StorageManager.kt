@@ -17,6 +17,8 @@ import app.mountx.data.model.FsckStatus
 import app.mountx.data.model.SupportedFilesystemInfo
 import app.mountx.data.model.GlobalTrimReport
 import app.mountx.data.model.TrimPartitionResult
+import app.mountx.data.model.MountPointCategory
+import app.mountx.data.model.MountPointConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -1230,6 +1232,121 @@ class StorageManager {
                     error("Partition $partNum format error: ${formatRes.exceptionOrNull()?.message}")
                 }
             }
+        }
+    }
+
+    /**
+     * Migrate physical data for granular multi-target mount points (v2.2.14).
+     * Fully dynamic restore path: restores directly to point.targetPath (e.g. /data/media/0/<Folder> or /data/media/0/Android/...)
+     */
+    suspend fun moveMountPoints(
+        packageName: String,
+        mountPoints: List<MountPointConfig>,
+        direction: MoveDirection,
+        sdBase: String = "/data/sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val uid = RootShell.exec(
+                "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
+            ).output.trim().toIntOrNull() ?: 10000
+
+            val activePoints = mountPoints.filter { it.enabled }
+            if (activePoints.isEmpty()) {
+                error("No active mount points configured for migration.")
+            }
+
+            for (point in activePoints) {
+                val sourcePath = point.sourcePath
+                val targetPath = point.targetPath
+
+                when (direction) {
+                    MoveDirection.TO_SD -> {
+                        if (point.isVirtualContainer) {
+                            val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
+                            val imgParent = java.io.File(imgFile).parent ?: "$sdBase/.mountx/containers"
+                            RootShell.exec("mkdir -p \"$imgParent\"")
+                            if (!RootShell.exists(imgFile)) {
+                                val sizeMb = ((point.sizeBytes / (1024 * 1024)) + 256).coerceAtLeast(512)
+                                RootShell.exec("dd if=/dev/zero of=\"$imgFile\" bs=1M count=0 seek=$sizeMb")
+                                RootShell.exec("mkfs.ext4 -F \"$imgFile\"")
+                            }
+                            val tempMount = "/dev/mountx_temp_${packageName}"
+                            RootShell.exec("mkdir -p \"$tempMount\"")
+                            val loopDev = RootShell.exec("losetup -f --show \"$imgFile\" 2>/dev/null").output.trim()
+                            if (loopDev.isNotEmpty()) {
+                                RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
+                                if (RootShell.exists(targetPath)) {
+                                    RootShell.exec("cp -a \"$targetPath\"/* \"$tempMount\"/ 2>/dev/null")
+                                    RootShell.exec("rm -rf \"$targetPath\"/*")
+                                }
+                                RootShell.exec("umount -l \"$tempMount\"")
+                                RootShell.exec("losetup -d \"$loopDev\"")
+                            }
+                            RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
+                        } else {
+                            if (RootShell.exists(targetPath)) {
+                                val parentSd = java.io.File(sourcePath).parent ?: sdBase
+                                RootShell.exec("mkdir -p \"$parentSd\"")
+                                val copyRes = RootShell.exec("cp -a \"$targetPath\" \"$sourcePath\"")
+                                if (!copyRes.isSuccess && !RootShell.exists(sourcePath)) {
+                                    error("Failed to copy $targetPath to SD: ${copyRes.stderr.joinToString("\n")}")
+                                }
+                                RootShell.exec("chown -R $uid:1023 \"$sourcePath\"")
+                                RootShell.exec("chmod -R 777 \"$sourcePath\"")
+                                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\"")
+
+                                if (point.category == MountPointCategory.MEDIA_DOWNLOADS) {
+                                    RootShell.exec("touch \"$sourcePath/.nomedia\"")
+                                }
+
+                                RootShell.exec("rm -rf \"$targetPath\"/*")
+                            }
+                        }
+                    }
+                    MoveDirection.TO_INTERNAL -> {
+                        if (point.isVirtualContainer) {
+                            val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
+                            if (RootShell.exists(imgFile)) {
+                                val tempMount = "/dev/mountx_temp_${packageName}"
+                                RootShell.exec("mkdir -p \"$tempMount\"")
+                                val loopDev = RootShell.exec("losetup -f --show \"$imgFile\" 2>/dev/null").output.trim()
+                                if (loopDev.isNotEmpty()) {
+                                    RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
+                                    RootShell.exec("mkdir -p \"$targetPath\"")
+                                    RootShell.exec("cp -a \"$tempMount\"/* \"$targetPath\"/ 2>/dev/null")
+                                    RootShell.exec("umount -l \"$tempMount\"")
+                                    RootShell.exec("losetup -d \"$loopDev\"")
+                                }
+                                RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
+                                RootShell.exec("rm -f \"$imgFile\"")
+                                RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
+                            }
+                        } else {
+                            // Dynamic targetPath restore: preserves /data/media/0/<Folder> or /data/media/0/Android/
+                            if (RootShell.exists(sourcePath)) {
+                                val parentInternal = java.io.File(targetPath).parent ?: "/data/media/0"
+                                RootShell.exec("mkdir -p \"$parentInternal\"")
+                                val copyRes = RootShell.exec("cp -a \"$sourcePath\" \"$targetPath\"")
+                                if (!copyRes.isSuccess && !RootShell.exists(targetPath)) {
+                                    error("Failed to restore $sourcePath to internal: ${copyRes.stderr.joinToString("\n")}")
+                                }
+                                RootShell.exec("chown -R $uid:1023 \"$targetPath\"")
+                                RootShell.exec("chmod -R 775 \"$targetPath\"")
+                                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\"")
+                                RootShell.exec("rm -rf \"$sourcePath\"")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Restore internal app sandbox directory permissions
+            RootShell.exec("chown -R $uid:$uid \"/data/user/0/$packageName\" 2>/dev/null")
+            RootShell.exec("chmod -R 775 \"/data/user/0/$packageName\" 2>/dev/null")
+            RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
+            RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
+            RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+            Unit
         }
     }
 

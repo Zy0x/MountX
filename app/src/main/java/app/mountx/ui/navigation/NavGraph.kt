@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -244,6 +245,12 @@ fun MainTabsScreen(
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
     ) { innerPadding ->
+        val animatedBottomPadding by animateDpAsState(
+            targetValue = if (isBottomBarVisible && !isGamesSubScreenActive) innerPadding.calculateBottomPadding() else 0.dp,
+            animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+            label = "animated_bottom_padding"
+        )
+
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
@@ -256,7 +263,7 @@ fun MainTabsScreen(
                         start = innerPadding.calculateStartPadding(LayoutDirection.Ltr),
                         top = innerPadding.calculateTopPadding(),
                         end = innerPadding.calculateEndPadding(LayoutDirection.Ltr),
-                        bottom = if (isGamesSubScreenActive) 0.dp else innerPadding.calculateBottomPadding()
+                        bottom = animatedBottomPadding
                     )
                 )
         ) { page ->
@@ -274,6 +281,7 @@ fun MainTabsScreen(
                     val gamesVm = hiltViewModel<GamesViewModel>()
                     GamesScreen(
                         viewModel = gamesVm,
+                        isBottomBarVisible = isBottomBarVisible,
                         onPagerScrollEnabled = { isOuterPagerScrollEnabled = it },
                         onBottomBarVisibilityChanged = { isVisible -> isGamesSubScreenActive = !isVisible }
                     )

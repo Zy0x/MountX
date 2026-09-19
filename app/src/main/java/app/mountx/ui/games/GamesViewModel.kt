@@ -202,6 +202,53 @@ class GamesViewModel @Inject constructor(
         }
     }
 
+    fun moveMountPoints(
+        packageName: String,
+        mountPoints: List<app.mountx.data.model.MountPointConfig>,
+        direction: MoveDirection
+    ) {
+        viewModelScope.launch {
+            _isMovingData.value = true
+            _moveMessage.value = null
+            val sdBase = appPreferences.sdBasePath.first()
+            val game = games.value.firstOrNull { it.packageName == packageName }
+
+            // If restoring to internal, unmount from runtime namespaces first
+            if (direction == MoveDirection.TO_INTERNAL && game != null && game.mountStatus == MountStatus.MOUNTED) {
+                gameRepository.unmountGame(game)
+            }
+
+            val result = storageRepository.moveGameMountPoints(packageName, mountPoints, direction, sdBase)
+            _isMovingData.value = false
+            if (result.isSuccess) {
+                _moveMessage.value = "SUCCESS"
+
+                if (game != null) {
+                    val updated = game.copy(mountPoints = mountPoints)
+                    gameRepository.updateGame(updated)
+                    if (direction == MoveDirection.TO_SD) {
+                        gameRepository.mountGame(updated, sdBase)
+                    }
+                }
+
+                gameRepository.calculateDataSize(packageName, sdBase)
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+                _detailedStorage.value = breakdown
+                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            } else {
+                _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
+            }
+        }
+    }
+
+    fun updateMountPoints(packageName: String, mountPoints: List<app.mountx.data.model.MountPointConfig>) {
+        viewModelScope.launch {
+            val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
+            val updated = game.copy(mountPoints = mountPoints)
+            gameRepository.updateGame(updated)
+        }
+    }
+
     fun moveData(
         packageName: String,
         direction: MoveDirection,

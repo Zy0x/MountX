@@ -13,12 +13,17 @@ import app.mountx.data.model.MountStatus
 import app.mountx.data.catalog.DiskCatalogManager
 import app.mountx.data.catalog.DiscoveredGame
 import app.mountx.data.model.SmartGamePresets
+import app.mountx.data.model.MountPointCategory
+import app.mountx.data.model.MountPointConfig
 import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,14 +35,87 @@ class GameRepository @Inject constructor(
     private val diskCatalogManager: DiskCatalogManager
 ) {
 
-    fun observeGames(): Flow<List<GameEntry>> = gameDao.getAllGames()
+    fun synthesizeLegacyMountPoints(game: GameEntry, sdBase: String = "/data/sdext2"): List<MountPointConfig> {
+        if (game.mountPoints.isNotEmpty()) return game.mountPoints
+        val list = mutableListOf<MountPointConfig>()
+        when (game.mode) {
+            MountMode.FILES -> {
+                list.add(
+                    MountPointConfig(
+                        id = "legacy_${game.packageName}_files",
+                        category = MountPointCategory.GAME_ASSETS,
+                        sourcePath = "$sdBase/Android/data/${game.packageName}/files",
+                        targetPath = "/data/media/0/Android/data/${game.packageName}/files",
+                        enabled = true,
+                        sizeBytes = game.dataSizeBytes
+                    )
+                )
+                list.add(
+                    MountPointConfig(
+                        id = "legacy_${game.packageName}_obb",
+                        category = MountPointCategory.GAME_ASSETS,
+                        sourcePath = "$sdBase/Android/obb/${game.packageName}",
+                        targetPath = "/data/media/0/Android/obb/${game.packageName}",
+                        enabled = true,
+                        sizeBytes = 0L
+                    )
+                )
+            }
+            MountMode.PKG -> {
+                list.add(
+                    MountPointConfig(
+                        id = "legacy_${game.packageName}_pkg",
+                        category = MountPointCategory.GAME_ASSETS,
+                        sourcePath = "$sdBase/Android/data/${game.packageName}",
+                        targetPath = "/data/media/0/Android/data/${game.packageName}",
+                        enabled = true,
+                        sizeBytes = game.dataSizeBytes
+                    )
+                )
+                list.add(
+                    MountPointConfig(
+                        id = "legacy_${game.packageName}_obb",
+                        category = MountPointCategory.GAME_ASSETS,
+                        sourcePath = "$sdBase/Android/obb/${game.packageName}",
+                        targetPath = "/data/media/0/Android/obb/${game.packageName}",
+                        enabled = true,
+                        sizeBytes = 0L
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    fun observeGames(): Flow<List<GameEntry>> = gameDao.getAllGames().map { list ->
+        list.map { g ->
+            if (g.mountPoints.isEmpty()) {
+                val synthesized = synthesizeLegacyMountPoints(g)
+                val updated = g.copy(mountPoints = synthesized)
+                CoroutineScope(Dispatchers.IO).launch {
+                    gameDao.updateGame(updated)
+                }
+                updated
+            } else {
+                g
+            }
+        }
+    }
 
     fun observeMountedCount(): Flow<Int> = gameDao.getMountedCount()
 
     fun observeTotalCount(): Flow<Int> = gameDao.getTotalCount()
 
     suspend fun getGame(packageName: String): GameEntry? = withContext(Dispatchers.IO) {
-        gameDao.getGameByPackage(packageName)
+        val game = gameDao.getGameByPackage(packageName) ?: return@withContext null
+        if (game.mountPoints.isEmpty()) {
+            val synthesized = synthesizeLegacyMountPoints(game)
+            val updated = game.copy(mountPoints = synthesized)
+            gameDao.updateGame(updated)
+            updated
+        } else {
+            game
+        }
     }
 
     suspend fun addGame(

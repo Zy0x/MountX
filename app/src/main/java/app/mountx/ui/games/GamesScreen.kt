@@ -1,6 +1,9 @@
 package app.mountx.ui.games
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -8,6 +11,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,6 +63,7 @@ import app.mountx.util.FormatUtils
 fun GamesScreen(
     viewModel: GamesViewModel,
     modifier: Modifier = Modifier,
+    isBottomBarVisible: Boolean = true,
     onPagerScrollEnabled: (Boolean) -> Unit = {},
     onBottomBarVisibilityChanged: (Boolean) -> Unit = {}
 ) {
@@ -93,29 +100,41 @@ fun GamesScreen(
 
         LaunchedEffect(app.packageName) {
             viewModel.scanCandidates(app.packageName, app.displayName)
+            viewModel.loadStorageBreakdown(app.packageName)
         }
 
-        AppMountConfigSheet(
-            appInfo = app,
+        val draftGame = remember(app.packageName) {
+            GameEntry(
+                packageName = app.packageName,
+                displayName = app.displayName,
+                mountStatus = MountStatus.UNMOUNTED
+            )
+        }
+
+        GameDetailView(
+            game = draftGame,
+            breakdown = detailedStorage,
+            isMoving = false,
+            moveMessage = null,
+            isDraftMode = true,
             candidateDirectories = candidateDirectories,
             isLoadingCandidates = isScanningCandidates,
-            isFat32 = false,
             onDismiss = { configuringApp = null },
-            onConfirm = { mountPoints, totalSize ->
+            onSaveGame = { newGame ->
                 viewModel.addGameWithMountPoints(
-                    packageName = app.packageName,
-                    displayName = app.displayName,
-                    mountPoints = mountPoints,
-                    initialSizeBytes = totalSize
+                    packageName = newGame.packageName,
+                    displayName = newGame.displayName,
+                    mountPoints = newGame.mountPoints,
+                    initialSizeBytes = newGame.dataSizeBytes
                 )
                 configuringApp = null
-            }
+            },
+            modifier = modifier
         )
-    }
-
-    if (showAddSheet) {
+    } else if (showAddSheet) {
         AddAppPicker(
             installedApps = installedApps,
+            addedPackageNames = games.map { it.packageName }.toSet(),
             onDismiss = { showAddSheet = false },
             onAdd = { pkg, name, mode ->
                 viewModel.addGame(pkg, name, mode)
@@ -140,12 +159,17 @@ fun GamesScreen(
             breakdown = detailedStorage,
             isMoving = isMovingData,
             moveMessage = moveMessage,
+            isDraftMode = false,
             onDismiss = {
                 viewModel.clearMoveMessage()
                 selectedGameForDetail = null
             },
-            onMove = { dir, target -> viewModel.moveData(updatedGame.packageName, dir, target) },
-            onUpdateMode = { newMode -> viewModel.updateGameMode(updatedGame.packageName, newMode) },
+            onMoveMountPoints = { dir, pts ->
+                viewModel.moveMountPoints(updatedGame.packageName, pts, dir)
+            },
+            onUpdateMountPoints = { pts ->
+                viewModel.updateMountPoints(updatedGame.packageName, pts)
+            },
             onDelete = {
                 gameToDelete = updatedGame
                 selectedGameForDetail = null
@@ -156,6 +180,7 @@ fun GamesScreen(
         GamesContent(
             games = games,
             isRefreshing = isRefreshing,
+            isBottomBarVisible = isBottomBarVisible,
             onRefresh = { viewModel.refresh() },
             discoveredGames = discoveredGames,
             onImportAllDiscovered = { viewModel.importAllDiscoveredGames() },
@@ -204,6 +229,7 @@ fun GamesContent(
     filterStatus: GameFilterStatus,
     sortOption: GameSortOption,
     isRefreshing: Boolean = false,
+    isBottomBarVisible: Boolean = true,
     onRefresh: () -> Unit = {},
     onSearchQueryChange: (String) -> Unit,
     onFilterStatusChange: (GameFilterStatus) -> Unit,
@@ -373,9 +399,21 @@ fun GamesContent(
             )
         },
         floatingActionButton = {
+            val density = LocalDensity.current
+            val navBarsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val navBarsBottomPx = with(density) { navBarsBottom.toPx() }
+            val bottomBarHeightPx = with(density) { 72.dp.toPx() }
+
+            val animatedOffsetY by animateFloatAsState(
+                targetValue = if (isBottomBarVisible) 0f else (bottomBarHeightPx - navBarsBottomPx).coerceAtLeast(0f),
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                label = "fab_bottom_bar_offset"
+            )
+
             FloatingActionButton(
                 onClick = onAddClick,
                 modifier = Modifier
+                    .offset { IntOffset(x = 0, y = animatedOffsetY.roundToInt()) }
                     .padding(end = 4.dp, bottom = 4.dp)
                     .size(42.dp),
                 shape = CircleShape,

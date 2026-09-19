@@ -5,6 +5,25 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.14] - 2026-09-19
+
+### Added
+- **Full Directory-Driven Architecture Unification (App Detail & Add Flow)**:
+  - Replaced legacy `PKG`/`FILES` binary switch and redundant `Transfer Scope` selector chips with active multi-target directory mount points (`MountPointConfig`) as the single source of truth across all views.
+  - Unified Add App flow with App Detail by reusing `GameDetailView` (Storage and Manage tabs) in an isolated **Draft / Preview Mode**.
+  - **Zero-Trace on Dismiss**: Discarding or navigating back from draft preview guarantees zero database mutations, zero directory creations, and zero file footprints.
+  - **Explicit Commit**: Room DB registration and `.mountx/catalog.json` generation occur strictly upon user confirmation via `[Terapkan & Tambahkan]`.
+  - **Dynamic Multi-Directory Migration Engine**:
+    - Data transfers (Internal to SD / Pulihkan ke Internal) dynamically operate on each mount point's target directory, accurately restoring Media/Custom directories (`/data/media/0/<Folder>`) as well as Android application packages (`/data/media/0/Android/data|obb/<pkg>`).
+    - Added virtual ext4 loop container image cleanup when restoring or deleting custom loop configurations.
+  - **Backward-Compatible Multi-Target Migration**:
+    - Automatic on-the-fly synthesis of legacy game entries into granular `MountPointCategory.GAME_ASSETS` with stable unique identifiers (`legacy_<pkg>_files`, `legacy_<pkg>_pkg`, `legacy_<pkg>_obb`).
+- **Responsive Floating Action Button (FAB) Motion**:
+  - Implemented zero-recomposition animated vertical offset on Games screen FAB (`Modifier.offset { IntOffset(0, animatedOffsetY) }`) driven by a 220ms `FastOutSlowInEasing` transition.
+  - FAB smoothly glides downward when bottom navigation bar hides during list scrolling and returns seamlessly when visible, anchored to navigation bar window insets.
+- **Smart App Picker Duplication Filtering**:
+  - `AddAppPicker` now dynamically filters out applications already registered in MountX, preventing duplicate registrations and displaying only eligible unmanaged apps.
+
 ## [2.2.13] - 2026-09-19
 
 ### Added
