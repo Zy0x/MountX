@@ -204,7 +204,7 @@ fun AboutScreen(
                     Column {
                         ListItem(
                             headlineContent = { Text(stringResource(R.string.about_github)) },
-                            supportingContent = { Text("https://github.com/Zy0x/Mountify") },
+                            supportingContent = { Text("https://github.com/Zy0x/MountX") },
                             trailingContent = { Icon(Icons.Default.OpenInBrowser, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),

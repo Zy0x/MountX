@@ -42,7 +42,7 @@ base64 -w 0 mountx-release.jks > keystore-base64.txt
 ## 3. Tambahkan ke GitHub Secrets
 
 1. Buka repositori GitHub:
-   `https://github.com/Zy0x/Mountify/settings/secrets/actions`
+   `https://github.com/Zy0x/MountX/settings/secrets/actions`
 2. Klik tombol **New repository secret**.
 3. Tambahkan 4 secrets berikut satu per satu:
 

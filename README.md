@@ -1,6 +1,6 @@
 # MountX
 
-[![Build & Release](https://github.com/Zy0x/Mountify/actions/workflows/build.yml/badge.svg)](https://github.com/Zy0x/Mountify/actions/workflows/build.yml)
+[![Build & Release](https://github.com/Zy0x/MountX/actions/workflows/build.yml/badge.svg)](https://github.com/Zy0x/MountX/actions/workflows/build.yml)
 [![Min SDK](https://img.shields.io/badge/Min%20SDK-Android%2010%20(API%2029)-brightgreen.svg)](https://developer.android.com)
 [![Target SDK](https://img.shields.io/badge/Target%20SDK-Android%2015%20(API%2035)-blue.svg)](https://developer.android.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -42,7 +42,7 @@ MountX adalah aplikasi Android native dan modul root untuk memindahkan dan melak
 
 ## Instalasi
 
-1. Unduh file APK dan arsip zip modul dari halaman [GitHub Releases](https://github.com/Zy0x/Mountify/releases).
+1. Unduh file APK dan arsip zip modul dari halaman [GitHub Releases](https://github.com/Zy0x/MountX/releases).
 2. Pasang `MountX-magisk-module.zip` melalui Magisk, KernelSU, atau APatch Manager, lalu muat ulang (reboot) perangkat.
 3. Pasang `MountX.apk` dan buka aplikasi.
 4. Berikan izin Superuser (Root) saat diminta.
@@ -81,7 +81,7 @@ Untuk melakukan kompilasi proyek secara lokal:
 
 ```bash
 # Clone repositori
-git clone https://github.com/Zy0x/Mountify.git MountX
+git clone https://github.com/Zy0x/MountX.git
 cd MountX
 
 # Kompilasi Debug APK

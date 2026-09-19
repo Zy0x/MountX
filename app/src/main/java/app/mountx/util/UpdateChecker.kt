@@ -14,7 +14,7 @@ import javax.inject.Singleton
 class UpdateChecker @Inject constructor() {
 
     companion object {
-        private const val API_URL = "https://api.github.com/repos/Zy0x/Mountify/releases/latest"
+        private const val API_URL = "https://api.github.com/repos/Zy0x/MountX/releases/latest"
     }
 
     suspend fun checkForUpdate(): Result<UpdateInfo> = withContext(Dispatchers.IO) {
