@@ -12,7 +12,7 @@ data class RootModuleInfo(
 
 /**
  * Detects which root solution is active on the device
- * and whether the Mountify module is installed.
+ * and whether the MountX module is installed.
  */
 object RootDetector {
 
@@ -96,7 +96,7 @@ object RootDetector {
     }
 
     /**
-     * Check if the Mountify Magisk/KSU module is installed.
+     * Check if the MountX Magisk/KSU module is installed.
      */
     suspend fun isModuleInstalled(): Boolean {
         return getRootAndModuleInfo().isModuleInstalled

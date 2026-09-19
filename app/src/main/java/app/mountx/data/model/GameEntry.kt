@@ -20,7 +20,7 @@ enum class MountStatus {
 }
 
 /**
- * Represents a game entry managed by Mountify.
+ * Represents a game entry managed by MountX.
  * Stored in Room database.
  */
 @Entity(tableName = "games")

@@ -1,6 +1,6 @@
 package app.mountx.data.model
 
-/** Root solutions supported by Mountify */
+/** Root solutions supported by MountX */
 enum class RootSolution {
     MAGISK,
     KERNELSU,

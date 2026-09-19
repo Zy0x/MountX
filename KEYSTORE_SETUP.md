@@ -15,11 +15,11 @@ keytool -genkey -v \
     -keyalg RSA \
     -keysize 2048 \
     -validity 10000 \
-    -dname "CN=Noir, OU=Mountify, O=Zy0x, L=ID, ST=ID, C=ID"
+    -dname "CN=Noir, OU=MountX, O=Zy0x, L=ID, ST=ID, C=ID"
 ```
 
 > [!IMPORTANT]
-> Simpan password yang dimasukkan dengan aman. Berkas `mountify-release.jks` dilindungi pada `.gitignore` dan dilarang di-commit ke repositori publik.
+> Simpan password yang dimasukkan dengan aman. Berkas `mountx-release.jks` dilindungi pada `.gitignore` dan dilarang di-commit ke repositori publik.
 
 ---
 
@@ -29,12 +29,12 @@ Agar dapat disimpan sebagai GitHub Secret, konversikan file `.jks` ke teks Base6
 
 ### Di PowerShell (Windows):
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("mountify-release.jks")) | Out-File -FilePath "keystore-base64.txt" -Encoding ASCII -NoNewline
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("mountx-release.jks")) | Out-File -FilePath "keystore-base64.txt" -Encoding ASCII -NoNewline
 ```
 
 ### Di Linux / macOS:
 ```bash
-base64 -w 0 mountify-release.jks > keystore-base64.txt
+base64 -w 0 mountx-release.jks > keystore-base64.txt
 ```
 
 ---
@@ -50,7 +50,7 @@ base64 -w 0 mountify-release.jks > keystore-base64.txt
 |---|---|
 | `KEYSTORE_BASE64` | Isi teks dari file `keystore-base64.txt` |
 | `KEYSTORE_PASSWORD` | Password keystore yang dibuat di langkah 1 |
-| `KEY_ALIAS` | `mountify` |
+| `KEY_ALIAS` | `mountx` |
 | `KEY_PASSWORD` | Password alias key yang dibuat di langkah 1 |
 
 4. Hapus file `keystore-base64.txt` setelah selesai ditambahkan ke GitHub.

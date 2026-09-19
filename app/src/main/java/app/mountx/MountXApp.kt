@@ -5,7 +5,7 @@ import com.topjohnwu.superuser.Shell
 import dagger.hilt.android.HiltAndroidApp
 
 /**
- * Application class for Mountify.
+ * Application class for MountX.
  * Initializes libsu Shell with root access configuration.
  */
 @HiltAndroidApp

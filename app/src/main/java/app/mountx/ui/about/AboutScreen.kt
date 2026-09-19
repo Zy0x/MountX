@@ -342,10 +342,10 @@ fun AboutScreen(
                         Text(text = "• AOMEI slider unallocated space block visualization & + Sisa 1-tap absorption", fontSize = 11.sp)
                         Text(text = "• Real-time filesystem kernel/tool capability badges in Partition Wizard", fontSize = 11.sp)
                         Text(text = "• Zero-delay instant navigation when switching to Storage screen", fontSize = 11.sp)
-                        Text(text = "• Unified AppLogger logging all root operations in real-time to mountify.log", fontSize = 11.sp)
+                        Text(text = "• Unified AppLogger logging all root operations in real-time to mountx.log", fontSize = 11.sp)
                         Text(text = "• 120 FPS buttery smooth app list scrolling & icon memory cache", fontSize = 11.sp)
                         Text(text = "• Instant runtime language switching without restarting the app", fontSize = 11.sp)
-                        Text(text = "• Standardized Mountify branding across all screens and resources", fontSize = 11.sp)
+                        Text(text = "• Standardized MountX branding across all screens and resources", fontSize = 11.sp)
 
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.3 (Unmount & TRIM Stability)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)

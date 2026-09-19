@@ -23,7 +23,7 @@ class UpdateChecker @Inject constructor() {
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
-                setRequestProperty("User-Agent", "Mountify-App")
+                setRequestProperty("User-Agent", "MountX-App")
                 connectTimeout = 8000
                 readTimeout = 8000
             }

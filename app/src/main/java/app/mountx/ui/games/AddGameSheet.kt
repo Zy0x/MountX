@@ -53,8 +53,10 @@ import app.mountx.ui.theme.EmeraldActive
 import app.mountx.ui.theme.NeonCrimson
 
 /**
- * Dedicated Full-Screen Application Picker for Mountify.
- * - Displays User Apps by default in pure alphabetical order (A-Z)
+ * Dedicated Full-Screen Application Picker for MountX.
+ *
+ * Implemented as a full-screen layout embedded within the parent Scaffold,
+ * avoiding window-in-window dialog bloat, floating margins, or sub-screen clipping.
  * - Top-right MoreVert menu to toggle system apps visibility
  * - Floating Action Button (pencil icon) in bottom-right for custom/manual game entry
  * - Ultra-minimalist compact warning dialog for system applications

@@ -58,7 +58,7 @@ class MountService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Initializing Mountify service..."))
+        startForeground(NOTIFICATION_ID, buildNotification("Initializing MountX service..."))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -74,7 +74,7 @@ class MountService : Service() {
                     updateNotification("Mounting games...")
                     val mountedCount = gameRepository.mountAll(sdBase)
 
-                    updateNotification("Mountify: $mountedCount game(s) mounted.")
+                    updateNotification("MountX: $mountedCount game(s) mounted.")
                     stopForeground(STOP_FOREGROUND_DETACH)
                     stopSelf()
                 }
@@ -103,10 +103,10 @@ class MountService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Mountify Background Service",
+                "MountX Background Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows status of Mountify game mounting operations"
+                description = "Shows status of MountX game mounting operations"
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
@@ -116,7 +116,7 @@ class MountService : Service() {
     private fun buildNotification(text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Mountify")
+            .setContentTitle("MountX")
             .setContentText(text)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

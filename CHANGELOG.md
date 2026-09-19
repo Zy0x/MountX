@@ -1,9 +1,20 @@
 # Changelog
 
-All notable changes to Mountify will be documented in this file.
+All notable changes to MountX will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
+
+## [2.2.6] - 2026-09-19
+
+### Changed
+- **Total Rebrand Enforcement to MountX**:
+  - Restored and strictly enforced **MountX** as the sole official identity across all application strings (`app_name`, `dashboard_title`, `dashboard_module_install_guide`, `about_donate_desc`, `game_detail_section_shared`, `game_detail_delete_action`) in English (`values`), Indonesian (`values-id`), and system alias (`values-in`).
+  - Updated Gradle root project name in `settings.gradle.kts` to `rootProject.name = "MountX"`.
+  - Updated foreground notification channel name, titles, and progress descriptions in `MountService` to MountX.
+  - Aligned core logging targets in `AppLogger` to write primarily to `/storage/emulated/0/mountx.log` and `/data/adb/modules/MountX/mountx.log` with transparent fallback for legacy module paths.
+  - Updated `GameRepository.syncModuleGamelist` to target `/data/adb/modules/MountX/gamelist.conf` with legacy directory fallback.
+  - Updated technical standards in `AGENTS.md` with explicit anti-regression rules (§10.4) prohibiting accidental reversion of the project name back to legacy Mountify.
 
 ## [2.2.5] - 2026-09-19
 

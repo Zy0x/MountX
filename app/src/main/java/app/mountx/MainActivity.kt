@@ -136,7 +136,7 @@ private class LocalizedActivityContext(
 // ── Full App Compose Previews (Android Studio Design / Split View) ──
 
 @Preview(
-    name = "Mountify - Full App (Dark Theme)",
+    name = "MountX - Full App (Dark Theme)",
     showBackground = true,
     showSystemUi = true,
     device = "spec:width=1080px,height=2400px,dpi=420",
@@ -150,7 +150,7 @@ private fun MainActivityFullAppPreviewDark() {
 }
 
 @Preview(
-    name = "Mountify - Full App (Light Theme)",
+    name = "MountX - Full App (Light Theme)",
     showBackground = true,
     showSystemUi = true,
     device = "spec:width=1080px,height=2400px,dpi=420",

@@ -10,20 +10,22 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Real-time unified logging engine for Mountify.
+ * Real-time unified logging engine for MountX.
  * Appends formatted log entries to persistent logs:
- * - /storage/emulated/0/mountify.log
- * - /data/adb/modules/Mountify/mountify.log
- * - /storage/emulated/0/mountx.log (backward compatibility)
+ * - /storage/emulated/0/mountx.log
+ * - /data/adb/modules/MountX/mountx.log
+ * - /data/adb/modules/Mountify/mountify.log (backward compatibility)
+ * - /storage/emulated/0/mountify.log (backward compatibility)
  */
 object AppLogger {
 
     private val loggerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
-    private const val USER_LOG_FILE = "/storage/emulated/0/mountify.log"
-    private const val MOD_LOG_FILE = "/data/adb/modules/Mountify/mountify.log"
-    private const val LEGACY_LOG_FILE = "/storage/emulated/0/mountx.log"
+    private const val USER_LOG_FILE = "/storage/emulated/0/mountx.log"
+    private const val MOD_LOG_FILE = "/data/adb/modules/MountX/mountx.log"
+    private const val LEGACY_USER_LOG = "/storage/emulated/0/mountify.log"
+    private const val LEGACY_MOD_LOG = "/data/adb/modules/Mountify/mountify.log"
 
     fun info(tag: String, message: String) = log("INFO ", tag, message)
     fun success(tag: String, message: String) = log("SUCCESS", tag, message)
@@ -40,7 +42,8 @@ object AppLogger {
             val cmd = buildString {
                 append("echo \"").append(formattedLine).append("\" >> \"").append(USER_LOG_FILE).append("\" 2>/dev/null; ")
                 append("echo \"").append(formattedLine).append("\" >> \"").append(MOD_LOG_FILE).append("\" 2>/dev/null; ")
-                append("echo \"").append(formattedLine).append("\" >> \"").append(LEGACY_LOG_FILE).append("\" 2>/dev/null")
+                append("echo \"").append(formattedLine).append("\" >> \"").append(LEGACY_USER_LOG).append("\" 2>/dev/null; ")
+                append("echo \"").append(formattedLine).append("\" >> \"").append(LEGACY_MOD_LOG).append("\" 2>/dev/null")
             }
             RootShell.exec(cmd)
         }

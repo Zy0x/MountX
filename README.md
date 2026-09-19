@@ -1,11 +1,11 @@
-# Mountify
+# MountX
 
 [![Build & Release](https://github.com/Zy0x/Mountify/actions/workflows/build.yml/badge.svg)](https://github.com/Zy0x/Mountify/actions/workflows/build.yml)
 [![Min SDK](https://img.shields.io/badge/Min%20SDK-Android%2010%20(API%2029)-brightgreen.svg)](https://developer.android.com)
 [![Target SDK](https://img.shields.io/badge/Target%20SDK-Android%2015%20(API%2035)-blue.svg)](https://developer.android.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Mountify adalah aplikasi Android native dan modul root untuk memindahkan dan melakukan bind-mount data game (seperti Wuthering Waves, Honkai: Star Rail, Genshin Impact, Zenless Zone Zero, PUBG Mobile) dari penyimpanan internal ke partisi MicroSD eksternal tanpa error FUSE cross-device pada Android 10 ke atas.
+MountX adalah aplikasi Android native dan modul root untuk memindahkan dan melakukan bind-mount data game (seperti Wuthering Waves, Honkai: Star Rail, Genshin Impact, Zenless Zone Zero, PUBG Mobile) dari penyimpanan internal ke partisi MicroSD eksternal tanpa error FUSE cross-device pada Android 10 ke atas.
 
 ---
 
@@ -43,8 +43,8 @@ Mountify adalah aplikasi Android native dan modul root untuk memindahkan dan mel
 ## Instalasi
 
 1. Unduh file APK dan arsip zip modul dari halaman [GitHub Releases](https://github.com/Zy0x/Mountify/releases).
-2. Pasang `mountify-magisk-module.zip` melalui Magisk, KernelSU, atau APatch Manager, lalu muat ulang (reboot) perangkat.
-3. Pasang `Mountify.apk` dan buka aplikasi.
+2. Pasang `MountX-magisk-module.zip` melalui Magisk, KernelSU, atau APatch Manager, lalu muat ulang (reboot) perangkat.
+3. Pasang `MountX.apk` dan buka aplikasi.
 4. Berikan izin Superuser (Root) saat diminta.
 5. Konfigurasikan daftar game pada tab Games dan aktifkan mount.
 
@@ -53,10 +53,10 @@ Mountify adalah aplikasi Android native dan modul root untuk memindahkan dan mel
 ## Struktur Repositori
 
 ```
-Mountify/
+MountX/
 ├── app/                  # Aplikasi Android Native (Kotlin, Jetpack Compose, Hilt, Room, libsu)
 │   ├── src/main/
-│   │   ├── java/app/mountify/
+│   │   ├── java/app/mountx/
 │   │   │   ├── data/     # Room Database, Data Models, Repositories
 │   │   │   ├── di/       # Hilt Dependency Injection Modules
 │   │   │   ├── root/     # Engine Shell libsu, Mount & Storage Manager

@@ -147,17 +147,19 @@ class GameRepository @Inject constructor(
         }
 
     suspend fun syncModuleGamelist() = withContext(Dispatchers.IO) {
-        val moduleDir = "/data/adb/modules/Mountify"
-        if (RootShell.exists(moduleDir)) {
-            val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
-            val content = games.filter { it.isEnabled }.joinToString("\n") { g ->
-                val modeStr = when (g.mode) {
-                    MountMode.PKG -> "pkg"
-                    MountMode.FILES -> "files"
-                }
-                "${g.packageName}:$modeStr"
+        val targetDirs = listOf("/data/adb/modules/MountX", "/data/adb/modules/Mountify")
+        val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+        val content = games.filter { it.isEnabled }.joinToString("\n") { g ->
+            val modeStr = when (g.mode) {
+                MountMode.PKG -> "pkg"
+                MountMode.FILES -> "files"
             }
-            RootShell.exec("cat << 'EOF' > \"$moduleDir/gamelist.conf\"\n$content\nEOF\n")
+            "${g.packageName}:$modeStr"
+        }
+        for (dir in targetDirs) {
+            if (RootShell.exists(dir)) {
+                RootShell.exec("cat << 'EOF' > \"$dir/gamelist.conf\"\n$content\nEOF\n")
+            }
         }
     }
 

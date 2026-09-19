@@ -1,4 +1,4 @@
-name: Build & Release Mountify
+name: Build & Release MountX
 
 on:
   push:
@@ -53,14 +53,14 @@ jobs:
       - name: Package Magisk Module Zip
         run: |
           cd module
-          zip -r ../mountify-magisk-module.zip ./*
+          zip -r ../mountx-magisk-module.zip ./*
           cd ..
 
       - name: Upload Debug APK Artifact
         if: startsWith(github.ref, 'refs/tags/') != true
         uses: actions/upload-artifact@v4
         with:
-          name: Mountify-Debug-APK
+          name: MountX-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: ignore
 
@@ -68,15 +68,15 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: Mountify-Release-APK
+          name: MountX-Release-APK
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: ignore
 
       - name: Upload Magisk Module Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Mountify-Magisk-Module
-          path: mountify-magisk-module.zip
+          name: MountX-Magisk-Module
+          path: mountx-magisk-module.zip
           if-no-files-found: ignore
 
   release:
@@ -92,13 +92,13 @@ jobs:
       - name: Download Release APK Artifact
         uses: actions/download-artifact@v4
         with:
-          name: Mountify-Release-APK
+          name: MountX-Release-APK
           path: release-apk/
 
       - name: Download Magisk Module Artifact
         uses: actions/download-artifact@v4
         with:
-          name: Mountify-Magisk-Module
+          name: MountX-Magisk-Module
           path: release-module/
 
       - name: Create GitHub Release

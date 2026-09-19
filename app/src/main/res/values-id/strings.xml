@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Mountify</string>
+    <string name="app_name">MountX</string>
     <string name="app_description">Pindah dan mount data game ke MicroSD eksternal tanpa error FUSE.</string>
 
     <string name="nav_dashboard">Beranda</string>
@@ -9,13 +9,13 @@
     <string name="nav_logs">Log</string>
     <string name="nav_settings">Pengaturan</string>
 
-    <string name="dashboard_title">Mountify</string>
+    <string name="dashboard_title">MountX</string>
     <string name="dashboard_subtitle">Manajer Penyimpanan Game</string>
     <string name="dashboard_root_status">Status Root</string>
     <string name="dashboard_module_status">Status Modul</string>
     <string name="dashboard_module_installed">Modul Terpasang</string>
     <string name="dashboard_module_not_installed">Modul Belum Terpasang</string>
-    <string name="dashboard_module_install_guide">Pasang modul Magisk Mountify untuk mengaktifkan semua fitur.</string>
+    <string name="dashboard_module_install_guide">Pasang modul Magisk MountX untuk mengaktifkan semua fitur.</string>
     <string name="dashboard_no_root">Akses Root Tidak Diberikan</string>
     <string name="dashboard_no_root_desc">Aplikasi ini memerlukan akses root. Silakan berikan izin root.</string>
     <string name="dashboard_mounted_games">Game Ter-mount</string>
@@ -154,7 +154,7 @@
     <string name="game_detail_cat_ext2">Penyimpanan Bersama (MicroSD)</string>
     <string name="game_detail_cat_ext2_sub">Android/data &amp; obb di kartu MicroSD</string>
     <string name="game_detail_section_system">Penyimpanan Sistem &amp; Privat</string>
-    <string name="game_detail_section_shared">Penyimpanan Bersama (Target Mountify)</string>
+    <string name="game_detail_section_shared">Penyimpanan Bersama (Target MountX)</string>
     <string name="game_detail_legend_phone">Memori HP</string>
     <string name="game_detail_legend_internal_sys">Sistem</string>
     <string name="game_detail_legend_internal_shared">Bersama</string>
@@ -173,7 +173,7 @@
     <string name="game_detail_move_warning">Terverifikasi tanpa kehilangan data: data asal tetap utuh jika transfer gagal.</string>
     <string name="game_detail_move_to_sd">Pindah ke MicroSD</string>
     <string name="game_detail_move_to_internal">Kembalikan ke Internal</string>
-    <string name="game_detail_delete_action">Hapus dari Mountify</string>
+    <string name="game_detail_delete_action">Hapus dari MountX</string>
     <string name="game_detail_status_mounted">Aktif &amp; Ter-mount</string>
     <string name="game_detail_status_unmounted">Siaga (Belum Mount)</string>
     <string name="game_detail_manage_status_internal">Data tersimpan di memori internal</string>
@@ -392,7 +392,7 @@
     <string name="about_changelog">Changelog</string>
     <string name="about_license">Lisensi Open Source</string>
     <string name="about_donate_title">Dukung Pengembangan</string>
-    <string name="about_donate_desc">Jika Mountify bermanfaat, pertimbangkan untuk mendukung pengembangannya.</string>
+    <string name="about_donate_desc">Jika MountX bermanfaat, pertimbangkan untuk mendukung pengembangannya.</string>
     <string name="about_kofi">Ko-fi</string>
     <string name="about_saweria">Saweria</string>
     <string name="about_paypal">PayPal</string>

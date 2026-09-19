@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- App -->
-    <string name="app_name">Mountify</string>
+    <string name="app_name">MountX</string>
     <string name="app_description">Move and mount game data to external MicroSD without FUSE errors.</string>
 
     <!-- Bottom Navigation -->
@@ -12,13 +12,13 @@
     <string name="nav_settings">Settings</string>
 
     <!-- Dashboard -->
-    <string name="dashboard_title">Mountify</string>
+    <string name="dashboard_title">MountX</string>
     <string name="dashboard_subtitle">Game Storage Manager</string>
     <string name="dashboard_root_status">Root Status</string>
     <string name="dashboard_module_status">Module Status</string>
     <string name="dashboard_module_installed">Module Installed</string>
     <string name="dashboard_module_not_installed">Module Not Installed</string>
-    <string name="dashboard_module_install_guide">Install the Mountify Magisk module to enable all features.</string>
+    <string name="dashboard_module_install_guide">Install the MountX Magisk module to enable all features.</string>
     <string name="dashboard_no_root">Root Access Not Granted</string>
     <string name="dashboard_no_root_desc">This app requires root access to function. Please grant root permission.</string>
     <string name="dashboard_mounted_games">Mounted Games</string>
@@ -162,7 +162,7 @@
     <string name="game_detail_cat_ext2">Shared Storage (MicroSD)</string>
     <string name="game_detail_cat_ext2_sub">Android/data &amp; obb on SD card</string>
     <string name="game_detail_section_system">System &amp; Private Storage</string>
-    <string name="game_detail_section_shared">Shared Storage (Mountify Target)</string>
+    <string name="game_detail_section_shared">Shared Storage (MountX Target)</string>
     <string name="game_detail_legend_phone">Phone Memory</string>
     <string name="game_detail_legend_internal_sys">System</string>
     <string name="game_detail_legend_internal_shared">Shared</string>
@@ -181,7 +181,7 @@
     <string name="game_detail_move_warning">Zero data-loss verified: source data is preserved if transfer fails.</string>
     <string name="game_detail_move_to_sd">Move to MicroSD</string>
     <string name="game_detail_move_to_internal">Restore to Internal</string>
-    <string name="game_detail_delete_action">Remove from Mountify</string>
+    <string name="game_detail_delete_action">Remove from MountX</string>
     <string name="game_detail_status_mounted">Active &amp; Mounted</string>
     <string name="game_detail_status_unmounted">Standby (Unmounted)</string>
     <string name="game_detail_manage_status_internal">Data stored on internal storage</string>
@@ -408,7 +408,7 @@
     <string name="about_changelog">Changelog</string>
     <string name="about_license">Open Source Licenses</string>
     <string name="about_donate_title">Support Development</string>
-    <string name="about_donate_desc">If you find Mountify useful, consider supporting its development.</string>
+    <string name="about_donate_desc">If you find MountX useful, consider supporting its development.</string>
     <string name="about_kofi">Ko-fi</string>
     <string name="about_saweria">Saweria</string>
     <string name="about_paypal">PayPal</string>

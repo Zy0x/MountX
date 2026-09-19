@@ -16,5 +16,5 @@ dependencyResolutionManagement {
         maven { url = uri("https://jitpack.io") }
     }
 }
-rootProject.name = "Mountify"
+rootProject.name = "MountX"
 include(":app")

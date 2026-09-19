@@ -564,7 +564,7 @@ private fun StorageTabContent(
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
 
-                // Section 2 Header: Shared Storage (Mountify Target)
+                // Section 2 Header: Shared Storage (MountX Target)
                 Text(
                     text = stringResource(R.string.game_detail_section_shared).uppercase(),
                     style = MaterialTheme.typography.labelSmall.copy(

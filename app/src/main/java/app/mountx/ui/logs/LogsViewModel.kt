@@ -23,9 +23,10 @@ class LogsViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        const val LOG_PATH = "/storage/emulated/0/mountify.log"
-        const val MOD_LOG_PATH = "/data/adb/modules/Mountify/mountify.log"
-        const val LEGACY_LOG_PATH = "/storage/emulated/0/mountx.log"
+        const val LOG_PATH = "/storage/emulated/0/mountx.log"
+        const val MOD_LOG_PATH = "/data/adb/modules/MountX/mountx.log"
+        const val LEGACY_LOG_PATH = "/storage/emulated/0/mountify.log"
+        const val LEGACY_MOD_LOG_PATH = "/data/adb/modules/Mountify/mountify.log"
     }
 
     private val _logLines = MutableStateFlow<List<LogLine>>(emptyList())
@@ -56,7 +57,7 @@ class LogsViewModel @Inject constructor(
     fun clearLog() {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                RootShell.exec("echo '' > \"$LOG_PATH\"; echo '' > \"$MOD_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_LOG_PATH\" 2>/dev/null")
+                RootShell.exec("echo '' > \"$LOG_PATH\"; echo '' > \"$MOD_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_MOD_LOG_PATH\" 2>/dev/null")
             }
             readLogFile()
         }
@@ -69,7 +70,7 @@ class LogsViewModel @Inject constructor(
             type = "text/plain"
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        context.startActivity(Intent.createChooser(sendIntent, "Share Mountify Log").apply {
+        context.startActivity(Intent.createChooser(sendIntent, "Share MountX Log").apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         })
     }
@@ -93,7 +94,7 @@ class LogsViewModel @Inject constructor(
     }
 
     private suspend fun readLogFile() = withContext(Dispatchers.IO) {
-        val cmd = "cat \"$MOD_LOG_PATH\" \"$LOG_PATH\" \"/data/adb/modules/Mountify/mountx.log\" \"$LEGACY_LOG_PATH\" 2>/dev/null | tail -n 350"
+        val cmd = "cat \"$MOD_LOG_PATH\" \"$LOG_PATH\" \"$LEGACY_MOD_LOG_PATH\" \"$LEGACY_LOG_PATH\" 2>/dev/null | tail -n 350"
         val result = RootShell.exec(cmd)
         val rawLines = if (result.isSuccess && result.stdout.isNotEmpty()) {
             result.stdout.filter { it.isNotBlank() }

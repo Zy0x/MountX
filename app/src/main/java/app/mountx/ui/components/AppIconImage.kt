@@ -29,7 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * High-performance 120 FPS application icon loader and memory cache for Mountify.
+ * High-performance 120 FPS application icon loader and memory cache for MountX.
  * - 1024-slot in-memory LruCache for instant synchronous rendering
  * - Throttled background IO dispatcher (limitedParallelism) preventing Binder IPC congestion
  * - Proactive background pre-warming mechanism
