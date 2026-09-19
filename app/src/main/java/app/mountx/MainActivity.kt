@@ -82,7 +82,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themeMode by appPreferences.themeMode.collectAsState(initial = app.mountx.util.ThemeMode.SYSTEM)
-            val language by appPreferences.language.collectAsState(initial = "en")
+            val defaultLang = remember {
+                val sysLang = java.util.Locale.getDefault().language
+                if (sysLang.equals("in", ignoreCase = true) || sysLang.equals("id", ignoreCase = true)) "id" else "en"
+            }
+            val language by appPreferences.language.collectAsState(initial = defaultLang)
 
             val localizedContext = remember(language) {
                 val locale = if (language == "id") java.util.Locale("id", "ID") else java.util.Locale("en", "US")

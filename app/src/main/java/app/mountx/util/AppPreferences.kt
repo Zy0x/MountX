@@ -46,7 +46,10 @@ class AppPreferences @Inject constructor(
     }
 
     val language: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_LANGUAGE] ?: "en"
+        prefs[KEY_LANGUAGE] ?: run {
+            val sysLang = java.util.Locale.getDefault().language
+            if (sysLang.equals("in", ignoreCase = true) || sysLang.equals("id", ignoreCase = true)) "id" else "en"
+        }
     }
 
     val sdBasePath: Flow<String> = context.dataStore.data.map { prefs ->

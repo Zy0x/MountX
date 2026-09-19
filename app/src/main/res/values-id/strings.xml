@@ -635,6 +635,90 @@
     <string name="notif_games_unmounted">Seluruh Game Telah Dilepas</string>
     <string name="notif_subtext_kernel">Kernel Namespace</string>
     <string name="mount_add_custom_path">Tambah Direktori Kustom</string>
+    <string name="game_detail_badge_offloaded">DIALIHKAN</string>
+
+    <!-- v2.2.17 Directory Naming, Path Visibility & Novice Grouping -->
+    <string name="gerbong_external_data_title">Data</string>
+    <string name="gerbong_external_data_desc">Data aset, unduhan patch, dan file permainan (/Android/data).</string>
+    <string name="gerbong_obb_title">OBB</string>
+    <string name="gerbong_obb_desc">Berkas arsip paket instalasi game (/Android/obb).</string>
+    <string name="gerbong_media_title">Media</string>
+    <string name="gerbong_media_desc">Folder media publik dan unduhan dengan proteksi .nomedia.</string>
+    <string name="gerbong_cache_title">Cache &amp; Shader</string>
+    <string name="gerbong_cache_desc">File sementara dan kompilasi shader grafis.</string>
+    <string name="gerbong_private_title">Private Data</string>
+    <string name="gerbong_private_desc">Data privat internal (/data/data). Folder besar menggunakan Virtual Ext4 Loop Container.</string>
+    <string name="gerbong_app_package_title">App Package</string>
+    <string name="gerbong_app_package_desc">Biner APK dan native library (.so) di /data/app/.</string>
+    <string name="gerbong_experimental_section">Opsi Lanjutan / Eksperimental</string>
+    <string name="gerbong_experimental_warning_title">⚠️ Peringatan Risiko Eksperimental</string>
+    <string name="gerbong_experimental_warning_msg">Memindahkan biner aplikasi/lib dapat memicu force close (kernel noexec/SELinux) atau error update Play Store. Fitur ini ditujukan untuk pengguna tingkat lanjut dengan partisi ext4. Risiko ditanggung sendiri sepenuhnya.</string>
+    <string name="gerbong_experimental_confirm">Saya Mengerti Risikonya</string>
+
+    <string name="dialog_delete_app_title">Hapus Aplikasi dari MountX</string>
+    <string name="dialog_delete_app_subtitle">Pilih opsi pembersihan data untuk %1$s:</string>
+    <string name="dialog_delete_restore_btn">Pulihkan ke Internal &amp; Hapus</string>
+    <string name="dialog_delete_restore_desc">Salin kembali seluruh data MicroSD ke memori internal, perbaiki perizinan (chmod 775 &amp; restorecon -FR), lalu hapus dari MountX.</string>
+    <string name="dialog_delete_unmount_btn">Lepas Mount Saja &amp; Hapus</string>
+    <string name="dialog_delete_unmount_desc">Hanya unmount partisi. Data fisik tetap aman di MicroSD, lalu bersihkan entri dari MountX.</string>
+    <string name="dialog_delete_storage_insufficient">Penyimpanan internal tidak mencukupi (Tersedia: %1$s, Dibutuhkan: %2$s). Pemulihan ke internal dicegah untuk menghindari memori penuh.</string>
+    <string name="dialog_delete_restoring_title">Memulihkan Data ke Internal…</string>
+    <string name="dialog_delete_restoring_msg">Sedang menyalin berkas fisik dan memperbaiki perizinan. Jangan menutup aplikasi atau mematikan perangkat.</string>
+    <string name="custom_path_dialog_title">Tambah Direktori Kustom</string>
+    <string name="custom_path_dialog_desc">Tentukan direktori kustom internal yang ingin dipetakan secara presisi ke MicroSD.</string>
+    <string name="custom_path_label_hint">Label / Nama Direktori (misal: Downloads)</string>
+    <string name="custom_path_internal_hint">Path Internal Lengkap (misal: /data/media/0/Telegram)</string>
+    <string name="custom_path_error_required">Semua kolom wajib diisi</string>
+    <string name="custom_path_error_security">Keamanan Sistem: Direktori /data/app dan /system dilindungi dan tidak dapat dimount.</string>
+    <string name="custom_path_save">Simpan</string>
+    <string name="custom_path_cancel">Batal</string>
+    <string name="mount_targets_count_badge">%1$d Target</string>
+
+    <string name="mount_group_core_title">Data Utama Game (Rekomendasi)</string>
+    <string name="mount_group_core_desc">Direktori utama yang paling penting untuk penyimpanan game.</string>
+    <string name="mount_group_extra_title">Data Tambahan &amp; Kustom</string>
+    <string name="mount_group_extra_desc">Folder opsional seperti media, cache, atau direktori kustom.</string>
+    <string name="mount_source_microsd">MicroSD</string>
+    <string name="mount_target_phone">Internal HP</string>
+    <string name="mount_status_active_sd">Terhubung di MicroSD</string>
+    <string name="mount_status_phone_only">Hanya di Memori HP</string>
+    <string name="mount_empty_folder">0 B (Kosong)</string>
+    <string name="mount_details_title">Rincian Direktori</string>
+    <string name="mount_copy_path">Salin Path</string>
+    <string name="mount_path_copied">Path berhasil disalin ke clipboard</string>
+    <string name="mount_guide_banner_title">Cara Kerja Pemindahan Data</string>
+    <string name="mount_guide_banner_desc">Data permainan dialihkan ke media eksternal (MicroSD/SSD) lalu ditautkan ke memori HP. Game membaca data normal tanpa menghabiskan ruang internal ponsel Anda.</string>
+    <string name="mount_details_category_label">Kategori Direktori</string>
+    <string name="mount_details_source_label">Lokasi Fisik (Media Eksternal)</string>
+    <string name="mount_details_target_label">Tautan Virtual (Memori Ponsel)</string>
+    <string name="mount_details_size_label">Ukuran Folder</string>
+    <string name="mount_details_status_label">Status Tautan</string>
+    <string name="mount_close">Tutup</string>
+
+    <!-- v2.2.18: 3-Step Guided Migration Hub & Multi-Disk Selection -->
+    <string name="mount_step1_title">Langkah 1: Pilih Data yang Ingin Dialihkan</string>
+    <string name="mount_step1_desc">Centang folder data permainan yang ingin Anda pindahkan ke penyimpanan eksternal.</string>
+    <string name="mount_step2_title">Langkah 2: Pilih Disk Penyimpanan Tujuan</string>
+    <string name="mount_step2_desc">Pilih media eksternal (MicroSD atau SSD USB Type-C) untuk menampung data.</string>
+    <string name="mount_step3_title">Langkah 3: Tinjau &amp; Eksekusi</string>
+    <string name="mount_step3_summary">Dipilih: %1$s • Sisa di %2$s: %3$s</string>
+    <string name="mount_step3_summary_no_disk">Dipilih: %1$s • Pilih disk tujuan terlebih dahulu</string>
+    <string name="mount_location_internal">Di Memori Internal</string>
+    <string name="mount_location_external">Di %1$s</string>
+    <string name="mount_location_sd">Di MicroSD</string>
+    <string name="mount_location_usb">Di SSD Eksternal</string>
+    <string name="mount_disk_capacity_warning">Ruang disk tidak cukup (Kurang: %1$s)</string>
+    <string name="mount_disk_unmounted_badge">Belum Di-mount</string>
+    <string name="mount_disk_ready_badge">Siap Pakai</string>
+    <string name="mount_disk_quick_mount">Mount</string>
+    <string name="mount_disk_no_disks_detected">Tidak ada media penyimpanan eksternal yang terdeteksi.</string>
+    <string name="mount_btn_move_to_disk">Pindahkan ke %1$s (%2$s)</string>
+    <string name="mount_btn_restore_internal">Pulihkan ke Memori Internal (%1$s)</string>
+    <string name="mount_btn_restore_insufficient">Ruang memori internal HP tidak mencukupi untuk pemulihan</string>
+    <string name="mount_btn_remove_game">Lepas dari MountX</string>
+    <string name="mount_status_summary_active">Data aktif tersambung di %1$s</string>
+    <string name="mount_status_summary_standby">Data tersimpan di memori internal</string>
+    <string name="mount_subitems_count">%1$d Subfolder</string>
 </resources>
 
 
