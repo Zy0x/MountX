@@ -5,6 +5,21 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.18] - 2026-09-20
+
+### Added & Improved
+- **Alur Berjenjang 3 Langkah (3-Step Guided Migration Hub)**:
+  - Menata ulang seluruh alur tab **Kelola (Manage)** di App Detail menjadi 3 langkah berurutan yang intuitif dan terarah:
+    1. **Langkah 1: Pilih Data yang Ingin Dialihkan**: Checklist direktori bersih (Data, OBB, Media, dsb) dengan Accordion subfolder untuk melihat path internal & eksternal, Pill Status Lokasi yang jelas (`Di Memori Internal` vs `Di MicroSD`), dan tombol `+ Tambah Direktori Kustom`.
+    2. **Langkah 2: Pilih Disk Penyimpanan Tujuan**: Radio card interaktif untuk setiap media penyimpanan eksternal yang terdeteksi (MicroSD, SSD Eksternal Type-C, USB OTG), auto-select jika hanya ada 1 disk aktif, visual capacity progress bar, dan tombol inline quick-mount.
+    3. **Langkah 3: Tinjau & Eksekusi**: Pinned sticky bottom bar dengan ringkasan kapasitas mini (`Dipilih: XX • Sisa di [Disk]: YY`), tombol kontekstual `Pindahkan ke [Disk]` dan `Pulihkan ke Internal`, serta Capacity Guard yang otomatis mencegah pemindahan jika ruang disk tujuan atau memori internal tidak cukup.
+- **Multi-Disk Selection & UUID Binding**:
+  - Menyematkan `diskUuid` pada data model dan katalog portable `.mountx/catalog.json` agar pengikatan direktori selalu menunjuk ke media penyimpanan fisik yang dipilih saat banyak storage terhubung.
+- **Penyederhanaan Visual & Lokalisasi Bersih**:
+  - Menghapus badge panah ganda `MicroSD ↔ Internal Phone` yang membingungkan.
+  - Menggantikan dengan Pill Status Lokasi yang elegan dan ringkas.
+  - Memastikan 100% Bahasa Indonesia murni yang komunikatif tanpa istilah campur aduk.
+
 ## [2.2.17] - 2026-09-20
 
 ### Changed & Improved

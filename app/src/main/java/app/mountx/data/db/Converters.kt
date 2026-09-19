@@ -31,6 +31,11 @@ class Converters {
                     put("containerImgPath", JSONObject.NULL)
                 }
                 put("sizeBytes", item.sizeBytes)
+                if (item.diskUuid != null) {
+                    put("diskUuid", item.diskUuid)
+                } else {
+                    put("diskUuid", JSONObject.NULL)
+                }
             }
             array.put(obj)
         }
@@ -59,7 +64,8 @@ class Converters {
                     enabled = obj.optBoolean("enabled", true),
                     isVirtualContainer = obj.optBoolean("isVirtualContainer", false),
                     containerImgPath = if (obj.has("containerImgPath") && !obj.isNull("containerImgPath")) obj.getString("containerImgPath") else null,
-                    sizeBytes = obj.optLong("sizeBytes", 0L)
+                    sizeBytes = obj.optLong("sizeBytes", 0L),
+                    diskUuid = if (obj.has("diskUuid") && !obj.isNull("diskUuid")) obj.getString("diskUuid") else null
                 )
                 list.add(config.copy(category = config.resolveCategory()))
             }

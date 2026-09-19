@@ -77,6 +77,8 @@ fun GamesScreen(
     val detailedStorage by viewModel.detailedStorage.collectAsState()
     val isMovingData by viewModel.isMovingData.collectAsState()
     val moveMessage by viewModel.moveMessage.collectAsState()
+    val availableDisks by viewModel.availableDisks.collectAsState()
+    val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.scanDiscoveredGames()
@@ -119,6 +121,9 @@ fun GamesScreen(
             isDraftMode = true,
             candidateDirectories = candidateDirectories,
             isLoadingCandidates = isScanningCandidates,
+            availableDisks = availableDisks,
+            internalFreeBytes = internalStorageInfo?.freeBytes ?: 0L,
+            onQuickMountDisk = { disk -> viewModel.quickMountDisk(disk) },
             onDismiss = { configuringApp = null },
             onSaveGame = { newGame ->
                 viewModel.addGameWithMountPoints(
@@ -160,12 +165,15 @@ fun GamesScreen(
             isMoving = isMovingData,
             moveMessage = moveMessage,
             isDraftMode = false,
+            availableDisks = availableDisks,
+            internalFreeBytes = internalStorageInfo?.freeBytes ?: 0L,
+            onQuickMountDisk = { disk -> viewModel.quickMountDisk(disk) },
             onDismiss = {
                 viewModel.clearMoveMessage()
                 selectedGameForDetail = null
             },
-            onMoveMountPoints = { dir, pts ->
-                viewModel.moveMountPoints(updatedGame.packageName, pts, dir)
+            onMoveMountPoints = { dir, pts, targetDisk ->
+                viewModel.moveMountPoints(updatedGame.packageName, pts, dir, targetDisk?.mountPath)
             },
             onUpdateMountPoints = { pts ->
                 viewModel.updateMountPoints(updatedGame.packageName, pts)

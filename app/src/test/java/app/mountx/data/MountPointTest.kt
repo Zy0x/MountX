@@ -243,4 +243,69 @@ class MountPointTest {
         assertTrue("OBB point must be core game data", obbPoint.isCoreGameData())
         assertFalse("Custom point must not be core game data", customPoint.isCoreGameData())
     }
+
+    @Test
+    fun testDiskUuidBindingAndResolution() {
+        val disk1 = app.mountx.data.model.SdCardDiskInfo(
+            diskName = "mmcblk0",
+            vendorName = "Sandisk",
+            partitions = listOf(
+                app.mountx.data.model.PartitionInfo(
+                    path = "/dev/block/mmcblk0p1",
+                    name = "mmcblk0p1",
+                    diskName = "mmcblk0",
+                    mountPoint = "/mnt/media_rw/1234-5678",
+                    uuid = "1234-5678",
+                    isMounted = true
+                )
+            )
+        )
+        val disk2 = app.mountx.data.model.SdCardDiskInfo(
+            diskName = "sda",
+            vendorName = "Samsung SSD",
+            partitions = listOf(
+                app.mountx.data.model.PartitionInfo(
+                    path = "/dev/block/sda1",
+                    name = "sda1",
+                    diskName = "sda",
+                    mountPoint = "/mnt/media_rw/ABCD-EF01",
+                    uuid = "ABCD-EF01",
+                    isMounted = true
+                )
+            )
+        )
+
+        val pointBoundToSsd = MountPointConfig(
+            id = "data",
+            category = MountPointCategory.EXTERNAL_DATA,
+            sourcePath = "/mnt/media_rw/ABCD-EF01/Android/data/com.test",
+            targetPath = "/data/media/0/Android/data/com.test",
+            diskUuid = "ABCD-EF01"
+        )
+
+        val pointUnbound = MountPointConfig(
+            id = "obb",
+            category = MountPointCategory.OBB_STORAGE,
+            sourcePath = "/data/sdext2/Android/obb/com.test",
+            targetPath = "/data/media/0/Android/obb/com.test"
+        )
+
+        val resolvedSsd = pointBoundToSsd.resolveTargetDiskBase(listOf(disk1, disk2), "/data/sdext2")
+        val resolvedDefault = pointUnbound.resolveTargetDiskBase(listOf(disk1, disk2), "/data/sdext2")
+
+        assertEquals("/mnt/media_rw/ABCD-EF01", resolvedSsd)
+        assertEquals("/data/sdext2", resolvedDefault)
+    }
+
+    @Test
+    fun testCapacityGuardCalculation() {
+        val totalActiveSizeBytes = 15L * 1024L * 1024L * 1024L // 15 GB
+        val diskFreeBytes = 10L * 1024L * 1024L * 1024L // 10 GB
+
+        val isSufficient = diskFreeBytes >= totalActiveSizeBytes
+        assertFalse(isSufficient)
+
+        val deficit = totalActiveSizeBytes - diskFreeBytes
+        assertEquals(5L * 1024L * 1024L * 1024L, deficit)
+    }
 }

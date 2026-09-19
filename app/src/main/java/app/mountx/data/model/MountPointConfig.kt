@@ -25,7 +25,8 @@ data class MountPointConfig(
     val enabled: Boolean = true,
     val isVirtualContainer: Boolean = false,
     val containerImgPath: String? = null,
-    val sizeBytes: Long = 0L
+    val sizeBytes: Long = 0L,
+    val diskUuid: String? = null
 ) {
     /**
      * Resolves normalized category based on targetPath and ID to prevent misclassification
@@ -79,5 +80,16 @@ data class MountPointConfig(
     fun isCoreGameData(): Boolean {
         val cat = resolveCategory()
         return cat == MountPointCategory.EXTERNAL_DATA || cat == MountPointCategory.OBB_STORAGE
+    }
+
+    /**
+     * Resolves the target disk base directory for this mount point given available disks.
+     */
+    fun resolveTargetDiskBase(availableDisks: List<SdCardDiskInfo>, defaultBase: String): String {
+        if (diskUuid != null) {
+            val matched = availableDisks.firstOrNull { it.uuid == diskUuid }
+            if (matched != null) return matched.mountPath
+        }
+        return defaultBase
     }
 }

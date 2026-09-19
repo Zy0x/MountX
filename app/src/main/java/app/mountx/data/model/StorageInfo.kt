@@ -123,6 +123,20 @@ data class SdCardDiskInfo(
 
     val usedPercent: Float
         get() = if (totalSizeBytes > 0L && totalUsedBytes > 0L) (totalUsedBytes.toFloat() / totalSizeBytes.toFloat()).coerceIn(0f, 1f) else 0f
+
+    val primaryPartition: PartitionInfo?
+        get() = partitions.firstOrNull { it.isTargetMount }
+            ?: partitions.firstOrNull { it.isMounted }
+            ?: partitions.firstOrNull()
+
+    val uuid: String?
+        get() = primaryPartition?.uuid ?: partitions.firstOrNull { !it.uuid.isNullOrBlank() }?.uuid
+
+    val mountPath: String
+        get() = primaryPartition?.mountPoint ?: partitions.firstOrNull { !it.mountPoint.isNullOrBlank() }?.mountPoint ?: "/data/sdext2"
+
+    val isMounted: Boolean
+        get() = partitions.any { it.isMounted }
 }
 
 /** Specification for creating a partition in the Partition Wizard */

@@ -51,6 +51,12 @@ class GamesViewModel @Inject constructor(
     private val _discoveredGames = MutableStateFlow<List<DiscoveredGame>>(emptyList())
     val discoveredGames: StateFlow<List<DiscoveredGame>> = _discoveredGames.asStateFlow()
 
+    private val _availableDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(emptyList())
+    val availableDisks: StateFlow<List<app.mountx.data.model.SdCardDiskInfo>> = _availableDisks.asStateFlow()
+
+    val internalStorageInfo: StateFlow<app.mountx.data.model.InternalStorageInfo?> = storageRepository.observeInternalStorage()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     private val _candidateDirectories = MutableStateFlow<List<app.mountx.data.repository.CandidateDirectory>>(emptyList())
     val candidateDirectories: StateFlow<List<app.mountx.data.repository.CandidateDirectory>> = _candidateDirectories.asStateFlow()
 
@@ -64,6 +70,7 @@ class GamesViewModel @Inject constructor(
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     init {
+        loadAvailableDisks()
         viewModelScope.launch {
             systemSyncMonitor.events.collect { event ->
                 when (event) {
@@ -215,11 +222,27 @@ class GamesViewModel @Inject constructor(
         }
     }
 
+    fun loadAvailableDisks() {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            _availableDisks.value = storageRepository.getAllDisks(sdBase)
+        }
+    }
+
+    fun quickMountDisk(disk: app.mountx.data.model.SdCardDiskInfo) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            storageRepository.mountAllPartitions(disk, sdBase)
+            _availableDisks.value = storageRepository.getAllDisks(sdBase)
+        }
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
                 val sdBase = appPreferences.sdBasePath.first()
+                loadAvailableDisks()
                 games.value.forEach { g ->
                     gameRepository.calculateDataSize(g.packageName, sdBase)
                 }
@@ -233,12 +256,14 @@ class GamesViewModel @Inject constructor(
     fun moveMountPoints(
         packageName: String,
         mountPoints: List<app.mountx.data.model.MountPointConfig>,
-        direction: MoveDirection
+        direction: MoveDirection,
+        targetDiskBase: String? = null
     ) {
         viewModelScope.launch {
             _isMovingData.value = true
             _moveMessage.value = null
-            val sdBase = appPreferences.sdBasePath.first()
+            val defaultSdBase = appPreferences.sdBasePath.first()
+            val sdBase = targetDiskBase ?: defaultSdBase
             val game = games.value.firstOrNull { it.packageName == packageName }
 
             // If restoring to internal, unmount from runtime namespaces first

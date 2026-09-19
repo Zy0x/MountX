@@ -377,6 +377,16 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.18 (3-Step Guided Migration Hub & Multi-Disk Selection)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Alur Berjenjang 3 Langkah: Langkah 1 (Pilih Data), Langkah 2 (Pilih Disk Tujuan), Langkah 3 (Tinjau & Eksekusi)", fontSize = 11.sp)
+                        Text(text = "• Multi-Disk Selection & Auto-Select: Pilih target MicroSD atau SSD USB Type-C dengan deteksi kapasitas real-time", fontSize = 11.sp)
+                        Text(text = "• Multi-Disk UUID Binding: Tautan data mengikat ke media fisik spesifik agar mount tetap konsisten", fontSize = 11.sp)
+                        Text(text = "• Capacity Guard & Real-Time Bar: Indikator visual ruang bebas dan pencegahan otomatis jika kapasitas disk kurang", fontSize = 11.sp)
+                        Text(text = "• Clean Localization: 100% Bahasa Indonesia murni, Pill Status Lokasi bersih, hapus diagram alur membingungkan", fontSize = 11.sp)
+                        Text(text = "• Sticky Contextual Action Bar: Ringkasan mini kapasitas dan tombol pemindahan selalu mudah dijangkau", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.17 (Data vs OBB Naming, Path Visibility & Novice Grouping)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Fixed directory misclassification: Android/data is accurately labeled 'Data' and Android/obb is labeled 'OBB'", fontSize = 11.sp)

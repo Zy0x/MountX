@@ -112,7 +112,8 @@ class DiskCatalogManager @Inject constructor(
                                 enabled = mpObj.optBoolean("enabled", true),
                                 isVirtualContainer = mpObj.optBoolean("is_virtual_container", mpObj.optBoolean("isVirtualContainer", false)),
                                 containerImgPath = if (mpObj.has("container_img_path") && !mpObj.isNull("container_img_path")) mpObj.getString("container_img_path") else null,
-                                sizeBytes = mpObj.optLong("size_bytes", 0L)
+                                sizeBytes = mpObj.optLong("size_bytes", 0L),
+                                diskUuid = if (mpObj.has("disk_uuid") && !mpObj.isNull("disk_uuid")) mpObj.getString("disk_uuid") else if (mpObj.has("diskUuid") && !mpObj.isNull("diskUuid")) mpObj.getString("diskUuid") else null
                             )
                         )
                     }
@@ -171,6 +172,7 @@ class DiskCatalogManager @Inject constructor(
                                 put("is_virtual_container", mp.isVirtualContainer)
                                 if (mp.containerImgPath != null) put("container_img_path", mp.containerImgPath)
                                 put("size_bytes", mp.sizeBytes)
+                                if (mp.diskUuid != null) put("disk_uuid", mp.diskUuid)
                             })
                         }
                         put("mount_points", mpArr)
