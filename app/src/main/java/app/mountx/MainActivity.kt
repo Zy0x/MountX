@@ -76,17 +76,16 @@ class MainActivity : ComponentActivity() {
             val language by appPreferences.language.collectAsState(initial = "en")
 
             val context = androidx.compose.ui.platform.LocalContext.current
-            val localizedContext = remember(language, context) {
+            val localizedResources = remember(language, context) {
                 val locale = java.util.Locale(language)
                 java.util.Locale.setDefault(locale)
                 val config = android.content.res.Configuration(context.resources.configuration)
                 config.setLocale(locale)
-                context.createConfigurationContext(config)
+                context.createConfigurationContext(config).resources
             }
 
             androidx.compose.runtime.CompositionLocalProvider(
-                androidx.compose.ui.platform.LocalContext provides localizedContext,
-                androidx.compose.ui.platform.LocalConfiguration provides localizedContext.resources.configuration
+                androidx.compose.ui.platform.LocalConfiguration provides localizedResources.configuration
             ) {
                 MountXTheme(themeMode = themeMode) {
                     Surface(modifier = Modifier.fillMaxSize()) {
