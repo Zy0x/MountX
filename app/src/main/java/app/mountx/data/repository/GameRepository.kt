@@ -39,12 +39,10 @@ class GameRepository @Inject constructor(
 ) {
 
     suspend fun resolveSdSourcePath(sdBase: String, relativeMountXPath: String): String {
+        val modernPath = "$sdBase/$relativeMountXPath"
         val legacyRelative = relativeMountXPath.removePrefix("MountX/")
         val legacyPath = "$sdBase/$legacyRelative"
-        val modernPath = "$sdBase/$relativeMountXPath"
-        return if (RootShell.exists(legacyPath)) {
-            // Only prioritize legacy path if it contains actual data (> 128KB)
-            // Empty skeleton folders redirect cleanly to the unified MountX directory tree
+        return if (!RootShell.exists(modernPath) && RootShell.exists(legacyPath)) {
             val sizeKb = RootShell.exec("du -sk \"$legacyPath\" 2>/dev/null").output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
             if (sizeKb > 128L) legacyPath else modernPath
         } else {
@@ -133,7 +131,15 @@ class GameRepository @Inject constructor(
             } else {
                 val normalizedPoints = g.mountPoints.map { mp ->
                     val resolved = mp.resolveCategory()
-                    if (resolved != mp.category) mp.copy(category = resolved) else mp
+                    val canonicalSource = if (!mp.sourcePath.contains("/MountX/Android/") && mp.sourcePath.contains("/Android/")) {
+                        mp.sourcePath.replace("/Android/", "/MountX/Android/")
+                    } else {
+                        mp.sourcePath
+                    }
+                    var item = mp
+                    if (resolved != item.category) item = item.copy(category = resolved)
+                    if (canonicalSource != item.sourcePath) item = item.copy(sourcePath = canonicalSource)
+                    item
                 }
                 if (normalizedPoints != g.mountPoints) {
                     val updated = g.copy(mountPoints = normalizedPoints)
@@ -162,7 +168,15 @@ class GameRepository @Inject constructor(
         } else {
             val normalizedPoints = game.mountPoints.map { mp ->
                 val resolved = mp.resolveCategory()
-                if (resolved != mp.category) mp.copy(category = resolved) else mp
+                val canonicalSource = if (!mp.sourcePath.contains("/MountX/Android/") && mp.sourcePath.contains("/Android/")) {
+                    mp.sourcePath.replace("/Android/", "/MountX/Android/")
+                } else {
+                    mp.sourcePath
+                }
+                var item = mp
+                if (resolved != item.category) item = item.copy(category = resolved)
+                if (canonicalSource != item.sourcePath) item = item.copy(sourcePath = canonicalSource)
+                item
             }
             if (normalizedPoints != game.mountPoints) {
                 val updated = game.copy(mountPoints = normalizedPoints)

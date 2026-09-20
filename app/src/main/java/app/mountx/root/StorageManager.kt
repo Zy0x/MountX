@@ -102,6 +102,87 @@ class StorageManager {
     }
 
     /**
+     * Automatically migrates legacy root directories ($sdBase/Android/data, obb, media)
+     * into the unified MountX directory tree ($sdBase/MountX/Android/...) when updating.
+     * Prevents orphan waste, duplicate files, and mounting path collisions.
+     * Cleans up empty legacy parent directories once migration succeeds.
+     */
+    suspend fun migrateLegacyStorageToMountX(sdBase: String = "/data/sdext2"): Unit = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!RootShell.exists(sdBase)) return@withContext
+            val legacyAndroid = "$sdBase/Android"
+            if (!RootShell.exists(legacyAndroid)) return@withContext
+
+            val mountXBase = "$sdBase/MountX"
+            val mountXAndroid = "$mountXBase/Android"
+            ensureMountXStorageStructure(sdBase)
+
+            val categories = listOf("data", "obb", "media")
+            var migratedCount = 0
+
+            for (cat in categories) {
+                val legacyCatDir = "$legacyAndroid/$cat"
+                val modernCatDir = "$mountXAndroid/$cat"
+
+                if (!RootShell.exists(legacyCatDir)) continue
+
+                val listRes = RootShell.exec("ls -1 \"$legacyCatDir\" 2>/dev/null")
+                if (!listRes.isSuccess || listRes.stdout.isEmpty()) continue
+
+                for (pkg in listRes.stdout) {
+                    val trimmedPkg = pkg.trim()
+                    if (trimmedPkg.isEmpty() || trimmedPkg == "." || trimmedPkg == ".." || trimmedPkg == ".nomedia") continue
+
+                    val legacyPkgPath = "$legacyCatDir/$trimmedPkg"
+                    val modernPkgPath = "$modernCatDir/$trimmedPkg"
+
+                    if (!RootShell.exists(legacyPkgPath)) continue
+
+                    if (!RootShell.exists(modernPkgPath)) {
+                        AppLogger.info("StorageManager", "Migrating legacy storage: $legacyPkgPath -> $modernPkgPath")
+                        val mvRes = RootShell.exec("mv \"$legacyPkgPath\" \"$modernPkgPath\"")
+                        if (mvRes.isSuccess && !RootShell.exists(legacyPkgPath)) {
+                            migratedCount++
+                        } else {
+                            RootShell.exec("cp -a \"$legacyPkgPath\" \"$modernPkgPath\" && rm -rf \"$legacyPkgPath\"")
+                            migratedCount++
+                        }
+                    } else {
+                        AppLogger.info("StorageManager", "Merging legacy storage into existing MountX directory: $legacyPkgPath -> $modernPkgPath")
+                        RootShell.exec("cp -an \"$legacyPkgPath\"/* \"$modernPkgPath\"/ 2>/dev/null")
+                        RootShell.exec("rm -rf \"$legacyPkgPath\" 2>/dev/null")
+                        migratedCount++
+                    }
+                }
+
+                // Clean up category directory if now empty
+                val remainingCat = RootShell.exec("ls -A \"$legacyCatDir\" 2>/dev/null").stdout.filter { it.isNotBlank() && it != ".nomedia" }
+                if (remainingCat.isEmpty()) {
+                    RootShell.exec("rm -f \"$legacyCatDir/.nomedia\" 2>/dev/null")
+                    RootShell.exec("rmdir \"$legacyCatDir\" 2>/dev/null")
+                }
+            }
+
+            // Remove legacy .nomedia and parent $sdBase/Android if empty
+            val remainingAndroid = RootShell.exec("ls -A \"$legacyAndroid\" 2>/dev/null").stdout.filter { it.isNotBlank() && it != ".nomedia" }
+            if (remainingAndroid.isEmpty()) {
+                RootShell.exec("rm -f \"$legacyAndroid/.nomedia\" 2>/dev/null")
+                RootShell.exec("rmdir \"$legacyAndroid\" 2>/dev/null")
+            }
+
+            // Re-apply correct ownership and permissions on MountX
+            RootShell.exec("chown -R media_rw:media_rw \"$mountXBase\" 2>/dev/null")
+            RootShell.exec("chmod -R 777 \"$mountXBase\" 2>/dev/null")
+
+            if (migratedCount > 0) {
+                AppLogger.info("StorageManager", "Successfully migrated $migratedCount legacy packages to $mountXAndroid")
+            }
+        }.onFailure { e ->
+            AppLogger.error("StorageManager", "Failed to migrate legacy storage on $sdBase: ${e.message}")
+        }
+    }
+
+    /**
      * Comprehensive scan of all MicroSD/USB block devices and partitions.
      * Parses /proc/partitions, /proc/mounts, and blkid to obtain full metadata
      * (disk name, partition number, size, filesystem, mount point, label, UUID).
@@ -109,6 +190,8 @@ class StorageManager {
     suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> = withContext(Dispatchers.IO) {
         // Proactively ensure MountX unified structure exists as soon as external storage is scanned
         ensureMountXStorageStructure(targetMountPoint)
+        // Automatically migrate legacy $targetMountPoint/Android to $targetMountPoint/MountX/Android
+        migrateLegacyStorageToMountX(targetMountPoint)
 
         // Collect all mount entries from /proc/mounts using RootShell first for full root namespace visibility
         data class RawMount(val spec: String, val file: String, val vfstype: String)

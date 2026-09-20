@@ -4,11 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.OpenInBrowser
@@ -21,7 +23,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.luminance
@@ -352,235 +358,167 @@ fun AboutScreen(
         }
     }
 
-    // Changelog Dialog
+    // Changelog Dialog (GitHub Markdown Release Notes Style)
     if (showChangelogDialog) {
         AlertDialog(
             onDismissRequest = { showChangelogDialog = false },
             containerColor = Color(0xFF111726),
             shape = RoundedCornerShape(24.dp),
             title = {
-                Text(
-                    stringResource(R.string.about_changelog),
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
-                    color = Color(0xFFF1F5F9)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF1E293B),
+                        border = BorderStroke(1.dp, Color(0xFF334155))
+                    ) {
+                        Text(
+                            text = "#",
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = Color(0xFF818CF8),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.about_changelog),
+                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                        color = Color(0xFFF1F5F9)
+                    )
+                }
             },
             text = {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF0F172A).copy(alpha = 0.6f),
-                    border = BorderStroke(1.dp, Color(0xFF334366)),
+                    color = Color(0xFF0D1321),
+                    border = BorderStroke(1.dp, Color(0xFF222F49)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 400.dp)
+                        .heightIn(max = 440.dp)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState())
-                            .padding(12.dp)
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // v2.2.26 (Terbaru)
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF162035),
-                            border = BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.5f)),
-                            modifier = Modifier.fillMaxWidth()
+                        // ── v2.2.27 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.27",
+                            releaseDate = "20 Sep 2026",
+                            isLatest = true,
+                            title = "Migrasi Terpusat MountX, Indikator Akses Hijau & Markdown Changelog"
                         ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        text = "v2.2.26",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.5.sp,
-                                        color = Color(0xFF818CF8)
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xFF6366F1).copy(alpha = 0.2f)
-                                    ) {
-                                        Text(
-                                            text = "Terbaru",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF818CF8),
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = "Desain Dialog Modern, Input Kontras Tinggi & Jalur Terpusat MountX",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFF1F5F9),
-                                    modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
-                                )
-                                Text(text = "• Desain Dialog Cyber Midnight: Seluruh dialog aplikasi kini menggunakan tema Cyber Midnight (#111726) dengan sudut 24dp modern.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
-                                Text(text = "• Kotak Input Kontras Tinggi: Input direktori kustom kini solid (#162035) dengan border 1.5dp dan aksen Electric Indigo jelas.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
-                                Text(text = "• Saran Cepat 1-Ketuk: Chip rekomendasi instan untuk Telegram, WhatsApp, Download, DCIM, Pictures.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
-                                Text(text = "• Label Tombol Rapi: Menghilangkan duplikasi ikon '+' pada tombol Tambah Direktori Kustom.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
-                                Text(text = "• Penyelarasan Jalur VFS: Sanitasi canonical prefix /sdcard/ dan inisialisasi proaktif folder \$sdBase/MountX/ izin 775.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
-                            }
+                            GithubSectionHeader("🚀 Migrasi Otomatis & Standarisasi Direktori")
+                            GithubMarkdownBullet("• **Migrasi Otomatis Direktori MountX**: Mengalihkan seluruh data legacy dari `\$sdBase/Android/data` dan `\$sdBase/Android/obb` ke folder terpusat `\$sdBase/MountX/Android/` secara aman tanpa risiko kehilangan berkas.")
+                            GithubMarkdownBullet("• **Pembersihan Bersih Tanpa Sampah**: Direktori legacy kosong (`\$sdBase/Android/`) otomatis dibersihkan dan dihapus setelah migrasi diverifikasi berhasil guna menghindari duplikasi berkas.")
+                            GithubMarkdownBullet("• **Sinkronisasi Database Otomatis**: Memperbarui seluruh konfigurasi `sourcePath` pada database Room ke jalur terpusat MountX secara mulus di latar belakang.")
+
+                            GithubSectionHeader("🎨 Pembaruan Antarmuka (UI/UX)")
+                            GithubMarkdownBullet("• **Indikator Centang Hijau Izin Sistem**: Menu Perizinan & Hak Akses di Pengaturan kini menampilkan centang hijau modern (`CyberEmerald`) dan badge `Aktif` saat seluruh izin terpenuhi, dengan interaksi klik tetap terjaga.")
+                            GithubMarkdownBullet("• **Pembersihan Menu Pengaturan**: Menghilangkan kartu pengaturan \"Penyimpanan\" yang tidak lagi diperlukan agar antarmuka lebih ringkas dan fokus.")
+                            GithubMarkdownBullet("• **Changelog Gaya GitHub Markdown**: Seluruh riwayat pembaruan kini disajikan terstruktur layaknya GitHub Release Notes dengan tag rilis, badge status, kategori, dan capsule kode.")
+
+                            GithubSectionHeader("🐛 Perbaikan Bug & Stabilitas")
+                            GithubMarkdownBullet("• **Keamanan Jalur VFS**: Memastikan izin 777 dan berkas pelindung `.nomedia` otomatis dikonfigurasikan pada setiap kaitan baru di dalam direktori `MountX/`.")
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.25 (Penyimpanan Terpusat MountX, Deteksi Cerdas Media & Aksi Cepat Migrasi)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Struktur Direktori Terpusat MountX: Seluruh data pengalihan kini dikumpulkan rapi di dalam folder induk \$sdBase/MountX/ (Android/data, Android/obb, Media, app, containers) sehingga MicroSD tetap tertata rapi.", fontSize = 11.sp)
-                        Text(text = "• Kompatibilitas Mundur Penuh (100% Zero Data Loss): Sistem mendeteksi berkas di jalur lama (\$sdBase/Android/...) secara transparan jika sudah ada data fisik, tanpa perlu memindahkan ulang.", fontSize = 11.sp)
-                        Text(text = "• Deteksi Cerdas Kategori Media & Unduhan: Mendukung pemindahan folder media bersama (/data/media/0/Android/media/<pkg>) dengan aturan cerdas .nomedia (hanya memasang jika folder asal memang ber-.nomedia) agar galeri tetap membaca foto/video dengan aman.", fontSize = 11.sp)
-                        Text(text = "• Penambahan Direktori Kustom Fleksibel: Tombol '+ Tambah Direktori Kustom' di Tab Penyimpanan memungkinkan penautan folder kustom mandiri (misal: Telegram, WhatsApp, DCIM, Pictures, dll).", fontSize = 11.sp)
-                        Text(text = "• Aksi Cepat Migrasi & Badge 'Perlu Migrasi': Mengganti indikator Error akibat hazard penutupan data (occlusion guard) dengan status oranye 'Perlu Migrasi' serta dialog 1-klik 'Satukan & Pindahkan ke MicroSD'.", fontSize = 11.sp)
+                        // ── v2.2.26 ──
+                        GithubReleaseCard(
+                            version = "v2.2.26",
+                            releaseDate = "20 Sep 2026",
+                            title = "Desain Dialog Modern, Input Kontras Tinggi & Jalur Terpusat MountX"
+                        ) {
+                            GithubSectionHeader("🎨 Poles Desain & Antarmuka")
+                            GithubMarkdownBullet("• **Desain Dialog Cyber Midnight**: Seluruh dialog aplikasi kini menggunakan tema Cyber Midnight (`#111726`) dengan radius sudut 24dp modern.")
+                            GithubMarkdownBullet("• **Kotak Input Kontras Tinggi**: Field input direktori kustom kini berlatar solid (`#162035`) dengan border 1.5dp dan aksen fokus Electric Indigo jelas.")
+                            GithubMarkdownBullet("• **Saran Cepat 1-Ketuk**: Chip rekomendasi instan untuk `Telegram`, `WhatsApp`, `Download`, `DCIM`, dan `Pictures`.")
+                            GithubMarkdownBullet("• **Label Tombol Rapi**: Mengeliminasi duplikasi ikon `+` pada tombol Tambah Direktori Kustom.")
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.24 (Stabilisasi Ukuran VFS, Manajemen Modul Root & Info Aplikasi)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Stabilisasi Deteksi Ukuran Game: Mencegah penurunan ukuran drastis ke 20KB saat direktori skeleton ter-mount di atas data internal, serta memblokir kaitan folder kosong di atas data riil.", fontSize = 11.sp)
-                        Text(text = "• Manajemen Terpadu Modul Root: Banner peringatan modul kini menyediakan opsi aktivasi instan via root serta ekspor berkas ZIP flashable langsung ke folder Download.", fontSize = 11.sp)
-                        Text(text = "• Tab Info Aplikasi Lengkap: Menggantikan tab Kelola menjadi panel informasi komprehensif (identitas paket, versi, SDK target/min, UID/GID sandbox, jalur direktori sistem & APK, serta tombol buka game & setelan sistem).", fontSize = 11.sp)
-                        Text(text = "• Tombol Kaitan Bergantian (Alternating Mount): Tab Penyimpanan kini menggunakan tombol dinamis tunggal ('Kaitkan Game' vs 'Lepaskan Mount' dengan dialog konfirmasi aman).", fontSize = 11.sp)
-                        Text(text = "• Pemisahan Touch Target & Konfirmasi Unmount: Mengetuk badan kartu game akan membuka detail aplikasi, sedangkan saklar/pill kanan berfungsi untuk kaitan dengan konfirmasi pelepasan.", fontSize = 11.sp)
-                        Text(text = "• Peningkatan Ergonomi & Spacing UI: Memperbaiki jarak margin header, kotak pencarian, dan penataan kartu kontrol utama.", fontSize = 11.sp)
+                            GithubSectionHeader("🛠️ Pengoptimalan VFS & Jalur")
+                            GithubMarkdownBullet("• **Penyelarasan Jalur VFS**: Sanitasi canonical prefix `/sdcard/` dan inisialisasi proaktif folder `\$sdBase/MountX/` berizin 775.")
+                        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.23 (Back Navigation Berjenjang, Konfirmasi Migrasi & Resolusi Konflik Data)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Navigasi Back Gesture Berjenjang: Back gesture pada sub-layar (Kelola Penyimpanan, modal target partisi, inspeksi kategori, pencarian aplikasi, dialog) kini mundur bertahap per level secara intuitif.", fontSize = 11.sp)
-                        Text(text = "• Dialog Konfirmasi Pra-Migrasi: Menampilkan pratinjau arah sumber-tujuan, telemetri ukuran data fisik riil, sisa kapasitas bebas tujuan, dan validasi ruang otomatis.", fontSize = 11.sp)
-                        Text(text = "• Resolusi Konflik Data Ganda: Mendeteksi data yang ada di kedua media dengan pilihan strategi (Timpa & Perbarui, Gabungkan Berkas, atau Cadangkan Folder Lama).", fontSize = 11.sp)
-                        Text(text = "• Mesin Salin Atomic (Nol Risiko Kehilangan): Menggunakan penyalinan aman (cp -a), verifikasi ukuran integritas sebelum hapus berkas sumber, dan pembersihan sampah otomatis jika terjadi gangguan.", fontSize = 11.sp)
-                        Text(text = "• Pemulihan Ukuran Dinamis: Tombol kembalikan ke internal kini menampilkan ukuran fisik sebenarnya dari MicroSD secara real-time tanpa angka hardcode.", fontSize = 11.sp)
+                        // ── v2.2.25 ──
+                        GithubReleaseCard(
+                            version = "v2.2.25",
+                            releaseDate = "19 Sep 2026",
+                            title = "Penyimpanan Terpusat MountX, Deteksi Cerdas Media & Aksi Cepat Migrasi"
+                        ) {
+                            GithubSectionHeader("📦 Penyimpanan Terpusat & Media")
+                            GithubMarkdownBullet("• **Struktur Direktori Terpusat MountX**: Seluruh data pengalihan dikumpulkan rapi di dalam folder induk `\$sdBase/MountX/` (Android/data, obb, media, app, containers).")
+                            GithubMarkdownBullet("• **Kompatibilitas Mundur Penuh**: Deteksi transparan data di jalur lama tanpa memerlukan migrasi paksa manual.")
+                            GithubMarkdownBullet("• **Deteksi Cerdas Media & Unduhan**: Mendukung pemindahan folder media bersama (`/data/media/0/Android/media/<pkg>`) dengan aturan proteksi `.nomedia` pintar.")
+                            GithubMarkdownBullet("• **Aksi Cepat Migrasi**: Badge status oranye `Perlu Migrasi` dengan aksi 1-klik `Satukan & Pindahkan ke MicroSD`.")
+                        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.22 (Real-Time Progress Engine & Live Telemetry Stepper)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Kecepatan & Estimasi Waktu Real-Time: Menampilkan kecepatan transfer (MB/s) yang dihaluskan (EMA) dan estimasi sisa waktu (ETA) saat menyalin data berukuran puluhan GB.", fontSize = 11.sp)
-                        Text(text = "• Pemantauan Byte Akurat: Progress bar dan indikator MB/GB fisik yang bergerak real-time sesuai progres penyalinan direktori.", fontSize = 11.sp)
-                        Text(text = "• Visual Stepper 5 Tahap: Checklist multi-tahap transparan untuk proses pemindahan, kaitan VFS namespaces, dan pelepasan mount.", fontSize = 11.sp)
-                        Text(text = "• Dialog Operasi Terpadu: Penanganan modal status modern terpusat yang mencegah freeze latar belakang dan mencegah dialog tumpang-tindih.", fontSize = 11.sp)
-                        Text(text = "• Otomasi Halus Pasca Operasi: Animasi transisi status instan dengan penutupan otomatis halus untuk kaitan/pelepasan mount yang berhasil.", fontSize = 11.sp)
+                        // ── v2.2.24 ──
+                        GithubReleaseCard(
+                            version = "v2.2.24",
+                            releaseDate = "18 Sep 2026",
+                            title = "Stabilisasi Ukuran VFS, Manajemen Modul Root & Info Aplikasi"
+                        ) {
+                            GithubSectionHeader("🛠️ Modul Root & Stabilitas VFS")
+                            GithubMarkdownBullet("• **Stabilisasi Deteksi Ukuran Game**: Mencegah penurunan ukuran ke 20KB saat skeleton ter-mount di atas data internal.")
+                            GithubMarkdownBullet("• **Manajemen Terpadu Modul Root**: Banner aktivasi instan via root serta ekspor berkas ZIP flashable langsung ke Download.")
+                            GithubMarkdownBullet("• **Tab Info Aplikasi Lengkap**: Panel komprehensif identitas paket, versi, SDK target/min, dan UID/GID sandbox.")
+                            GithubMarkdownBullet("• **Tombol Kaitan Bergantian**: Tombol dinamis tunggal bergantian (`Kaitkan Game` vs `Lepaskan Mount` aman).")
+                        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.21 (Category Inspector Modal & Safe Multi-Storage Deletion)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Category Inspector Modal Bottom Sheet: Ketuk kartu kategori data game (APK, Lib, Data Privat, Cache, Data Game, OBB) untuk melihat rincian path lengkap dan ukuran di setiap media.", fontSize = 11.sp)
-                        Text(text = "• Transparansi Path & Salin Satu Ketukan: Menampilkan path direktori lengkap di Penyimpanan Internal dan MicroSD dengan tombol salin instan.", fontSize = 11.sp)
-                        Text(text = "• Status Live VFS Mount: Indikator visual real-time apakah kategori sedang ter-mount aktif atau berjalan dari direktori aslinya.", fontSize = 11.sp)
-                        Text(text = "• Penghapusan Data Aman Bertingkat: Opsi hapus data kategori dengan konfirmasi pilihan lokasi (Internal Saja, MicroSD Saja, atau Keduanya) dan peringatan khusus untuk data berisiko.", fontSize = 11.sp)
-                        Text(text = "• Sinkronisasi Otomatis: Rekalkulasi ukuran data game dan pembaruan grafik storage secara instan pasca penghapusan.", fontSize = 11.sp)
+                        // ── v2.2.23 ──
+                        GithubReleaseCard(
+                            version = "v2.2.23",
+                            releaseDate = "17 Sep 2026",
+                            title = "Back Navigation Berjenjang, Konfirmasi Migrasi & Resolusi Konflik Data"
+                        ) {
+                            GithubSectionHeader("🚀 Navigasi & Mesin Salin Atomic")
+                            GithubMarkdownBullet("• **Navigasi Back Gesture Berjenjang**: Back gesture pada seluruh sub-layar mundur bertahap per level secara intuitif.")
+                            GithubMarkdownBullet("• **Dialog Konfirmasi Pra-Migrasi**: Menampilkan pratinjau arah sumber-tujuan, ukuran fisik riil, dan validasi ruang.")
+                            GithubMarkdownBullet("• **Mesin Salin Atomic**: Penyalinan aman (`cp -a`) dengan verifikasi ukuran integritas sebelum pembersihan berkas sumber.")
+                        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.17 (Deteksi Cerdas Multi-Partisi & Presisi Ukuran Game)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Deteksi Cerdas Multi-Partisi: Memindai seluruh partisi eksternal (/mnt/media_rw, /storage, /data/sdext*) secara dinamis.", fontSize = 11.sp)
-                        Text(text = "• Deteksi Ganda Internal & MicroSD: Mendeteksi data game yang tersimpan di internal maupun MicroSD secara cerdas dengan info sekunder jika data ada di kedua media.", fontSize = 11.sp)
-                        Text(text = "• Presisi Telemetri Ukuran: Perhitungan ukuran data game (seperti Wuthering Waves) kini akurat menampilkan ukuran fisik sebenarnya (~141 MB) bukan 7 KB.", fontSize = 11.sp)
-                        Text(text = "• Optimasi Kinerja Root Shell: Mempercepat pembacaan mount dan query penyimpanan menjadi instan tanpa membebani antarmuka aplikasi.", fontSize = 11.sp)
-                        Text(text = "• Sinkronisasi Donut Chart: Grafik donat konsentris dan legenda ringkasan 100% konsisten dengan alokasi fisik media penyimpanan.", fontSize = 11.sp)
+                        // ── v2.2.22 ──
+                        GithubReleaseCard(
+                            version = "v2.2.22",
+                            releaseDate = "16 Sep 2026",
+                            title = "Real-Time Progress Engine & Live Telemetry Stepper"
+                        ) {
+                            GithubSectionHeader("⚡ Mesin Telemetri Real-Time")
+                            GithubMarkdownBullet("• **Kecepatan & Estimasi Real-Time**: Kecepatan transfer MB/s (EMA) dan estimasi sisa waktu (ETA) real-time.")
+                            GithubMarkdownBullet("• **Visual Stepper 5 Tahap**: Checklist multi-tahap transparan untuk pemindahan dan kaitan VFS.")
+                        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.16 (Penyatuan Tab Penyimpanan & Modal Migrasi Cerdas)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Penyatuan Tab Penyimpanan: Seluruh kategori data game (APK, Lib, Data Privat, Cache, Data Game, OBB) disatukan di tab Penyimpanan dengan label bersih.", fontSize = 11.sp)
-                        Text(text = "• Mode Seleksi In-Place: Menekan Kelola Penyimpanan mengaktifkan checkbox seleksi langsung dengan default aman dan peringatan risiko kinerja.", fontSize = 11.sp)
-                        Text(text = "• Modal 3-Langkah Cerdas: Pemilihan target Disk (pembekuan lokasi asal cerdas), pemilihan Partisi, dan Konfirmasi ringkasan pemindahan.", fontSize = 11.sp)
-                        Text(text = "• Tab Kelola Minimalis: Placeholder bersih bersiap untuk fitur lanjutan mendatang.", fontSize = 11.sp)
+                        // ── v2.2.21 ──
+                        GithubReleaseCard(
+                            version = "v2.2.21",
+                            releaseDate = "15 Sep 2026",
+                            title = "Category Inspector Modal & Safe Multi-Storage Deletion"
+                        ) {
+                            GithubSectionHeader("🔍 Inspektur Kategori Data")
+                            GithubMarkdownBullet("• **Category Inspector Modal**: Ketuk kartu kategori data game untuk melihat rincian path lengkap di setiap media.")
+                            GithubMarkdownBullet("• **Penghapusan Data Aman Bertingkat**: Opsi hapus data kategori dengan pilihan lokasi (Internal Saja, MicroSD Saja, atau Keduanya).")
+                        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.15 (Revamp total UI Tab Manage - 8-Screen Guided Flow)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Revamp total UI Tab Manage (8-Screen Guided Flow): Hybrid Storage Chart, Kategori Data Game, Stepper Progress Pemindahan, Detail Kategori, dan Bottom Sheet Opsi Folder.", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.20 (Ultra-Fast Storage Engine & Absolute Size Precision)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Eliminasi total perintah df -k: digantikan dengan syscall stat -f berkecepatan 0,09 detik (350x lebih cepat).", fontSize = 11.sp)
-                        Text(text = "• Mengatasi pembekuan sistem akibat pemindaian 26.900+ bind mounts dan partisi FUSE /storage/*.", fontSize = 11.sp)
-                        Text(text = "• Presisi 100% ukuran Internal, MicroSD (FAT/ext4), dan sdext2 (F2FS) dengan akumulasi basis partisi unik.", fontSize = 11.sp)
-                        Text(text = "• Eliminasi kalkulasi duplikat di GamesViewModel untuk loading layar detail instan.", fontSize = 11.sp)
-                        Text(text = "• Logging asinkron berkecepatan tinggi dengan fallback langsung tanpa memblokir antrian RootShell.", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.19 (Perbaikan Performa: Breakdown Storage Instan)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Perbaikan kritis: detail storage kini muncul dalam hitungan detik, bukan menit.", fontSize = 11.sp)
-                        Text(text = "• AppLogger direfaktor: tulis ke logcat secara instan, antrian file-write via Channel agar tidak memblokir kalkulasi du.", fontSize = 11.sp)
-                        Text(text = "• Setiap log tidak lagi menunggu root shell selesai sebelum log berikutnya dikirim.", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.18 (Perbaikan Akurasi Deteksi Storage Eksternal)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Perbaikan kritis: data game di MicroSD kini terdeteksi akurat tanpa memerlukan status mount dari DB.", fontSize = 11.sp)
-                        Text(text = "• Memindai semua partisi eksternal (/data/sdext*, /mnt/media_rw/*) secara paralel dalam satu batch du.", fontSize = 11.sp)
-                        Text(text = "• Ukuran ext1 tidak lagi di-nolkan saat status mounted — mengikuti bind mount aktual untuk presisi.", fontSize = 11.sp)
-                        Text(text = "• Deduplikasi per storage base mencegah data yang sama dihitung ganda (berbeda path, fisik sama).", fontSize = 11.sp)
-                        Text(text = "• Fallback APK size via root pm path jika PackageManager gagal (QUERY_ALL_PACKAGES).", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.17 (Data vs OBB Naming, Path Visibility & Novice Grouping)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Fixed directory misclassification: Android/data is accurately labeled 'Data' and Android/obb is labeled 'OBB'", fontSize = 11.sp)
-                        Text(text = "• Clear directory path visibility: displays relative target path and MicroSD → Phone Internal flow indicators", fontSize = 11.sp)
-                        Text(text = "• Novice-friendly grouping: Core Game Data (Recommended) and Additional & Custom Data separated cleanly", fontSize = 11.sp)
-                        Text(text = "• Interactive Directory Details Dialog: tap any directory card to inspect absolute paths with 1-tap clipboard copy", fontSize = 11.sp)
-                        Text(text = "• Live telemetry size integration: accurate folder sizes reflecting internal and secondary MicroSD partition status", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.16 (Storage Accuracy & FAB Precision)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• App Detail storage redundancy fix: eliminate double counting when game data is mounted from SD", fontSize = 11.sp)
-                        Text(text = "• Shared storage reflects true physical flash allocation: 0 B on internal memory with [OFFLOADED] badge", fontSize = 11.sp)
-                        Text(text = "• Donut chart accuracy: 100% physically aligned internal vs MicroSD partition ratio without duplicate slices", fontSize = 11.sp)
-                        Text(text = "• FAB layout precision: fixed double-offset, FAB now sits directly above bottom nav bar", fontSize = 11.sp)
-                        Text(text = "• FAB touch target enlarged to 52dp with smooth responsive glide down above Android gesture bar", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.15 (UI Polish, Delete Flow & FAB Fix)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• FAB glide fix: floating button stays visible when bottom bar hides, slides down smoothly", fontSize = 11.sp)
-                        Text(text = "• Delete dialog upgraded: choose Restore to Internal or Unmount Only with progress tracking", fontSize = 11.sp)
-                        Text(text = "• Custom Path dialog now uses dark theme (#111625) consistent with app design system", fontSize = 11.sp)
-                        Text(text = "• Mount point cards: removed raw PKG badge, added color-coded Experimental APK section", fontSize = 11.sp)
-                        Text(text = "• Phantom USB OTG disk fix: strict UUID validation prevents fake disk entries", fontSize = 11.sp)
-                        Text(text = "• New mount categories: EXTERNAL_DATA, OBB_STORAGE, APP_PACKAGE with proper icons", fontSize = 11.sp)
-                        Text(text = "• WakeLock protection during restore operations prevents CPU sleep mid-transfer", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.4 (Performance & UX Overhaul)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Disk title telemetry integrated in Unmount Partition confirmation dialog", fontSize = 11.sp)
-                        Text(text = "• AOMEI slider unallocated space block visualization & + Sisa 1-tap absorption", fontSize = 11.sp)
-                        Text(text = "• Real-time filesystem kernel/tool capability badges in Partition Wizard", fontSize = 11.sp)
-                        Text(text = "• Zero-delay instant navigation when switching to Storage screen", fontSize = 11.sp)
-                        Text(text = "• Unified AppLogger logging all root operations in real-time to mountx.log", fontSize = 11.sp)
-                        Text(text = "• 120 FPS buttery smooth app list scrolling & icon memory cache", fontSize = 11.sp)
-                        Text(text = "• Instant runtime language switching without restarting the app", fontSize = 11.sp)
-                        Text(text = "• Standardized MountX branding across all screens and resources", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.3 (Unmount & TRIM Stability)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Deep unmount teardown for mmcblk0p3 across all runtime namespaces", fontSize = 11.sp)
-                        Text(text = "• Deduplicated TRIM results dialog with actionable fsck guidance", fontSize = 11.sp)
-                        Text(text = "• FSCK volume busy (EBUSY) error prevention", fontSize = 11.sp)
-                        Text(text = "• Smooth 60/120 FPS partition divider gesture dragging", fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = "v2.2.2 (AOMEI Partitioning Engine)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(text = "• Interactive multi-partition proportional resizing bar", fontSize = 11.sp)
-                        Text(text = "• Direct filesystem path resolution for FSTRIM (FUSE bypass)", fontSize = 11.sp)
-                        Text(text = "• Progress indicators and optimistic UI states for unmount and eject", fontSize = 11.sp)
+                        // ── v2.2.20 & Terdahulu ──
+                        GithubReleaseCard(
+                            version = "v2.2.20",
+                            releaseDate = "14 Sep 2026",
+                            title = "Ultra-Fast Storage Engine & Absolute Size Precision"
+                        ) {
+                            GithubSectionHeader("⚡ Performa Tinggi & Pengurangan Latensi")
+                            GithubMarkdownBullet("• **Syscall stat -f Berkecepatan Tinggi**: Menggantikan perintah `df -k` dengan respon 0,09 detik (350x lebih cepat).")
+                            GithubMarkdownBullet("• **Logging Asinkron**: Menghindari antrian pemblokiran RootShell saat operasi I/O intensif.")
+                        }
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showChangelogDialog = false }) {
-                    Text(stringResource(R.string.common_close))
+                    Text(stringResource(R.string.common_close), color = Color(0xFF818CF8), fontWeight = FontWeight.SemiBold)
                 }
             }
         )
@@ -613,5 +551,167 @@ fun AboutScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun GithubReleaseCard(
+    version: String,
+    releaseDate: String,
+    title: String,
+    isLatest: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF141C2E),
+        border = BorderStroke(
+            1.dp,
+            if (isLatest) Color(0xFF6366F1).copy(alpha = 0.55f) else Color(0xFF26354D)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isLatest) Color(0xFF6366F1).copy(alpha = 0.2f) else Color(0xFF1E293B),
+                        border = BorderStroke(1.dp, if (isLatest) Color(0xFF6366F1) else Color(0xFF334155))
+                    ) {
+                        Text(
+                            text = version,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = if (isLatest) Color(0xFFA5B4FC) else Color(0xFFCBD5E1),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = releaseDate,
+                        fontSize = 10.5.sp,
+                        color = Color(0xFF64748B)
+                    )
+                }
+
+                if (isLatest) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = CyberEmerald.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(CyberEmerald, CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Latest",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyberEmerald
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFF1F5F9),
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+
+            content()
+        }
+    }
+}
+
+@Composable
+private fun GithubSectionHeader(title: String) {
+    Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            ),
+            color = Color(0xFF94A3B8)
+        )
+        HorizontalDivider(
+            thickness = 0.8.dp,
+            color = Color(0xFF334155).copy(alpha = 0.5f),
+            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun GithubMarkdownBullet(rawText: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = buildMarkdownAnnotatedString(rawText),
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            ),
+            color = Color(0xFFCBD5E1)
+        )
+    }
+}
+
+private fun buildMarkdownAnnotatedString(text: String): androidx.compose.ui.text.AnnotatedString {
+    return buildAnnotatedString {
+        var i = 0
+        while (i < text.length) {
+            if (text.startsWith("**", i)) {
+                val end = text.indexOf("**", i + 2)
+                if (end != -1) {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF1F5F9))) {
+                        append(text.substring(i + 2, end))
+                    }
+                    i = end + 2
+                    continue
+                }
+            } else if (text.startsWith("`", i)) {
+                val end = text.indexOf("`", i + 1)
+                if (end != -1) {
+                    withStyle(
+                        SpanStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            color = Color(0xFF38BDF8),
+                            background = Color(0xFF1E293B)
+                        )
+                    ) {
+                        append(" ${text.substring(i + 1, end)} ")
+                    }
+                    i = end + 1
+                    continue
+                }
+            }
+            append(text[i])
+            i++
+        }
     }
 }
