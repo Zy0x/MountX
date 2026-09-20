@@ -2,10 +2,12 @@ package app.mountx.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,47 +44,58 @@ fun NeedMigrationDialog(
     val amberColor = Color(0xFFFF9800)
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = Color(0xFF111726),
+        shape = RoundedCornerShape(24.dp),
         icon = {
-            Icon(
-                imageVector = Icons.Default.WarningAmber,
-                contentDescription = null,
-                tint = amberColor,
-                modifier = Modifier.size(36.dp)
-            )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = amberColor.copy(alpha = 0.15f),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.WarningAmber,
+                        contentDescription = null,
+                        tint = amberColor,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
         },
         title = {
             Text(
                 text = stringResource(R.string.dialog_need_migration_title),
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 16.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
-                )
+                ),
+                color = Color(0xFFF1F5F9)
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF162035),
+                    border = BorderStroke(1.dp, Color(0xFF2E3D5C)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        AppIconImage(packageName = game.packageName, size = 32.dp)
+                        AppIconImage(packageName = game.packageName, size = 36.dp)
                         Column {
                             Text(
                                 text = game.displayName,
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = Color(0xFFF1F5F9)
                             )
                             if (game.dataSizeBytes > 0L) {
                                 Text(
                                     text = FormatUtils.formatBytes(game.dataSizeBytes) + " di memori internal",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                     color = amberColor
                                 )
                             }
@@ -93,8 +106,8 @@ fun NeedMigrationDialog(
                 val sizeText = if (game.dataSizeBytes > 0L) FormatUtils.formatBytes(game.dataSizeBytes) else "utama"
                 Text(
                     text = stringResource(R.string.dialog_need_migration_desc, sizeText),
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
+                    color = Color(0xFF94A3B8)
                 )
             }
         },
@@ -104,8 +117,9 @@ fun NeedMigrationDialog(
                     onConfirmMigration()
                     onDismiss()
                 },
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = amberColor)
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = amberColor),
+                modifier = Modifier.height(44.dp)
             ) {
                 Text(
                     text = stringResource(R.string.dialog_need_migration_action),
@@ -115,10 +129,15 @@ fun NeedMigrationDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.height(44.dp)
+            ) {
                 Text(
                     text = stringResource(R.string.common_cancel),
-                    style = MaterialTheme.typography.labelMedium
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color(0xFF94A3B8)
                 )
             }
         },

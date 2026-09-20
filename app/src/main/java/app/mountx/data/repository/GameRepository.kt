@@ -42,7 +42,14 @@ class GameRepository @Inject constructor(
         val legacyRelative = relativeMountXPath.removePrefix("MountX/")
         val legacyPath = "$sdBase/$legacyRelative"
         val modernPath = "$sdBase/$relativeMountXPath"
-        return if (RootShell.exists(legacyPath)) legacyPath else modernPath
+        return if (RootShell.exists(legacyPath)) {
+            // Only prioritize legacy path if it contains actual data (> 128KB)
+            // Empty skeleton folders redirect cleanly to the unified MountX directory tree
+            val sizeKb = RootShell.exec("du -sk \"$legacyPath\" 2>/dev/null").output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
+            if (sizeKb > 128L) legacyPath else modernPath
+        } else {
+            modernPath
+        }
     }
 
     suspend fun synthesizeLegacyMountPoints(game: GameEntry, sdBase: String = "/data/sdext2"): List<MountPointConfig> {

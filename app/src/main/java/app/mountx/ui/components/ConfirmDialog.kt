@@ -29,31 +29,55 @@ fun ConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = title, style = MaterialTheme.typography.titleLarge) },
-        text = { Text(text = message, style = MaterialTheme.typography.bodyMedium) },
+        containerColor = androidx.compose.ui.graphics.Color(0xFF111726),
+        shape = RoundedCornerShape(24.dp),
+        title = { 
+            Text(
+                text = title, 
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                color = androidx.compose.ui.graphics.Color(0xFFF1F5F9)
+            ) 
+        },
+        text = { 
+            Text(
+                text = message, 
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                ),
+                color = androidx.compose.ui.graphics.Color(0xFF94A3B8)
+            ) 
+        },
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                modifier = Modifier.height(34.dp),
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                modifier = Modifier.height(42.dp),
                 colors = if (isDestructive) {
                     ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 } else {
-                    ButtonDefaults.buttonColors()
+                    ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF6366F1))
                 }
             ) {
-                Text(text = confirmText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = confirmText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         },
         dismissButton = {
-            OutlinedButton(
+            androidx.compose.material3.TextButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                modifier = Modifier.height(34.dp)
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.height(42.dp)
             ) {
-                Text(text = cancelText, fontSize = 12.sp, fontWeight = FontWeight.Normal)
+                Text(
+                    text = cancelText, 
+                    fontSize = 13.sp, 
+                    fontWeight = FontWeight.Normal,
+                    color = androidx.compose.ui.graphics.Color(0xFF94A3B8)
+                )
             }
         }
     )

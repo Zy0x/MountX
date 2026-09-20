@@ -33,6 +33,11 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = CyberOnSurfaceDark,
     surfaceVariant = CyberSurfaceVariantDark,
     onSurfaceVariant = CyberOnVariantDark,
+    surfaceContainer = CyberSurfaceDark,
+    surfaceContainerHigh = CyberSurfaceVariantDark,
+    surfaceContainerHighest = Color(0xFF222C46),
+    surfaceContainerLow = CyberBgDark,
+    surfaceContainerLowest = Color(0xFF060910),
     outline = CyberBorderDark,
     outlineVariant = CyberBorderHighlightDark
 )
@@ -58,6 +63,11 @@ private val LightColorScheme = lightColorScheme(
     onSurface = FrostOnSurfaceLight,
     surfaceVariant = FrostSurfaceVariantLight,
     onSurfaceVariant = FrostOnVariantLight,
+    surfaceContainer = FrostSurfaceLight,
+    surfaceContainerHigh = FrostSurfaceVariantLight,
+    surfaceContainerHighest = Color(0xFFE2E8F0),
+    surfaceContainerLow = FrostBgLight,
+    surfaceContainerLowest = Color(0xFFFFFFFF),
     outline = FrostBorderLight,
     outlineVariant = FrostBorderHighlightLight
 )

@@ -15,6 +15,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -1556,34 +1557,118 @@ private fun AddCustomDirectoryDialog(
     var customSdPathText by remember { mutableStateOf("") }
     var isManualSdPath by remember { mutableStateOf(false) }
 
+    val suggestions = listOf(
+        Triple("Telegram", "/data/media/0/Android/media/org.telegram.messenger", "$sdBase/MountX/Custom/Telegram"),
+        Triple("WhatsApp", "/data/media/0/Android/media/com.whatsapp", "$sdBase/MountX/Custom/WhatsApp"),
+        Triple("Download", "/data/media/0/Download", "$sdBase/MountX/Custom/Download"),
+        Triple("DCIM", "/data/media/0/DCIM", "$sdBase/MountX/Custom/DCIM"),
+        Triple("Pictures", "/data/media/0/Pictures", "$sdBase/MountX/Custom/Pictures")
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = Color(0xFF111726),
+        shape = RoundedCornerShape(24.dp),
         title = {
-            Text(
-                stringResource(R.string.dialog_add_custom_directory_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF6366F1).copy(alpha = 0.15f),
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = Color(0xFF818CF8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.dialog_add_custom_directory_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFF1F5F9)
+                )
+            }
         },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    stringResource(R.string.dialog_add_custom_directory_desc),
+                    text = stringResource(R.string.dialog_add_custom_directory_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color(0xFF94A3B8),
+                    lineHeight = 18.sp
+                )
+
+                // Quick Suggestions section
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = stringResource(R.string.dialog_add_custom_suggestions),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color(0xFF64748B)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        suggestions.forEach { (name, internal, sd) ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFF1A233A),
+                                border = BorderStroke(1.dp, Color(0xFF2E3D5C)),
+                                modifier = Modifier.clickable {
+                                    labelText = name
+                                    internalPathText = internal
+                                    customSdPathText = sd
+                                    isManualSdPath = true
+                                }
+                            ) {
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    color = Color(0xFF818CF8),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val customFieldColors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color(0xFF162035),
+                    unfocusedContainerColor = Color(0xFF0F1524),
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = Color(0xFF334366),
+                    focusedLabelColor = Color(0xFF818CF8),
+                    unfocusedLabelColor = Color(0xFF94A3B8),
+                    focusedTextColor = Color(0xFFF1F5F9),
+                    unfocusedTextColor = Color(0xFFE2E8F0),
+                    cursorColor = Color(0xFF6366F1)
                 )
 
                 OutlinedTextField(
                     value = labelText,
                     onValueChange = { labelText = it },
                     label = { Text(stringResource(R.string.dialog_add_custom_name_label)) },
-                    placeholder = { Text(stringResource(R.string.dialog_add_custom_name_hint)) },
+                    placeholder = { Text(stringResource(R.string.dialog_add_custom_name_hint), color = Color(0xFF64748B)) },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = customFieldColors,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -1597,8 +1682,10 @@ private fun AddCustomDirectoryDialog(
                         }
                     },
                     label = { Text(stringResource(R.string.dialog_add_custom_path_label)) },
-                    placeholder = { Text(stringResource(R.string.dialog_add_custom_directory_hint)) },
+                    placeholder = { Text(stringResource(R.string.dialog_add_custom_directory_hint), color = Color(0xFF64748B)) },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = customFieldColors,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -1608,8 +1695,11 @@ private fun AddCustomDirectoryDialog(
                         customSdPathText = it
                         isManualSdPath = true
                     },
-                    label = { Text("Jalur MicroSD (Tujuan)") },
+                    label = { Text(stringResource(R.string.dialog_add_custom_sd_label)) },
+                    placeholder = { Text("$sdBase/MountX/Custom/...", color = Color(0xFF64748B)) },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = customFieldColors,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -1617,19 +1707,44 @@ private fun AddCustomDirectoryDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val finalLabel = labelText.trim().ifEmpty { internalPathText.trimEnd('/').substringAfterLast('/') }
-                    val finalInternal = internalPathText.trim()
+                    val rawInternal = internalPathText.trim()
+                    val finalInternal = when {
+                        rawInternal.startsWith("/sdcard/") -> "/data/media/0/" + rawInternal.removePrefix("/sdcard/")
+                        rawInternal == "/sdcard" -> "/data/media/0"
+                        else -> rawInternal
+                    }
+                    val finalLabel = labelText.trim().ifEmpty { finalInternal.trimEnd('/').substringAfterLast('/') }
                     val finalSd = customSdPathText.trim().ifEmpty { "$sdBase/MountX/Custom/${finalLabel.replace(" ", "_")}" }
                     onAdd(finalLabel, finalInternal, finalSd)
                 },
-                enabled = internalPathText.isNotBlank()
+                enabled = internalPathText.isNotBlank(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF6366F1),
+                    disabledContainerColor = Color(0xFF1E2738),
+                    disabledContentColor = Color(0xFF475569)
+                ),
+                modifier = Modifier.height(44.dp)
             ) {
-                Text(stringResource(R.string.dialog_add_custom_confirm))
+                Text(
+                    text = stringResource(R.string.dialog_add_custom_confirm),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.common_cancel))
+            TextButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.height(44.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.common_cancel),
+                    color = Color(0xFF94A3B8),
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp
+                )
             }
         }
     )

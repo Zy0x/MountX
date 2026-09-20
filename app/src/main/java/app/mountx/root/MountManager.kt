@@ -314,6 +314,7 @@ class MountManager {
 
         // Extract relative path from target path (e.g. /data/media/0/Android/data/... -> Android/data/...)
         val relPath = mp.targetPath
+            .removePrefix("/sdcard/")
             .removePrefix("/data/media/0/")
             .removePrefix("/storage/emulated/0/")
             .removePrefix("/mnt/user/0/primary/")
@@ -439,6 +440,7 @@ class MountManager {
                             }
                         } else {
                             val relPath = mp.targetPath
+                                .removePrefix("/sdcard/")
                                 .removePrefix("/data/media/0/")
                                 .removePrefix("/storage/emulated/0/")
                                 .removePrefix("/mnt/user/0/primary/")

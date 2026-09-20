@@ -78,11 +78,38 @@ class StorageManager {
     }
 
     /**
+     * Proactively verifies and creates the standardized MountX directory tree on external storage.
+     * Ensures $sdBase/MountX/(Android/data, Android/obb, Android/media, Custom, app, containers)
+     * and .nomedia protection exist with proper permissions (775).
+     */
+    suspend fun ensureMountXStorageStructure(sdBase: String = "/data/sdext2"): Unit = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!RootShell.exists(sdBase)) return@withContext
+            val mountXBase = "$sdBase/MountX"
+            RootShell.exec("""
+                mkdir -p "$mountXBase/Android/data" \
+                         "$mountXBase/Android/obb" \
+                         "$mountXBase/Android/media" \
+                         "$mountXBase/Custom" \
+                         "$mountXBase/app" \
+                         "$mountXBase/containers" 2>/dev/null
+                touch "$mountXBase/Android/.nomedia" 2>/dev/null
+                chown -R media_rw:media_rw "$mountXBase" 2>/dev/null
+                chmod -R 777 "$mountXBase" 2>/dev/null
+            """.trimIndent())
+            AppLogger.info("StorageManager", "Ensured MountX storage structure on $sdBase")
+        }
+    }
+
+    /**
      * Comprehensive scan of all MicroSD/USB block devices and partitions.
      * Parses /proc/partitions, /proc/mounts, and blkid to obtain full metadata
      * (disk name, partition number, size, filesystem, mount point, label, UUID).
      */
     suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> = withContext(Dispatchers.IO) {
+        // Proactively ensure MountX unified structure exists as soon as external storage is scanned
+        ensureMountXStorageStructure(targetMountPoint)
+
         // Collect all mount entries from /proc/mounts using RootShell first for full root namespace visibility
         data class RawMount(val spec: String, val file: String, val vfstype: String)
         val allMounts = mutableListOf<RawMount>()

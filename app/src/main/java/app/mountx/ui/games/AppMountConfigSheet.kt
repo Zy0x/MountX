@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -475,22 +476,45 @@ fun AppMountConfigSheet(
     // Custom Path Input Dialog
     if (showCustomPathDialog) {
         var customPathInput by remember { mutableStateOf("") }
+        val dialogFieldColors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color(0xFF162035),
+            unfocusedContainerColor = Color(0xFF162035),
+            focusedBorderColor = Color(0xFF6366F1),
+            unfocusedBorderColor = Color(0xFF334366),
+            focusedTextColor = Color(0xFFF1F5F9),
+            unfocusedTextColor = Color(0xFFF1F5F9),
+            focusedLabelColor = Color(0xFF818CF8),
+            unfocusedLabelColor = Color(0xFF94A3B8),
+            focusedPlaceholderColor = Color(0xFF64748B),
+            unfocusedPlaceholderColor = Color(0xFF64748B)
+        )
+
         AlertDialog(
             onDismissRequest = { showCustomPathDialog = false },
-            title = { Text("Tambah Direktori Kustom", style = MaterialTheme.typography.titleMedium) },
+            containerColor = Color(0xFF111726),
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Text(
+                    stringResource(R.string.dialog_add_custom_directory_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFF1F5F9)
+                )
+            },
             text = {
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Masukkan path direktori internal aplikasi yang ingin ditautkan:",
+                        stringResource(R.string.dialog_add_custom_directory_desc),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Color(0xFF94A3B8)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = customPathInput,
                         onValueChange = { customPathInput = it },
-                        placeholder = { Text("Contoh: Android/data/${appInfo.packageName}/files/assets") },
+                        placeholder = { Text("Contoh: Android/data/${appInfo.packageName}/files/assets", fontSize = 12.sp) },
                         singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = dialogFieldColors,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -498,12 +522,13 @@ fun AppMountConfigSheet(
             confirmButton = {
                 Button(
                     onClick = {
-                        val path = customPathInput.trim().removePrefix("/")
+                        val path = customPathInput.trim().removePrefix("/").trimEnd('/')
                         if (path.isNotBlank() && !path.startsWith("data/app")) {
+                            val cleanName = path.substringAfterLast('/')
                             val newMp = MountPointConfig(
                                 id = "custom_${System.currentTimeMillis() % 10000}",
                                 category = MountPointCategory.CUSTOM,
-                                sourcePath = "/data/sdext2/$path",
+                                sourcePath = "/data/sdext2/MountX/Custom/$cleanName",
                                 targetPath = "/data/media/0/$path",
                                 enabled = true,
                                 sizeBytes = 0L
@@ -511,14 +536,19 @@ fun AppMountConfigSheet(
                             customPaths = customPaths + newMp
                             showCustomPathDialog = false
                         }
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Tambah")
+                    Text(stringResource(R.string.dialog_add_custom_confirm), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showCustomPathDialog = false }) {
-                    Text("Batal")
+                TextButton(
+                    onClick = { showCustomPathDialog = false },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.common_cancel), color = Color(0xFF94A3B8))
                 }
             }
         )

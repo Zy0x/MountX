@@ -1090,14 +1090,29 @@ private fun ManualAppView(
             .verticalScroll(rememberScrollState())
             .padding(14.dp)
     ) {
+        val manualFieldColors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color(0xFF162035),
+            unfocusedContainerColor = Color(0xFF162035),
+            disabledContainerColor = Color(0xFF162035).copy(alpha = 0.5f),
+            focusedBorderColor = Color(0xFF6366F1),
+            unfocusedBorderColor = Color(0xFF334366),
+            focusedTextColor = Color(0xFFF1F5F9),
+            unfocusedTextColor = Color(0xFFF1F5F9),
+            focusedLabelColor = Color(0xFF818CF8),
+            unfocusedLabelColor = Color(0xFF94A3B8),
+            focusedPlaceholderColor = Color(0xFF64748B),
+            unfocusedPlaceholderColor = Color(0xFF64748B)
+        )
+
         OutlinedTextField(
             value = manualPackage,
-            onValueChange = onPackageChange,
+            onPackageChange,
             label = { Text(stringResource(R.string.add_game_package_label), fontSize = 11.5.sp) },
             placeholder = { Text("com.example.app", fontSize = 11.5.sp) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            shape = RoundedCornerShape(10.dp)
+            shape = RoundedCornerShape(12.dp),
+            colors = manualFieldColors
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -1109,7 +1124,8 @@ private fun ManualAppView(
             placeholder = { Text("Application Name", fontSize = 11.5.sp) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            shape = RoundedCornerShape(10.dp)
+            shape = RoundedCornerShape(12.dp),
+            colors = manualFieldColors
         )
 
         Spacer(modifier = Modifier.height(14.dp))

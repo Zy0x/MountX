@@ -356,20 +356,23 @@ fun AboutScreen(
     if (showChangelogDialog) {
         AlertDialog(
             onDismissRequest = { showChangelogDialog = false },
+            containerColor = Color(0xFF111726),
+            shape = RoundedCornerShape(24.dp),
             title = {
                 Text(
                     stringResource(R.string.about_changelog),
-                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                    color = Color(0xFFF1F5F9)
                 )
             },
             text = {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF0F172A).copy(alpha = 0.6f),
+                    border = BorderStroke(1.dp, Color(0xFF334366)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 360.dp)
+                        .heightIn(max = 400.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -377,6 +380,54 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        // v2.2.26 (Terbaru)
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF162035),
+                            border = BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "v2.2.26",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp,
+                                        color = Color(0xFF818CF8)
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0xFF6366F1).copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = "Terbaru",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF818CF8),
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "Desain Dialog Modern, Input Kontras Tinggi & Jalur Terpusat MountX",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFF1F5F9),
+                                    modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
+                                )
+                                Text(text = "• Desain Dialog Cyber Midnight: Seluruh dialog aplikasi kini menggunakan tema Cyber Midnight (#111726) dengan sudut 24dp modern.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
+                                Text(text = "• Kotak Input Kontras Tinggi: Input direktori kustom kini solid (#162035) dengan border 1.5dp dan aksen Electric Indigo jelas.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
+                                Text(text = "• Saran Cepat 1-Ketuk: Chip rekomendasi instan untuk Telegram, WhatsApp, Download, DCIM, Pictures.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
+                                Text(text = "• Label Tombol Rapi: Menghilangkan duplikasi ikon '+' pada tombol Tambah Direktori Kustom.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
+                                Text(text = "• Penyelarasan Jalur VFS: Sanitasi canonical prefix /sdcard/ dan inisialisasi proaktif folder \$sdBase/MountX/ izin 775.", fontSize = 11.sp, color = Color(0xFFCBD5E1))
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.25 (Penyimpanan Terpusat MountX, Deteksi Cerdas Media & Aksi Cepat Migrasi)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Struktur Direktori Terpusat MountX: Seluruh data pengalihan kini dikumpulkan rapi di dalam folder induk \$sdBase/MountX/ (Android/data, Android/obb, Media, app, containers) sehingga MicroSD tetap tertata rapi.", fontSize = 11.sp)
@@ -539,16 +590,26 @@ fun AboutScreen(
     if (showLicenseDialog) {
         AlertDialog(
             onDismissRequest = { showLicenseDialog = false },
-            title = { Text("MIT License") },
+            containerColor = Color(0xFF111726),
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Text(
+                    "MIT License",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFF1F5F9)
+                )
+            },
             text = {
                 Text(
                     text = "Copyright (c) 2026 Noir / Zy0x\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies.",
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFCBD5E1)
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showLicenseDialog = false }) {
-                    Text(stringResource(R.string.common_close))
+                    Text(stringResource(R.string.common_close), color = Color(0xFF818CF8))
                 }
             }
         )
