@@ -398,52 +398,8 @@ fun GameDetailView(
             }
         }
 
-        // Overlay dialogs for moving progress & results
-        if (isMoving) {
-            Dialog(
-                onDismissRequest = {},
-                properties = androidx.compose.ui.window.DialogProperties(
-                    dismissOnBackPress = false,
-                    dismissOnClickOutside = false
-                )
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth().wrapContentHeight()
-                ) {
-                    MovingProgressStepContent(
-                        isMoving = true,
-                        moveMessage = moveMessage,
-                        totalBytes = breakdown.totalBytes,
-                        onCancel = {}
-                    )
-                }
-            }
-        } else if (moveMessage == "SUCCESS") {
-            Dialog(
-                onDismissRequest = onClearMoveMessage,
-                properties = androidx.compose.ui.window.DialogProperties(
-                    dismissOnBackPress = true,
-                    dismissOnClickOutside = true
-                )
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth().wrapContentHeight()
-                ) {
-                    MoveSuccessStepContent(
-                        movedPoints = currentMountPoints,
-                        totalBytes = breakdown.totalBytes,
-                        onDone = onClearMoveMessage,
-                        onViewDetail = onClearMoveMessage
-                    )
-                }
-            }
-        } else if (!moveMessage.isNullOrBlank()) {
+        // Overlay error dialog fallback (progress and success are handled by unified OperationProgressDialog)
+        if (!isMoving && !moveMessage.isNullOrBlank() && moveMessage != "SUCCESS") {
             AlertDialog(
                 onDismissRequest = onClearMoveMessage,
                 title = { Text(stringResource(R.string.common_error)) },

@@ -4,8 +4,11 @@ import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
+import app.mountx.data.model.OperationProgress
+import app.mountx.data.model.OperationType
 import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -36,111 +39,205 @@ class MountManager {
      * Mount an application entry into runtime namespaces.
      * Supports both Multi-Target Array (v2.2.13) and legacy mode fallback.
      */
-    suspend fun mountGame(game: GameEntry, sdBase: String): Result<Unit> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                // Dynamic UID/GID resolution directly from stat /data/data/$pkg
-                val identity = resolveAppIdentity(game.packageName)
-                val uid = identity.uid
-                val gid = identity.gid
+    suspend fun mountGame(
+        game: GameEntry,
+        sdBase: String,
+        onProgress: ((OperationProgress) -> Unit)? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val steps = listOf(
+                "Menyiapkan Identitas Sandbox & Izin",
+                "Memeriksa Direktori MicroSD",
+                "Mengaitkan VFS ke Runtime Namespaces",
+                "Memverifikasi Kaitan & SELinux",
+                "Pengaitan Selesai"
+            )
+            val opType = OperationType.MOUNT
+            val title = "Mengaitkan Data Game (Mount)"
+            val subtitle = "${game.displayName} • ${game.packageName}"
 
-                // Set ownership on internal data directory
-                RootShell.exec("chown -R $uid:$gid \"/data/user/0/${game.packageName}\" 2>/dev/null")
-                RootShell.exec("chmod -R 775 \"/data/user/0/${game.packageName}\" 2>/dev/null")
+            // Step 0: Sandbox & Izin
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = 0,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    progressPercent = 0.2f
+                )
+            )
 
-                val namespaces = getTargetNamespaces()
+            // Dynamic UID/GID resolution directly from stat /data/data/$pkg
+            val identity = resolveAppIdentity(game.packageName)
+            val uid = identity.uid
+            val gid = identity.gid
 
-                if (game.mountPoints.isNotEmpty()) {
-                    // ── UNIVERSAL SMART MULTI-TARGET ARRAY ──
-                    for (mp in game.mountPoints) {
-                        if (!mp.enabled) continue
+            // Set ownership on internal data directory
+            RootShell.exec("chown -R $uid:$gid \"/data/user/0/${game.packageName}\" 2>/dev/null")
+            RootShell.exec("chmod -R 775 \"/data/user/0/${game.packageName}\" 2>/dev/null")
 
-                        // Security Hard-Lock: reject /data/app unless explicitly marked as APP_PACKAGE
-                        if ((mp.targetPath.startsWith("/data/app") || mp.sourcePath.startsWith("/data/app")) && mp.category != MountPointCategory.APP_PACKAGE) {
-                            AppLogger.error("MountManager", "Security violation: blocked unverified mount target in /data/app (${mp.id})")
-                            continue
+            // Step 1: Memeriksa Direktori MicroSD
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = 1,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    progressPercent = 0.4f
+                )
+            )
+
+            val namespaces = getTargetNamespaces()
+
+            // Step 2: Mengaitkan VFS ke Runtime Namespaces
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = 2,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    progressPercent = 0.65f
+                )
+            )
+
+            if (game.mountPoints.isNotEmpty()) {
+                // ── UNIVERSAL SMART MULTI-TARGET ARRAY ──
+                for (mp in game.mountPoints) {
+                    if (!mp.enabled) continue
+
+                    // Security Hard-Lock: reject /data/app unless explicitly marked as APP_PACKAGE
+                    if ((mp.targetPath.startsWith("/data/app") || mp.sourcePath.startsWith("/data/app")) && mp.category != MountPointCategory.APP_PACKAGE) {
+                        AppLogger.error("MountManager", "Security violation: blocked unverified mount target in /data/app (${mp.id})")
+                        continue
+                    }
+
+                    when (mp.category) {
+                        MountPointCategory.EXTERNAL_DATA, MountPointCategory.OBB_STORAGE, MountPointCategory.GAME_ASSETS -> {
+                            mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
                         }
-
-                        when (mp.category) {
-                            MountPointCategory.EXTERNAL_DATA, MountPointCategory.OBB_STORAGE, MountPointCategory.GAME_ASSETS -> {
-                                mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
-                            }
-                            MountPointCategory.MEDIA_DOWNLOADS -> {
-                                // Auto .nomedia placement in source directory on MicroSD to protect MediaStore
-                                RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
-                                RootShell.exec("touch \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
-                                mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = true)
-                            }
-                            MountPointCategory.CACHE_SHADERS -> {
-                                mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
-                            }
-                            MountPointCategory.CUSTOM -> {
-                                mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
-                            }
-                            MountPointCategory.PRIVATE_INTERNAL -> {
-                                mountVirtualExt4Container(game.packageName, mp, sdBase, uid, gid)
-                            }
-                            MountPointCategory.APP_PACKAGE -> {
-                                RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
-                                RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\"")
-                                for (ns in namespaces) {
-                                    RootShell.exec("nsenter --mount=\"$ns\" mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\" 2>/dev/null")
-                                }
-                                RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
-                            }
+                        MountPointCategory.MEDIA_DOWNLOADS -> {
+                            // Auto .nomedia placement in source directory on MicroSD to protect MediaStore
+                            RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
+                            RootShell.exec("touch \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
+                            mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = true)
                         }
-                    }
-                } else {
-                    // ── LEGACY FALLBACK (Mode PKG or FILES) ──
-                    val dataSrcPath = when (game.mode) {
-                        MountMode.FILES -> "$sdBase/Android/data/${game.packageName}/files"
-                        MountMode.PKG -> "$sdBase/Android/data/${game.packageName}"
-                    }
-                    val dataRelPath = when (game.mode) {
-                        MountMode.FILES -> "Android/data/${game.packageName}/files"
-                        MountMode.PKG -> "Android/data/${game.packageName}"
-                    }
-                    val obbSrcPath = "$sdBase/Android/obb/${game.packageName}"
-                    val obbRelPath = "Android/obb/${game.packageName}"
-
-                    val hasData = RootShell.exists(dataSrcPath)
-                    val hasObb = RootShell.exists(obbSrcPath)
-
-                    if (!hasData && !hasObb) {
-                        error("Neither data nor obb source path exists on MicroSD for ${game.packageName}")
-                    }
-
-                    if (game.mode == MountMode.FILES) {
-                        RootShell.exec("chmod 771 \"/data/user/0/${game.packageName}/databases\" 2>/dev/null")
-                    }
-
-                    if (hasData) {
-                        RootShell.exec("chown -R $uid:$gid \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                        RootShell.exec("chmod -R 775 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                        RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                        RootShell.exec("touch \"$sdBase/Android/data/${game.packageName}/.mountx_canary\" 2>/dev/null")
-
-                        for (namespace in namespaces) {
-                            val targetPath = "$namespace/$dataRelPath"
-                            RootShell.exec("[ -d \"$namespace/Android/data\" ] && mkdir -p \"$targetPath\" 2>/dev/null")
-                            RootShell.exec("[ -d \"$namespace/Android/data\" ] && mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
+                        MountPointCategory.CACHE_SHADERS -> {
+                            mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
                         }
-                    }
-
-                    if (hasObb) {
-                        RootShell.exec("chown -R $uid:$gid \"$obbSrcPath\" 2>/dev/null")
-                        RootShell.exec("chmod -R 775 \"$obbSrcPath\" 2>/dev/null")
-                        RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
-
-                        for (namespace in namespaces) {
-                            val targetPath = "$namespace/$obbRelPath"
-                            RootShell.exec("[ -d \"$namespace/Android\" ] && mkdir -p \"$namespace/Android/obb\" \"$targetPath\" 2>/dev/null")
-                            RootShell.exec("[ -d \"$namespace/Android\" ] && mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
+                        MountPointCategory.CUSTOM -> {
+                            mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
+                        }
+                        MountPointCategory.PRIVATE_INTERNAL -> {
+                            mountVirtualExt4Container(game.packageName, mp, sdBase, uid, gid)
+                        }
+                        MountPointCategory.APP_PACKAGE -> {
+                            RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
+                            RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\"")
+                            for (ns in namespaces) {
+                                RootShell.exec("nsenter --mount=\"$ns\" mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\" 2>/dev/null")
+                            }
+                            RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                         }
                     }
                 }
+            } else {
+                // ── LEGACY FALLBACK (Mode PKG or FILES) ──
+                val dataSrcPath = when (game.mode) {
+                    MountMode.FILES -> "$sdBase/Android/data/${game.packageName}/files"
+                    MountMode.PKG -> "$sdBase/Android/data/${game.packageName}"
+                }
+                val dataRelPath = when (game.mode) {
+                    MountMode.FILES -> "Android/data/${game.packageName}/files"
+                    MountMode.PKG -> "Android/data/${game.packageName}"
+                }
+                val obbSrcPath = "$sdBase/Android/obb/${game.packageName}"
+                val obbRelPath = "Android/obb/${game.packageName}"
+
+                val hasData = RootShell.exists(dataSrcPath)
+                val hasObb = RootShell.exists(obbSrcPath)
+
+                if (!hasData && !hasObb) {
+                    error("Neither data nor obb source path exists on MicroSD for ${game.packageName}")
+                }
+
+                if (game.mode == MountMode.FILES) {
+                    RootShell.exec("chmod 771 \"/data/user/0/${game.packageName}/databases\" 2>/dev/null")
+                }
+
+                if (hasData) {
+                    RootShell.exec("chown -R $uid:$gid \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("chmod -R 775 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("touch \"$sdBase/Android/data/${game.packageName}/.mountx_canary\" 2>/dev/null")
+
+                    for (namespace in namespaces) {
+                        val targetPath = "$namespace/$dataRelPath"
+                        RootShell.exec("[ -d \"$namespace/Android/data\" ] && mkdir -p \"$targetPath\" 2>/dev/null")
+                        RootShell.exec("[ -d \"$namespace/Android/data\" ] && mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
+                    }
+                }
+
+                if (hasObb) {
+                    RootShell.exec("chown -R $uid:$gid \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chmod -R 775 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+
+                    for (namespace in namespaces) {
+                        val targetPath = "$namespace/$obbRelPath"
+                        RootShell.exec("[ -d \"$namespace/Android\" ] && mkdir -p \"$namespace/Android/obb\" \"$targetPath\" 2>/dev/null")
+                        RootShell.exec("[ -d \"$namespace/Android\" ] && mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
+                    }
+                }
             }
+
+            // Step 3: Memverifikasi Kaitan & SELinux
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = 3,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    progressPercent = 0.9f
+                )
+            )
+            delay(150)
+
+            // Step 4: Selesai
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = 4,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    progressPercent = 1.0f,
+                    isFinished = true,
+                    isSuccess = true
+                )
+            )
+            Unit
+        }.onFailure { err ->
+            onProgress?.invoke(
+                OperationProgress(
+                    type = OperationType.MOUNT,
+                    title = "Mengaitkan Data Game (Mount)",
+                    subtitle = "${game.displayName} • ${game.packageName}",
+                    isFinished = true,
+                    isSuccess = false,
+                    errorMessage = err.message
+                )
+            )
         }
+    }
 
     /**
      * Bind mount a single directory target into all runtime namespaces.
@@ -221,15 +318,54 @@ class MountManager {
      * Unmount a single game from all runtime namespaces and detach any loop containers.
      * Includes Pre-Unmount Process Check: stops active game process before unmounting to prevent corruption.
      */
-    suspend fun unmountGame(game: GameEntry): Result<Unit> =
+    suspend fun unmountGame(
+        game: GameEntry,
+        onProgress: ((OperationProgress) -> Unit)? = null
+    ): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
+                val steps = listOf(
+                    "Menghentikan Proses Aplikasi",
+                    "Melepaskan Kaitan VFS Namespaces",
+                    "Memulihkan Konteks SELinux",
+                    "Pelepasan Selesai"
+                )
+                val opType = OperationType.UNMOUNT
+                val title = "Melepaskan Kaitan (Unmount)"
+                val subtitle = "${game.displayName} • ${game.packageName}"
+
+                // Step 0: Stop app
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = opType,
+                        title = title,
+                        subtitle = subtitle,
+                        currentStepIndex = 0,
+                        totalSteps = steps.size,
+                        stepDescriptions = steps,
+                        progressPercent = 0.25f
+                    )
+                )
+
                 // Pre-Unmount Process Check: force-stop active process if running
                 val pgrepRes = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
                 if (pgrepRes.isSuccess && pgrepRes.output.isNotBlank()) {
                     RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
                     AppLogger.info("MountManager", "Force-stopped process before unmount: ${game.packageName}")
                 }
+
+                // Step 1: Unmount VFS
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = opType,
+                        title = title,
+                        subtitle = subtitle,
+                        currentStepIndex = 1,
+                        totalSteps = steps.size,
+                        stepDescriptions = steps,
+                        progressPercent = 0.6f
+                    )
+                )
 
                 val namespaces = getTargetNamespaces()
 
@@ -271,6 +407,49 @@ class MountManager {
                         RootShell.exec("umount -f -l \"$namespace/$rel\" 2>/dev/null")
                     }
                 }
+
+                // Step 2: Restore SELinux context
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = opType,
+                        title = title,
+                        subtitle = subtitle,
+                        currentStepIndex = 2,
+                        totalSteps = steps.size,
+                        stepDescriptions = steps,
+                        progressPercent = 0.85f
+                    )
+                )
+                RootShell.exec("restorecon -FR \"/data/media/0/Android/data/${game.packageName}\" 2>/dev/null")
+                RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/${game.packageName}\" 2>/dev/null")
+                delay(150)
+
+                // Step 3: Finished
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = opType,
+                        title = title,
+                        subtitle = subtitle,
+                        currentStepIndex = 3,
+                        totalSteps = steps.size,
+                        stepDescriptions = steps,
+                        progressPercent = 1.0f,
+                        isFinished = true,
+                        isSuccess = true
+                    )
+                )
+                Unit
+            }.onFailure { err ->
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = OperationType.UNMOUNT,
+                        title = "Melepaskan Kaitan (Unmount)",
+                        subtitle = "${game.displayName} • ${game.packageName}",
+                        isFinished = true,
+                        isSuccess = false,
+                        errorMessage = err.message
+                    )
+                )
             }
         }
 

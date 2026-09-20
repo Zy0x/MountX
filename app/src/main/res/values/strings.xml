@@ -885,6 +885,37 @@
     <string name="category_inspector_deleting">Menghapus data…</string>
     <string name="category_inspector_delete_success">Data kategori berhasil dihapus</string>
     <string name="category_inspector_delete_failed">Gagal menghapus data: %1$s</string>
+
+    <!-- v2.2.22 Real-Time Progress Engine -->
+    <string name="op_title_move_sd">Moving Data to MicroSD</string>
+    <string name="op_title_restore_internal">Restoring Data to Internal Storage</string>
+    <string name="op_title_mount">Mounting Game Data</string>
+    <string name="op_title_unmount">Unmounting Game Data</string>
+    <string name="op_step_preparing">Preparing Operation</string>
+    <string name="op_step_copying">Transferring Files</string>
+    <string name="op_step_verifying">Verifying Integrity &amp; Permissions</string>
+    <string name="op_step_mounting">Attaching VFS Runtime Namespaces</string>
+    <string name="op_step_cleaning">Cleaning Source Storage</string>
+    <string name="op_step_finished">Operation Finished</string>
+    <string name="op_mount_step_identity">Resolving App Identity &amp; Permissions</string>
+    <string name="op_mount_step_verify_sd">Verifying MicroSD Directories</string>
+    <string name="op_mount_step_vfs">Mounting VFS Runtime Namespaces</string>
+    <string name="op_mount_step_verify_mount">Verifying Active Mounts &amp; SELinux</string>
+    <string name="op_mount_step_finished">Mounting Completed</string>
+    <string name="op_unmount_step_stopping">Stopping App Process</string>
+    <string name="op_unmount_step_unmounting">Detaching VFS Runtime Namespaces</string>
+    <string name="op_unmount_step_restoring_context">Restoring Internal SELinux Context</string>
+    <string name="op_unmount_step_finished">Unmounting Completed</string>
+    <string name="op_stat_transferred">Transferred</string>
+    <string name="op_stat_speed">Transfer Speed</string>
+    <string name="op_stat_eta">Estimated Time</string>
+    <string name="op_stat_calculating">Calculating…</string>
+    <string name="op_btn_finish">Done</string>
+    <string name="op_btn_close">Close</string>
+    <string name="op_status_failed">Operation Failed</string>
+    <string name="op_status_success">Operation Completed Successfully</string>
+    <string name="op_copying_item">Copying: %1$s</string>
+    <string name="op_restoring_item">Restoring: %1$s</string>
 </resources>
 
 

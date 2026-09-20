@@ -869,6 +869,37 @@
     <string name="category_inspector_deleting">Menghapus data…</string>
     <string name="category_inspector_delete_success">Data kategori berhasil dihapus</string>
     <string name="category_inspector_delete_failed">Gagal menghapus data: %1$s</string>
- </resources>
+
+    <!-- v2.2.22 Real-Time Progress Engine -->
+    <string name="op_title_move_sd">Memindahkan Data ke MicroSD</string>
+    <string name="op_title_restore_internal">Mengembalikan Data ke Internal</string>
+    <string name="op_title_mount">Mengaitkan Data Game (Mount)</string>
+    <string name="op_title_unmount">Melepaskan Kaitan (Unmount)</string>
+    <string name="op_step_preparing">Menyiapkan Data &amp; Direktori</string>
+    <string name="op_step_copying">Menyalin Berkas</string>
+    <string name="op_step_verifying">Memverifikasi Integritas Berkas</string>
+    <string name="op_step_mounting">Mengaitkan VFS Runtime Namespaces</string>
+    <string name="op_step_cleaning">Membersihkan Data Asal</string>
+    <string name="op_step_finished">Operasi Selesai</string>
+    <string name="op_mount_step_identity">Menyiapkan Identitas Sandbox &amp; Izin</string>
+    <string name="op_mount_step_verify_sd">Memeriksa Direktori MicroSD</string>
+    <string name="op_mount_step_vfs">Mengaitkan VFS ke Runtime Namespaces</string>
+    <string name="op_mount_step_verify_mount">Memverifikasi Kaitan &amp; SELinux</string>
+    <string name="op_mount_step_finished">Pengaitan Selesai</string>
+    <string name="op_unmount_step_stopping">Menghentikan Proses Aplikasi</string>
+    <string name="op_unmount_step_unmounting">Melepaskan Kaitan VFS Namespaces</string>
+    <string name="op_unmount_step_restoring_context">Memulihkan Konteks SELinux</string>
+    <string name="op_unmount_step_finished">Pelepasan Selesai</string>
+    <string name="op_stat_transferred">Disalin</string>
+    <string name="op_stat_speed">Kecepatan Transfer</string>
+    <string name="op_stat_eta">Sisa Waktu</string>
+    <string name="op_stat_calculating">Menghitung…</string>
+    <string name="op_btn_finish">Selesai</string>
+    <string name="op_btn_close">Tutup</string>
+    <string name="op_status_failed">Operasi Gagal</string>
+    <string name="op_status_success">Operasi Berhasil Diselesaikan</string>
+    <string name="op_copying_item">Menyalin: %1$s</string>
+    <string name="op_restoring_item">Memulihkan: %1$s</string>
+</resources>
 
 

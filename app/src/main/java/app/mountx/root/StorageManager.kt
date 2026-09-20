@@ -19,7 +19,11 @@ import app.mountx.data.model.GlobalTrimReport
 import app.mountx.data.model.TrimPartitionResult
 import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
+import app.mountx.data.model.OperationProgress
+import app.mountx.data.model.OperationType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
@@ -1342,6 +1346,114 @@ class StorageManager {
         }
     }
 
+    private suspend fun getDirSizeBytes(path: String): Long {
+        if (!RootShell.exists(path)) return 0L
+        val res = RootShell.exec("du -s -k \"$path\" 2>/dev/null | awk '{print \$1}'")
+        val kb = res.output.trim().toLongOrNull() ?: 0L
+        return kb * 1024L
+    }
+
+    private suspend fun copyWithRealtimeProgress(
+        sourceDir: String,
+        destDir: String,
+        categoryName: String,
+        pointSizeBytes: Long,
+        overallProcessedBytes: Long,
+        totalMigrationBytes: Long,
+        stepIndex: Int,
+        totalSteps: Int,
+        stepDescriptions: List<String>,
+        opType: OperationType,
+        title: String,
+        subtitle: String,
+        onProgress: ((OperationProgress) -> Unit)?
+    ) {
+        val estimatedPointBytes = if (pointSizeBytes > 0L) pointSizeBytes else getDirSizeBytes(sourceDir)
+        val initialDestBytes = getDirSizeBytes(destDir)
+        val startTime = System.currentTimeMillis()
+        var lastTime = startTime
+        var lastBytes = 0L
+        var smoothedSpeed = 0L
+
+        val initialProg = if (totalMigrationBytes > 0L) {
+            (overallProcessedBytes.toFloat() / totalMigrationBytes.toFloat()).coerceIn(0f, 1f)
+        } else 0.1f
+
+        onProgress?.invoke(
+            OperationProgress(
+                type = opType,
+                title = title,
+                subtitle = subtitle,
+                currentStepIndex = stepIndex,
+                totalSteps = totalSteps,
+                stepDescriptions = stepDescriptions,
+                bytesProcessed = overallProcessedBytes,
+                totalBytes = totalMigrationBytes,
+                speedBytesPerSec = 0L,
+                etaSeconds = 0L,
+                progressPercent = initialProg,
+                currentItemName = categoryName,
+                isFinished = false
+            )
+        )
+
+        coroutineScope {
+            val copyDeferred = async(Dispatchers.IO) {
+                val parentDest = java.io.File(destDir).parent ?: destDir
+                RootShell.exec("mkdir -p \"$parentDest\"")
+                RootShell.exec("cp -a \"$sourceDir/.\" \"$destDir/\" 2>/dev/null || cp -a \"$sourceDir\" \"$parentDest/\"")
+            }
+
+            while (copyDeferred.isActive) {
+                delay(350)
+                if (!copyDeferred.isActive) break
+
+                val currentDestSize = getDirSizeBytes(destDir)
+                val currentCopied = (currentDestSize - initialDestBytes).coerceIn(0L, estimatedPointBytes)
+                val totalProcessed = (overallProcessedBytes + currentCopied).coerceIn(0L, totalMigrationBytes)
+
+                val now = System.currentTimeMillis()
+                val dt = (now - lastTime) / 1000.0
+                if (dt >= 0.3) {
+                    val dBytes = currentCopied - lastBytes
+                    val instantSpeed = if (dt > 0 && dBytes > 0) (dBytes / dt).toLong() else 0L
+                    smoothedSpeed = if (smoothedSpeed == 0L) instantSpeed else (0.65 * instantSpeed + 0.35 * smoothedSpeed).toLong()
+                    lastTime = now
+                    lastBytes = currentCopied
+                }
+
+                val elapsedSec = (now - startTime) / 1000.0
+                val effectiveSpeed = if (smoothedSpeed > 0L) smoothedSpeed else if (elapsedSec > 1.0) (currentCopied / elapsedSec).toLong() else 0L
+                val remainingBytes = (totalMigrationBytes - totalProcessed).coerceAtLeast(0L)
+                val eta = if (effectiveSpeed > 0L) remainingBytes / effectiveSpeed else 0L
+                val prog = if (totalMigrationBytes > 0L) (totalProcessed.toFloat() / totalMigrationBytes.toFloat()).coerceIn(0f, 1f) else 0.5f
+
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = opType,
+                        title = title,
+                        subtitle = subtitle,
+                        currentStepIndex = stepIndex,
+                        totalSteps = totalSteps,
+                        stepDescriptions = stepDescriptions,
+                        bytesProcessed = totalProcessed,
+                        totalBytes = totalMigrationBytes,
+                        speedBytesPerSec = effectiveSpeed,
+                        etaSeconds = eta,
+                        progressPercent = prog,
+                        currentItemName = categoryName,
+                        isFinished = false
+                    )
+                )
+            }
+
+            val copyRes = copyDeferred.await()
+            if (!copyRes.isSuccess && !RootShell.exists(destDir)) {
+                error("Failed to copy $sourceDir to $destDir: ${copyRes.stderr.joinToString("\n")}")
+            }
+        }
+    }
+
     /**
      * Migrate physical data for granular multi-target mount points (v2.2.14).
      * Fully dynamic restore path: restores directly to point.targetPath (e.g. /data/media/0/<Folder> or /data/media/0/Android/...)
@@ -1350,21 +1462,85 @@ class StorageManager {
         packageName: String,
         mountPoints: List<MountPointConfig>,
         direction: MoveDirection,
-        sdBase: String = "/data/sdext2"
+        sdBase: String = "/data/sdext2",
+        onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val uid = RootShell.exec(
-                "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
-            ).output.trim().toIntOrNull() ?: 10000
+            val isToSd = direction == MoveDirection.TO_SD
+            val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
+            val title = if (isToSd) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal"
+            val steps = if (isToSd) {
+                listOf(
+                    "Menyiapkan Data & Direktori",
+                    "Menyalin Berkas ke MicroSD",
+                    "Memverifikasi Integritas Berkas",
+                    "Mengaitkan VFS Namespaces",
+                    "Membersihkan Data Asal"
+                )
+            } else {
+                listOf(
+                    "Menyiapkan Pemulihan",
+                    "Menyalin Berkas ke Internal",
+                    "Memulihkan Izin & SELinux",
+                    "Membersihkan Berkas di MicroSD",
+                    "Operasi Selesai"
+                )
+            }
 
             val activePoints = mountPoints.filter { it.enabled }
             if (activePoints.isEmpty()) {
                 error("No active mount points configured for migration.")
             }
 
+            // Step 0: Preparing
+            var totalMigrationBytes = activePoints.sumOf { it.sizeBytes }
+            if (totalMigrationBytes <= 0L) {
+                totalMigrationBytes = activePoints.sumOf { pt ->
+                    val src = if (isToSd) pt.targetPath else pt.sourcePath
+                    getDirSizeBytes(src)
+                }
+            }
+
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = packageName,
+                    currentStepIndex = 0,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    bytesProcessed = 0L,
+                    totalBytes = totalMigrationBytes,
+                    speedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    progressPercent = 0.05f,
+                    currentItemName = null,
+                    isFinished = false
+                )
+            )
+
+            // Force stop app to prevent file locks
+            RootShell.exec("am force-stop \"$packageName\"")
+
+            val uid = RootShell.exec(
+                "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
+            ).output.trim().toIntOrNull() ?: 10000
+
+            var accumulatedBytes = 0L
+
             for (point in activePoints) {
                 val sourcePath = point.sourcePath
                 val targetPath = point.targetPath
+                val categoryName = when (point.category) {
+                    MountPointCategory.EXTERNAL_DATA -> "Data Game"
+                    MountPointCategory.OBB_STORAGE -> "OBB Resource"
+                    MountPointCategory.GAME_ASSETS -> "Game Assets"
+                    MountPointCategory.MEDIA_DOWNLOADS -> "Media & Downloads"
+                    MountPointCategory.CACHE_SHADERS -> "Cache & Shaders"
+                    MountPointCategory.PRIVATE_INTERNAL -> "Data Privat"
+                    MountPointCategory.APP_PACKAGE -> "Package App"
+                    MountPointCategory.CUSTOM -> "Custom Path"
+                }
 
                 when (direction) {
                     MoveDirection.TO_SD -> {
@@ -1383,7 +1559,21 @@ class StorageManager {
                             if (loopDev.isNotEmpty()) {
                                 RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
                                 if (RootShell.exists(targetPath)) {
-                                    RootShell.exec("cp -a \"$targetPath\"/* \"$tempMount\"/ 2>/dev/null")
+                                    copyWithRealtimeProgress(
+                                        sourceDir = targetPath,
+                                        destDir = tempMount,
+                                        categoryName = categoryName,
+                                        pointSizeBytes = point.sizeBytes,
+                                        overallProcessedBytes = accumulatedBytes,
+                                        totalMigrationBytes = totalMigrationBytes,
+                                        stepIndex = 1,
+                                        totalSteps = steps.size,
+                                        stepDescriptions = steps,
+                                        opType = opType,
+                                        title = title,
+                                        subtitle = packageName,
+                                        onProgress = onProgress
+                                    )
                                     RootShell.exec("rm -rf \"$targetPath\"/*")
                                 }
                                 RootShell.exec("umount -l \"$tempMount\"")
@@ -1394,10 +1584,42 @@ class StorageManager {
                             if (RootShell.exists(targetPath)) {
                                 val parentSd = java.io.File(sourcePath).parent ?: sdBase
                                 RootShell.exec("mkdir -p \"$sourcePath\"")
-                                val copyRes = RootShell.exec("cp -a \"$targetPath/.\" \"$sourcePath/\" 2>/dev/null || cp -a \"$targetPath\" \"$parentSd/\"")
-                                if (!copyRes.isSuccess && !RootShell.exists(sourcePath)) {
-                                    error("Failed to copy $targetPath to SD: ${copyRes.stderr.joinToString("\n")}")
-                                }
+                                copyWithRealtimeProgress(
+                                    sourceDir = targetPath,
+                                    destDir = sourcePath,
+                                    categoryName = categoryName,
+                                    pointSizeBytes = point.sizeBytes,
+                                    overallProcessedBytes = accumulatedBytes,
+                                    totalMigrationBytes = totalMigrationBytes,
+                                    stepIndex = 1,
+                                    totalSteps = steps.size,
+                                    stepDescriptions = steps,
+                                    opType = opType,
+                                    title = title,
+                                    subtitle = packageName,
+                                    onProgress = onProgress
+                                )
+                                accumulatedBytes += point.sizeBytes
+
+                                // Step 2: Verify & Permissions
+                                onProgress?.invoke(
+                                    OperationProgress(
+                                        type = opType,
+                                        title = title,
+                                        subtitle = packageName,
+                                        currentStepIndex = 2,
+                                        totalSteps = steps.size,
+                                        stepDescriptions = steps,
+                                        bytesProcessed = accumulatedBytes,
+                                        totalBytes = totalMigrationBytes,
+                                        speedBytesPerSec = 0L,
+                                        etaSeconds = 0L,
+                                        progressPercent = 0.85f,
+                                        currentItemName = categoryName,
+                                        isFinished = false
+                                    )
+                                )
+
                                 RootShell.exec("chown -R $uid:1023 \"$sourcePath\"")
                                 RootShell.exec("chmod -R 777 \"$sourcePath\"")
                                 RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\"")
@@ -1406,6 +1628,24 @@ class StorageManager {
                                     RootShell.exec("touch \"$sourcePath/.nomedia\"")
                                 }
 
+                                // Step 4: Cleanup
+                                onProgress?.invoke(
+                                    OperationProgress(
+                                        type = opType,
+                                        title = title,
+                                        subtitle = packageName,
+                                        currentStepIndex = 4,
+                                        totalSteps = steps.size,
+                                        stepDescriptions = steps,
+                                        bytesProcessed = totalMigrationBytes,
+                                        totalBytes = totalMigrationBytes,
+                                        speedBytesPerSec = 0L,
+                                        etaSeconds = 0L,
+                                        progressPercent = 0.95f,
+                                        currentItemName = categoryName,
+                                        isFinished = false
+                                    )
+                                )
                                 RootShell.exec("rm -rf \"$targetPath\"/*")
                             }
                         }
@@ -1420,7 +1660,21 @@ class StorageManager {
                                 if (loopDev.isNotEmpty()) {
                                     RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
                                     RootShell.exec("mkdir -p \"$targetPath\"")
-                                    RootShell.exec("cp -a \"$tempMount\"/* \"$targetPath\"/ 2>/dev/null")
+                                    copyWithRealtimeProgress(
+                                        sourceDir = tempMount,
+                                        destDir = targetPath,
+                                        categoryName = categoryName,
+                                        pointSizeBytes = point.sizeBytes,
+                                        overallProcessedBytes = accumulatedBytes,
+                                        totalMigrationBytes = totalMigrationBytes,
+                                        stepIndex = 1,
+                                        totalSteps = steps.size,
+                                        stepDescriptions = steps,
+                                        opType = opType,
+                                        title = title,
+                                        subtitle = packageName,
+                                        onProgress = onProgress
+                                    )
                                     RootShell.exec("umount -l \"$tempMount\"")
                                     RootShell.exec("losetup -d \"$loopDev\"")
                                 }
@@ -1429,17 +1683,67 @@ class StorageManager {
                                 RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
                             }
                         } else {
-                            // Dynamic targetPath restore: preserves /data/media/0/<Folder> or /data/media/0/Android/
                             if (RootShell.exists(sourcePath)) {
                                 val parentInternal = java.io.File(targetPath).parent ?: "/data/media/0"
                                 RootShell.exec("mkdir -p \"$targetPath\"")
-                                val copyRes = RootShell.exec("cp -a \"$sourcePath/.\" \"$targetPath/\" 2>/dev/null || cp -a \"$sourcePath\" \"$parentInternal/\"")
-                                if (!copyRes.isSuccess && !RootShell.exists(targetPath)) {
-                                    error("Failed to restore $sourcePath to internal: ${copyRes.stderr.joinToString("\n")}")
-                                }
+                                copyWithRealtimeProgress(
+                                    sourceDir = sourcePath,
+                                    destDir = targetPath,
+                                    categoryName = categoryName,
+                                    pointSizeBytes = point.sizeBytes,
+                                    overallProcessedBytes = accumulatedBytes,
+                                    totalMigrationBytes = totalMigrationBytes,
+                                    stepIndex = 1,
+                                    totalSteps = steps.size,
+                                    stepDescriptions = steps,
+                                    opType = opType,
+                                    title = title,
+                                    subtitle = packageName,
+                                    onProgress = onProgress
+                                )
+                                accumulatedBytes += point.sizeBytes
+
+                                // Step 2: Restore permissions & SELinux
+                                onProgress?.invoke(
+                                    OperationProgress(
+                                        type = opType,
+                                        title = title,
+                                        subtitle = packageName,
+                                        currentStepIndex = 2,
+                                        totalSteps = steps.size,
+                                        stepDescriptions = steps,
+                                        bytesProcessed = accumulatedBytes,
+                                        totalBytes = totalMigrationBytes,
+                                        speedBytesPerSec = 0L,
+                                        etaSeconds = 0L,
+                                        progressPercent = 0.85f,
+                                        currentItemName = categoryName,
+                                        isFinished = false
+                                    )
+                                )
+
                                 RootShell.exec("chown -R $uid:1023 \"$targetPath\"")
                                 RootShell.exec("chmod -R 775 \"$targetPath\"")
                                 RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\"")
+
+                                // Step 3: Cleanup on MicroSD
+                                onProgress?.invoke(
+                                    OperationProgress(
+                                        type = opType,
+                                        title = title,
+                                        subtitle = packageName,
+                                        currentStepIndex = 3,
+                                        totalSteps = steps.size,
+                                        stepDescriptions = steps,
+                                        bytesProcessed = totalMigrationBytes,
+                                        totalBytes = totalMigrationBytes,
+                                        speedBytesPerSec = 0L,
+                                        etaSeconds = 0L,
+                                        progressPercent = 0.95f,
+                                        currentItemName = categoryName,
+                                        isFinished = false
+                                    )
+                                )
                                 RootShell.exec("rm -rf \"$sourcePath\"")
                             }
                         }
@@ -1453,7 +1757,38 @@ class StorageManager {
             RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
             RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
             RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+
+            // Finished!
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = packageName,
+                    currentStepIndex = steps.size - 1,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    bytesProcessed = totalMigrationBytes,
+                    totalBytes = totalMigrationBytes,
+                    speedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    progressPercent = 1.0f,
+                    currentItemName = null,
+                    isFinished = true,
+                    isSuccess = true
+                )
+            )
             Unit
+        }.onFailure { err ->
+            onProgress?.invoke(
+                OperationProgress(
+                    type = if (direction == MoveDirection.TO_SD) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL,
+                    title = if (direction == MoveDirection.TO_SD) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal",
+                    subtitle = packageName,
+                    isFinished = true,
+                    isSuccess = false,
+                    errorMessage = err.message
+                )
+            )
         }
     }
 
@@ -1466,9 +1801,31 @@ class StorageManager {
         packageName: String,
         direction: MoveDirection,
         target: MigrationTarget = MigrationTarget.ALL,
-        sdBase: String = "/data/sdext2"
+        sdBase: String = "/data/sdext2",
+        onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            val isToSd = direction == MoveDirection.TO_SD
+            val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
+            val title = if (isToSd) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal"
+            val steps = if (isToSd) {
+                listOf(
+                    "Menyiapkan Data & Direktori",
+                    "Menyalin Berkas ke MicroSD",
+                    "Memverifikasi Integritas Berkas",
+                    "Mengaitkan VFS Namespaces",
+                    "Membersihkan Data Asal"
+                )
+            } else {
+                listOf(
+                    "Menyiapkan Pemulihan",
+                    "Menyalin Berkas ke Internal",
+                    "Memulihkan Izin & SELinux",
+                    "Membersihkan Berkas di MicroSD",
+                    "Operasi Selesai"
+                )
+            }
+
             val uid = RootShell.exec(
                 "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
             ).output.trim().toIntOrNull() ?: 10000
@@ -1481,19 +1838,57 @@ class StorageManager {
             val internalObb = "/data/media/0/Android/obb/$packageName"
             val sdObb = "$sdBase/Android/obb/$packageName"
 
+            val dataSize = if (isToSd) getDirSizeBytes(internalData) else getDirSizeBytes(sdData)
+            val obbSize = if (isToSd) getDirSizeBytes(internalObb) else getDirSizeBytes(sdObb)
+            var totalMigrationBytes = 0L
+            if (moveData) totalMigrationBytes += dataSize
+            if (moveObb) totalMigrationBytes += obbSize
+
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = packageName,
+                    currentStepIndex = 0,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    bytesProcessed = 0L,
+                    totalBytes = totalMigrationBytes,
+                    speedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    progressPercent = 0.05f,
+                    currentItemName = null,
+                    isFinished = false
+                )
+            )
+
+            // Terminate app
+            RootShell.exec("am force-stop \"$packageName\"")
+
+            var accumulatedBytes = 0L
+
             when (direction) {
                 MoveDirection.TO_SD -> {
                     // 1. Move Data if requested
                     if (moveData) {
                         if (RootShell.exists(internalData)) {
                             RootShell.exec("mkdir -p \"$sdBase/Android/data\"")
-                            val copyRes = RootShell.exec("cp -a \"$internalData\" \"$sdBase/Android/data/\"")
-                            if (!copyRes.isSuccess) {
-                                error("Failed to copy game data to SD: ${copyRes.stderr.joinToString("\n")}")
-                            }
-                            if (!RootShell.exists(sdData)) {
-                                error("Verification failed: SD data directory not found after copy.")
-                            }
+                            copyWithRealtimeProgress(
+                                sourceDir = internalData,
+                                destDir = sdData,
+                                categoryName = "Data Game",
+                                pointSizeBytes = dataSize,
+                                overallProcessedBytes = accumulatedBytes,
+                                totalMigrationBytes = totalMigrationBytes,
+                                stepIndex = 1,
+                                totalSteps = steps.size,
+                                stepDescriptions = steps,
+                                opType = opType,
+                                title = title,
+                                subtitle = packageName,
+                                onProgress = onProgress
+                            )
+                            accumulatedBytes += dataSize
                             RootShell.exec("chown -R $uid:1023 \"$sdData\"")
                             RootShell.exec("chmod -R 777 \"$sdData\"")
                             RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdData\"")
@@ -1508,13 +1903,22 @@ class StorageManager {
                     if (moveObb) {
                         if (RootShell.exists(internalObb)) {
                             RootShell.exec("mkdir -p \"$sdBase/Android/obb\"")
-                            val copyRes = RootShell.exec("cp -a \"$internalObb\" \"$sdBase/Android/obb/\"")
-                            if (!copyRes.isSuccess) {
-                                error("Failed to copy game OBB to SD: ${copyRes.stderr.joinToString("\n")}")
-                            }
-                            if (!RootShell.exists(sdObb)) {
-                                error("Verification failed: SD OBB directory not found after copy.")
-                            }
+                            copyWithRealtimeProgress(
+                                sourceDir = internalObb,
+                                destDir = sdObb,
+                                categoryName = "OBB",
+                                pointSizeBytes = obbSize,
+                                overallProcessedBytes = accumulatedBytes,
+                                totalMigrationBytes = totalMigrationBytes,
+                                stepIndex = 1,
+                                totalSteps = steps.size,
+                                stepDescriptions = steps,
+                                opType = opType,
+                                title = title,
+                                subtitle = packageName,
+                                onProgress = onProgress
+                            )
+                            accumulatedBytes += obbSize
                             RootShell.exec("chown -R $uid:1023 \"$sdObb\"")
                             RootShell.exec("chmod -R 777 \"$sdObb\"")
                             RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdObb\"")
@@ -1530,13 +1934,22 @@ class StorageManager {
                     if (moveData) {
                         if (RootShell.exists(sdData)) {
                             RootShell.exec("mkdir -p \"/data/media/0/Android/data\"")
-                            val copyRes = RootShell.exec("cp -a \"$sdData\" \"/data/media/0/Android/data/\"")
-                            if (!copyRes.isSuccess) {
-                                error("Failed to copy game data back to internal: ${copyRes.stderr.joinToString("\n")}")
-                            }
-                            if (!RootShell.exists(internalData)) {
-                                error("Verification failed: Internal data directory not found after restore.")
-                            }
+                            copyWithRealtimeProgress(
+                                sourceDir = sdData,
+                                destDir = internalData,
+                                categoryName = "Data Game",
+                                pointSizeBytes = dataSize,
+                                overallProcessedBytes = accumulatedBytes,
+                                totalMigrationBytes = totalMigrationBytes,
+                                stepIndex = 1,
+                                totalSteps = steps.size,
+                                stepDescriptions = steps,
+                                opType = opType,
+                                title = title,
+                                subtitle = packageName,
+                                onProgress = onProgress
+                            )
+                            accumulatedBytes += dataSize
                             RootShell.exec("chown -R $uid:1023 \"$internalData\"")
                             RootShell.exec("chmod -R 775 \"$internalData\"")
                             RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$internalData\"")
@@ -1550,13 +1963,22 @@ class StorageManager {
                     if (moveObb) {
                         if (RootShell.exists(sdObb)) {
                             RootShell.exec("mkdir -p \"/data/media/0/Android/obb\"")
-                            val copyRes = RootShell.exec("cp -a \"$sdObb\" \"/data/media/0/Android/obb/\"")
-                            if (!copyRes.isSuccess) {
-                                error("Failed to copy game OBB back to internal: ${copyRes.stderr.joinToString("\n")}")
-                            }
-                            if (!RootShell.exists(internalObb)) {
-                                error("Verification failed: Internal OBB directory not found after restore.")
-                            }
+                            copyWithRealtimeProgress(
+                                sourceDir = sdObb,
+                                destDir = internalObb,
+                                categoryName = "OBB",
+                                pointSizeBytes = obbSize,
+                                overallProcessedBytes = accumulatedBytes,
+                                totalMigrationBytes = totalMigrationBytes,
+                                stepIndex = 1,
+                                totalSteps = steps.size,
+                                stepDescriptions = steps,
+                                opType = opType,
+                                title = title,
+                                subtitle = packageName,
+                                onProgress = onProgress
+                            )
+                            accumulatedBytes += obbSize
                             RootShell.exec("chown -R $uid:1023 \"$internalObb\"")
                             RootShell.exec("chmod -R 775 \"$internalObb\"")
                             RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$internalObb\"")
@@ -1569,9 +1991,42 @@ class StorageManager {
                     // Restore internal app sandbox directory permissions
                     RootShell.exec("chown -R $uid:$uid \"/data/user/0/$packageName\" 2>/dev/null")
                     RootShell.exec("chmod -R 775 \"/data/user/0/$packageName\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
                 }
             }
+
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = packageName,
+                    currentStepIndex = steps.size - 1,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    bytesProcessed = totalMigrationBytes,
+                    totalBytes = totalMigrationBytes,
+                    speedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    progressPercent = 1.0f,
+                    currentItemName = null,
+                    isFinished = true,
+                    isSuccess = true
+                )
+            )
             Unit
+        }.onFailure { err ->
+            onProgress?.invoke(
+                OperationProgress(
+                    type = if (direction == MoveDirection.TO_SD) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL,
+                    title = if (direction == MoveDirection.TO_SD) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal",
+                    subtitle = packageName,
+                    isFinished = true,
+                    isSuccess = false,
+                    errorMessage = err.message
+                )
+            )
         }
     }
 

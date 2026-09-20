@@ -15,6 +15,7 @@ import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.SupportedFilesystemInfo
 import app.mountx.data.model.GlobalTrimReport
 import app.mountx.data.model.MountPointConfig
+import app.mountx.data.model.OperationProgress
 import app.mountx.root.StorageManager
 import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
@@ -198,18 +199,20 @@ class StorageRepository @Inject constructor(
         packageName: String,
         mountPoints: List<MountPointConfig>,
         direction: MoveDirection,
-        sdBase: String = "/data/sdext2"
+        sdBase: String = "/data/sdext2",
+        onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        storageManager.moveMountPoints(packageName, mountPoints, direction, sdBase)
+        storageManager.moveMountPoints(packageName, mountPoints, direction, sdBase, onProgress)
     }
 
     suspend fun moveGameData(
         packageName: String,
         direction: MoveDirection,
         target: MigrationTarget = MigrationTarget.ALL,
-        sdBase: String = "/data/sdext2"
+        sdBase: String = "/data/sdext2",
+        onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        storageManager.moveGameData(packageName, direction, target, sdBase)
+        storageManager.moveGameData(packageName, direction, target, sdBase, onProgress)
     }
 
     suspend fun getDiskIoConfig(diskName: String): Result<DiskIoConfig> = withContext(Dispatchers.IO) {

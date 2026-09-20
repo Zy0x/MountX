@@ -80,6 +80,7 @@ fun GamesScreen(
     val availableDisks by viewModel.availableDisks.collectAsState()
     val isScanningDisks by viewModel.isScanningDisks.collectAsState()
     val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
+    val operationProgress by viewModel.operationProgress.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.scanDiscoveredGames()
@@ -250,6 +251,19 @@ fun GamesScreen(
                 gameToDelete = null
             },
             onDismiss = { if (!isRestoring) gameToDelete = null }
+        )
+    }
+
+    // Real-time Operation Progress Dialog (Mount, Unmount, Move to SD, Restore to Internal)
+    operationProgress?.let { prog ->
+        OperationProgressDialog(
+            progress = prog,
+            onDismiss = {
+                viewModel.clearOperationProgress()
+                if (prog.isSuccess && (prog.type == app.mountx.data.model.OperationType.MOVE_TO_SD || prog.type == app.mountx.data.model.OperationType.RESTORE_TO_INTERNAL)) {
+                    viewModel.clearMoveMessage()
+                }
+            }
         )
     }
 }

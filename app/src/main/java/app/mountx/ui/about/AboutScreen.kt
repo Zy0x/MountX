@@ -377,6 +377,15 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.22 (Real-Time Progress Engine & Live Telemetry Stepper)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Kecepatan & Estimasi Waktu Real-Time: Menampilkan kecepatan transfer (MB/s) yang dihaluskan (EMA) dan estimasi sisa waktu (ETA) saat menyalin data berukuran puluhan GB.", fontSize = 11.sp)
+                        Text(text = "• Pemantauan Byte Akurat: Progress bar dan indikator MB/GB fisik yang bergerak real-time sesuai progres penyalinan direktori.", fontSize = 11.sp)
+                        Text(text = "• Visual Stepper 5 Tahap: Checklist multi-tahap transparan untuk proses pemindahan, kaitan VFS namespaces, dan pelepasan mount.", fontSize = 11.sp)
+                        Text(text = "• Dialog Operasi Terpadu: Penanganan modal status modern terpusat yang mencegah freeze latar belakang dan mencegah dialog tumpang-tindih.", fontSize = 11.sp)
+                        Text(text = "• Otomasi Halus Pasca Operasi: Animasi transisi status instan dengan penutupan otomatis halus untuk kaitan/pelepasan mount yang berhasil.", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.21 (Category Inspector Modal & Safe Multi-Storage Deletion)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Category Inspector Modal Bottom Sheet: Ketuk kartu kategori data game (APK, Lib, Data Privat, Cache, Data Game, OBB) untuk melihat rincian path lengkap dan ukuran di setiap media.", fontSize = 11.sp)

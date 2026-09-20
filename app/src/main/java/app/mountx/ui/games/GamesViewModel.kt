@@ -11,6 +11,7 @@ import app.mountx.data.model.MigrationTarget
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
+import app.mountx.data.model.OperationProgress
 import app.mountx.data.repository.GameRepository
 import app.mountx.data.repository.StorageRepository
 import app.mountx.util.AppPreferences
@@ -116,6 +117,13 @@ class GamesViewModel @Inject constructor(
     private val _detailedStorage = MutableStateFlow(AppStorageBreakdown())
     val detailedStorage: StateFlow<AppStorageBreakdown> = _detailedStorage.asStateFlow()
 
+    private val _operationProgress = MutableStateFlow<OperationProgress?>(null)
+    val operationProgress: StateFlow<OperationProgress?> = _operationProgress.asStateFlow()
+
+    fun clearOperationProgress() {
+        _operationProgress.value = null
+    }
+
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
@@ -206,10 +214,18 @@ class GamesViewModel @Inject constructor(
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
             if (game.mountStatus == app.mountx.data.model.MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game)
+                gameRepository.unmountGame(game) { prog ->
+                    _operationProgress.value = prog
+                }
             } else {
-                gameRepository.mountGame(game, sdBase)
+                gameRepository.mountGame(game, sdBase) { prog ->
+                    _operationProgress.value = prog
+                }
             }
+            val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
+            _detailedStorage.value = breakdown
+            _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            refresh()
         }
     }
 
@@ -302,10 +318,18 @@ class GamesViewModel @Inject constructor(
 
             // If restoring to internal, unmount from runtime namespaces first
             if (direction == MoveDirection.TO_INTERNAL && game != null && game.mountStatus == MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game)
+                gameRepository.unmountGame(game) { prog ->
+                    _operationProgress.value = prog
+                }
             }
 
-            val result = storageRepository.moveGameMountPoints(packageName, mountPoints, direction, sdBase)
+            val result = storageRepository.moveGameMountPoints(
+                packageName = packageName,
+                mountPoints = mountPoints,
+                direction = direction,
+                sdBase = sdBase,
+                onProgress = { prog -> _operationProgress.value = prog }
+            )
             _isMovingData.value = false
             if (result.isSuccess) {
                 _moveMessage.value = "SUCCESS"
@@ -314,7 +338,9 @@ class GamesViewModel @Inject constructor(
                     val updated = game.copy(mountPoints = mountPoints)
                     gameRepository.updateGame(updated)
                     if (direction == MoveDirection.TO_SD) {
-                        gameRepository.mountGame(updated, sdBase)
+                        gameRepository.mountGame(updated, sdBase) { prog ->
+                            _operationProgress.value = prog
+                        }
                     }
                 }
 
@@ -349,17 +375,27 @@ class GamesViewModel @Inject constructor(
 
             // If restoring to internal, unmount from runtime namespaces first
             if (direction == MoveDirection.TO_INTERNAL && game != null && game.mountStatus == MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game)
+                gameRepository.unmountGame(game) { prog ->
+                    _operationProgress.value = prog
+                }
             }
 
-            val result = storageRepository.moveGameData(packageName, direction, target, sdBase)
+            val result = storageRepository.moveGameData(
+                packageName = packageName,
+                direction = direction,
+                target = target,
+                sdBase = sdBase,
+                onProgress = { prog -> _operationProgress.value = prog }
+            )
             _isMovingData.value = false
             if (result.isSuccess) {
                 _moveMessage.value = "SUCCESS"
 
                 // If moved to SD card, auto-mount immediately to Android runtime namespaces
                 if (direction == MoveDirection.TO_SD && game != null) {
-                    gameRepository.mountGame(game, sdBase)
+                    gameRepository.mountGame(game, sdBase) { prog ->
+                        _operationProgress.value = prog
+                    }
                 }
 
                 gameRepository.calculateDataSize(packageName, sdBase)

@@ -16,6 +16,7 @@ import app.mountx.data.model.SmartGamePresets
 import app.mountx.data.model.CategoryDeleteLocation
 import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
+import app.mountx.data.model.OperationProgress
 import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
@@ -230,10 +231,14 @@ class GameRepository @Inject constructor(
         }
     }
 
-    suspend fun mountGame(game: GameEntry, sdBase: String = "/data/sdext2"): Result<Unit> =
+    suspend fun mountGame(
+        game: GameEntry,
+        sdBase: String = "/data/sdext2",
+        onProgress: ((OperationProgress) -> Unit)? = null
+    ): Result<Unit> =
         withContext(Dispatchers.IO) {
             AppLogger.info("Games", "Mounting ${game.displayName} (${game.packageName}) [${game.mode.name}]")
-            val result = mountManager.mountGame(game, sdBase)
+            val result = mountManager.mountGame(game, sdBase, onProgress)
             if (result.isSuccess) {
                 gameDao.updateMountStatus(game.packageName, MountStatus.MOUNTED)
                 AppLogger.success("Games", "Successfully mounted ${game.displayName}")
@@ -244,14 +249,18 @@ class GameRepository @Inject constructor(
             result
         }
 
-    suspend fun unmountGame(game: GameEntry): Result<Unit> =
+    suspend fun unmountGame(
+        game: GameEntry,
+        onProgress: ((OperationProgress) -> Unit)? = null
+    ): Result<Unit> =
         withContext(Dispatchers.IO) {
             AppLogger.info("Games", "Unmounting ${game.displayName} (${game.packageName})")
-            val result = mountManager.unmountGame(game)
+            val result = mountManager.unmountGame(game, onProgress)
             if (result.isSuccess) {
                 gameDao.updateMountStatus(game.packageName, MountStatus.UNMOUNTED)
                 AppLogger.success("Games", "Successfully unmounted ${game.displayName}")
             } else {
+                gameDao.updateMountStatus(game.packageName, MountStatus.ERROR)
                 AppLogger.error("Games", "Failed to unmount ${game.displayName}: ${result.exceptionOrNull()?.message}")
             }
             result
