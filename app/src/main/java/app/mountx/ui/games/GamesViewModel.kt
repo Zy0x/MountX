@@ -140,10 +140,17 @@ class GamesViewModel @Inject constructor(
 
     fun loadStorageBreakdown(packageName: String) {
         viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
-            _detailedStorage.value = breakdown
-            _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            try {
+                app.mountx.util.AppLogger.info("GamesVM", "loadStorageBreakdown started for $packageName")
+                val sdBase = appPreferences.sdBasePath.first()
+                app.mountx.util.AppLogger.info("GamesVM", "sdBase: $sdBase")
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+                app.mountx.util.AppLogger.info("GamesVM", "breakdown: total=${breakdown.totalBytes}, ext1=${breakdown.ext1Bytes}, ext2=${breakdown.ext2Bytes}, data=${breakdown.ext1DataBytes}")
+                _detailedStorage.value = breakdown
+                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            } catch (e: Exception) {
+                app.mountx.util.AppLogger.error("GamesVM", "loadStorageBreakdown failed for $packageName: ${e.message}")
+            }
         }
     }
 

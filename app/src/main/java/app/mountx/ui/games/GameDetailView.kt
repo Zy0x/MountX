@@ -547,21 +547,33 @@ private fun buildTargetMountPoints(
         }
 
         if (existing != null) {
-            result.add(existing.copy(enabled = true))
+            val updatedSource = when (existing.resolveCategory()) {
+                MountPointCategory.EXTERNAL_DATA -> "$sdBase/Android/data/$pkg"
+                MountPointCategory.OBB_STORAGE -> "$sdBase/Android/obb/$pkg"
+                MountPointCategory.APP_PACKAGE -> "$sdBase/app/$pkg"
+                MountPointCategory.GAME_ASSETS -> "$sdBase/Android/data/$pkg/files"
+                else -> existing.sourcePath
+            }
+            val updatedTarget = when (existing.resolveCategory()) {
+                MountPointCategory.EXTERNAL_DATA -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/data/$pkg" else existing.targetPath
+                MountPointCategory.OBB_STORAGE -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/obb/$pkg" else existing.targetPath
+                else -> existing.targetPath
+            }
+            result.add(existing.copy(sourcePath = updatedSource, targetPath = updatedTarget, enabled = true))
         } else {
             val synthesized = when (catId) {
                 "data" -> MountPointConfig(
                     id = "ext_data_$pkg",
                     category = MountPointCategory.EXTERNAL_DATA,
                     sourcePath = "$sdBase/Android/data/$pkg",
-                    targetPath = "/sdcard/Android/data/$pkg",
+                    targetPath = "/data/media/0/Android/data/$pkg",
                     enabled = true
                 )
                 "obb" -> MountPointConfig(
                     id = "ext_obb_$pkg",
                     category = MountPointCategory.OBB_STORAGE,
                     sourcePath = "$sdBase/Android/obb/$pkg",
-                    targetPath = "/sdcard/Android/obb/$pkg",
+                    targetPath = "/data/media/0/Android/obb/$pkg",
                     enabled = true
                 )
                 "apk" -> MountPointConfig(
@@ -710,11 +722,57 @@ private fun StorageTabContent(
     var selectedCategoryIds by remember { mutableStateOf(setOf("data", "obb")) }
     var showTargetModal by remember { mutableStateOf(false) }
 
-    val isMounted = game.mountStatus == MountStatus.MOUNTED || breakdown.microSdBytes > 0L
-    val hasExtDataOnSd = breakdown.ext2DataBytes > 0L || (isMounted && breakdown.isExt1Mounted)
-    val hasExtObbOnSd = breakdown.ext2ObbBytes > 0L || (isMounted && breakdown.isExt1Mounted)
+    val isMounted = game.mountStatus == MountStatus.MOUNTED || breakdown.isExt1Mounted
+    val hasExtDataOnSd = if (isMounted) {
+        breakdown.ext2DataBytes > 0L || breakdown.isExt1Mounted
+    } else {
+        breakdown.ext2DataBytes > 0L && breakdown.ext1DataBytes == 0L
+    }
+    val hasExtObbOnSd = if (isMounted) {
+        breakdown.ext2ObbBytes > 0L || breakdown.isExt1Mounted
+    } else {
+        breakdown.ext2ObbBytes > 0L && breakdown.ext1ObbBytes == 0L
+    }
 
     val categories = remember(breakdown, isMounted, hasExtDataOnSd, hasExtObbOnSd) {
+        val (dataBytes, dataSubtitle, isDataSd) = when {
+            isMounted -> Triple(breakdown.ext2DataBytes, "Data utama game", true)
+            breakdown.ext2DataBytes > 0L && breakdown.ext1DataBytes > 0L -> {
+                Triple(
+                    breakdown.ext1DataBytes,
+                    "Data utama game • ${FormatUtils.formatExactBytes(breakdown.ext2DataBytes)} di MicroSD",
+                    false
+                )
+            }
+            breakdown.ext2DataBytes > 0L && breakdown.ext1DataBytes == 0L -> {
+                Triple(breakdown.ext2DataBytes, "Data utama game", true)
+            }
+            else -> {
+                Triple(
+                    if (breakdown.ext1DataBytes > 0L) breakdown.ext1DataBytes else breakdown.ext1Bytes,
+                    "Data utama game",
+                    false
+                )
+            }
+        }
+
+        val (obbBytes, obbSubtitle, isObbSd) = when {
+            isMounted -> Triple(breakdown.ext2ObbBytes, "File ekspansi game", true)
+            breakdown.ext2ObbBytes > 0L && breakdown.ext1ObbBytes > 0L -> {
+                Triple(
+                    breakdown.ext1ObbBytes,
+                    "File ekspansi game • ${FormatUtils.formatExactBytes(breakdown.ext2ObbBytes)} di MicroSD",
+                    false
+                )
+            }
+            breakdown.ext2ObbBytes > 0L && breakdown.ext1ObbBytes == 0L -> {
+                Triple(breakdown.ext2ObbBytes, "File ekspansi game", true)
+            }
+            else -> {
+                Triple(breakdown.ext1ObbBytes, "File ekspansi game", false)
+            }
+        }
+
         listOf(
             UnifiedCategoryItem(
                 id = "apk",
@@ -763,27 +821,29 @@ private fun StorageTabContent(
             UnifiedCategoryItem(
                 id = "data",
                 title = "Data Game",
-                subtitle = "Data utama game",
-                bytes = if (hasExtDataOnSd) breakdown.ext2DataBytes.coerceAtLeast(breakdown.ext1DataBytes) else breakdown.ext1DataBytes.coerceAtLeast(breakdown.ext1Bytes),
+                subtitle = dataSubtitle,
+                bytes = dataBytes,
                 icon = Icons.Default.SportsEsports,
                 iconTint = Color(0xFF00ACC1),
-                isMicroSd = hasExtDataOnSd,
+                isMicroSd = isDataSd,
                 isRisk = false,
                 mountCategory = MountPointCategory.EXTERNAL_DATA
             ),
             UnifiedCategoryItem(
                 id = "obb",
                 title = "OBB",
-                subtitle = "File ekspansi game",
-                bytes = if (hasExtObbOnSd) breakdown.ext2ObbBytes.coerceAtLeast(breakdown.ext1ObbBytes) else breakdown.ext1ObbBytes,
+                subtitle = obbSubtitle,
+                bytes = obbBytes,
                 icon = Icons.Default.SdStorage,
                 iconTint = Color(0xFF1E88E5),
-                isMicroSd = hasExtObbOnSd,
+                isMicroSd = isObbSd,
                 isRisk = false,
                 mountCategory = MountPointCategory.OBB_STORAGE
             )
         )
     }
+
+    val chartBreakdown = breakdown
 
     Column(
         modifier = modifier
@@ -807,7 +867,7 @@ private fun StorageTabContent(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 ConcentricStorageChart(
-                    breakdown = breakdown,
+                    breakdown = chartBreakdown,
                     modifier = Modifier.size(152.dp)
                 )
 
@@ -838,7 +898,7 @@ private fun StorageTabContent(
                             )
                         }
                         Text(
-                            text = FormatUtils.formatLegendBytes(breakdown.phoneInternalBytes),
+                            text = FormatUtils.formatLegendBytes(chartBreakdown.phoneInternalBytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -870,7 +930,7 @@ private fun StorageTabContent(
                             )
                         }
                         Text(
-                            text = FormatUtils.formatLegendBytes(breakdown.microSdBytes),
+                            text = FormatUtils.formatLegendBytes(chartBreakdown.microSdBytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -901,7 +961,7 @@ private fun StorageTabContent(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = FormatUtils.formatLegendBytes(breakdown.totalBytes),
+                            text = FormatUtils.formatLegendBytes(chartBreakdown.totalBytes),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -990,7 +1050,7 @@ private fun StorageTabContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Left: Kembalikan ke Memori Internal
-                    val canRestore = isMounted || breakdown.microSdBytes > 0L
+                    val canRestore = isMounted || (breakdown.ext2Bytes > 0L)
                     OutlinedButton(
                         onClick = onRestoreToInternal,
                         enabled = canRestore,
@@ -1109,7 +1169,8 @@ private fun StorageTabContent(
             onConfirmMove = { dir, targetDisk, targetPartition ->
                 showTargetModal = false
                 isSelectionMode = false
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, sdBase)
+                val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase)
                 onMove(dir, targetPoints, targetDisk, targetPartition)
             }
         )

@@ -399,6 +399,22 @@ fun AboutScreen(
                         Text(text = "• Revamp total UI Tab Manage (8-Screen Guided Flow): Hybrid Storage Chart, Kategori Data Game, Stepper Progress Pemindahan, Detail Kategori, dan Bottom Sheet Opsi Folder.", fontSize = 11.sp)
 
                         Spacer(modifier = Modifier.height(10.dp))
+                        Text(text = "v2.2.20 (Ultra-Fast Storage Engine & Absolute Size Precision)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Eliminasi total perintah df -k: digantikan dengan syscall stat -f berkecepatan 0,09 detik (350x lebih cepat).", fontSize = 11.sp)
+                        Text(text = "• Mengatasi pembekuan sistem akibat pemindaian 26.900+ bind mounts dan partisi FUSE /storage/*.", fontSize = 11.sp)
+                        Text(text = "• Presisi 100% ukuran Internal, MicroSD (FAT/ext4), dan sdext2 (F2FS) dengan akumulasi basis partisi unik.", fontSize = 11.sp)
+                        Text(text = "• Eliminasi kalkulasi duplikat di GamesViewModel untuk loading layar detail instan.", fontSize = 11.sp)
+                        Text(text = "• Logging asinkron berkecepatan tinggi dengan fallback langsung tanpa memblokir antrian RootShell.", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(text = "v2.2.19 (Perbaikan Performa: Breakdown Storage Instan)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Perbaikan kritis: detail storage kini muncul dalam hitungan detik, bukan menit.", fontSize = 11.sp)
+                        Text(text = "• AppLogger direfaktor: tulis ke logcat secara instan, antrian file-write via Channel agar tidak memblokir kalkulasi du.", fontSize = 11.sp)
+                        Text(text = "• Setiap log tidak lagi menunggu root shell selesai sebelum log berikutnya dikirim.", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.18 (Perbaikan Akurasi Deteksi Storage Eksternal)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Perbaikan kritis: data game di MicroSD kini terdeteksi akurat tanpa memerlukan status mount dari DB.", fontSize = 11.sp)

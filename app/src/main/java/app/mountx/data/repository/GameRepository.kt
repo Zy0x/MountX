@@ -395,8 +395,8 @@ class GameRepository @Inject constructor(
             val game = gameDao.getGameByPackage(packageName)
             val internalData = "/data/media/0/Android/data/$packageName"
             val internalObb = "/data/media/0/Android/obb/$packageName"
-            val isDataMounted = (game?.mountStatus == MountStatus.MOUNTED) || RootShell.isMountpoint(internalData)
-            val isObbMounted = (game?.mountStatus == MountStatus.MOUNTED) || RootShell.isMountpoint(internalObb)
+            val isDataMountedReal = RootShell.isMountpoint(internalData)
+            val isObbMountedReal = RootShell.isMountpoint(internalObb)
 
             val externalBases = getExternalStorageBases(sdBase, game)
 
@@ -440,30 +440,36 @@ class GameRepository @Inject constructor(
             val internalDataSize = sizeMap[internalData] ?: 0L
             val internalObbSize = sizeMap[internalObb] ?: 0L
 
-            var maxExtDataSize = 0L
+            var extDataBytesSum = 0L
+            val seenExtBases = mutableSetOf<String>()
             candidateExtDataPaths.distinct().forEach { p ->
-                val b = sizeMap[p] ?: 0L
-                if (b > maxExtDataSize) maxExtDataSize = b
+                val baseKey = p.substringBefore("/Android/")
+                if (seenExtBases.add(baseKey)) {
+                    val b = sizeMap[p] ?: 0L
+                    extDataBytesSum += b
+                }
             }
 
-            var maxExtObbSize = 0L
+            var extObbBytesSum = 0L
+            val seenExtObbBases = mutableSetOf<String>()
             candidateExtObbPaths.distinct().forEach { p ->
-                val b = sizeMap[p] ?: 0L
-                if (b > maxExtObbSize) maxExtObbSize = b
+                val baseKey = p.substringBefore("/Android/")
+                if (seenExtObbBases.add(baseKey)) {
+                    val b = sizeMap[p] ?: 0L
+                    extObbBytesSum += b
+                }
             }
 
-            // If mounted, data is served from the SD card.
-            // If unmounted, accurately reflect whichever storage actually holds the game data.
-            val effectiveDataSize = if (isDataMounted) {
-                if (maxExtDataSize > 0L) maxExtDataSize else internalDataSize
+            val effectiveDataSize = if (isDataMountedReal) {
+                if (extDataBytesSum > 0L) extDataBytesSum else internalDataSize
             } else {
-                maxOf(internalDataSize, maxExtDataSize)
+                maxOf(internalDataSize, extDataBytesSum)
             }
 
-            val effectiveObbSize = if (isObbMounted) {
-                if (maxExtObbSize > 0L) maxExtObbSize else internalObbSize
+            val effectiveObbSize = if (isObbMountedReal) {
+                if (extObbBytesSum > 0L) extObbBytesSum else internalObbSize
             } else {
-                maxOf(internalObbSize, maxExtObbSize)
+                maxOf(internalObbSize, extObbBytesSum)
             }
 
             val totalSize = effectiveDataSize + effectiveObbSize
@@ -476,9 +482,6 @@ class GameRepository @Inject constructor(
             val game = gameDao.getGameByPackage(packageName)
             val internalData = "/data/media/0/Android/data/$packageName"
             val internalObb = "/data/media/0/Android/obb/$packageName"
-
-            val isDataMounted = (game?.mountStatus == MountStatus.MOUNTED) || RootShell.isMountpoint(internalData)
-            val isObbMounted = (game?.mountStatus == MountStatus.MOUNTED) || RootShell.isMountpoint(internalObb)
 
             val externalBases = getExternalStorageBases(sdBase, game)
             val candidateExtDataPaths = externalBases.map { "$it/Android/data/$packageName" }.toMutableList()
@@ -493,9 +496,7 @@ class GameRepository @Inject constructor(
                 }
             }
 
-            val pathsToScan = mutableListOf<String>()
-            if (!isDataMounted) pathsToScan.add(internalData)
-            if (!isObbMounted) pathsToScan.add(internalObb)
+            val pathsToScan = mutableListOf(internalData, internalObb)
             pathsToScan.addAll(candidateExtDataPaths)
             pathsToScan.addAll(candidateExtObbPaths)
 
@@ -519,18 +520,26 @@ class GameRepository @Inject constructor(
             }
 
             val internalBytes = (sizeMap[internalData] ?: 0L) + (sizeMap[internalObb] ?: 0L)
-            var maxExtData = 0L
+
+            var extDataSum = 0L
+            val seenExtBases = mutableSetOf<String>()
             candidateExtDataPaths.distinct().forEach { p ->
-                val b = sizeMap[p] ?: 0L
-                if (b > maxExtData) maxExtData = b
-            }
-            var maxExtObb = 0L
-            candidateExtObbPaths.distinct().forEach { p ->
-                val b = sizeMap[p] ?: 0L
-                if (b > maxExtObb) maxExtObb = b
+                val baseKey = p.substringBefore("/Android/")
+                if (seenExtBases.add(baseKey)) {
+                    extDataSum += (sizeMap[p] ?: 0L)
+                }
             }
 
-            val sdBytes = maxExtData + maxExtObb
+            var extObbSum = 0L
+            val seenExtObbBases = mutableSetOf<String>()
+            candidateExtObbPaths.distinct().forEach { p ->
+                val baseKey = p.substringBefore("/Android/")
+                if (seenExtObbBases.add(baseKey)) {
+                    extObbSum += (sizeMap[p] ?: 0L)
+                }
+            }
+
+            val sdBytes = extDataSum + extObbSum
             Pair(internalBytes, sdBytes)
         }
 
@@ -704,6 +713,16 @@ class GameRepository @Inject constructor(
         val ext2Bytes = ext2DataBytes + ext2ObbBytes
 
         AppLogger.info("GameRepo", "Breakdown[$packageName]: apk=${apkBytes/1024}KB lib=${libBytes/1024}KB data=${dataBytes/1024}KB cache=${cacheBytes/1024}KB ext1=${ext1Bytes/1024}KB(data=${ext1DataBytes/1024} obb=${ext1ObbBytes/1024} mounted=$isDataMountedReal) ext2=${ext2Bytes/1024}KB(data=${ext2DataBytes/1024} obb=${ext2ObbBytes/1024})")
+
+        // Directly update Room DB dataSizeBytes with accurate effective game data size
+        val effectiveSize = if (isDataMountedReal || isObbMountedReal) {
+            if (ext2Bytes > 0L) ext2Bytes else ext1Bytes
+        } else {
+            maxOf(ext1Bytes, ext2Bytes)
+        }
+        if (game != null) {
+            gameDao.updateDataSize(packageName, effectiveSize)
+        }
 
         AppStorageBreakdown(
             apkBytes = apkBytes,

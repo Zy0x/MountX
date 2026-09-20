@@ -51,16 +51,19 @@ class StorageManager {
                 freeBytes = freeBytes
             )
         } catch (_: Exception) {
-            val dfRes = RootShell.exec("df -k /data 2>/dev/null | tail -n 1")
-            val dfParts = dfRes.output.trim().split(Regex("\\s+"))
-            if (dfParts.size >= 4) {
-                val total1k = dfParts.getOrNull(1)?.toLongOrNull() ?: 0L
-                val used1k = dfParts.getOrNull(2)?.toLongOrNull() ?: 0L
-                val free1k = dfParts.getOrNull(3)?.toLongOrNull() ?: 0L
+            val statRes = RootShell.exec("stat -f -c %s:%b:%a /data 2>/dev/null")
+            val parts = statRes.output.trim().split(":")
+            if (parts.size >= 3) {
+                val bs = parts[0].toLongOrNull() ?: 0L
+                val blocks = parts[1].toLongOrNull() ?: 0L
+                val avail = parts[2].toLongOrNull() ?: 0L
+                val totalBytes = blocks * bs
+                val freeBytes = avail * bs
+                val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
                 InternalStorageInfo(
-                    totalBytes = total1k * 1024L,
-                    usedBytes = used1k * 1024L,
-                    freeBytes = free1k * 1024L
+                    totalBytes = totalBytes,
+                    usedBytes = usedBytes,
+                    freeBytes = freeBytes
                 )
             } else {
                 null
@@ -78,7 +81,7 @@ class StorageManager {
         data class RawMount(val spec: String, val file: String, val vfstype: String)
         val allMounts = mutableListOf<RawMount>()
 
-        val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
+        val mountsRes = RootShell.exec("grep -E '(/dev/block/|/mnt/media_rw|/data/sdext|/storage/|public:)' /proc/mounts 2>/dev/null | grep -v -E '/mnt/runtime/|/mnt/installer/|/mnt/androidwritable/|/mnt/pass_through/|/mnt/user/|/emulated/0/Android|/Android/data|/Android/obb'")
         if (mountsRes.isSuccess && mountsRes.stdout.isNotEmpty()) {
             mountsRes.stdout.forEach { line ->
                 val parts = line.trim().split(Regex("\\s+"))
@@ -176,23 +179,8 @@ class StorageManager {
             }
         }
 
-        // Query df -k for filesystem used and available space
-        val dfMap = mutableMapOf<String, Pair<Long, Long>>() // devPath or mountPoint -> (usedBytes, freeBytes)
-        val dfRes = RootShell.exec("df -k 2>/dev/null")
-        if (dfRes.isSuccess && dfRes.output.isNotBlank()) {
-            for (line in dfRes.stdout.drop(1)) {
-                val tokens = line.trim().split(Regex("\\s+"))
-                if (tokens.size >= 6) {
-                    val dev = tokens[0]
-                    val usedK = tokens[2].toLongOrNull() ?: 0L
-                    val availK = tokens[3].toLongOrNull() ?: 0L
-                    val mnt = tokens[5]
-                    val pair = Pair(usedK * 1024L, availK * 1024L)
-                    dfMap[dev] = pair
-                    dfMap[mnt] = pair
-                }
-            }
-        }
+        // Instant StatFs and targeted stat -f queries used instead of dangerous wildcard df
+        val dfMap = emptyMap<String, Pair<Long, Long>>()
 
         val partitionsRes = RootShell.exec("cat /proc/partitions 2>/dev/null")
         val partitionItems = mutableListOf<PartitionInfo>()
@@ -358,27 +346,27 @@ class StorageManager {
                 // Accurately compute used & free bytes via canonical mount point and dfMap / StatFs
                 var usedBytes = 0L
                 var freeBytes = 0L
-                if (isMounted) {
-                    val dfPair = if (canonicalMountPoint != null) {
-                        dfMap[canonicalMountPoint]
-                            ?: dfMap[path]
-                            ?: dfMap[name]
-                            ?: (if (!uuid.isNullOrBlank()) dfMap.entries.firstOrNull { e -> e.key.contains(uuid) }?.value else null)
-                    } else {
-                        dfMap[path] ?: dfMap[name]
-                    }
-
-                    if (dfPair != null && (dfPair.first > 0L || dfPair.second > 0L)) {
-                        usedBytes = dfPair.first
-                        freeBytes = dfPair.second
-                    } else if (canonicalMountPoint != null) {
+                if (isMounted && canonicalMountPoint != null) {
+                    try {
+                        val stat = android.os.StatFs(canonicalMountPoint)
+                        val total = stat.blockCountLong * stat.blockSizeLong
+                        val free = stat.availableBlocksLong * stat.blockSizeLong
+                        val used = (total - free).coerceAtLeast(0L)
+                        if (total > 0L) {
+                            usedBytes = used
+                            freeBytes = free
+                        }
+                    } catch (_: Exception) {
                         try {
-                            val stat = android.os.StatFs(canonicalMountPoint)
-                            val total = stat.blockCountLong * stat.blockSizeLong
-                            val free = stat.availableBlocksLong * stat.blockSizeLong
-                            val used = (total - free).coerceAtLeast(0L)
-                            if (total > 0L) {
-                                usedBytes = used
+                            val statRes = RootShell.exec("stat -f -c %s:%b:%a \"$canonicalMountPoint\" 2>/dev/null")
+                            val parts = statRes.output.trim().split(":")
+                            if (parts.size >= 3) {
+                                val bs = parts[0].toLongOrNull() ?: 0L
+                                val blocks = parts[1].toLongOrNull() ?: 0L
+                                val avail = parts[2].toLongOrNull() ?: 0L
+                                val total = blocks * bs
+                                val free = avail * bs
+                                usedBytes = (total - free).coerceAtLeast(0L)
                                 freeBytes = free
                             }
                         } catch (_: Exception) {}
@@ -936,15 +924,15 @@ class StorageManager {
                 freeBytes = stat.availableBlocksLong * bs
                 usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
             } catch (_: Exception) {
-                val dfRes = RootShell.exec("df -k \"$mountPoint\" 2>/dev/null | tail -n 1")
-                val dfParts = dfRes.output.trim().split(Regex("\\s+"))
-                if (dfParts.size >= 4) {
-                    val total1k = dfParts.getOrNull(1)?.toLongOrNull() ?: 0L
-                    val used1k = dfParts.getOrNull(2)?.toLongOrNull() ?: 0L
-                    val free1k = dfParts.getOrNull(3)?.toLongOrNull() ?: 0L
-                    totalBytes = total1k * 1024L
-                    usedBytes = used1k * 1024L
-                    freeBytes = free1k * 1024L
+                val statRes = RootShell.exec("stat -f -c %s:%b:%a \"$mountPoint\" 2>/dev/null")
+                val parts = statRes.output.trim().split(":")
+                if (parts.size >= 3) {
+                    val bs = parts[0].toLongOrNull() ?: 0L
+                    val blocks = parts[1].toLongOrNull() ?: 0L
+                    val avail = parts[2].toLongOrNull() ?: 0L
+                    totalBytes = blocks * bs
+                    freeBytes = avail * bs
+                    usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
                 }
             }
 
@@ -1405,8 +1393,8 @@ class StorageManager {
                         } else {
                             if (RootShell.exists(targetPath)) {
                                 val parentSd = java.io.File(sourcePath).parent ?: sdBase
-                                RootShell.exec("mkdir -p \"$parentSd\"")
-                                val copyRes = RootShell.exec("cp -a \"$targetPath\" \"$sourcePath\"")
+                                RootShell.exec("mkdir -p \"$sourcePath\"")
+                                val copyRes = RootShell.exec("cp -a \"$targetPath/.\" \"$sourcePath/\" 2>/dev/null || cp -a \"$targetPath\" \"$parentSd/\"")
                                 if (!copyRes.isSuccess && !RootShell.exists(sourcePath)) {
                                     error("Failed to copy $targetPath to SD: ${copyRes.stderr.joinToString("\n")}")
                                 }
@@ -1444,8 +1432,8 @@ class StorageManager {
                             // Dynamic targetPath restore: preserves /data/media/0/<Folder> or /data/media/0/Android/
                             if (RootShell.exists(sourcePath)) {
                                 val parentInternal = java.io.File(targetPath).parent ?: "/data/media/0"
-                                RootShell.exec("mkdir -p \"$parentInternal\"")
-                                val copyRes = RootShell.exec("cp -a \"$sourcePath\" \"$targetPath\"")
+                                RootShell.exec("mkdir -p \"$targetPath\"")
+                                val copyRes = RootShell.exec("cp -a \"$sourcePath/.\" \"$targetPath/\" 2>/dev/null || cp -a \"$sourcePath\" \"$parentInternal/\"")
                                 if (!copyRes.isSuccess && !RootShell.exists(targetPath)) {
                                     error("Failed to restore $sourcePath to internal: ${copyRes.stderr.joinToString("\n")}")
                                 }

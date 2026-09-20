@@ -315,7 +315,7 @@ class MountManager {
                 return@withContext procMounts.readLines().mapNotNull { line -> line.split(" ").getOrNull(1) }
             }
         } catch (_: Exception) {}
-        RootShell.exec("cat /proc/mounts 2>/dev/null")
+        RootShell.exec("grep -E '(/data/media/0/Android|/data/sdext|/mnt/media_rw)' /proc/mounts 2>/dev/null")
             .stdout
             .mapNotNull { line -> line.split(" ").getOrNull(1) }
     }

@@ -122,13 +122,11 @@ class DashboardViewModel @Inject constructor(
                 _allDisks.value = storageRepository.getAllDisks(sdBase)
                 gameRepository.refreshMountStatuses()
 
-                // Background calculate zero-size games so real storage is displayed
+                // Background calculate game sizes so real storage is displayed accurately
                 launch(Dispatchers.IO) {
                     val current = games.value
                     for (g in current) {
-                        if (g.dataSizeBytes == 0L) {
-                            gameRepository.calculateDataSize(g.packageName, sdBase)
-                        }
+                        gameRepository.calculateDataSize(g.packageName, sdBase)
                     }
                 }
                 loadLiveTelemetry()
