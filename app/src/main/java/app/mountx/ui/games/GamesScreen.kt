@@ -168,6 +168,7 @@ fun GamesScreen(
             breakdown = detailedStorage,
             isMoving = isMovingData,
             moveMessage = moveMessage,
+            onClearMoveMessage = { viewModel.clearMoveMessage() },
             isDraftMode = false,
             availableDisks = availableDisks,
             internalFreeBytes = internalStorageInfo?.freeBytes ?: 0L,
@@ -179,6 +180,7 @@ fun GamesScreen(
                 viewModel.clearMoveMessage()
                 selectedGameForDetail = null
             },
+            onToggleMount = { viewModel.toggleMount(updatedGame) },
             onMoveMountPoints = { dir, pts, targetDisk, targetPartition ->
                 val basePath = targetPartition?.mountPoint ?: targetDisk?.mountPath
                 viewModel.moveMountPoints(updatedGame.packageName, pts, dir, basePath)

@@ -826,6 +826,42 @@
     <string name="manage_status_mounted_ok">Ter-mount dan dapat digunakan</string>
     <string name="manage_status_on_internal">Di memori internal</string>
     <string name="manage_available_space">%1$s tersedia</string>
+
+    <!-- v2.2.16 Unified Storage Tab & Smart Migration Modal -->
+    <string name="manage_target_modal_title">Pilih Lokasi Tujuan</string>
+    <string name="manage_step_pick_disk">Pilih Disk</string>
+    <string name="manage_step_pick_partition">Pilih Partisi</string>
+    <string name="manage_step_confirm">Konfirmasi</string>
+    <string name="manage_pick_disk_subtitle">Pilih penyimpanan tujuan untuk memindahkan data yang dipilih.</string>
+    <string name="manage_current_location_disabled">Lokasi saat ini (Tidak dapat dipilih)</string>
+    <string name="manage_btn_continue_to_partition">Lanjutkan ke Pilih Partisi →</string>
+    <string name="manage_pick_partition_subtitle">Pilih partisi pada %1$s.</string>
+    <string name="manage_btn_back_step">← Kembali</string>
+    <string name="manage_btn_continue_step">Lanjutkan →</string>
+    <string name="manage_summary_title">Ringkasan Pemindahan</string>
+    <string name="manage_summary_selected_data">Data yang dipilih</string>
+    <string name="manage_summary_total_size">Total ukuran</string>
+    <string name="manage_summary_from">Dari</string>
+    <string name="manage_summary_to">Ke</string>
+    <string name="manage_warning_title">Peringatan</string>
+    <string name="manage_warning_apk_lib_desc">APK atau Lib termasuk dalam pilihan Anda. Memindahkan file ini dapat menyebabkan masalah kinerja atau game tidak dapat berjalan dengan normal.</string>
+    <string name="manage_tab_placeholder_title">Kelola Tambahan</string>
+    <string name="manage_tab_placeholder_desc">Fitur pengelolaan lanjutan akan tersedia di pembaruan mendatang.</string>
+    <string name="manage_badge_performance_risk">Risiko Kinerja</string>
+    <string name="manage_cat_private_data">Data Privat</string>
+    <string name="manage_cat_private_data_desc">Data aplikasi (internal)</string>
+    <string name="manage_cat_apk_sub_short">File instalasi game</string>
+    <string name="manage_cat_lib_sub_short">Pustaka asli game</string>
+    <string name="manage_cat_cache_sub_short">Cache sementara</string>
+    <string name="manage_cat_data_game_sub_short">Data utama game</string>
+    <string name="manage_cat_obb_sub_short">File ekspansi game</string>
+    <string name="game_detail_section_categories">Kategori Data Game</string>
+    <string name="game_detail_cat_apk_short">APK</string>
+    <string name="game_detail_cat_lib_short">Lib</string>
+    <string name="game_detail_cat_cache_short">Cache</string>
+    <string name="game_detail_cat_obb_short">OBB</string>
+    <string name="game_detail_cat_data_short">Data Game</string>
+    <string name="manage_btn_continue_format">Lanjutkan (%1$d)</string>
 </resources>
 
 
