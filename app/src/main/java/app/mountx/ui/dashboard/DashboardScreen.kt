@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Extension
 import app.mountx.ui.components.ModuleInstallDialog
 import app.mountx.ui.components.ConfirmDialog
+import app.mountx.ui.components.NeedMigrationDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -166,6 +167,7 @@ fun DashboardScreen(
         onMountAll = { viewModel.mountAll() },
         onUnmountAll = { viewModel.unmountAll() },
         onToggleGameMount = { viewModel.toggleMount(it) },
+        onMigrateGame = { viewModel.migrateGame(it) },
         onRecalculateSizes = { viewModel.recalculateAllSizes() },
         onRefreshTelemetry = { viewModel.loadLiveTelemetry() },
         modifier = modifier
@@ -192,6 +194,7 @@ fun DashboardContent(
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onToggleGameMount: (GameEntry) -> Unit,
+    onMigrateGame: (GameEntry) -> Unit = {},
     onRecalculateSizes: () -> Unit = {},
     onRefreshTelemetry: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -201,6 +204,7 @@ fun DashboardContent(
     var showNamespaceSheet by remember { mutableStateOf(false) }
     var showModuleInstallDialog by remember { mutableStateOf(false) }
     var gameToUnmountConfirm by remember { mutableStateOf<GameEntry?>(null) }
+    var gameToMigrateConfirm by remember { mutableStateOf<GameEntry?>(null) }
 
     Scaffold(
         topBar = {
@@ -250,6 +254,8 @@ fun DashboardContent(
                             onToggleGameMount = { game ->
                                 if (game.mountStatus == MountStatus.MOUNTED) {
                                     gameToUnmountConfirm = game
+                                } else if (game.mountStatus == MountStatus.NEED_MIGRATION) {
+                                    gameToMigrateConfirm = game
                                 } else {
                                     onToggleGameMount(game)
                                 }
@@ -307,6 +313,8 @@ fun DashboardContent(
                         onToggleGameMount = { game ->
                             if (game.mountStatus == MountStatus.MOUNTED) {
                                 gameToUnmountConfirm = game
+                            } else if (game.mountStatus == MountStatus.NEED_MIGRATION) {
+                                gameToMigrateConfirm = game
                             } else {
                                 onToggleGameMount(game)
                             }
@@ -364,6 +372,18 @@ fun DashboardContent(
                     onToggleGameMount(target)
                 },
                 onDismiss = { gameToUnmountConfirm = null }
+            )
+        }
+
+        if (gameToMigrateConfirm != null) {
+            val target = gameToMigrateConfirm!!
+            NeedMigrationDialog(
+                game = target,
+                onConfirmMigration = {
+                    gameToMigrateConfirm = null
+                    onMigrateGame(target)
+                },
+                onDismiss = { gameToMigrateConfirm = null }
             )
         }
     }
@@ -786,10 +806,42 @@ private fun SmartMasterControlCard(
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontSize = 10.sp
                                         ),
-                                        color = if (isMounted) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                        color = when {
+                                            isMounted -> activeEmerald
+                                            game.mountStatus == MountStatus.NEED_MIGRATION -> SunsetAmber
+                                            game.mountStatus == MountStatus.ERROR -> NeonCrimson
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                        },
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                }
+
+                                val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION
+                                val isError = game.mountStatus == MountStatus.ERROR
+                                val pillColor = when {
+                                    isMounted -> activeEmerald
+                                    isNeedMigration -> SunsetAmber
+                                    isError -> NeonCrimson
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                                val pillBg = when {
+                                    isMounted -> activeEmerald.copy(alpha = 0.15f)
+                                    isNeedMigration -> SunsetAmber.copy(alpha = 0.16f)
+                                    isError -> NeonCrimson.copy(alpha = 0.16f)
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                }
+                                val pillBorder = when {
+                                    isMounted -> activeEmerald.copy(alpha = 0.4f)
+                                    isNeedMigration -> SunsetAmber.copy(alpha = 0.5f)
+                                    isError -> NeonCrimson.copy(alpha = 0.5f)
+                                    else -> MaterialTheme.colorScheme.outlineVariant
+                                }
+                                val pillText = when {
+                                    isMounted -> stringResource(R.string.status_mounted)
+                                    isNeedMigration -> stringResource(R.string.status_need_migration)
+                                    isError -> stringResource(R.string.status_error)
+                                    else -> stringResource(R.string.status_unmounted)
                                 }
 
                                 Surface(
@@ -798,11 +850,8 @@ private fun SmartMasterControlCard(
                                         onToggleGameMount(game)
                                     },
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (isMounted) activeEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isMounted) activeEmerald.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
-                                    ),
+                                    color = pillBg,
+                                    border = BorderStroke(1.dp, pillBorder),
                                     modifier = Modifier.height(24.dp)
                                 ) {
                                     Row(
@@ -814,15 +863,15 @@ private fun SmartMasterControlCard(
                                             modifier = Modifier
                                                 .size(6.dp)
                                                 .background(
-                                                    if (isMounted) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    if (isMounted || isNeedMigration || isError) pillColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                                                     CircleShape
                                                 )
                                         )
                                         Text(
-                                            text = if (isMounted) stringResource(R.string.status_mounted) else stringResource(R.string.status_unmounted),
+                                            text = pillText,
                                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isMounted) activeEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = pillColor
                                         )
                                     }
                                 }

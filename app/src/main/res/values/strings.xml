@@ -134,8 +134,24 @@
     <string name="status_mounted">Mounted</string>
     <string name="status_unmounted">Unmounted</string>
     <string name="status_error">Error</string>
+    <string name="status_need_migration">Needs Migration</string>
     <string name="status_unknown">Unknown</string>
     <string name="status_loading">Loading…</string>
+    <string name="dialog_need_migration_title">Data Migration Required</string>
+    <string name="dialog_need_migration_desc">Internal data (%1$s) detected. Move data to MicroSD first to safely bind-mount without shadowing original data.</string>
+    <string name="dialog_need_migration_action">Merge &amp; Move to MicroSD</string>
+    <string name="btn_migrate_to_sd">Merge &amp; Move</string>
+    <string name="btn_add_custom_directory">+ Add Custom Directory</string>
+    <string name="dialog_add_custom_directory_title">Add Custom Directory</string>
+    <string name="dialog_add_custom_directory_desc">Enter directory path to bind-mount to MicroSD:</string>
+    <string name="dialog_add_custom_directory_hint">Example: /data/media/0/Telegram</string>
+    <string name="dialog_add_custom_name_label">Custom Directory Label</string>
+    <string name="dialog_add_custom_name_hint">e.g. Telegram Media</string>
+    <string name="dialog_add_custom_path_label">Internal Path</string>
+    <string name="dialog_add_custom_confirm">Add Directory</string>
+    <string name="category_media_downloads">Media &amp; Downloads</string>
+    <string name="category_media_downloads_desc">Shared media files on shared storage</string>
+    <string name="category_custom_desc">Additional custom directory</string>
 
     <!-- Game Detail & Storage Screen -->
     <string name="game_detail_title">App Details &amp; Storage</string>

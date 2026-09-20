@@ -26,7 +26,8 @@ data class MountPointConfig(
     val isVirtualContainer: Boolean = false,
     val containerImgPath: String? = null,
     val sizeBytes: Long = 0L,
-    val diskUuid: String? = null
+    val diskUuid: String? = null,
+    val label: String? = null
 ) {
     /**
      * Resolves normalized category based on targetPath and ID to prevent misclassification

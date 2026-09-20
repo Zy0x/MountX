@@ -324,6 +324,9 @@ class GamesViewModel @Inject constructor(
             val defaultSdBase = appPreferences.sdBasePath.first()
             val sdBase = targetDiskBase ?: defaultSdBase
             val game = games.value.firstOrNull { it.packageName == packageName }
+            val effectivePoints = if (mountPoints.isNotEmpty()) mountPoints else {
+                game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
+            }
 
             // If restoring to internal, unmount from runtime namespaces first
             if (direction == MoveDirection.TO_INTERNAL && game != null && game.mountStatus == MountStatus.MOUNTED) {
@@ -334,7 +337,7 @@ class GamesViewModel @Inject constructor(
 
             val result = storageRepository.moveGameMountPoints(
                 packageName = packageName,
-                mountPoints = mountPoints,
+                mountPoints = effectivePoints,
                 direction = direction,
                 sdBase = sdBase,
                 conflictStrategy = conflictStrategy,
@@ -345,7 +348,7 @@ class GamesViewModel @Inject constructor(
                 _moveMessage.value = "SUCCESS"
 
                 if (game != null) {
-                    val updated = game.copy(mountPoints = mountPoints)
+                    val updated = game.copy(mountPoints = effectivePoints)
                     gameRepository.updateGame(updated)
                     if (direction == MoveDirection.TO_SD) {
                         gameRepository.mountGame(updated, sdBase) { prog ->

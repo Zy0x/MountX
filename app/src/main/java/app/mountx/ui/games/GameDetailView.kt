@@ -98,6 +98,7 @@ import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
+import app.mountx.ui.components.NeedMigrationDialog
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.NeonCrimson
 import app.mountx.ui.theme.SunsetAmber
@@ -495,6 +496,16 @@ private data class UnifiedCategoryItem(
     val isCategoryMounted: Boolean = false
 )
 
+private fun resolveSdPath(sdBase: String, relativeMountXPath: String): String {
+    val legacyRelative = relativeMountXPath.removePrefix("MountX/")
+    val legacyFile = java.io.File("$sdBase/$legacyRelative")
+    return if (legacyFile.exists()) {
+        "$sdBase/$legacyRelative"
+    } else {
+        "$sdBase/$relativeMountXPath"
+    }
+}
+
 private fun buildTargetMountPoints(
     selectedCategoryIds: Set<String>,
     currentMountPoints: List<MountPointConfig>,
@@ -509,25 +520,28 @@ private fun buildTargetMountPoints(
             when (catId) {
                 "data" -> pt.resolveCategory() == MountPointCategory.EXTERNAL_DATA
                 "obb" -> pt.resolveCategory() == MountPointCategory.OBB_STORAGE
+                "media" -> pt.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS
                 "apk" -> pt.resolveCategory() == MountPointCategory.APP_PACKAGE
                 "lib" -> pt.targetPath.contains("/lib", ignoreCase = true)
                 "private" -> pt.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
                 "cache" -> pt.resolveCategory() == MountPointCategory.CACHE_SHADERS
-                else -> false
+                else -> pt.id == catId
             }
         }
 
         if (existing != null) {
             val updatedSource = when (existing.resolveCategory()) {
-                MountPointCategory.EXTERNAL_DATA -> "$sdBase/Android/data/$pkg"
-                MountPointCategory.OBB_STORAGE -> "$sdBase/Android/obb/$pkg"
-                MountPointCategory.APP_PACKAGE -> "$sdBase/app/$pkg"
-                MountPointCategory.GAME_ASSETS -> "$sdBase/Android/data/$pkg/files"
+                MountPointCategory.EXTERNAL_DATA -> resolveSdPath(sdBase, "MountX/Android/data/$pkg")
+                MountPointCategory.OBB_STORAGE -> resolveSdPath(sdBase, "MountX/Android/obb/$pkg")
+                MountPointCategory.MEDIA_DOWNLOADS -> resolveSdPath(sdBase, "MountX/Android/media/$pkg")
+                MountPointCategory.APP_PACKAGE -> "$sdBase/MountX/app/$pkg"
+                MountPointCategory.GAME_ASSETS -> resolveSdPath(sdBase, "MountX/Android/data/$pkg/files")
                 else -> existing.sourcePath
             }
             val updatedTarget = when (existing.resolveCategory()) {
                 MountPointCategory.EXTERNAL_DATA -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/data/$pkg" else existing.targetPath
                 MountPointCategory.OBB_STORAGE -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/obb/$pkg" else existing.targetPath
+                MountPointCategory.MEDIA_DOWNLOADS -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/media/$pkg" else existing.targetPath
                 else -> existing.targetPath
             }
             result.add(existing.copy(sourcePath = updatedSource, targetPath = updatedTarget, enabled = true))
@@ -536,42 +550,49 @@ private fun buildTargetMountPoints(
                 "data" -> MountPointConfig(
                     id = "ext_data_$pkg",
                     category = MountPointCategory.EXTERNAL_DATA,
-                    sourcePath = "$sdBase/Android/data/$pkg",
+                    sourcePath = resolveSdPath(sdBase, "MountX/Android/data/$pkg"),
                     targetPath = "/data/media/0/Android/data/$pkg",
                     enabled = true
                 )
                 "obb" -> MountPointConfig(
                     id = "ext_obb_$pkg",
                     category = MountPointCategory.OBB_STORAGE,
-                    sourcePath = "$sdBase/Android/obb/$pkg",
+                    sourcePath = resolveSdPath(sdBase, "MountX/Android/obb/$pkg"),
                     targetPath = "/data/media/0/Android/obb/$pkg",
+                    enabled = true
+                )
+                "media" -> MountPointConfig(
+                    id = "ext_media_$pkg",
+                    category = MountPointCategory.MEDIA_DOWNLOADS,
+                    sourcePath = resolveSdPath(sdBase, "MountX/Android/media/$pkg"),
+                    targetPath = "/data/media/0/Android/media/$pkg",
                     enabled = true
                 )
                 "apk" -> MountPointConfig(
                     id = "apk_$pkg",
                     category = MountPointCategory.APP_PACKAGE,
-                    sourcePath = "$sdBase/app/$pkg",
+                    sourcePath = "$sdBase/MountX/app/$pkg",
                     targetPath = "/data/app/$pkg",
                     enabled = true
                 )
                 "lib" -> MountPointConfig(
                     id = "lib_$pkg",
                     category = MountPointCategory.PRIVATE_INTERNAL,
-                    sourcePath = "$sdBase/lib/$pkg",
+                    sourcePath = "$sdBase/MountX/lib/$pkg",
                     targetPath = "/data/app/$pkg/lib",
                     enabled = true
                 )
                 "private" -> MountPointConfig(
                     id = "private_$pkg",
                     category = MountPointCategory.PRIVATE_INTERNAL,
-                    sourcePath = "$sdBase/data/$pkg",
+                    sourcePath = "$sdBase/MountX/data/$pkg",
                     targetPath = "/data/data/$pkg",
                     enabled = true
                 )
                 "cache" -> MountPointConfig(
                     id = "cache_$pkg",
                     category = MountPointCategory.CACHE_SHADERS,
-                    sourcePath = "$sdBase/Android/data/$pkg/cache",
+                    sourcePath = "$sdBase/MountX/Android/data/$pkg/cache",
                     targetPath = "/sdcard/Android/data/$pkg/cache",
                     enabled = true
                 )
@@ -699,26 +720,34 @@ private fun StorageTabContent(
     var isDeletingCategory by remember { mutableStateOf(false) }
     var migrationConfirmData by remember { mutableStateOf<MigrationConfirmData?>(null) }
     var showUnmountConfirmDialog by remember { mutableStateOf(false) }
+    var showNeedMigrationDialog by remember { mutableStateOf(false) }
+    var showAddCustomDialog by remember { mutableStateOf(false) }
 
     // Hierarchical Step-by-Step Back Navigation inside Storage Tab
-    BackHandler(enabled = showUnmountConfirmDialog) {
+    BackHandler(enabled = showNeedMigrationDialog) {
+        showNeedMigrationDialog = false
+    }
+    BackHandler(enabled = !showNeedMigrationDialog && showAddCustomDialog) {
+        showAddCustomDialog = false
+    }
+    BackHandler(enabled = !showNeedMigrationDialog && !showAddCustomDialog && showUnmountConfirmDialog) {
         showUnmountConfirmDialog = false
     }
-    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData != null) {
+    BackHandler(enabled = !showNeedMigrationDialog && !showAddCustomDialog && !showUnmountConfirmDialog && migrationConfirmData != null) {
         migrationConfirmData = null
     }
-    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete != null) {
+    BackHandler(enabled = !showNeedMigrationDialog && !showAddCustomDialog && !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete != null) {
         if (!isDeletingCategory) {
             categoryToDelete = null
         }
     }
-    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory != null) {
+    BackHandler(enabled = !showNeedMigrationDialog && !showAddCustomDialog && !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory != null) {
         inspectingCategory = null
     }
-    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && showTargetModal) {
+    BackHandler(enabled = !showNeedMigrationDialog && !showAddCustomDialog && !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && showTargetModal) {
         showTargetModal = false
     }
-    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && !showTargetModal && isSelectionMode) {
+    BackHandler(enabled = !showNeedMigrationDialog && !showAddCustomDialog && !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && !showTargetModal && isSelectionMode) {
         isSelectionMode = false
     }
 
@@ -780,8 +809,65 @@ private fun StorageTabContent(
 
         val existingDataPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
         val existingObbPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
+        val existingMediaPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS }
+        val hasMedia = breakdown.ext1MediaBytes > 0L || breakdown.ext2MediaBytes > 0L || existingMediaPoint != null
 
-        listOf(
+        val (mediaBytes, mediaSubtitle, isMediaSd) = when {
+            isMounted -> Triple(breakdown.ext2MediaBytes, "Berkas media & unduhan", true)
+            breakdown.ext2MediaBytes > 0L && breakdown.ext1MediaBytes > 0L -> {
+                Triple(
+                    breakdown.ext1MediaBytes,
+                    "Berkas media & unduhan • ${FormatUtils.formatExactBytes(breakdown.ext2MediaBytes)} di MicroSD",
+                    false
+                )
+            }
+            breakdown.ext2MediaBytes > 0L && breakdown.ext1MediaBytes == 0L -> {
+                Triple(breakdown.ext2MediaBytes, "Berkas media & unduhan", true)
+            }
+            else -> {
+                Triple(breakdown.ext1MediaBytes, "Berkas media & unduhan", false)
+            }
+        }
+
+        val mediaItem = if (hasMedia) {
+            UnifiedCategoryItem(
+                id = "media",
+                title = "Media & Unduhan",
+                subtitle = mediaSubtitle,
+                bytes = mediaBytes,
+                icon = Icons.Default.PermMedia,
+                iconTint = Color(0xFF8E24AA),
+                isMicroSd = isMediaSd,
+                isRisk = false,
+                mountCategory = MountPointCategory.MEDIA_DOWNLOADS,
+                internalPath = existingMediaPoint?.targetPath ?: "/data/media/0/Android/media/$pkg",
+                internalBytes = breakdown.ext1MediaBytes,
+                sdPath = existingMediaPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/media/$pkg"),
+                sdBytes = breakdown.ext2MediaBytes,
+                isCategoryMounted = isMounted && (breakdown.ext2MediaBytes > 0L || breakdown.isExt1Mounted)
+            )
+        } else null
+
+        val customItems = mountPoints.filter { it.resolveCategory() == MountPointCategory.CUSTOM }.map { pt ->
+            UnifiedCategoryItem(
+                id = pt.id,
+                title = pt.label ?: "Kustom (${pt.targetPath.substringAfterLast('/').ifEmpty { pt.targetPath }})",
+                subtitle = pt.targetPath,
+                bytes = pt.sizeBytes,
+                icon = Icons.Default.Folder,
+                iconTint = Color(0xFF00897B),
+                isMicroSd = isMounted,
+                isRisk = false,
+                mountCategory = MountPointCategory.CUSTOM,
+                internalPath = pt.targetPath,
+                internalBytes = pt.sizeBytes,
+                sdPath = pt.sourcePath,
+                sdBytes = pt.sizeBytes,
+                isCategoryMounted = isMounted
+            )
+        }
+
+        listOfNotNull(
             UnifiedCategoryItem(
                 id = "apk",
                 title = "APK",
@@ -794,7 +880,7 @@ private fun StorageTabContent(
                 mountCategory = MountPointCategory.APP_PACKAGE,
                 internalPath = apkInternalDir,
                 internalBytes = breakdown.apkBytes,
-                sdPath = "$sdBase/app/$pkg",
+                sdPath = "$sdBase/MountX/app/$pkg",
                 sdBytes = 0L,
                 isCategoryMounted = false
             ),
@@ -810,7 +896,7 @@ private fun StorageTabContent(
                 mountCategory = MountPointCategory.PRIVATE_INTERNAL,
                 internalPath = libSrc,
                 internalBytes = breakdown.libBytes,
-                sdPath = "$sdBase/lib/$pkg",
+                sdPath = "$sdBase/MountX/lib/$pkg",
                 sdBytes = 0L,
                 isCategoryMounted = false
             ),
@@ -826,7 +912,7 @@ private fun StorageTabContent(
                 mountCategory = MountPointCategory.PRIVATE_INTERNAL,
                 internalPath = "/data/data/$pkg",
                 internalBytes = breakdown.dataBytes,
-                sdPath = "$sdBase/data/$pkg",
+                sdPath = "$sdBase/MountX/data/$pkg",
                 sdBytes = 0L,
                 isCategoryMounted = false
             ),
@@ -842,7 +928,7 @@ private fun StorageTabContent(
                 mountCategory = MountPointCategory.CACHE_SHADERS,
                 internalPath = "/data/data/$pkg/cache",
                 internalBytes = breakdown.cacheBytes,
-                sdPath = "$sdBase/Android/data/$pkg/cache",
+                sdPath = resolveSdPath(sdBase, "MountX/Android/data/$pkg/cache"),
                 sdBytes = 0L,
                 isCategoryMounted = false
             ),
@@ -858,7 +944,7 @@ private fun StorageTabContent(
                 mountCategory = MountPointCategory.EXTERNAL_DATA,
                 internalPath = "/data/media/0/Android/data/$pkg",
                 internalBytes = breakdown.ext1DataBytes,
-                sdPath = existingDataPoint?.sourcePath ?: "$sdBase/Android/data/$pkg",
+                sdPath = existingDataPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg"),
                 sdBytes = breakdown.ext2DataBytes,
                 isCategoryMounted = isMounted && (breakdown.ext2DataBytes > 0L || breakdown.isExt1Mounted)
             ),
@@ -874,11 +960,12 @@ private fun StorageTabContent(
                 mountCategory = MountPointCategory.OBB_STORAGE,
                 internalPath = "/data/media/0/Android/obb/$pkg",
                 internalBytes = breakdown.ext1ObbBytes,
-                sdPath = existingObbPoint?.sourcePath ?: "$sdBase/Android/obb/$pkg",
+                sdPath = existingObbPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/obb/$pkg"),
                 sdBytes = breakdown.ext2ObbBytes,
                 isCategoryMounted = isMounted && (breakdown.ext2ObbBytes > 0L || breakdown.isExt1Mounted)
-            )
-        )
+            ),
+            mediaItem
+        ) + customItems
     }
 
     val chartBreakdown = breakdown
@@ -1060,6 +1147,33 @@ private fun StorageTabContent(
             )
         }
 
+        // [+ Tambah Direktori Kustom] Button
+        OutlinedButton(
+            onClick = { showAddCustomDialog = true },
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = stringResource(R.string.btn_add_custom_directory),
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
         Spacer(modifier = Modifier.height(4.dp))
 
         // ── STICKY BOTTOM ACTIONS ──
@@ -1153,13 +1267,24 @@ private fun StorageTabContent(
                         )
                     }
 
-                    // Right: Alternating Mount / Unmount button
-                    val actionBorderColor = if (isMounted) SunsetAmber.copy(alpha = 0.7f) else CyberEmerald.copy(alpha = 0.7f)
-                    val actionContentColor = if (isMounted) SunsetAmber else CyberEmerald
+                    // Right: Alternating Mount / Unmount / Migrate button
+                    val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION
+                    val actionBorderColor = when {
+                        isNeedMigration -> SunsetAmber.copy(alpha = 0.8f)
+                        isMounted -> SunsetAmber.copy(alpha = 0.7f)
+                        else -> CyberEmerald.copy(alpha = 0.7f)
+                    }
+                    val actionContentColor = when {
+                        isNeedMigration -> SunsetAmber
+                        isMounted -> SunsetAmber
+                        else -> CyberEmerald
+                    }
 
                     OutlinedButton(
                         onClick = {
-                            if (isMounted) {
+                            if (isNeedMigration) {
+                                showNeedMigrationDialog = true
+                            } else if (isMounted) {
                                 showUnmountConfirmDialog = true
                             } else {
                                 onUnmount()
@@ -1167,20 +1292,31 @@ private fun StorageTabContent(
                         },
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, actionBorderColor),
+                        colors = if (isNeedMigration) ButtonDefaults.outlinedButtonColors(
+                            containerColor = SunsetAmber.copy(alpha = 0.12f)
+                        ) else ButtonDefaults.outlinedButtonColors(),
                         modifier = Modifier
                             .weight(1f)
                             .height(40.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Icon(
-                            imageVector = if (isMounted) Icons.Default.LinkOff else Icons.Default.PlayArrow,
+                            imageVector = when {
+                                isNeedMigration -> Icons.Default.Warning
+                                isMounted -> Icons.Default.LinkOff
+                                else -> Icons.Default.PlayArrow
+                            },
                             contentDescription = null,
                             tint = actionContentColor,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = stringResource(if (isMounted) R.string.manage_btn_unmount_game else R.string.manage_btn_mount_game),
+                            text = when {
+                                isNeedMigration -> stringResource(R.string.btn_migrate_to_sd)
+                                isMounted -> stringResource(R.string.manage_btn_unmount_game)
+                                else -> stringResource(R.string.manage_btn_mount_game)
+                            },
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -1372,6 +1508,131 @@ private fun StorageTabContent(
             }
         )
     }
+
+    // ── NEED MIGRATION FAST ACTION DIALOG ──
+    if (showNeedMigrationDialog) {
+        NeedMigrationDialog(
+            game = game,
+            onConfirmMigration = {
+                showNeedMigrationDialog = false
+                val targetPoints = if (mountPoints.isNotEmpty()) mountPoints else buildTargetMountPoints(setOf("data", "obb"), mountPoints, game, sdBase)
+                onMove(MoveDirection.TO_SD, targetPoints, null, null, ConflictStrategy.OVERWRITE)
+            },
+            onDismiss = { showNeedMigrationDialog = false }
+        )
+    }
+
+    // ── ADD CUSTOM DIRECTORY DIALOG ──
+    if (showAddCustomDialog) {
+        AddCustomDirectoryDialog(
+            sdBase = sdBase,
+            packageName = game.packageName,
+            onDismiss = { showAddCustomDialog = false },
+            onAdd = { label, targetInternalPath, sourceSdPath ->
+                showAddCustomDialog = false
+                val newPoint = MountPointConfig(
+                    id = "custom_${System.currentTimeMillis()}",
+                    category = MountPointCategory.CUSTOM,
+                    sourcePath = sourceSdPath,
+                    targetPath = targetInternalPath,
+                    label = label,
+                    enabled = true
+                )
+                onMountPointsChanged(mountPoints + newPoint)
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddCustomDirectoryDialog(
+    sdBase: String,
+    packageName: String,
+    onDismiss: () -> Unit,
+    onAdd: (label: String, targetInternalPath: String, sourceSdPath: String) -> Unit
+) {
+    var labelText by remember { mutableStateOf("") }
+    var internalPathText by remember { mutableStateOf("") }
+    var customSdPathText by remember { mutableStateOf("") }
+    var isManualSdPath by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                stringResource(R.string.dialog_add_custom_directory_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    stringResource(R.string.dialog_add_custom_directory_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = labelText,
+                    onValueChange = { labelText = it },
+                    label = { Text(stringResource(R.string.dialog_add_custom_name_label)) },
+                    placeholder = { Text(stringResource(R.string.dialog_add_custom_name_hint)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = internalPathText,
+                    onValueChange = { newPath ->
+                        internalPathText = newPath
+                        if (!isManualSdPath) {
+                            val folderName = newPath.trimEnd('/').substringAfterLast('/').ifBlank { "custom" }
+                            customSdPathText = "$sdBase/MountX/Custom/$folderName"
+                        }
+                    },
+                    label = { Text(stringResource(R.string.dialog_add_custom_path_label)) },
+                    placeholder = { Text(stringResource(R.string.dialog_add_custom_directory_hint)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = customSdPathText,
+                    onValueChange = {
+                        customSdPathText = it
+                        isManualSdPath = true
+                    },
+                    label = { Text("Jalur MicroSD (Tujuan)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalLabel = labelText.trim().ifEmpty { internalPathText.trimEnd('/').substringAfterLast('/') }
+                    val finalInternal = internalPathText.trim()
+                    val finalSd = customSdPathText.trim().ifEmpty { "$sdBase/MountX/Custom/${finalLabel.replace(" ", "_")}" }
+                    onAdd(finalLabel, finalInternal, finalSd)
+                },
+                enabled = internalPathText.isNotBlank()
+            ) {
+                Text(stringResource(R.string.dialog_add_custom_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        }
+    )
 }
 
 @Composable

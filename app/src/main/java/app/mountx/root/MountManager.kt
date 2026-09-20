@@ -12,6 +12,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
+ * Exception thrown when internal storage has substantive data but MicroSD only has an empty skeleton.
+ */
+class OcclusionHazardException(
+    val packageName: String,
+    val internalBytes: Long,
+    val sdBytes: Long,
+    message: String
+) : IllegalStateException(message)
+
+/**
  * Handles mounting and unmounting game & application data directories using bind mounts
  * and Virtual Ext4 Loop Containers for Universal Smart Directory Classification.
  */
@@ -94,6 +104,8 @@ class MountManager {
             // Guard against accidental data occlusion:
             // Do not bind-mount an empty MicroSD directory (< 128KB) over a populated internal directory (> 5MB).
             var hasOcclusionRisk = false
+            var occlusionInternalBytes = 0L
+            var occlusionSdBytes = 0L
             for (mp in game.mountPoints) {
                 if (mp.enabled && (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.OBB_STORAGE)) {
                     val srcExists = RootShell.exists(mp.sourcePath)
@@ -111,6 +123,8 @@ class MountManager {
 
                     if (srcSizeKb <= 128L && targetSizeKb > 5120L) {
                         hasOcclusionRisk = true
+                        occlusionInternalBytes = targetSizeKb * 1024L
+                        occlusionSdBytes = srcSizeKb * 1024L
                         AppLogger.warn("MountManager", "Occlusion hazard for ${mp.id}: source has only ${srcSizeKb}KB while target has ${targetSizeKb}KB")
                         break
                     }
@@ -118,7 +132,12 @@ class MountManager {
             }
 
             if (hasOcclusionRisk) {
-                throw IllegalStateException("Data game masih berada di Memori Internal. Silakan gunakan 'Kelola Penyimpanan' untuk memindahkan data ke MicroSD terlebih dahulu sebelum mengaitkannya.")
+                throw OcclusionHazardException(
+                    packageName = game.packageName,
+                    internalBytes = occlusionInternalBytes,
+                    sdBytes = occlusionSdBytes,
+                    message = "Data game masih berada di Memori Internal. Pindahkan data ke MicroSD terlebih dahulu agar aman untuk di-mount."
+                )
             }
 
             val namespaces = getTargetNamespaces()
@@ -152,9 +171,14 @@ class MountManager {
                             mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
                         }
                         MountPointCategory.MEDIA_DOWNLOADS -> {
-                            // Auto .nomedia placement in source directory on MicroSD to protect MediaStore
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
-                            RootShell.exec("touch \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
+                            // Ensure MountX Android namespace has .nomedia so game assets don't leak into gallery
+                            RootShell.exec("mkdir -p \"$sdBase/MountX/Android\" && touch \"$sdBase/MountX/Android/.nomedia\" 2>/dev/null")
+                            // Smart .nomedia: only place .nomedia in media folder if original target already had .nomedia
+                            val hadNomedia = RootShell.exists("${mp.targetPath}/.nomedia") || RootShell.exists("${mp.sourcePath}/.nomedia")
+                            if (hadNomedia) {
+                                RootShell.exec("touch \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
+                            }
                             mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = true)
                         }
                         MountPointCategory.CACHE_SHADERS -> {

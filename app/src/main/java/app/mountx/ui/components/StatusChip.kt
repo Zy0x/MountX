@@ -60,6 +60,13 @@ fun StatusChip(
             NeonCrimson.copy(alpha = 0.45f),
             NeonCrimson
         )
+        MountStatus.NEED_MIGRATION -> Quintuple(
+            R.string.status_need_migration,
+            Icons.Default.ErrorOutline,
+            Color(0xFFFF9800).copy(alpha = 0.14f),
+            Color(0xFFFF9800).copy(alpha = 0.45f),
+            Color(0xFFFF9800)
+        )
         MountStatus.UNKNOWN -> Quintuple(
             R.string.status_unknown,
             Icons.AutoMirrored.Filled.HelpOutline,

@@ -38,27 +38,35 @@ class GameRepository @Inject constructor(
     private val storageManager: app.mountx.root.StorageManager
 ) {
 
-    fun synthesizeLegacyMountPoints(game: GameEntry, sdBase: String = "/data/sdext2"): List<MountPointConfig> {
+    suspend fun resolveSdSourcePath(sdBase: String, relativeMountXPath: String): String {
+        val legacyRelative = relativeMountXPath.removePrefix("MountX/")
+        val legacyPath = "$sdBase/$legacyRelative"
+        val modernPath = "$sdBase/$relativeMountXPath"
+        return if (RootShell.exists(legacyPath)) legacyPath else modernPath
+    }
+
+    suspend fun synthesizeLegacyMountPoints(game: GameEntry, sdBase: String = "/data/sdext2"): List<MountPointConfig> {
         if (game.mountPoints.isNotEmpty()) return game.mountPoints
         val list = mutableListOf<MountPointConfig>()
+        val pkg = game.packageName
         when (game.mode) {
             MountMode.FILES -> {
                 list.add(
                     MountPointConfig(
-                        id = "legacy_${game.packageName}_files",
+                        id = "legacy_${pkg}_files",
                         category = MountPointCategory.EXTERNAL_DATA,
-                        sourcePath = "$sdBase/Android/data/${game.packageName}/files",
-                        targetPath = "/data/media/0/Android/data/${game.packageName}/files",
+                        sourcePath = resolveSdSourcePath(sdBase, "MountX/Android/data/$pkg/files"),
+                        targetPath = "/data/media/0/Android/data/$pkg/files",
                         enabled = true,
                         sizeBytes = game.dataSizeBytes
                     )
                 )
                 list.add(
                     MountPointConfig(
-                        id = "legacy_${game.packageName}_obb",
+                        id = "legacy_${pkg}_obb",
                         category = MountPointCategory.OBB_STORAGE,
-                        sourcePath = "$sdBase/Android/obb/${game.packageName}",
-                        targetPath = "/data/media/0/Android/obb/${game.packageName}",
+                        sourcePath = resolveSdSourcePath(sdBase, "MountX/Android/obb/$pkg"),
+                        targetPath = "/data/media/0/Android/obb/$pkg",
                         enabled = true,
                         sizeBytes = 0L
                     )
@@ -67,26 +75,42 @@ class GameRepository @Inject constructor(
             MountMode.PKG -> {
                 list.add(
                     MountPointConfig(
-                        id = "legacy_${game.packageName}_pkg",
+                        id = "legacy_${pkg}_pkg",
                         category = MountPointCategory.EXTERNAL_DATA,
-                        sourcePath = "$sdBase/Android/data/${game.packageName}",
-                        targetPath = "/data/media/0/Android/data/${game.packageName}",
+                        sourcePath = resolveSdSourcePath(sdBase, "MountX/Android/data/$pkg"),
+                        targetPath = "/data/media/0/Android/data/$pkg",
                         enabled = true,
                         sizeBytes = game.dataSizeBytes
                     )
                 )
                 list.add(
                     MountPointConfig(
-                        id = "legacy_${game.packageName}_obb",
+                        id = "legacy_${pkg}_obb",
                         category = MountPointCategory.OBB_STORAGE,
-                        sourcePath = "$sdBase/Android/obb/${game.packageName}",
-                        targetPath = "/data/media/0/Android/obb/${game.packageName}",
+                        sourcePath = resolveSdSourcePath(sdBase, "MountX/Android/obb/$pkg"),
+                        targetPath = "/data/media/0/Android/obb/$pkg",
                         enabled = true,
                         sizeBytes = 0L
                     )
                 )
             }
         }
+
+        // Auto-detect Media & Downloads if available
+        val mediaInternal = "/data/media/0/Android/media/$pkg"
+        if (RootShell.exists(mediaInternal)) {
+            list.add(
+                MountPointConfig(
+                    id = "media_$pkg",
+                    category = MountPointCategory.MEDIA_DOWNLOADS,
+                    sourcePath = resolveSdSourcePath(sdBase, "MountX/Android/media/$pkg"),
+                    targetPath = mediaInternal,
+                    enabled = true,
+                    sizeBytes = 0L
+                )
+            )
+        }
+
         return list
     }
 
@@ -243,8 +267,14 @@ class GameRepository @Inject constructor(
                 gameDao.updateMountStatus(game.packageName, MountStatus.MOUNTED)
                 AppLogger.success("Games", "Successfully mounted ${game.displayName}")
             } else {
-                gameDao.updateMountStatus(game.packageName, MountStatus.ERROR)
-                AppLogger.error("Games", "Failed to mount ${game.displayName}: ${result.exceptionOrNull()?.message}")
+                val ex = result.exceptionOrNull()
+                val newStatus = if (ex is app.mountx.root.OcclusionHazardException) {
+                    MountStatus.NEED_MIGRATION
+                } else {
+                    MountStatus.ERROR
+                }
+                gameDao.updateMountStatus(game.packageName, newStatus)
+                AppLogger.error("Games", "Failed to mount ${game.displayName} [Status: $newStatus]: ${ex?.message}")
             }
             result
         }
@@ -363,7 +393,12 @@ class GameRepository @Inject constructor(
             }
             val targetObb = "Android/obb/${g.packageName}"
             val isMounted = mountedPaths.any { it.contains(targetData) || it.contains(targetObb) }
-            val newStatus = if (isMounted) MountStatus.MOUNTED else MountStatus.UNMOUNTED
+            val newStatus = when {
+                isMounted -> MountStatus.MOUNTED
+                g.mountStatus == MountStatus.NEED_MIGRATION -> MountStatus.NEED_MIGRATION
+                g.mountStatus == MountStatus.ERROR -> MountStatus.ERROR
+                else -> MountStatus.UNMOUNTED
+            }
             gameDao.updateMountStatus(g.packageName, newStatus)
         }
     }
@@ -410,8 +445,8 @@ class GameRepository @Inject constructor(
 
             val externalBases = getExternalStorageBases(sdBase, game)
 
-            val candidateExtDataPaths = externalBases.map { "$it/Android/data/$packageName" }.toMutableList()
-            val candidateExtObbPaths = externalBases.map { "$it/Android/obb/$packageName" }.toMutableList()
+            val candidateExtDataPaths = externalBases.flatMap { listOf("$it/MountX/Android/data/$packageName", "$it/Android/data/$packageName") }.toMutableList()
+            val candidateExtObbPaths = externalBases.flatMap { listOf("$it/MountX/Android/obb/$packageName", "$it/Android/obb/$packageName") }.toMutableList()
             game?.mountPoints?.forEach { mp ->
                 if (mp.sourcePath.isNotBlank()) {
                     if (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.GAME_ASSETS) {
@@ -496,6 +531,17 @@ class GameRepository @Inject constructor(
             if (totalSize > 0L) {
                 gameDao.updateDataSize(packageName, totalSize)
             }
+
+            // Auto-detect NEED_MIGRATION status for unmounted game with substantive internal data and empty SD
+            if (game != null && !isDataMountedReal && !isObbMountedReal) {
+                if (internalDataSize > 5 * 1024 * 1024L && extDataBytesSum <= 128 * 1024L) {
+                    if (game.mountStatus == MountStatus.ERROR || game.mountStatus == MountStatus.UNMOUNTED) {
+                        gameDao.updateMountStatus(packageName, MountStatus.NEED_MIGRATION)
+                        AppLogger.info("GameRepo", "Flagged $packageName as NEED_MIGRATION (internal=${internalDataSize/1024}KB, sd=${extDataBytesSum/1024}KB)")
+                    }
+                }
+            }
+
             totalSize
         }
 
@@ -643,20 +689,25 @@ class GameRepository @Inject constructor(
         val codeCacheDir = "/data/data/$packageName/code_cache"
         val ext1Data = "/data/media/0/Android/data/$packageName"
         val ext1Obb = "/data/media/0/Android/obb/$packageName"
+        val ext1Media = "/data/media/0/Android/media/$packageName"
+        var ext1MediaBytes = 0L
+        var ext2MediaBytes = 0L
 
         // Use REAL mountpoint check (not DB status) to prevent stale-status false zeroing
         val isDataMountedReal = RootShell.isMountpoint(ext1Data)
         val isObbMountedReal = RootShell.isMountpoint(ext1Obb)
 
-        // Build candidate paths for all known external storages
-        val candidateExtDataPaths = externalBases.map { "$it/Android/data/$packageName" }.toMutableList()
-        val candidateExtObbPaths = externalBases.map { "$it/Android/obb/$packageName" }.toMutableList()
+        // Build candidate paths for all known external storages (both MountX and legacy)
+        val candidateExtDataPaths = externalBases.flatMap { listOf("$it/MountX/Android/data/$packageName", "$it/Android/data/$packageName") }.toMutableList()
+        val candidateExtObbPaths = externalBases.flatMap { listOf("$it/MountX/Android/obb/$packageName", "$it/Android/obb/$packageName") }.toMutableList()
+        val candidateExtMediaPaths = externalBases.flatMap { listOf("$it/MountX/Android/media/$packageName", "$it/Android/media/$packageName") }.toMutableList()
         game?.mountPoints?.forEach { mp ->
             if (mp.sourcePath.isNotBlank()) {
-                if (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.GAME_ASSETS) {
-                    candidateExtDataPaths.add(mp.sourcePath)
-                } else if (mp.category == MountPointCategory.OBB_STORAGE) {
-                    candidateExtObbPaths.add(mp.sourcePath)
+                when (mp.category) {
+                    MountPointCategory.EXTERNAL_DATA, MountPointCategory.GAME_ASSETS -> candidateExtDataPaths.add(mp.sourcePath)
+                    MountPointCategory.OBB_STORAGE -> candidateExtObbPaths.add(mp.sourcePath)
+                    MountPointCategory.MEDIA_DOWNLOADS -> candidateExtMediaPaths.add(mp.sourcePath)
+                    else -> {}
                 }
             }
         }
@@ -664,9 +715,10 @@ class GameRepository @Inject constructor(
         // Always scan ALL paths (internal + external) to get accurate sizes regardless of mountStatus.
         // When data is bind-mounted from SD to internal path, du on internal path returns SD size — correct.
         // When not mounted, internal path shows actual internal size — also correct.
-        val targetsList = mutableListOf(oatDir, dataDir, cacheDir, codeCacheDir, ext1Data, ext1Obb)
+        val targetsList = mutableListOf(oatDir, dataDir, cacheDir, codeCacheDir, ext1Data, ext1Obb, ext1Media)
         targetsList.addAll(candidateExtDataPaths)
         targetsList.addAll(candidateExtObbPaths)
+        targetsList.addAll(candidateExtMediaPaths)
 
         val validTargets = targetsList
             .map { it.trim().trim('\"') }
@@ -694,17 +746,18 @@ class GameRepository @Inject constructor(
                         path == dataDir -> rawPrivateDataBytes = bytes
                         path == ext1Data -> ext1DataBytes = bytes
                         path == ext1Obb -> ext1ObbBytes = bytes
+                        path == ext1Media -> ext1MediaBytes = bytes
                     }
                 }
             }
         }
 
         // Accumulate all external partition sizes per unique storage base.
-        // This correctly handles: sdext2 (4KB) + mnt/media_rw/UUID (16KB) = reported separately.
         // Deduplication by base path prevents counting the same physical data twice when
         // accessed via different bind-mount paths (e.g., /storage/UUID vs /mnt/media_rw/UUID).
         var extDataBytesSum = 0L
         var extObbBytesSum = 0L
+        var extMediaBytesSum = 0L
         val seenExtBases = mutableSetOf<String>()
         candidateExtDataPaths.distinct().forEach { p ->
             val baseKey = p.substringBefore("/Android/")
@@ -723,18 +776,28 @@ class GameRepository @Inject constructor(
                 AppLogger.info("GameRepo", "  ext obb $p = ${b/1024}KB (base=$baseKey)")
             }
         }
+        val seenExtMediaBases = mutableSetOf<String>()
+        candidateExtMediaPaths.distinct().forEach { p ->
+            val baseKey = p.substringBefore("/Android/")
+            if (seenExtMediaBases.add(baseKey)) {
+                val b = sizeMap[p] ?: 0L
+                extMediaBytesSum += b
+                AppLogger.info("GameRepo", "  ext media $p = ${b/1024}KB (base=$baseKey)")
+            }
+        }
         ext2DataBytes = extDataBytesSum
         ext2ObbBytes = extObbBytesSum
+        ext2MediaBytes = extMediaBytesSum
 
         val dataBytes = (rawPrivateDataBytes - cacheBytes).coerceAtLeast(0L)
 
         // ext1Bytes: what's at the internal Android/data path (actual size — follows bind mount when mounted)
-        val ext1Bytes = ext1DataBytes + ext1ObbBytes
+        val ext1Bytes = ext1DataBytes + ext1ObbBytes + ext1MediaBytes
 
         // ext2Bytes: what's directly on external storage partitions (source paths)
-        val ext2Bytes = ext2DataBytes + ext2ObbBytes
+        val ext2Bytes = ext2DataBytes + ext2ObbBytes + ext2MediaBytes
 
-        AppLogger.info("GameRepo", "Breakdown[$packageName]: apk=${apkBytes/1024}KB lib=${libBytes/1024}KB data=${dataBytes/1024}KB cache=${cacheBytes/1024}KB ext1=${ext1Bytes/1024}KB(data=${ext1DataBytes/1024} obb=${ext1ObbBytes/1024} mounted=$isDataMountedReal) ext2=${ext2Bytes/1024}KB(data=${ext2DataBytes/1024} obb=${ext2ObbBytes/1024})")
+        AppLogger.info("GameRepo", "Breakdown[$packageName]: apk=${apkBytes/1024}KB lib=${libBytes/1024}KB data=${dataBytes/1024}KB cache=${cacheBytes/1024}KB ext1=${ext1Bytes/1024}KB(data=${ext1DataBytes/1024} obb=${ext1ObbBytes/1024} media=${ext1MediaBytes/1024} mounted=$isDataMountedReal) ext2=${ext2Bytes/1024}KB(data=${ext2DataBytes/1024} obb=${ext2ObbBytes/1024} media=${ext2MediaBytes/1024})")
 
         // Directly update Room DB dataSizeBytes with accurate effective game data size
         val effectiveSize = when {
@@ -763,8 +826,10 @@ class GameRepository @Inject constructor(
             ext2Bytes = ext2Bytes,
             ext1DataBytes = ext1DataBytes,
             ext1ObbBytes = ext1ObbBytes,
+            ext1MediaBytes = ext1MediaBytes,
             ext2DataBytes = ext2DataBytes,
             ext2ObbBytes = ext2ObbBytes,
+            ext2MediaBytes = ext2MediaBytes,
             isExt1Mounted = isDataMountedReal || isObbMountedReal
         )
     }

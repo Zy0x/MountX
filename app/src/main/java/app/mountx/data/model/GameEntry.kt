@@ -16,6 +16,7 @@ enum class MountStatus {
     MOUNTED,
     UNMOUNTED,
     ERROR,
+    NEED_MIGRATION,
     UNKNOWN
 }
 

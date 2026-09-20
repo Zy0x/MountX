@@ -53,6 +53,7 @@ import app.mountx.data.model.MountStatus
 import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.ConfirmDialog
+import app.mountx.ui.components.NeedMigrationDialog
 import app.mountx.ui.theme.AuroraGradientBrush
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.NeonCrimson
@@ -227,6 +228,7 @@ fun GamesScreen(
                 showAddSheet = true
             },
             onToggleMount = { viewModel.toggleMount(it) },
+            onMigrateGame = { viewModel.moveMountPoints(it.packageName, it.mountPoints, app.mountx.data.model.MoveDirection.TO_SD) },
             onMountAll = { viewModel.mountAllGames() },
             onUnmountAll = { viewModel.unmountAllGames() },
             onSelectGameForDetail = { game ->
@@ -292,6 +294,7 @@ fun GamesContent(
     onSortOptionChange: (GameSortOption) -> Unit,
     onAddClick: () -> Unit,
     onToggleMount: (GameEntry) -> Unit,
+    onMigrateGame: (GameEntry) -> Unit = {},
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onSelectGameForDetail: (GameEntry) -> Unit,
@@ -302,6 +305,7 @@ fun GamesContent(
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
     var gameToUnmount by remember { mutableStateOf<GameEntry?>(null) }
+    var gameForNeedMigration by remember { mutableStateOf<GameEntry?>(null) }
 
     val mountedCount = games.count { it.mountStatus == MountStatus.MOUNTED }
     val unmountedCount = games.count { it.mountStatus != MountStatus.MOUNTED }
@@ -708,6 +712,8 @@ fun GamesContent(
                                 onToggleMount = {
                                     if (game.mountStatus == MountStatus.MOUNTED) {
                                         gameToUnmount = game
+                                    } else if (game.mountStatus == MountStatus.NEED_MIGRATION) {
+                                        gameForNeedMigration = game
                                     } else {
                                         onToggleMount(game)
                                     }
@@ -735,6 +741,18 @@ fun GamesContent(
                 onToggleMount(target)
             },
             onDismiss = { gameToUnmount = null }
+        )
+    }
+
+    if (gameForNeedMigration != null) {
+        val target = gameForNeedMigration!!
+        NeedMigrationDialog(
+            game = target,
+            onConfirmMigration = {
+                gameForNeedMigration = null
+                onMigrateGame(target)
+            },
+            onDismiss = { gameForNeedMigration = null }
         )
     }
 }
@@ -822,8 +840,23 @@ fun ModernGameCard(
                         )
                     }
 
-                    // Error badge inline if error
-                    if (game.mountStatus == MountStatus.ERROR) {
+                    // Need Migration badge inline
+                    if (game.mountStatus == MountStatus.NEED_MIGRATION) {
+                        val amberColor = Color(0xFFFF9800)
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = amberColor.copy(alpha = 0.16f),
+                            border = BorderStroke(0.8.dp, amberColor.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = stringResource(R.string.status_need_migration),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = amberColor,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    } else if (game.mountStatus == MountStatus.ERROR) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
                             color = NeonCrimson.copy(alpha = 0.14f),

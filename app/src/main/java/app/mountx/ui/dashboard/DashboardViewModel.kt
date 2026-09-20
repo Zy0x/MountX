@@ -203,4 +203,23 @@ class DashboardViewModel @Inject constructor(
             refresh()
         }
     }
+
+    fun migrateGame(game: GameEntry) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            val points = if (game.mountPoints.isNotEmpty()) game.mountPoints else gameRepository.synthesizeLegacyMountPoints(game, sdBase)
+            val result = storageRepository.moveGameMountPoints(
+                packageName = game.packageName,
+                mountPoints = points,
+                direction = app.mountx.data.model.MoveDirection.TO_SD,
+                sdBase = sdBase
+            )
+            if (result.isSuccess) {
+                val updated = game.copy(mountPoints = points)
+                gameRepository.updateGame(updated)
+                gameRepository.mountGame(updated, sdBase)
+            }
+            refresh()
+        }
+    }
 }

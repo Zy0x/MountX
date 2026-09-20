@@ -377,6 +377,15 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.25 (Penyimpanan Terpusat MountX, Deteksi Cerdas Media & Aksi Cepat Migrasi)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Struktur Direktori Terpusat MountX: Seluruh data pengalihan kini dikumpulkan rapi di dalam folder induk \$sdBase/MountX/ (Android/data, Android/obb, Media, app, containers) sehingga MicroSD tetap tertata rapi.", fontSize = 11.sp)
+                        Text(text = "• Kompatibilitas Mundur Penuh (100% Zero Data Loss): Sistem mendeteksi berkas di jalur lama (\$sdBase/Android/...) secara transparan jika sudah ada data fisik, tanpa perlu memindahkan ulang.", fontSize = 11.sp)
+                        Text(text = "• Deteksi Cerdas Kategori Media & Unduhan: Mendukung pemindahan folder media bersama (/data/media/0/Android/media/<pkg>) dengan aturan cerdas .nomedia (hanya memasang jika folder asal memang ber-.nomedia) agar galeri tetap membaca foto/video dengan aman.", fontSize = 11.sp)
+                        Text(text = "• Penambahan Direktori Kustom Fleksibel: Tombol '+ Tambah Direktori Kustom' di Tab Penyimpanan memungkinkan penautan folder kustom mandiri (misal: Telegram, WhatsApp, DCIM, Pictures, dll).", fontSize = 11.sp)
+                        Text(text = "• Aksi Cepat Migrasi & Badge 'Perlu Migrasi': Mengganti indikator Error akibat hazard penutupan data (occlusion guard) dengan status oranye 'Perlu Migrasi' serta dialog 1-klik 'Satukan & Pindahkan ke MicroSD'.", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.24 (Stabilisasi Ukuran VFS, Manajemen Modul Root & Info Aplikasi)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Stabilisasi Deteksi Ukuran Game: Mencegah penurunan ukuran drastis ke 20KB saat direktori skeleton ter-mount di atas data internal, serta memblokir kaitan folder kosong di atas data riil.", fontSize = 11.sp)

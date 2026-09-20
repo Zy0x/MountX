@@ -1668,8 +1668,22 @@ class StorageManager {
                                 RootShell.exec("chmod -R 777 \"$sourcePath\"")
                                 RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\"")
 
-                                if (point.category == MountPointCategory.MEDIA_DOWNLOADS) {
+                                // Ensure MountX Android namespace has .nomedia so game assets don't leak into gallery
+                                val mountXAndroid = "$sdBase/MountX/Android"
+                                if (RootShell.exists(mountXAndroid)) {
+                                    RootShell.exec("touch \"$mountXAndroid/.nomedia\" 2>/dev/null")
+                                }
+
+                                // Smart .nomedia preservation for app directories:
+                                if (point.category == MountPointCategory.EXTERNAL_DATA || point.category == MountPointCategory.OBB_STORAGE) {
                                     RootShell.exec("touch \"$sourcePath/.nomedia\"")
+                                } else if (point.category == MountPointCategory.MEDIA_DOWNLOADS || point.category == MountPointCategory.CUSTOM) {
+                                    val hadNomediaInTarget = RootShell.exists("$targetPath/.nomedia")
+                                    if (hadNomediaInTarget) {
+                                        RootShell.exec("touch \"$sourcePath/.nomedia\"")
+                                    } else {
+                                        RootShell.exec("rm -f \"$sourcePath/.nomedia\" 2>/dev/null")
+                                    }
                                 }
 
                                 // Step 4: Cleanup
