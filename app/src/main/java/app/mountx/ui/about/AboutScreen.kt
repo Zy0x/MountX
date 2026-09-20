@@ -377,6 +377,11 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.15 (Revamp total UI Tab Manage - 8-Screen Guided Flow)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Revamp total UI Tab Manage (8-Screen Guided Flow): Hybrid Storage Chart, Kategori Data Game, Stepper Progress Pemindahan, Detail Kategori, dan Bottom Sheet Opsi Folder.", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.18 (3-Step Guided Migration Hub & Multi-Disk Selection)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Alur Berjenjang 3 Langkah: Langkah 1 (Pilih Data), Langkah 2 (Pilih Disk Tujuan), Langkah 3 (Tinjau & Eksekusi)", fontSize = 11.sp)
