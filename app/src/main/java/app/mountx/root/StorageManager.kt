@@ -1507,91 +1507,117 @@ class StorageManager {
             }
         }
 
-        val initialProg = if (totalMigrationBytes > 0L) {
-            (overallProcessedBytes.toFloat() / totalMigrationBytes.toFloat()).coerceIn(0f, 1f)
-        } else 0.1f
+        val reportProgress: (Long) -> Unit = { currentCopied ->
+            val clampedCopied = currentCopied.coerceIn(0L, estimatedPointBytes)
+            val totalProcessed = (overallProcessedBytes + clampedCopied).coerceIn(0L, totalMigrationBytes)
 
-        onProgress?.invoke(
-            OperationProgress(
-                type = opType,
-                title = title,
-                subtitle = subtitle,
-                currentStepIndex = stepIndex,
-                totalSteps = totalSteps,
-                stepDescriptions = stepDescriptions,
-                bytesProcessed = overallProcessedBytes,
-                totalBytes = totalMigrationBytes,
-                speedBytesPerSec = 0L,
-                etaSeconds = 0L,
-                progressPercent = initialProg,
-                currentItemName = categoryName,
-                isFinished = false
-            )
-        )
-
-        val copyResult = coroutineScope {
-            val copyDeferred = async(Dispatchers.IO) {
-                val parentDest = java.io.File(destDir).parent ?: destDir
-                RootShell.exec("mkdir -p \"$parentDest\"")
-                val cpCmd = when (conflictStrategy) {
-                    ConflictStrategy.MERGE -> "cp -a -u \"$sourceDir/.\" \"$destDir/\" 2>/dev/null || cp -a -u \"$sourceDir\" \"$parentDest/\""
-                    else -> "cp -a -f \"$sourceDir/.\" \"$destDir/\" 2>/dev/null || cp -a -f \"$sourceDir\" \"$parentDest/\""
-                }
-                RootShell.exec(cpCmd)
+            val now = System.currentTimeMillis()
+            val dt = (now - lastTime) / 1000.0
+            if (dt >= 0.25) {
+                val dBytes = clampedCopied - lastBytes
+                val instantSpeed = if (dt > 0 && dBytes > 0) (dBytes / dt).toLong() else 0L
+                smoothedSpeed = if (smoothedSpeed == 0L) instantSpeed else (0.65 * instantSpeed + 0.35 * smoothedSpeed).toLong()
+                lastTime = now
+                lastBytes = clampedCopied
             }
 
-            while (copyDeferred.isActive) {
-                delay(350)
-                if (!copyDeferred.isActive) break
+            val elapsedSec = (now - startTime) / 1000.0
+            val effectiveSpeed = if (smoothedSpeed > 0L) smoothedSpeed else if (elapsedSec > 0.8) (clampedCopied / elapsedSec).toLong() else 0L
+            val remainingBytes = (totalMigrationBytes - totalProcessed).coerceAtLeast(0L)
+            val eta = if (effectiveSpeed > 0L) remainingBytes / effectiveSpeed else 0L
+            val prog = if (totalMigrationBytes > 0L) (totalProcessed.toFloat() / totalMigrationBytes.toFloat()).coerceIn(0f, 1f) else 0.5f
 
-                val currentDestSize = getDirSizeBytes(destDir)
-                val currentCopied = (currentDestSize - initialDestBytes).coerceIn(0L, estimatedPointBytes)
-                val totalProcessed = (overallProcessedBytes + currentCopied).coerceIn(0L, totalMigrationBytes)
-
-                val now = System.currentTimeMillis()
-                val dt = (now - lastTime) / 1000.0
-                if (dt >= 0.3) {
-                    val dBytes = currentCopied - lastBytes
-                    val instantSpeed = if (dt > 0 && dBytes > 0) (dBytes / dt).toLong() else 0L
-                    smoothedSpeed = if (smoothedSpeed == 0L) instantSpeed else (0.65 * instantSpeed + 0.35 * smoothedSpeed).toLong()
-                    lastTime = now
-                    lastBytes = currentCopied
-                }
-
-                val elapsedSec = (now - startTime) / 1000.0
-                val effectiveSpeed = if (smoothedSpeed > 0L) smoothedSpeed else if (elapsedSec > 1.0) (currentCopied / elapsedSec).toLong() else 0L
-                val remainingBytes = (totalMigrationBytes - totalProcessed).coerceAtLeast(0L)
-                val eta = if (effectiveSpeed > 0L) remainingBytes / effectiveSpeed else 0L
-                val prog = if (totalMigrationBytes > 0L) (totalProcessed.toFloat() / totalMigrationBytes.toFloat()).coerceIn(0f, 1f) else 0.5f
-
-                onProgress?.invoke(
-                    OperationProgress(
-                        type = opType,
-                        title = title,
-                        subtitle = subtitle,
-                        currentStepIndex = stepIndex,
-                        totalSteps = totalSteps,
-                        stepDescriptions = stepDescriptions,
-                        bytesProcessed = totalProcessed,
-                        totalBytes = totalMigrationBytes,
-                        speedBytesPerSec = effectiveSpeed,
-                        etaSeconds = eta,
-                        progressPercent = prog,
-                        currentItemName = categoryName,
-                        isFinished = false
-                    )
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = stepIndex,
+                    totalSteps = totalSteps,
+                    stepDescriptions = stepDescriptions,
+                    bytesProcessed = totalProcessed,
+                    totalBytes = totalMigrationBytes,
+                    speedBytesPerSec = effectiveSpeed,
+                    etaSeconds = eta,
+                    progressPercent = prog,
+                    currentItemName = categoryName,
+                    isFinished = false
                 )
-            }
-
-            copyDeferred.await()
+            )
         }
 
-        if (!copyResult.isSuccess && !RootShell.exists(destDir)) {
+        // Emit initial progress for this stage
+        reportProgress(0L)
+
+        // Ensure destination directory exists
+        RootShell.exec("mkdir -p \"$destDir\"")
+
+        val baseCpCmd = when (conflictStrategy) {
+            ConflictStrategy.MERGE -> "cp -a -u \"$sourceDir/.\" \"$destDir/\""
+            else -> "cp -a -f \"$sourceDir/.\" \"$destDir/\""
+        }
+
+        val runnerScript = """
+            mkdir -p "$destDir"
+            (exec $baseCpCmd) &
+            CP_PID=${'$'}!
+            echo "STARTED:${'$'}CP_PID"
+            
+            HAS_PROC_IO=0
+            if [ -d "/proc/${'$'}CP_PID" ] && [ -f "/proc/${'$'}CP_PID/io" ]; then
+                HAS_PROC_IO=1
+            fi
+            
+            while kill -0 ${'$'}CP_PID 2>/dev/null; do
+                if [ "${'$'}HAS_PROC_IO" = "1" ] || [ -f "/proc/${'$'}CP_PID/io" ]; then
+                    HAS_PROC_IO=1
+                    W_BYTES=${'$'}(grep wchar /proc/${'$'}CP_PID/io 2>/dev/null | awk '{print ${'$'}2}')
+                    if [ -n "${'$'}W_BYTES" ]; then
+                        echo "PROGRESS_BYTES:${'$'}W_BYTES"
+                    fi
+                else
+                    SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | awk '{print ${'$'}1}')
+                    if [ -n "${'$'}SZ_KB" ]; then
+                        echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
+                    fi
+                fi
+                sleep 0.3
+            done
+            
+            wait ${'$'}CP_PID
+            EXIT_CODE=${'$'}?
+            echo "COPY_EXIT:${'$'}EXIT_CODE"
+        """.trimIndent()
+
+        var copyExitCode = -1
+
+        val streamRes = RootShell.execStreaming(runnerScript) { line ->
+            val trimmed = line.trim()
+            if (trimmed.startsWith("PROGRESS_BYTES:")) {
+                val b = trimmed.removePrefix("PROGRESS_BYTES:").trim().toLongOrNull()
+                if (b != null && b > 0L) {
+                    reportProgress(b)
+                }
+            } else if (trimmed.startsWith("PROGRESS_FALLBACK:")) {
+                val totalDst = trimmed.removePrefix("PROGRESS_FALLBACK:").trim().toLongOrNull()
+                if (totalDst != null) {
+                    val delta = (totalDst - initialDestBytes).coerceAtLeast(0L)
+                    reportProgress(delta)
+                }
+            } else if (trimmed.startsWith("COPY_EXIT:")) {
+                copyExitCode = trimmed.removePrefix("COPY_EXIT:").trim().toIntOrNull() ?: 0
+            }
+        }
+
+        // Final point progress
+        reportProgress(estimatedPointBytes)
+
+        if (copyExitCode != 0 && !RootShell.exists(destDir)) {
             // Clean up partial destination garbage if newly created
             if (!existedInitially) {
                 RootShell.exec("rm -rf \"$destDir\"")
             }
-            error("Failed to copy $sourceDir to $destDir: ${copyResult.stderr.joinToString("\n")}")
+            error("Failed to copy $sourceDir to $destDir (exit code $copyExitCode): ${streamRes.stderr.joinToString("\n")}")
         }
 
         // Integrity Verification: Verify destination contains data before source can be deleted

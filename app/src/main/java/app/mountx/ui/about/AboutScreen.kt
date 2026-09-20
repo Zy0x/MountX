@@ -406,11 +406,27 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.27 (Latest) ──
+                        // ── v2.2.28 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.28",
+                            releaseDate = "20 Sep 2026",
+                            isLatest = true,
+                            title = "Progres Kernel Real-Time & Safe Zone Ikon App Drawer"
+                        ) {
+                            GithubSectionHeader("⚡ Penyalinan Data & Telemetri Nyata")
+                            GithubMarkdownBullet("• **Progres Transfer Kernel Nyata**: Pemantauan langsung melalui penghitung byte I/O Linux kernel (`/proc/\$PID/io`) dengan interval 300ms, menghasilkan kenaikan persentase bertahap yang konkret (0% -> 100%) tanpa lonjakan tiba-tiba.")
+                            GithubMarkdownBullet("• **Kecepatan & Sisa Waktu Dinamis**: Menampilkan metrik kecepatan transfer riil (MB/s) dan estimasi sisa waktu (ETA) terhitung otomatis sepanjang proses penyalinan.")
+                            GithubMarkdownBullet("• **Fallback Graceful**: Sistem otomatis beralih ke kalkulasi ukuran direktori jika akses kernel I/O dibatasi pada varian kernel tertentu.")
+
+                            GithubSectionHeader("🎨 Penyempurnaan Tampilan (UI/UX)")
+                            GithubMarkdownBullet("• **Safe Zone Ikon App Drawer Android**: Menyesuaikan proporsi Adaptive Icon dengan batas aman ~18% inset (72dp pada kanvas 108dp) agar logo MountX tidak terpotong oleh masking lingkaran atau squircle di launcher sistem.")
+                        }
+
+                        // ── v2.2.27 ──
                         GithubReleaseCard(
                             version = "v2.2.27",
                             releaseDate = "20 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "Migrasi Terpusat MountX, Indikator Akses Hijau & Markdown Changelog"
                         ) {
                             GithubSectionHeader("🚀 Migrasi Otomatis & Standarisasi Direktori")

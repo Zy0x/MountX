@@ -36,6 +36,29 @@ object RootShell {
     }
 
     /**
+     * Execute a shell command and stream stdout lines in real-time.
+     */
+    suspend fun execStreaming(
+        cmd: String,
+        onStdoutLine: (String) -> Unit
+    ): ShellResult = withContext(Dispatchers.IO) {
+        val outList = object : com.topjohnwu.superuser.CallbackList<String>() {
+            override fun onAddElement(s: String?) {
+                if (s != null) {
+                    onStdoutLine(s)
+                }
+            }
+        }
+        val errList = ArrayList<String>()
+        val result = Shell.cmd(cmd).to(outList, errList).exec()
+        ShellResult(
+            stdout = outList,
+            stderr = errList,
+            code = if (result.isSuccess) 0 else 1
+        )
+    }
+
+    /**
      * Execute multiple commands as a script block.
      * @param script Multi-line shell script
      */
