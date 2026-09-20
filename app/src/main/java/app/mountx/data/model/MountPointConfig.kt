@@ -93,3 +93,12 @@ data class MountPointConfig(
         return defaultBase
     }
 }
+
+/**
+ * Target storage location for deleting category data.
+ */
+enum class CategoryDeleteLocation {
+    INTERNAL_ONLY,
+    SD_ONLY,
+    BOTH
+}

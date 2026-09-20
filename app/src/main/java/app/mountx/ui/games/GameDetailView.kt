@@ -81,8 +81,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.pm.PackageInfoCompat
+import android.content.Context
 import app.mountx.R
 import app.mountx.data.model.AppStorageBreakdown
+import app.mountx.data.model.CategoryDeleteLocation
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MigrationTarget
 import app.mountx.data.model.DiskType
@@ -129,6 +131,7 @@ fun GameDetailView(
     onUpdateMountPoints: ((List<MountPointConfig>) -> Unit)? = null,
     onDelete: () -> Unit = {},
     onToggleMount: (() -> Unit)? = null,
+    onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onDismiss)
@@ -386,7 +389,9 @@ fun GameDetailView(
                         onMountPointsChanged = { updated ->
                             currentMountPoints = updated
                             onUpdateMountPoints?.invoke(updated)
-                        }
+                        },
+                        packageInfo = packageInfo,
+                        onDeleteCategoryData = onDeleteCategoryData
                     )
                     1 -> ManageTabContent()
                 }
@@ -521,7 +526,12 @@ private data class UnifiedCategoryItem(
     val iconTint: Color,
     val isMicroSd: Boolean,
     val isRisk: Boolean = false,
-    val mountCategory: MountPointCategory
+    val mountCategory: MountPointCategory,
+    val internalPath: String = "",
+    val internalBytes: Long = 0L,
+    val sdPath: String = "",
+    val sdBytes: Long = 0L,
+    val isCategoryMounted: Boolean = false
 )
 
 private fun buildTargetMountPoints(
@@ -712,15 +722,21 @@ private fun StorageTabContent(
     isMoving: Boolean,
     moveMessage: String?,
     sdBase: String = "/data/sdext2",
+    packageInfo: android.content.pm.PackageInfo? = null,
     onMove: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?) -> Unit,
     onRestoreToInternal: () -> Unit,
     onUnmount: () -> Unit,
     onMountPointsChanged: (List<MountPointConfig>) -> Unit,
+    onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedCategoryIds by remember { mutableStateOf(setOf("data", "obb")) }
     var showTargetModal by remember { mutableStateOf(false) }
+    var inspectingCategory by remember { mutableStateOf<UnifiedCategoryItem?>(null) }
+    var categoryToDelete by remember { mutableStateOf<UnifiedCategoryItem?>(null) }
+    var isDeletingCategory by remember { mutableStateOf(false) }
 
     val isMounted = game.mountStatus == MountStatus.MOUNTED || breakdown.isExt1Mounted
     val hasExtDataOnSd = if (isMounted) {
@@ -734,7 +750,7 @@ private fun StorageTabContent(
         breakdown.ext2ObbBytes > 0L && breakdown.ext1ObbBytes == 0L
     }
 
-    val categories = remember(breakdown, isMounted, hasExtDataOnSd, hasExtObbOnSd) {
+    val categories = remember(breakdown, isMounted, hasExtDataOnSd, hasExtObbOnSd, mountPoints, packageInfo, sdBase) {
         val (dataBytes, dataSubtitle, isDataSd) = when {
             isMounted -> Triple(breakdown.ext2DataBytes, "Data utama game", true)
             breakdown.ext2DataBytes > 0L && breakdown.ext1DataBytes > 0L -> {
@@ -773,6 +789,14 @@ private fun StorageTabContent(
             }
         }
 
+        val pkg = game.packageName
+        val apkSrc = packageInfo?.applicationInfo?.sourceDir ?: "/data/app"
+        val apkInternalDir = if (apkSrc.endsWith(".apk")) java.io.File(apkSrc).parent ?: apkSrc else apkSrc
+        val libSrc = packageInfo?.applicationInfo?.nativeLibraryDir ?: "/data/app/$pkg/lib"
+
+        val existingDataPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
+        val existingObbPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
+
         listOf(
             UnifiedCategoryItem(
                 id = "apk",
@@ -783,7 +807,12 @@ private fun StorageTabContent(
                 iconTint = Color(0xFF00897B),
                 isMicroSd = false,
                 isRisk = true,
-                mountCategory = MountPointCategory.APP_PACKAGE
+                mountCategory = MountPointCategory.APP_PACKAGE,
+                internalPath = apkInternalDir,
+                internalBytes = breakdown.apkBytes,
+                sdPath = "$sdBase/app/$pkg",
+                sdBytes = 0L,
+                isCategoryMounted = false
             ),
             UnifiedCategoryItem(
                 id = "lib",
@@ -794,7 +823,12 @@ private fun StorageTabContent(
                 iconTint = Color(0xFFFB8C00),
                 isMicroSd = false,
                 isRisk = true,
-                mountCategory = MountPointCategory.PRIVATE_INTERNAL
+                mountCategory = MountPointCategory.PRIVATE_INTERNAL,
+                internalPath = libSrc,
+                internalBytes = breakdown.libBytes,
+                sdPath = "$sdBase/lib/$pkg",
+                sdBytes = 0L,
+                isCategoryMounted = false
             ),
             UnifiedCategoryItem(
                 id = "private",
@@ -805,7 +839,12 @@ private fun StorageTabContent(
                 iconTint = Color(0xFF43A047),
                 isMicroSd = false,
                 isRisk = false,
-                mountCategory = MountPointCategory.PRIVATE_INTERNAL
+                mountCategory = MountPointCategory.PRIVATE_INTERNAL,
+                internalPath = "/data/data/$pkg",
+                internalBytes = breakdown.dataBytes,
+                sdPath = "$sdBase/data/$pkg",
+                sdBytes = 0L,
+                isCategoryMounted = false
             ),
             UnifiedCategoryItem(
                 id = "cache",
@@ -816,7 +855,12 @@ private fun StorageTabContent(
                 iconTint = Color(0xFFFFA000),
                 isMicroSd = false,
                 isRisk = false,
-                mountCategory = MountPointCategory.CACHE_SHADERS
+                mountCategory = MountPointCategory.CACHE_SHADERS,
+                internalPath = "/data/data/$pkg/cache",
+                internalBytes = breakdown.cacheBytes,
+                sdPath = "$sdBase/Android/data/$pkg/cache",
+                sdBytes = 0L,
+                isCategoryMounted = false
             ),
             UnifiedCategoryItem(
                 id = "data",
@@ -827,7 +871,12 @@ private fun StorageTabContent(
                 iconTint = Color(0xFF00ACC1),
                 isMicroSd = isDataSd,
                 isRisk = false,
-                mountCategory = MountPointCategory.EXTERNAL_DATA
+                mountCategory = MountPointCategory.EXTERNAL_DATA,
+                internalPath = "/data/media/0/Android/data/$pkg",
+                internalBytes = breakdown.ext1DataBytes,
+                sdPath = existingDataPoint?.sourcePath ?: "$sdBase/Android/data/$pkg",
+                sdBytes = breakdown.ext2DataBytes,
+                isCategoryMounted = isMounted && (breakdown.ext2DataBytes > 0L || breakdown.isExt1Mounted)
             ),
             UnifiedCategoryItem(
                 id = "obb",
@@ -838,7 +887,12 @@ private fun StorageTabContent(
                 iconTint = Color(0xFF1E88E5),
                 isMicroSd = isObbSd,
                 isRisk = false,
-                mountCategory = MountPointCategory.OBB_STORAGE
+                mountCategory = MountPointCategory.OBB_STORAGE,
+                internalPath = "/data/media/0/Android/obb/$pkg",
+                internalBytes = breakdown.ext1ObbBytes,
+                sdPath = existingObbPoint?.sourcePath ?: "$sdBase/Android/obb/$pkg",
+                sdBytes = breakdown.ext2ObbBytes,
+                isCategoryMounted = isMounted && (breakdown.ext2ObbBytes > 0L || breakdown.isExt1Mounted)
             )
         )
     }
@@ -1015,6 +1069,9 @@ private fun StorageTabContent(
                     } else {
                         selectedCategoryIds + item.id
                     }
+                },
+                onInspect = {
+                    inspectingCategory = item
                 }
             )
         }
@@ -1175,6 +1232,45 @@ private fun StorageTabContent(
             }
         )
     }
+
+    // ── CATEGORY INSPECTOR MODAL BOTTOM SHEET ──
+    if (inspectingCategory != null) {
+        CategoryInspectorBottomSheet(
+            item = inspectingCategory!!,
+            onDismiss = { inspectingCategory = null },
+            onRequestDelete = {
+                categoryToDelete = inspectingCategory
+            }
+        )
+    }
+
+    // ── CATEGORY DELETE CONFIRMATION DIALOG ──
+    if (categoryToDelete != null) {
+        val catItem = categoryToDelete!!
+        CategoryDeleteConfirmDialog(
+            item = catItem,
+            isDeleting = isDeletingCategory,
+            onConfirm = { location ->
+                isDeletingCategory = true
+                onDeleteCategoryData(catItem.id, location) { success, errMsg ->
+                    isDeletingCategory = false
+                    if (success) {
+                        Toast.makeText(context, context.getString(R.string.category_inspector_delete_success), Toast.LENGTH_SHORT).show()
+                        categoryToDelete = null
+                        inspectingCategory = null
+                    } else {
+                        val msg = context.getString(R.string.category_inspector_delete_failed, errMsg ?: "Unknown error")
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onDismiss = {
+                if (!isDeletingCategory) {
+                    categoryToDelete = null
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -1183,6 +1279,7 @@ private fun CategoryCardItem(
     isSelectionMode: Boolean,
     isChecked: Boolean,
     onToggleCheck: () -> Unit,
+    onInspect: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -1195,7 +1292,11 @@ private fun CategoryCardItem(
         ),
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = isSelectionMode, onClick = onToggleCheck)
+            .clickable(
+                onClick = {
+                    if (isSelectionMode) onToggleCheck() else onInspect()
+                }
+            )
     ) {
         Row(
             modifier = Modifier
@@ -1306,8 +1407,608 @@ private fun CategoryCardItem(
                     }
                 }
             }
+
+            if (!isSelectionMode) {
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryInspectorBottomSheet(
+    item: UnifiedCategoryItem,
+    onDismiss: () -> Unit,
+    onRequestDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // ── HEADER: Category Icon, Name, Subtitle, and Size ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(
+                            color = item.iconTint.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                ) {
+                    Icon(
+                        imageVector = item.icon,
+                        contentDescription = null,
+                        tint = item.iconTint,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = item.subtitle,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = FormatUtils.formatExactBytes(item.bytes),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (item.isMicroSd) Color(0x1A3BA71A) else MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(
+                            0.5.dp,
+                            if (item.isMicroSd) Color(0xFF3BA71A).copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Text(
+                            text = if (item.isMicroSd) "[MicroSD]" else "[Internal]",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = if (item.isMicroSd) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            )
+
+            // ── CARD 1: LIVE MOUNT STATUS ──
+            Card(
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (item.isCategoryMounted) Color(0x0D3BA71A)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                ),
+                border = BorderStroke(
+                    1.dp,
+                    if (item.isCategoryMounted) Color(0xFF3BA71A).copy(alpha = 0.45f)
+                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = if (item.isCategoryMounted) Icons.Default.CheckCircle else Icons.Default.Storage,
+                        contentDescription = null,
+                        tint = if (item.isCategoryMounted) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.category_inspector_mount_status),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = if (item.isCategoryMounted) stringResource(R.string.category_inspector_mount_active)
+                                   else stringResource(R.string.category_inspector_mount_inactive),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = if (item.isCategoryMounted) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            // ── CARD 2: INTERNAL STORAGE PATH ──
+            Card(
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Smartphone,
+                                contentDescription = null,
+                                tint = Color(0xFFDF4006),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.category_inspector_internal_title),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color(0xFFDF4006)
+                            )
+                        }
+
+                        Text(
+                            text = FormatUtils.formatExactBytes(item.internalBytes),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = item.internalPath.ifBlank { "—" },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+
+                    if (item.internalPath.isNotBlank()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    cm.setPrimaryClip(ClipData.newPlainText("MountX Path", item.internalPath))
+                                    Toast.makeText(context, context.getString(R.string.category_inspector_path_copied), Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.category_inspector_copy_path),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── CARD 3: MICROSD / EXTERNAL STORAGE PATH ──
+            Card(
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SdCard,
+                                contentDescription = null,
+                                tint = Color(0xFF3BA71A),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.category_inspector_microsd_title),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color(0xFF3BA71A)
+                            )
+                        }
+
+                        Text(
+                            text = if (item.sdBytes > 0L) FormatUtils.formatExactBytes(item.sdBytes)
+                                   else stringResource(R.string.category_inspector_not_migrated),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.5.sp,
+                                fontWeight = if (item.sdBytes > 0L) FontWeight.Bold else FontWeight.Normal
+                            ),
+                            color = if (item.sdBytes > 0L) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = item.sdPath.ifBlank { "—" },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+
+                    if (item.sdPath.isNotBlank()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    cm.setPrimaryClip(ClipData.newPlainText("MountX Path", item.sdPath))
+                                    Toast.makeText(context, context.getString(R.string.category_inspector_path_copied), Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.category_inspector_copy_path),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── ACTION: DELETE CATEGORY DATA ──
+            val hasDataToDelete = item.internalBytes > 0L || item.sdBytes > 0L || item.bytes > 0L
+            if (hasDataToDelete) {
+                OutlinedButton(
+                    onClick = onRequestDelete,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFFE53935).copy(alpha = 0.7f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.category_inspector_delete_btn),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+    }
+}
+
+@Composable
+private fun CategoryDeleteConfirmDialog(
+    item: UnifiedCategoryItem,
+    isDeleting: Boolean,
+    onConfirm: (CategoryDeleteLocation) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val hasBoth = item.internalBytes > 0L && item.sdBytes > 0L
+    val initialLocation = when {
+        hasBoth -> CategoryDeleteLocation.BOTH
+        item.sdBytes > 0L -> CategoryDeleteLocation.SD_ONLY
+        else -> CategoryDeleteLocation.INTERNAL_ONLY
+    }
+    var selectedLocation by remember { mutableStateOf(initialLocation) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isDeleting) onDismiss() },
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = Color(0xFFE53935),
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.category_inspector_delete_dialog_title),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.category_inspector_delete_dialog_subtitle, item.title),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (item.id == "apk") {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0x1AE53935),
+                        border = BorderStroke(0.5.dp, Color(0xFFE53935).copy(alpha = 0.6f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = stringResource(R.string.category_inspector_delete_warning_apk),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = Color(0xFFE53935),
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                } else if (item.id == "lib") {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0x1AE53935),
+                        border = BorderStroke(0.5.dp, Color(0xFFE53935).copy(alpha = 0.6f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = stringResource(R.string.category_inspector_delete_warning_lib),
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = Color(0xFFE53935),
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+
+                if (hasBoth) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Option 1: Internal only
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedLocation = CategoryDeleteLocation.INTERNAL_ONLY }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedLocation == CategoryDeleteLocation.INTERNAL_ONLY,
+                                onClick = { selectedLocation = CategoryDeleteLocation.INTERNAL_ONLY }
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(
+                                    R.string.category_inspector_delete_loc_internal,
+                                    FormatUtils.formatExactBytes(item.internalBytes)
+                                ),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
+                            )
+                        }
+
+                        // Option 2: SD only
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedLocation = CategoryDeleteLocation.SD_ONLY }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedLocation == CategoryDeleteLocation.SD_ONLY,
+                                onClick = { selectedLocation = CategoryDeleteLocation.SD_ONLY }
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(
+                                    R.string.category_inspector_delete_loc_sd,
+                                    FormatUtils.formatExactBytes(item.sdBytes)
+                                ),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
+                            )
+                        }
+
+                        // Option 3: Both
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedLocation = CategoryDeleteLocation.BOTH }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedLocation == CategoryDeleteLocation.BOTH,
+                                onClick = { selectedLocation = CategoryDeleteLocation.BOTH }
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(
+                                    R.string.category_inspector_delete_loc_both,
+                                    FormatUtils.formatExactBytes(item.internalBytes + item.sdBytes)
+                                ),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        }
+                    }
+                }
+
+                if (isDeleting) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = Color(0xFFE53935)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.category_inspector_deleting),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(selectedLocation) },
+                enabled = !isDeleting,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE53935),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.category_inspector_delete_confirm_action),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isDeleting
+            ) {
+                Text(text = stringResource(R.string.common_cancel))
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

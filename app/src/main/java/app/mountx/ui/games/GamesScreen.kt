@@ -192,6 +192,9 @@ fun GamesScreen(
                 gameToDelete = updatedGame
                 selectedGameForDetail = null
             },
+            onDeleteCategoryData = { catId, loc, callback ->
+                viewModel.deleteCategoryData(updatedGame.packageName, catId, loc, callback)
+            },
             modifier = modifier
         )
     } else {

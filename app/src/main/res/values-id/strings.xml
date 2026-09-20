@@ -846,6 +846,29 @@
     <string name="game_detail_cat_obb_short">OBB</string>
     <string name="game_detail_cat_data_short">Data Game</string>
     <string name="manage_btn_continue_format">Lanjutkan (%1$d)</string>
-</resources>
+
+    <!-- v2.2.21 Category Path & Size Inspector with Safe Deletion -->
+    <string name="category_inspector_title">Rincian Kategori Data</string>
+    <string name="category_inspector_mount_status">Status Kaitan (Mount)</string>
+    <string name="category_inspector_mount_active">Aktif Ter-mount (VFS Bind Mount)</string>
+    <string name="category_inspector_mount_inactive">Tidak Ter-mount (Data Standar)</string>
+    <string name="category_inspector_internal_title">Penyimpanan Internal</string>
+    <string name="category_inspector_microsd_title">Penyimpanan MicroSD</string>
+    <string name="category_inspector_not_migrated">Belum dialihkan ke MicroSD</string>
+    <string name="category_inspector_copy_path">Salin</string>
+    <string name="category_inspector_path_copied">Path direktori disalin ke clipboard</string>
+    <string name="category_inspector_delete_btn">Hapus Data Kategori</string>
+    <string name="category_inspector_delete_dialog_title">Konfirmasi Hapus Data</string>
+    <string name="category_inspector_delete_dialog_subtitle">Pilih data %1$s yang ingin dihapus. Tindakan ini bersifat permanen.</string>
+    <string name="category_inspector_delete_loc_internal">Hapus di Memori Internal Saja (%1$s)</string>
+    <string name="category_inspector_delete_loc_sd">Hapus di MicroSD Saja (%1$s)</string>
+    <string name="category_inspector_delete_loc_both">Hapus di Kedua Penyimpanan (%1$s)</string>
+    <string name="category_inspector_delete_warning_apk">Peringatan: Menghapus paket APK akan merusak instalasi aplikasi!</string>
+    <string name="category_inspector_delete_warning_lib">Peringatan: Menghapus native library akan membuat game gagal dibuka!</string>
+    <string name="category_inspector_delete_confirm_action">Hapus Permanen</string>
+    <string name="category_inspector_deleting">Menghapus data…</string>
+    <string name="category_inspector_delete_success">Data kategori berhasil dihapus</string>
+    <string name="category_inspector_delete_failed">Gagal menghapus data: %1$s</string>
+ </resources>
 
 

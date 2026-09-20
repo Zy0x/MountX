@@ -377,6 +377,15 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.21 (Category Inspector Modal & Safe Multi-Storage Deletion)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Category Inspector Modal Bottom Sheet: Ketuk kartu kategori data game (APK, Lib, Data Privat, Cache, Data Game, OBB) untuk melihat rincian path lengkap dan ukuran di setiap media.", fontSize = 11.sp)
+                        Text(text = "• Transparansi Path & Salin Satu Ketukan: Menampilkan path direktori lengkap di Penyimpanan Internal dan MicroSD dengan tombol salin instan.", fontSize = 11.sp)
+                        Text(text = "• Status Live VFS Mount: Indikator visual real-time apakah kategori sedang ter-mount aktif atau berjalan dari direktori aslinya.", fontSize = 11.sp)
+                        Text(text = "• Penghapusan Data Aman Bertingkat: Opsi hapus data kategori dengan konfirmasi pilihan lokasi (Internal Saja, MicroSD Saja, atau Keduanya) dan peringatan khusus untuk data berisiko.", fontSize = 11.sp)
+                        Text(text = "• Sinkronisasi Otomatis: Rekalkulasi ukuran data game dan pembaruan grafik storage secara instan pasca penghapusan.", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.17 (Deteksi Cerdas Multi-Partisi & Presisi Ukuran Game)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Deteksi Cerdas Multi-Partisi: Memindai seluruh partisi eksternal (/mnt/media_rw, /storage, /data/sdext*) secara dinamis.", fontSize = 11.sp)

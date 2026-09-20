@@ -439,4 +439,25 @@ class GamesViewModel @Inject constructor(
             refresh()
         }
     }
+
+    fun deleteCategoryData(
+        packageName: String,
+        categoryId: String,
+        location: app.mountx.data.model.CategoryDeleteLocation,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            val res = gameRepository.deleteCategoryData(context, packageName, categoryId, location, sdBase)
+            if (res.isSuccess) {
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+                _detailedStorage.value = breakdown
+                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                refresh()
+                onResult(true, null)
+            } else {
+                onResult(false, res.exceptionOrNull()?.message)
+            }
+        }
+    }
 }
