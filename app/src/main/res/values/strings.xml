@@ -937,6 +937,49 @@
     <string name="migration_confirm_btn_start_move">Start Migration</string>
     <string name="migration_confirm_btn_start_restore">Start Restore</string>
     <string name="manage_btn_restore_internal_with_size">Restore to Internal (%1$s)</string>
+
+    <!-- v2.2.24 Features & Enhancements -->
+    <string name="game_detail_tab_info">App Info</string>
+    <string name="dashboard_btn_install_module">Install Module</string>
+    <string name="dashboard_btn_enable_module">Enable Module</string>
+    <string name="module_dialog_title">MountX Engine Module</string>
+    <string name="module_status_not_installed_desc">The MountX Magisk/KernelSU module is required for boot persistence and namespace isolation.</string>
+    <string name="module_status_disabled_desc">The MountX module exists but is currently disabled in your root manager.</string>
+    <string name="module_root_solution_detected">Detected Root Environment</string>
+    <string name="module_action_auto_install_title">Install Automatically (Root Flash)</string>
+    <string name="module_action_auto_install_desc">Installs and activates the module directly via root without manual recovery flash.</string>
+    <string name="module_action_enable_title">Re-enable Module</string>
+    <string name="module_action_enable_desc">Removes the disable flag so the module runs on next boot.</string>
+    <string name="module_action_export_title">Export Flashable ZIP</string>
+    <string name="module_action_export_desc">Saves a flashable .zip to your Downloads folder for manual flashing via Magisk / KSU / APatch.</string>
+    <string name="module_btn_install_now">Install &amp; Activate Now</string>
+    <string name="module_btn_enable_now">Enable Now</string>
+    <string name="module_btn_export_zip">Save ZIP to Downloads</string>
+    <string name="manage_btn_mount_game">Mount Game</string>
+    <string name="manage_btn_unmount_game">Unmount</string>
+    <string name="unmount_confirm_title">Unmount Game?</string>
+    <string name="unmount_confirm_message">Game storage bind-mount will be detached. The game will not access external data until re-mounted.</string>
+    <string name="mount_empty_sd_warning_title">Data Stored on Internal</string>
+    <string name="mount_empty_sd_warning_message">This game\'s data is currently stored in internal storage. Please use \'Manage Storage\' to move data to MicroSD before mounting.</string>
+    <string name="mount_empty_sd_btn_open_detail">Manage Storage</string>
+    <string name="app_info_section_identity">Package &amp; Version Identity</string>
+    <string name="app_info_section_storage">File Paths &amp; Storage</string>
+    <string name="app_info_section_runtime">Runtime &amp; Security Environment</string>
+    <string name="app_info_pkg_name">Package Name</string>
+    <string name="app_info_version">App Version</string>
+    <string name="app_info_sdk_levels">Target / Min SDK</string>
+    <string name="app_info_install_time">First Installed</string>
+    <string name="app_info_update_time">Last Updated</string>
+    <string name="app_info_installer">Installer App</string>
+    <string name="app_info_uid_gid">UID / GID Sandbox</string>
+    <string name="app_info_apk_path">Base APK Path</string>
+    <string name="app_info_lib_path">Native Library Dir</string>
+    <string name="app_info_internal_data">Internal Data (Private)</string>
+    <string name="app_info_external_data">External Data (Android/data)</string>
+    <string name="app_info_external_obb">External OBB (Android/obb)</string>
+    <string name="app_info_sd_target">Active MicroSD Target</string>
+    <string name="app_info_btn_system_settings">System App Settings</string>
+    <string name="app_info_btn_launch">Launch Game</string>
 </resources>
 
 

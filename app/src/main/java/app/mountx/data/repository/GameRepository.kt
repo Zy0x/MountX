@@ -470,20 +470,32 @@ class GameRepository @Inject constructor(
                 }
             }
 
-            val effectiveDataSize = if (isDataMountedReal) {
-                if (extDataBytesSum > 0L) extDataBytesSum else internalDataSize
-            } else {
-                maxOf(internalDataSize, extDataBytesSum)
+            // Smart Data Size Resolution:
+            // A canary / empty directory skeleton is typically <= 128 KB.
+            // When game data is in internal storage (e.g. 141 MB) and MicroSD only has an empty skeleton (20 KB),
+            // or vice versa, always capture the substantive data size rather than overwriting with a 20 KB skeleton.
+            val effectiveDataSize = when {
+                extDataBytesSum > 512 * 1024L && internalDataSize <= 128 * 1024L -> extDataBytesSum
+                internalDataSize > 512 * 1024L && extDataBytesSum <= 128 * 1024L -> internalDataSize
+                isDataMountedReal -> if (extDataBytesSum > 128 * 1024L) extDataBytesSum else maxOf(internalDataSize, extDataBytesSum)
+                else -> maxOf(internalDataSize, extDataBytesSum)
             }
 
-            val effectiveObbSize = if (isObbMountedReal) {
-                if (extObbBytesSum > 0L) extObbBytesSum else internalObbSize
-            } else {
-                maxOf(internalObbSize, extObbBytesSum)
+            val effectiveObbSize = when {
+                extObbBytesSum > 512 * 1024L && internalObbSize <= 128 * 1024L -> extObbBytesSum
+                internalObbSize > 512 * 1024L && extObbBytesSum <= 128 * 1024L -> internalObbSize
+                isObbMountedReal -> if (extObbBytesSum > 128 * 1024L) extObbBytesSum else maxOf(internalObbSize, extObbBytesSum)
+                else -> maxOf(internalObbSize, extObbBytesSum)
             }
 
-            val totalSize = effectiveDataSize + effectiveObbSize
-            gameDao.updateDataSize(packageName, totalSize)
+            var totalSize = effectiveDataSize + effectiveObbSize
+            val previousKnownSize = game?.dataSizeBytes ?: 0L
+            if (totalSize <= 128 * 1024L && previousKnownSize > 512 * 1024L) {
+                totalSize = previousKnownSize
+            }
+            if (totalSize > 0L) {
+                gameDao.updateDataSize(packageName, totalSize)
+            }
             totalSize
         }
 
@@ -725,13 +737,20 @@ class GameRepository @Inject constructor(
         AppLogger.info("GameRepo", "Breakdown[$packageName]: apk=${apkBytes/1024}KB lib=${libBytes/1024}KB data=${dataBytes/1024}KB cache=${cacheBytes/1024}KB ext1=${ext1Bytes/1024}KB(data=${ext1DataBytes/1024} obb=${ext1ObbBytes/1024} mounted=$isDataMountedReal) ext2=${ext2Bytes/1024}KB(data=${ext2DataBytes/1024} obb=${ext2ObbBytes/1024})")
 
         // Directly update Room DB dataSizeBytes with accurate effective game data size
-        val effectiveSize = if (isDataMountedReal || isObbMountedReal) {
-            if (ext2Bytes > 0L) ext2Bytes else ext1Bytes
-        } else {
-            maxOf(ext1Bytes, ext2Bytes)
+        val effectiveSize = when {
+            ext2Bytes > 512 * 1024L && ext1Bytes <= 128 * 1024L -> ext2Bytes
+            ext1Bytes > 512 * 1024L && ext2Bytes <= 128 * 1024L -> ext1Bytes
+            isDataMountedReal || isObbMountedReal -> if (ext2Bytes > 128 * 1024L) ext2Bytes else maxOf(ext1Bytes, ext2Bytes)
+            else -> maxOf(ext1Bytes, ext2Bytes)
         }
-        if (game != null) {
-            gameDao.updateDataSize(packageName, effectiveSize)
+        val previousKnownSize = game?.dataSizeBytes ?: 0L
+        val resolvedSize = if (effectiveSize <= 128 * 1024L && previousKnownSize > 512 * 1024L) {
+            previousKnownSize
+        } else {
+            effectiveSize
+        }
+        if (game != null && resolvedSize > 0L) {
+            gameDao.updateDataSize(packageName, resolvedSize)
         }
 
         AppStorageBreakdown(

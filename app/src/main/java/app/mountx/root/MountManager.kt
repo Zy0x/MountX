@@ -91,6 +91,36 @@ class MountManager {
                 )
             )
 
+            // Guard against accidental data occlusion:
+            // Do not bind-mount an empty MicroSD directory (< 128KB) over a populated internal directory (> 5MB).
+            var hasOcclusionRisk = false
+            for (mp in game.mountPoints) {
+                if (mp.enabled && (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.OBB_STORAGE)) {
+                    val srcExists = RootShell.exists(mp.sourcePath)
+                    val srcSizeKb = if (srcExists) {
+                        val duRes = RootShell.exec("du -sk \"${mp.sourcePath}\" 2>/dev/null")
+                        duRes.output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
+                    } else 0L
+
+                    val targetExists = RootShell.exists(mp.targetPath)
+                    val targetMounted = RootShell.isMountpoint(mp.targetPath)
+                    val targetSizeKb = if (targetExists && !targetMounted) {
+                        val duRes = RootShell.exec("du -sk \"${mp.targetPath}\" 2>/dev/null")
+                        duRes.output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
+                    } else 0L
+
+                    if (srcSizeKb <= 128L && targetSizeKb > 5120L) {
+                        hasOcclusionRisk = true
+                        AppLogger.warn("MountManager", "Occlusion hazard for ${mp.id}: source has only ${srcSizeKb}KB while target has ${targetSizeKb}KB")
+                        break
+                    }
+                }
+            }
+
+            if (hasOcclusionRisk) {
+                throw IllegalStateException("Data game masih berada di Memori Internal. Silakan gunakan 'Kelola Penyimpanan' untuk memindahkan data ke MicroSD terlebih dahulu sebelum mengaitkannya.")
+            }
+
             val namespaces = getTargetNamespaces()
 
             // Step 2: Mengaitkan VFS ke Runtime Namespaces
@@ -408,6 +438,23 @@ class MountManager {
                     }
                 }
 
+                // Universal sweeping unmount: purge any remaining or stacked mounts across all namespaces
+                val sweepScript = """
+                    for i in 1 2 3; do
+                      has_mount=0
+                      while read dev mnt rest; do
+                        case "${'$'}mnt" in
+                          *${game.packageName}*)
+                            umount -f -l "${'$'}mnt" 2>/dev/null
+                            has_mount=1
+                            ;;
+                        esac
+                      done < /proc/mounts
+                      if [ ${'$'}has_mount -eq 0 ]; then break; fi
+                    done
+                """.trimIndent()
+                RootShell.execScript(sweepScript)
+
                 // Step 2: Restore SELinux context
                 onProgress?.invoke(
                     OperationProgress(
@@ -461,22 +508,33 @@ class MountManager {
             runCatching {
                 // Detach all virtual containers first
                 val containersScript = """
-                    for loop_dev in $(losetup -a 2>/dev/null | grep "\.mountx/containers" | cut -d':' -f1 | tr -d '\r'); do
-                        if [ -n "${'$'}loop_dev" ]; then
-                            sync
-                            umount -f -l "${'$'}loop_dev" 2>/dev/null
-                            losetup -d "${'$'}loop_dev" 2>/dev/null
-                        fi
+                    while read dev mnt rest; do
+                      case "${'$'}mnt" in
+                        *.mountx/containers*|*/data/user/0/*|*/data/data/*)
+                          sync
+                          umount -f -l "${'$'}mnt" 2>/dev/null
+                          ;;
+                      esac
+                    done < /proc/mounts
+                    for loop_dev in $(losetup -a 2>/dev/null | grep "\.mountx/containers" | awk -F':' '{print $1}'); do
+                      if [ -n "${'$'}loop_dev" ]; then
+                        losetup -d "${'$'}loop_dev" 2>/dev/null
+                      fi
                     done
                 """.trimIndent()
                 RootShell.execScript(containersScript)
 
-                // Unmount bind mounts
+                // Unmount bind mounts cleanly with multi-pass sweep
                 val script = """
-                    for m in $(grep "$sdBase" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
-                        if [ "${'$'}m" != "$sdBase" ]; then
-                            umount -f -l "${'$'}m" 2>/dev/null
+                    for i in 1 2 3; do
+                      has_mount=0
+                      while read dev mnt rest; do
+                        if [ "${'$'}mnt" != "$sdBase" ] && echo "${'$'}mnt" | grep -q "$sdBase"; then
+                          umount -f -l "${'$'}mnt" 2>/dev/null
+                          has_mount=1
                         fi
+                      done < /proc/mounts
+                      if [ ${'$'}has_mount -eq 0 ]; then break; fi
                     done
                 """.trimIndent()
                 RootShell.execScript(script)

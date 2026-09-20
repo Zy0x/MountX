@@ -86,10 +86,17 @@ fun GamesScreen(
         viewModel.scanDiscoveredGames()
     }
 
+    val vmSelectedGame by viewModel.selectedGameForDetail.collectAsState()
     var showAddSheet by remember { mutableStateOf(false) }
     var selectedGameForDetail by remember { mutableStateOf<GameEntry?>(null) }
     var gameToDelete by remember { mutableStateOf<GameEntry?>(null) }
     var configuringApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
+
+    LaunchedEffect(vmSelectedGame) {
+        if (vmSelectedGame != null) {
+            selectedGameForDetail = vmSelectedGame
+        }
+    }
 
     LaunchedEffect(showAddSheet, selectedGameForDetail, configuringApp) {
         val isPickerOrDetail = showAddSheet || selectedGameForDetail != null || configuringApp != null
@@ -180,6 +187,7 @@ fun GamesScreen(
             onDismiss = {
                 viewModel.clearMoveMessage()
                 selectedGameForDetail = null
+                viewModel.selectGameForDetail(null)
             },
             onToggleMount = { viewModel.toggleMount(updatedGame) },
             onMoveMountPoints = { dir, pts, targetDisk, targetPartition, conflictStrategy ->
@@ -192,6 +200,7 @@ fun GamesScreen(
             onDelete = {
                 gameToDelete = updatedGame
                 selectedGameForDetail = null
+                viewModel.selectGameForDetail(null)
             },
             onDeleteCategoryData = { catId, loc, callback ->
                 viewModel.deleteCategoryData(updatedGame.packageName, catId, loc, callback)
@@ -292,6 +301,7 @@ fun GamesContent(
     onDismissDiscovered: () -> Unit = {}
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
+    var gameToUnmount by remember { mutableStateOf<GameEntry?>(null) }
 
     val mountedCount = games.count { it.mountStatus == MountStatus.MOUNTED }
     val unmountedCount = games.count { it.mountStatus != MountStatus.MOUNTED }
@@ -508,7 +518,7 @@ fun GamesContent(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 14.dp)
+                    .padding(start = 14.dp, end = 14.dp, top = 10.dp)
             ) {
             if (discoveredGames.isNotEmpty()) {
                 DiscoveredGamesBanner(
@@ -695,7 +705,13 @@ fun GamesContent(
                         items(processedGames, key = { it.packageName }) { game ->
                             ModernGameCard(
                                 game = game,
-                                onToggleMount = { onToggleMount(game) },
+                                onToggleMount = {
+                                    if (game.mountStatus == MountStatus.MOUNTED) {
+                                        gameToUnmount = game
+                                    } else {
+                                        onToggleMount(game)
+                                    }
+                                },
                                 onCardClick = { onSelectGameForDetail(game) }
                             )
                         }
@@ -706,6 +722,20 @@ fun GamesContent(
                 }
             }
         }
+    }
+
+    if (gameToUnmount != null) {
+        val target = gameToUnmount!!
+        ConfirmDialog(
+            title = stringResource(R.string.unmount_confirm_title),
+            message = stringResource(R.string.unmount_confirm_message),
+            confirmText = stringResource(R.string.manage_btn_unmount_game),
+            onConfirm = {
+                gameToUnmount = null
+                onToggleMount(target)
+            },
+            onDismiss = { gameToUnmount = null }
+        )
     }
 }
 }

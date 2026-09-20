@@ -270,11 +270,16 @@ fun MainTabsScreen(
             when (page) {
                 0 -> {
                     val dashboardVm = hiltViewModel<DashboardViewModel>()
+                    val gamesVm = hiltViewModel<GamesViewModel>()
                     DashboardScreen(
                         viewModel = dashboardVm,
                         onNavigateToGames = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
                         onNavigateToStorage = { coroutineScope.launch { pagerState.animateScrollToPage(2) } },
-                        onNavigateToLogs = { coroutineScope.launch { pagerState.animateScrollToPage(3) } }
+                        onNavigateToLogs = { coroutineScope.launch { pagerState.animateScrollToPage(3) } },
+                        onOpenGameDetail = { game ->
+                            gamesVm.selectGameForDetail(game)
+                            coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                        }
                     )
                 }
                 1 -> {

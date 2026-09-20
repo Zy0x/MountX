@@ -74,6 +74,13 @@ class GamesViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _selectedGameForDetail = MutableStateFlow<GameEntry?>(null)
+    val selectedGameForDetail: StateFlow<GameEntry?> = _selectedGameForDetail.asStateFlow()
+
+    fun selectGameForDetail(game: GameEntry?) {
+        _selectedGameForDetail.value = game
+    }
+
     init {
         loadAvailableDisks()
         viewModelScope.launch {

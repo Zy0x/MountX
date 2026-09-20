@@ -377,6 +377,16 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.24 (Stabilisasi Ukuran VFS, Manajemen Modul Root & Info Aplikasi)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Stabilisasi Deteksi Ukuran Game: Mencegah penurunan ukuran drastis ke 20KB saat direktori skeleton ter-mount di atas data internal, serta memblokir kaitan folder kosong di atas data riil.", fontSize = 11.sp)
+                        Text(text = "• Manajemen Terpadu Modul Root: Banner peringatan modul kini menyediakan opsi aktivasi instan via root serta ekspor berkas ZIP flashable langsung ke folder Download.", fontSize = 11.sp)
+                        Text(text = "• Tab Info Aplikasi Lengkap: Menggantikan tab Kelola menjadi panel informasi komprehensif (identitas paket, versi, SDK target/min, UID/GID sandbox, jalur direktori sistem & APK, serta tombol buka game & setelan sistem).", fontSize = 11.sp)
+                        Text(text = "• Tombol Kaitan Bergantian (Alternating Mount): Tab Penyimpanan kini menggunakan tombol dinamis tunggal ('Kaitkan Game' vs 'Lepaskan Mount' dengan dialog konfirmasi aman).", fontSize = 11.sp)
+                        Text(text = "• Pemisahan Touch Target & Konfirmasi Unmount: Mengetuk badan kartu game akan membuka detail aplikasi, sedangkan saklar/pill kanan berfungsi untuk kaitan dengan konfirmasi pelepasan.", fontSize = 11.sp)
+                        Text(text = "• Peningkatan Ergonomi & Spacing UI: Memperbaiki jarak margin header, kotak pencarian, dan penataan kartu kontrol utama.", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.23 (Back Navigation Berjenjang, Konfirmasi Migrasi & Resolusi Konflik Data)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Navigasi Back Gesture Berjenjang: Back gesture pada sub-layar (Kelola Penyimpanan, modal target partisi, inspeksi kategori, pencarian aplikasi, dialog) kini mundur bertahap per level secara intuitif.", fontSize = 11.sp)

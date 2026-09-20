@@ -38,6 +38,9 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Extension
+import app.mountx.ui.components.ModuleInstallDialog
+import app.mountx.ui.components.ConfirmDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -132,6 +135,7 @@ fun DashboardScreen(
     onNavigateToGames: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToLogs: () -> Unit = {},
+    onOpenGameDetail: (GameEntry) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val status by viewModel.appStatus.collectAsState()
@@ -158,6 +162,7 @@ fun DashboardScreen(
         onNavigateToGames = onNavigateToGames,
         onNavigateToStorage = onNavigateToStorage,
         onNavigateToLogs = onNavigateToLogs,
+        onOpenGameDetail = onOpenGameDetail,
         onMountAll = { viewModel.mountAll() },
         onUnmountAll = { viewModel.unmountAll() },
         onToggleGameMount = { viewModel.toggleMount(it) },
@@ -183,6 +188,7 @@ fun DashboardContent(
     onNavigateToGames: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToLogs: () -> Unit,
+    onOpenGameDetail: (GameEntry) -> Unit = {},
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onToggleGameMount: (GameEntry) -> Unit,
@@ -193,6 +199,8 @@ fun DashboardContent(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var showNamespaceSheet by remember { mutableStateOf(false) }
+    var showModuleInstallDialog by remember { mutableStateOf(false) }
+    var gameToUnmountConfirm by remember { mutableStateOf<GameEntry?>(null) }
 
     Scaffold(
         topBar = {
@@ -222,10 +230,13 @@ fun DashboardContent(
                         .weight(1f)
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp)
+                    contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp)
                 ) {
                     item {
-                        ContextualAlertBanner(status = status)
+                        ContextualAlertBanner(
+                            status = status,
+                            onInstallModuleClick = { showModuleInstallDialog = true }
+                        )
                     }
                     item {
                         SmartMasterControlCard(
@@ -235,7 +246,14 @@ fun DashboardContent(
                             onMountAll = onMountAll,
                             onUnmountAll = onUnmountAll,
                             onNavigateToGames = onNavigateToGames,
-                            onToggleGameMount = onToggleGameMount
+                            onOpenGameDetail = onOpenGameDetail,
+                            onToggleGameMount = { game ->
+                                if (game.mountStatus == MountStatus.MOUNTED) {
+                                    gameToUnmountConfirm = game
+                                } else {
+                                    onToggleGameMount(game)
+                                }
+                            }
                         )
                     }
                     item {
@@ -254,7 +272,7 @@ fun DashboardContent(
                         .weight(1f)
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp)
+                    contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp)
                 ) {
                     item {
                         DashboardMetricsRow(
@@ -268,11 +286,14 @@ fun DashboardContent(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 16.dp),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
-                    ContextualAlertBanner(status = status)
+                    ContextualAlertBanner(
+                        status = status,
+                        onInstallModuleClick = { showModuleInstallDialog = true }
+                    )
                 }
                 item {
                     SmartMasterControlCard(
@@ -282,7 +303,14 @@ fun DashboardContent(
                         onMountAll = onMountAll,
                         onUnmountAll = onUnmountAll,
                         onNavigateToGames = onNavigateToGames,
-                        onToggleGameMount = onToggleGameMount
+                        onOpenGameDetail = onOpenGameDetail,
+                        onToggleGameMount = { game ->
+                            if (game.mountStatus == MountStatus.MOUNTED) {
+                                gameToUnmountConfirm = game
+                            } else {
+                                onToggleGameMount(game)
+                            }
+                        }
                     )
                 }
                 item {
@@ -313,6 +341,29 @@ fun DashboardContent(
                 onRecalculateSizes = onRecalculateSizes,
                 onRefreshTelemetry = onRefreshTelemetry,
                 onDismiss = { showNamespaceSheet = false }
+            )
+        }
+
+        if (showModuleInstallDialog) {
+            ModuleInstallDialog(
+                onDismiss = { showModuleInstallDialog = false },
+                onModuleInstalledOrEnabled = {
+                    onRefresh()
+                }
+            )
+        }
+
+        if (gameToUnmountConfirm != null) {
+            val target = gameToUnmountConfirm!!
+            ConfirmDialog(
+                title = stringResource(R.string.unmount_confirm_title),
+                message = stringResource(R.string.unmount_confirm_message),
+                confirmText = stringResource(R.string.manage_btn_unmount_game),
+                onConfirm = {
+                    gameToUnmountConfirm = null
+                    onToggleGameMount(target)
+                },
+                onDismiss = { gameToUnmountConfirm = null }
             )
         }
     }
@@ -422,7 +473,10 @@ private fun SleekCompactHeader(
 // ── 2. Contextual Warning / Error Banner (Zero clutter on normal state) ──
 
 @Composable
-private fun ContextualAlertBanner(status: AppStatus) {
+private fun ContextualAlertBanner(
+    status: AppStatus,
+    onInstallModuleClick: () -> Unit = {}
+) {
     when {
         status.rootSolution == RootSolution.NONE -> {
             Card(
@@ -481,40 +535,70 @@ private fun ContextualAlertBanner(status: AppStatus) {
                 border = BorderStroke(1.dp, SunsetAmber.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = SunsetAmber.copy(alpha = 0.18f),
-                        modifier = Modifier.size(32.dp)
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = SunsetAmber,
-                                modifier = Modifier.size(16.dp)
+                        Surface(
+                            shape = CircleShape,
+                            color = SunsetAmber.copy(alpha = 0.18f),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = SunsetAmber,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.dashboard_module_not_installed),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = SunsetAmber
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = stringResource(R.string.dashboard_module_install_guide),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.dashboard_module_not_installed),
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = SunsetAmber
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = stringResource(R.string.dashboard_module_install_guide),
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
-                        )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                            onClick = onInstallModuleClick,
+                            colors = ButtonDefaults.buttonColors(containerColor = SunsetAmber),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Extension,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.dashboard_btn_install_module),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.Black
+                            )
+                        }
                     }
                 }
             }
@@ -536,6 +620,7 @@ private fun SmartMasterControlCard(
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onNavigateToGames: () -> Unit,
+    onOpenGameDetail: (GameEntry) -> Unit = {},
     onToggleGameMount: (GameEntry) -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
@@ -666,7 +751,7 @@ private fun SmartMasterControlCard(
                                 .fillMaxWidth()
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onToggleGameMount(game)
+                                    onOpenGameDetail(game)
                                 }
                         ) {
                             Row(
@@ -708,6 +793,10 @@ private fun SmartMasterControlCard(
                                 }
 
                                 Surface(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onToggleGameMount(game)
+                                    },
                                     shape = RoundedCornerShape(12.dp),
                                     color = if (isMounted) activeEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
                                     border = BorderStroke(

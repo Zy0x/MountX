@@ -921,6 +921,49 @@
     <string name="migration_confirm_btn_start_move">Lanjutkan Pemindahan</string>
     <string name="migration_confirm_btn_start_restore">Lanjutkan Pemulihan</string>
     <string name="manage_btn_restore_internal_with_size">Kembalikan ke Internal (%1$s)</string>
+
+    <!-- v2.2.24 Features & Enhancements -->
+    <string name="game_detail_tab_info">Info Aplikasi</string>
+    <string name="dashboard_btn_install_module">Pasang Modul</string>
+    <string name="dashboard_btn_enable_module">Aktifkan Modul</string>
+    <string name="module_dialog_title">Modul Sistem MountX</string>
+    <string name="module_status_not_installed_desc">Modul Magisk/KernelSU MountX diperlukan untuk persistensi saat booting dan isolasi namespace kaitan.</string>
+    <string name="module_status_disabled_desc">Modul MountX terdeteksi namun dalam status nonaktif di root manager perangkat Anda.</string>
+    <string name="module_root_solution_detected">Lingkungan Root Terdeteksi</string>
+    <string name="module_action_auto_install_title">Pasang Otomatis (Flash via Root)</string>
+    <string name="module_action_auto_install_desc">Memasang dan mengaktifkan modul langsung melalui root tanpa perlu flash manual.</string>
+    <string name="module_action_enable_title">Aktifkan Kembali Modul</string>
+    <string name="module_action_enable_desc">Menghapus penanda nonaktif agar modul langsung aktif kembali.</string>
+    <string name="module_action_export_title">Ekspor Berkas ZIP Modul</string>
+    <string name="module_action_export_desc">Menyimpan file .zip ke folder Download untuk di-flash manual melalui aplikasi Magisk / KSU / APatch.</string>
+    <string name="module_btn_install_now">Pasang &amp; Aktifkan Sekarang</string>
+    <string name="module_btn_enable_now">Aktifkan Sekarang</string>
+    <string name="module_btn_export_zip">Simpan ZIP ke Download</string>
+    <string name="manage_btn_mount_game">Kaitkan Game</string>
+    <string name="manage_btn_unmount_game">Lepaskan Mount</string>
+    <string name="unmount_confirm_title">Lepaskan Kaitan Game?</string>
+    <string name="unmount_confirm_message">Kaitan direktori ke MicroSD akan dilepas. Data game pada MicroSD tidak dapat diakses hingga Anda mengaitkannya kembali.</string>
+    <string name="mount_empty_sd_warning_title">Data Masih di Memori Internal</string>
+    <string name="mount_empty_sd_warning_message">Data game ini saat ini tersimpan di memori internal. Silakan gunakan \'Kelola Penyimpanan\' untuk memindahkan data ke MicroSD sebelum mengaitkannya.</string>
+    <string name="mount_empty_sd_btn_open_detail">Kelola Penyimpanan</string>
+    <string name="app_info_section_identity">Identitas Paket &amp; Versi</string>
+    <string name="app_info_section_storage">Jalur Berkas &amp; Penyimpanan</string>
+    <string name="app_info_section_runtime">Lingkungan Runtime &amp; Keamanan</string>
+    <string name="app_info_pkg_name">Nama Paket</string>
+    <string name="app_info_version">Versi Aplikasi</string>
+    <string name="app_info_sdk_levels">Target / Min SDK</string>
+    <string name="app_info_install_time">Waktu Pasang Pertama</string>
+    <string name="app_info_update_time">Pembaruan Terakhir</string>
+    <string name="app_info_installer">Penginstal Asal</string>
+    <string name="app_info_uid_gid">UID / GID Sandbox</string>
+    <string name="app_info_apk_path">Berkas APK Utama</string>
+    <string name="app_info_lib_path">Direktori Native Lib</string>
+    <string name="app_info_internal_data">Data Internal (Private)</string>
+    <string name="app_info_external_data">Data Eksternal (Android/data)</string>
+    <string name="app_info_external_obb">External OBB (Android/obb)</string>
+    <string name="app_info_sd_target">Direktori Kaitan MicroSD</string>
+    <string name="app_info_btn_system_settings">Pengaturan Aplikasi Sistem</string>
+    <string name="app_info_btn_launch">Buka Game</string>
 </resources>
 
 

@@ -100,6 +100,7 @@ import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.SunsetAmber
 import app.mountx.util.FormatUtils
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -397,7 +398,7 @@ fun GameDetailView(
                         packageInfo = packageInfo,
                         onDeleteCategoryData = onDeleteCategoryData
                     )
-                    1 -> ManageTabContent()
+                    1 -> AppInfoTabContent(game = game, packageInfo = packageInfo)
                 }
             }
         }
@@ -429,7 +430,7 @@ private fun DetailCapsuleTabRow(
 ) {
     val tabs = listOf(
         stringResource(R.string.game_detail_tab_storage),
-        stringResource(R.string.game_detail_tab_manage)
+        stringResource(R.string.game_detail_tab_info)
     )
 
     Surface(
@@ -697,23 +698,27 @@ private fun StorageTabContent(
     var categoryToDelete by remember { mutableStateOf<UnifiedCategoryItem?>(null) }
     var isDeletingCategory by remember { mutableStateOf(false) }
     var migrationConfirmData by remember { mutableStateOf<MigrationConfirmData?>(null) }
+    var showUnmountConfirmDialog by remember { mutableStateOf(false) }
 
     // Hierarchical Step-by-Step Back Navigation inside Storage Tab
-    BackHandler(enabled = migrationConfirmData != null) {
+    BackHandler(enabled = showUnmountConfirmDialog) {
+        showUnmountConfirmDialog = false
+    }
+    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData != null) {
         migrationConfirmData = null
     }
-    BackHandler(enabled = migrationConfirmData == null && categoryToDelete != null) {
+    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete != null) {
         if (!isDeletingCategory) {
             categoryToDelete = null
         }
     }
-    BackHandler(enabled = migrationConfirmData == null && categoryToDelete == null && inspectingCategory != null) {
+    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory != null) {
         inspectingCategory = null
     }
-    BackHandler(enabled = migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && showTargetModal) {
+    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && showTargetModal) {
         showTargetModal = false
     }
-    BackHandler(enabled = migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && !showTargetModal && isSelectionMode) {
+    BackHandler(enabled = !showUnmountConfirmDialog && migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && !showTargetModal && isSelectionMode) {
         isSelectionMode = false
     }
 
@@ -1148,35 +1153,39 @@ private fun StorageTabContent(
                         )
                     }
 
-                    // Right: Lepaskan Mount
+                    // Right: Alternating Mount / Unmount button
+                    val actionBorderColor = if (isMounted) SunsetAmber.copy(alpha = 0.7f) else CyberEmerald.copy(alpha = 0.7f)
+                    val actionContentColor = if (isMounted) SunsetAmber else CyberEmerald
+
                     OutlinedButton(
-                        onClick = onUnmount,
-                        enabled = isMounted,
+                        onClick = {
+                            if (isMounted) {
+                                showUnmountConfirmDialog = true
+                            } else {
+                                onUnmount()
+                            }
+                        },
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isMounted) Color(0xFFFFA000).copy(alpha = 0.7f)
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                        ),
+                        border = BorderStroke(1.dp, actionBorderColor),
                         modifier = Modifier
                             .weight(1f)
                             .height(40.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.LinkOff,
+                            imageVector = if (isMounted) Icons.Default.LinkOff else Icons.Default.PlayArrow,
                             contentDescription = null,
-                            tint = if (isMounted) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            tint = actionContentColor,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = stringResource(R.string.manage_btn_unmount),
+                            text = stringResource(if (isMounted) R.string.manage_btn_unmount_game else R.string.manage_btn_mount_game),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = if (isMounted) Color(0xFFFFA000) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            color = actionContentColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1316,6 +1325,49 @@ private fun StorageTabContent(
             onDismiss = {
                 if (!isDeletingCategory) {
                     categoryToDelete = null
+                }
+            }
+        )
+    }
+
+    // ── UNMOUNT CONFIRMATION DIALOG ──
+    if (showUnmountConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnmountConfirmDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.LinkOff,
+                    contentDescription = null,
+                    tint = SunsetAmber
+                )
+            },
+            title = {
+                Text(
+                    stringResource(R.string.unmount_confirm_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.unmount_confirm_message),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUnmountConfirmDialog = false
+                        onUnmount()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SunsetAmber)
+                ) {
+                    Text(stringResource(R.string.common_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnmountConfirmDialog = false }) {
+                    Text(stringResource(R.string.common_cancel))
                 }
             }
         )
@@ -2766,59 +2818,354 @@ private fun SmartStoragePartitionBottomSheet(
 }
 
 /**
- * Tab 1: Minimalist Clean Placeholder (Layar 6)
+ * Tab 1: App Info Tab (Identitas Paket, Versi, Lingkungan Sandbox & Jalur Direktori)
  */
 @Composable
-private fun ManageTabContent(
+private fun AppInfoTabContent(
+    game: GameEntry,
+    packageInfo: android.content.pm.PackageInfo?,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()) }
+    val installTimeStr = remember(packageInfo) {
+        packageInfo?.firstInstallTime?.let { if (it > 0L) dateFormat.format(Date(it)) else "-" } ?: "-"
+    }
+    val updateTimeStr = remember(packageInfo) {
+        packageInfo?.lastUpdateTime?.let { if (it > 0L) dateFormat.format(Date(it)) else "-" } ?: "-"
+    }
+
+    val targetSdkStr = remember(packageInfo) {
+        packageInfo?.applicationInfo?.targetSdkVersion?.let { target ->
+            val androidName = when (target) {
+                35 -> "Android 15"
+                34 -> "Android 14"
+                33 -> "Android 13"
+                32 -> "Android 12L"
+                31 -> "Android 12"
+                30 -> "Android 11"
+                29 -> "Android 10"
+                28 -> "Android 9"
+                26, 27 -> "Android 8"
+                else -> "API $target"
+            }
+            "$target ($androidName)"
+        } ?: "-"
+    }
+
+    val minSdkStr = remember(packageInfo) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            packageInfo?.applicationInfo?.minSdkVersion?.let { minSdk ->
+                val androidName = when (minSdk) {
+                    24, 25 -> "Android 7"
+                    26, 27 -> "Android 8"
+                    28 -> "Android 9"
+                    29 -> "Android 10"
+                    30 -> "Android 11"
+                    else -> "API $minSdk"
+                }
+                "$minSdk ($androidName)"
+            } ?: "-"
+        } else "-"
+    }
+
+    val uidStr = remember(packageInfo) {
+        packageInfo?.applicationInfo?.uid?.toString() ?: "-"
+    }
+
+    val installerPackage = remember(packageInfo) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.packageManager.getInstallSourceInfo(game.packageName).installingPackageName ?: "Sistem / Sideload"
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getInstallerPackageName(game.packageName) ?: "Sistem / Sideload"
+            }
+        } catch (_: Exception) {
+            "Sistem / Sideload"
+        }
+    }
+
+    val apkPath = remember(packageInfo) {
+        packageInfo?.applicationInfo?.sourceDir ?: "-"
+    }
+
+    val nativeLibDir = remember(packageInfo) {
+        packageInfo?.applicationInfo?.nativeLibraryDir ?: "-"
+    }
+
+    val copyToClipboard: (String, String) -> Unit = { label, value ->
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText(label, value)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(context, "$label disalin", Toast.LENGTH_SHORT).show()
+    }
+
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
+            .verticalScroll(scrollState)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(bottom = 60.dp)
+        // ── Action Buttons: Launch App & System App Settings ──
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                modifier = Modifier.size(80.dp)
+            Button(
+                onClick = {
+                    val launchIntent = context.packageManager.getLaunchIntentForPackage(game.packageName)
+                    if (launchIntent != null) {
+                        context.startActivity(launchIntent)
+                    } else {
+                        Toast.makeText(context, "Aplikasi tidak dapat dibuka langsung", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory2,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(38.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.app_info_btn_launch),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1
+                )
             }
 
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            OutlinedButton(
+                onClick = {
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", game.packageName, null)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Gagal membuka setelan aplikasi", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp)
             ) {
+                Icon(
+                    imageVector = Icons.Default.Tune,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = stringResource(R.string.manage_tab_placeholder_title),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = stringResource(R.string.app_info_btn_system_settings),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // ── Section 1: Identitas Paket & Versi ──
+        InfoSectionCard(
+            title = stringResource(R.string.app_info_section_identity),
+            icon = Icons.Default.Android
+        ) {
+            InfoRowItem(
+                label = stringResource(R.string.app_info_pkg_name),
+                value = game.packageName,
+                isCopyable = true,
+                onCopy = { copyToClipboard("Package Name", game.packageName) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            val verCode = packageInfo?.let { PackageInfoCompat.getLongVersionCode(it) }?.toString() ?: "-"
+            InfoRowItem(
+                label = stringResource(R.string.app_info_version),
+                value = "${packageInfo?.versionName ?: "-"} (Build $verCode)"
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            InfoRowItem(
+                label = stringResource(R.string.app_info_sdk_levels),
+                value = "$targetSdkStr / $minSdkStr"
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            InfoRowItem(
+                label = stringResource(R.string.app_info_installer),
+                value = installerPackage
+            )
+        }
+
+        // ── Section 2: Lingkungan Runtime & Keamanan ──
+        InfoSectionCard(
+            title = stringResource(R.string.app_info_section_runtime),
+            icon = Icons.Default.Lock
+        ) {
+            InfoRowItem(
+                label = stringResource(R.string.app_info_uid_gid),
+                value = uidStr
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            InfoRowItem(
+                label = stringResource(R.string.app_info_install_time),
+                value = installTimeStr
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            InfoRowItem(
+                label = stringResource(R.string.app_info_update_time),
+                value = updateTimeStr
+            )
+        }
+
+        // ── Section 3: Jalur Berkas & Penyimpanan ──
+        InfoSectionCard(
+            title = stringResource(R.string.app_info_section_storage),
+            icon = Icons.Default.Folder
+        ) {
+            InfoRowItem(
+                label = stringResource(R.string.app_info_apk_path),
+                value = apkPath,
+                isCopyable = true,
+                onCopy = { copyToClipboard("APK Path", apkPath) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            InfoRowItem(
+                label = stringResource(R.string.app_info_lib_path),
+                value = nativeLibDir,
+                isCopyable = true,
+                onCopy = { copyToClipboard("Lib Path", nativeLibDir) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            val internalData = "/data/data/${game.packageName}"
+            InfoRowItem(
+                label = stringResource(R.string.app_info_internal_data),
+                value = internalData,
+                isCopyable = true,
+                onCopy = { copyToClipboard("Internal Data Path", internalData) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            val extData = "/storage/emulated/0/Android/data/${game.packageName}"
+            InfoRowItem(
+                label = stringResource(R.string.app_info_external_data),
+                value = extData,
+                isCopyable = true,
+                onCopy = { copyToClipboard("External Data Path", extData) }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+            val extObb = "/storage/emulated/0/Android/obb/${game.packageName}"
+            InfoRowItem(
+                label = stringResource(R.string.app_info_external_obb),
+                value = extObb,
+                isCopyable = true,
+                onCopy = { copyToClipboard("External OBB Path", extObb) }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun InfoSectionCard(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
                 )
                 Text(
-                    text = stringResource(R.string.manage_tab_placeholder_desc),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 13.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun InfoRowItem(
+    label: String,
+    value: String,
+    isCopyable: Boolean = false,
+    onCopy: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (isCopyable && onCopy != null) Modifier.clickable { onCopy() }
+                else Modifier
+            )
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (isCopyable) {
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = { onCopy?.invoke() },
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy",
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    modifier = Modifier.size(15.dp)
                 )
             }
         }
