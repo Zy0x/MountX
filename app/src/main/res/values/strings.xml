@@ -135,6 +135,7 @@
     <string name="status_unmounted">Unmounted</string>
     <string name="status_error">Error</string>
     <string name="status_need_migration">Needs Migration</string>
+    <string name="status_disk_detached">Disk Detached</string>
     <string name="status_unknown">Unknown</string>
     <string name="status_loading">Loading…</string>
     <string name="dialog_need_migration_title">Data Migration Required</string>
@@ -619,6 +620,7 @@
     <string name="portability_banner_title">Discovered %1$d Game(s) on MicroSD</string>
     <string name="portability_banner_desc">Existing game data was detected on your MicroSD card. Tap to import and reconcile permissions.</string>
     <string name="portability_btn_restore">Restore &amp; Sync</string>
+    <string name="portability_btn_restructure">Restructure Paths</string>
     <string name="portability_btn_dismiss">Dismiss</string>
     <string name="portability_sheet_title">MicroSD Game Discovery</string>
     <string name="portability_unlinked_label">Unlinked Data</string>

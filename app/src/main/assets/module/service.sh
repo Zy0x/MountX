@@ -308,12 +308,26 @@ process_game() {
     ts=$(date '+%Y-%m-%d %H:%M:%S')
     log_info "── Processing [${pkg}] mode=${mode} at ${ts}"
 
-    # Internal (system) data and obb paths
+    # Internal (system) data, obb, and media paths
     local int_data="/data/media/0/Android/data/${pkg}"
     local int_obb="/data/media/0/Android/obb/${pkg}"
-    # External SD source data and obb paths
-    local sd_data="${SD_BASE}/Android/data/${pkg}"
-    local sd_obb="${SD_BASE}/Android/obb/${pkg}"
+    local int_media="/data/media/0/Android/media/${pkg}"
+
+    # External SD source data and obb paths (Check MountX modern first, then legacy fallback)
+    local sd_data="${SD_BASE}/MountX/Android/data/${pkg}"
+    if [ ! -d "${sd_data}" ] && [ -d "${SD_BASE}/Android/data/${pkg}" ]; then
+        sd_data="${SD_BASE}/Android/data/${pkg}"
+    fi
+
+    local sd_obb="${SD_BASE}/MountX/Android/obb/${pkg}"
+    if [ ! -d "${sd_obb}" ] && [ -d "${SD_BASE}/Android/obb/${pkg}" ]; then
+        sd_obb="${SD_BASE}/Android/obb/${pkg}"
+    fi
+
+    local sd_media="${SD_BASE}/MountX/Android/media/${pkg}"
+    if [ ! -d "${sd_media}" ] && [ -d "${SD_BASE}/Android/media/${pkg}" ]; then
+        sd_media="${SD_BASE}/Android/media/${pkg}"
+    fi
 
     # Determine data source and destination sub-paths based on mode
     local src_data dst_data
@@ -349,6 +363,17 @@ process_game() {
         umount_stale "${int_obb}"
         apply_permissions "${pkg}" "${sd_obb}"
         bind_mount_all_ns "${sd_obb}" "${int_obb}" "${pkg}"
+    fi
+
+    # 3. Mount Media if present on SD
+    if [ -d "${sd_media}" ]; then
+        log_info "  [${pkg}] Media directory detected on SD: ${sd_media}"
+        if [ ! -d "${int_media}" ]; then
+            mkdir -p "${int_media}" || log_warn "  [${pkg}] Could not create destination media dir"
+        fi
+        umount_stale "${int_media}"
+        apply_permissions "${pkg}" "${sd_media}"
+        bind_mount_all_ns "${sd_media}" "${int_media}" "${pkg}"
     fi
 }
 

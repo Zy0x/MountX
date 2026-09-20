@@ -34,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -476,6 +477,7 @@ fun AppMountConfigSheet(
     // Custom Path Input Dialog
     if (showCustomPathDialog) {
         var customPathInput by remember { mutableStateOf("") }
+        var showRootPicker by remember { mutableStateOf(false) }
         val dialogFieldColors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = Color(0xFF162035),
             unfocusedContainerColor = Color(0xFF162035),
@@ -512,6 +514,15 @@ fun AppMountConfigSheet(
                         value = customPathInput,
                         onValueChange = { customPathInput = it },
                         placeholder = { Text("Contoh: Android/data/${appInfo.packageName}/files/assets", fontSize = 12.sp) },
+                        trailingIcon = {
+                            IconButton(onClick = { showRootPicker = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = "Pilih Folder",
+                                    tint = Color(0xFF818CF8)
+                                )
+                            }
+                        },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         colors = dialogFieldColors,
@@ -552,5 +563,25 @@ fun AppMountConfigSheet(
                 }
             }
         )
+
+        if (showRootPicker) {
+            app.mountx.ui.components.RootDirectoryPickerSheet(
+                initialPath = if (customPathInput.isNotBlank()) {
+                    if (customPathInput.startsWith("/")) customPathInput else "/data/media/0/$customPathInput"
+                } else "/data/media/0",
+                sdBasePath = "/data/sdext2",
+                onDismiss = { showRootPicker = false },
+                onPathSelected = { pickedPath ->
+                    val relPath = if (pickedPath.startsWith("/data/media/0/")) {
+                        pickedPath.removePrefix("/data/media/0/")
+                    } else if (pickedPath.startsWith("/sdcard/")) {
+                        pickedPath.removePrefix("/sdcard/")
+                    } else {
+                        pickedPath.removePrefix("/")
+                    }
+                    customPathInput = relPath
+                }
+            )
+        }
     }
 }

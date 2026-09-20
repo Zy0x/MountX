@@ -26,6 +26,7 @@ data class AppStorageBreakdown(
     val ext2DataBytes: Long = 0L,
     val ext2ObbBytes: Long = 0L,
     val ext2MediaBytes: Long = 0L,
+    val customBytes: Long = 0L,
     val isExt1Mounted: Boolean = false,
     val isDataMounted: Boolean = false,
     val isObbMounted: Boolean = false,
@@ -51,11 +52,11 @@ data class AppStorageBreakdown(
 
     /** Total data residing physically on secondary MicroSD partition */
     val microSdBytes: Long
-        get() = ext2Bytes
+        get() = ext2Bytes + customBytes
 
-    /** Total external MicroSD storage (Ext 2) */
+    /** Total external MicroSD storage (Ext 2 + Custom) */
     val externalBytes: Long
-        get() = ext2Bytes
+        get() = ext2Bytes + customBytes
 
     /** Grand total storage physically occupied across all media */
     val totalBytes: Long

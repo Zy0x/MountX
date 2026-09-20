@@ -49,7 +49,9 @@ data class DiscoveredGame(
     val hasObbOnSd: Boolean,
     val sizeBytes: Long = 0L,
     val canaryPresent: Boolean = false,
-    val mountPoints: List<MountPointConfig> = emptyList()
+    val mountPoints: List<MountPointConfig> = emptyList(),
+    val needsRestructure: Boolean = false,
+    val originalPath: String? = null
 )
 
 /**
@@ -103,6 +105,7 @@ class DiskCatalogManager @Inject constructor(
                         } catch (_: Exception) {
                             MountPointCategory.GAME_ASSETS
                         }
+                        val labelVal = if (mpObj.has("label") && !mpObj.isNull("label")) mpObj.getString("label") else null
                         mpList.add(
                             MountPointConfig(
                                 id = mpObj.optString("id", "mp_$j"),
@@ -113,7 +116,8 @@ class DiskCatalogManager @Inject constructor(
                                 isVirtualContainer = mpObj.optBoolean("is_virtual_container", mpObj.optBoolean("isVirtualContainer", false)),
                                 containerImgPath = if (mpObj.has("container_img_path") && !mpObj.isNull("container_img_path")) mpObj.getString("container_img_path") else null,
                                 sizeBytes = mpObj.optLong("size_bytes", 0L),
-                                diskUuid = if (mpObj.has("disk_uuid") && !mpObj.isNull("disk_uuid")) mpObj.getString("disk_uuid") else if (mpObj.has("diskUuid") && !mpObj.isNull("diskUuid")) mpObj.getString("diskUuid") else null
+                                diskUuid = if (mpObj.has("disk_uuid") && !mpObj.isNull("disk_uuid")) mpObj.getString("disk_uuid") else if (mpObj.has("diskUuid") && !mpObj.isNull("diskUuid")) mpObj.getString("diskUuid") else null,
+                                label = labelVal
                             )
                         )
                     }
@@ -173,6 +177,7 @@ class DiskCatalogManager @Inject constructor(
                                 if (mp.containerImgPath != null) put("container_img_path", mp.containerImgPath)
                                 put("size_bytes", mp.sizeBytes)
                                 if (mp.diskUuid != null) put("disk_uuid", mp.diskUuid)
+                                if (mp.label != null) put("label", mp.label)
                             })
                         }
                         put("mount_points", mpArr)
@@ -194,8 +199,10 @@ class DiskCatalogManager @Inject constructor(
     }
 
     /**
-     * Fast shallow scan of MicroSD Android/data and Android/obb directories.
-     * Merges with catalog.json entries without deep recursive file system traversal.
+     * Multi-Layer Smart Scan for Game Data on MicroSD.
+     * Lapisan 1: Folder Standar $sdBase/MountX/Android/data & obb
+     * Lapisan 2: Folder Legacy $sdBase/Android/data & obb
+     * Lapisan 3: Folder Non-Standar $sdBase/Games, $sdBase/GameData
      */
     suspend fun scanSdCardForGames(
         sdBase: String,
@@ -210,15 +217,21 @@ class DiskCatalogManager @Inject constructor(
             for (cg in catalog.games) {
                 val isInstalled = installedApps.containsKey(cg.packageName)
                 val isRegistered = registeredPackages.contains(cg.packageName)
-                val hasData = RootShell.exists("$sdBase/Android/data/${cg.packageName}")
-                val hasObb = RootShell.exists("$sdBase/Android/obb/${cg.packageName}")
-                val canary = RootShell.exists("$sdBase/Android/data/${cg.packageName}/$CANARY_FILE")
+                val hasModernData = RootShell.exists("$sdBase/MountX/Android/data/${cg.packageName}")
+                val hasLegacyData = RootShell.exists("$sdBase/Android/data/${cg.packageName}")
+                val hasModernObb = RootShell.exists("$sdBase/MountX/Android/obb/${cg.packageName}")
+                val hasLegacyObb = RootShell.exists("$sdBase/Android/obb/${cg.packageName}")
+                val canary = RootShell.exists("$sdBase/MountX/Android/data/${cg.packageName}/$CANARY_FILE") ||
+                        RootShell.exists("$sdBase/Android/data/${cg.packageName}/$CANARY_FILE")
 
                 val mode = try {
                     MountMode.valueOf(cg.mode)
                 } catch (_: Exception) {
                     MountMode.PKG
                 }
+
+                val needsRestructure = !hasModernData && hasLegacyData
+                val originalPath = if (needsRestructure) "$sdBase/Android/data/${cg.packageName}" else null
 
                 detected[cg.packageName] = DiscoveredGame(
                     packageName = cg.packageName,
@@ -227,27 +240,29 @@ class DiskCatalogManager @Inject constructor(
                     source = DiscoverySource.CATALOG_ENTRY,
                     isInstalledOnDevice = isInstalled,
                     isAlreadyRegistered = isRegistered,
-                    hasDataOnSd = hasData,
-                    hasObbOnSd = hasObb,
+                    hasDataOnSd = hasModernData || hasLegacyData,
+                    hasObbOnSd = hasModernObb || hasLegacyObb,
                     sizeBytes = cg.lastKnownSizeBytes,
                     canaryPresent = canary,
-                    mountPoints = cg.mountPoints
+                    mountPoints = cg.mountPoints,
+                    needsRestructure = needsRestructure,
+                    originalPath = originalPath
                 )
             }
         }
 
-        // 2. Shallow scan $sdBase/Android/data
-        val dataOut = RootShell.execForOutput("ls -1 \"$sdBase/Android/data\" 2>/dev/null")
-        if (dataOut.isNotBlank()) {
-            for (pkg in dataOut.lines()) {
+        // 2. Lapisan 1: Standar MountX ($sdBase/MountX/Android/data & obb)
+        val modernDataOut = RootShell.execForOutput("ls -1 \"$sdBase/MountX/Android/data\" 2>/dev/null")
+        if (modernDataOut.isNotBlank()) {
+            for (pkg in modernDataOut.lines()) {
                 val cleanPkg = pkg.trim()
                 if (cleanPkg.isBlank() || cleanPkg == ".mountx_canary" || cleanPkg == ".nomedia") continue
                 if (detected.containsKey(cleanPkg)) continue
 
                 val isInstalled = installedApps.containsKey(cleanPkg)
                 val isRegistered = registeredPackages.contains(cleanPkg)
-                val hasObb = RootShell.exists("$sdBase/Android/obb/$cleanPkg")
-                val canary = RootShell.exists("$sdBase/Android/data/$cleanPkg/$CANARY_FILE")
+                val hasObb = RootShell.exists("$sdBase/MountX/Android/obb/$cleanPkg")
+                val canary = RootShell.exists("$sdBase/MountX/Android/data/$cleanPkg/$CANARY_FILE")
 
                 detected[cleanPkg] = DiscoveredGame(
                     packageName = cleanPkg,
@@ -258,22 +273,25 @@ class DiskCatalogManager @Inject constructor(
                     isAlreadyRegistered = isRegistered,
                     hasDataOnSd = true,
                     hasObbOnSd = hasObb,
-                    canaryPresent = canary
+                    canaryPresent = canary,
+                    needsRestructure = false
                 )
             }
         }
 
-        // 3. Shallow scan $sdBase/Android/obb
-        val obbOut = RootShell.execForOutput("ls -1 \"$sdBase/Android/obb\" 2>/dev/null")
-        if (obbOut.isNotBlank()) {
-            for (pkg in obbOut.lines()) {
+        // 3. Lapisan 2: Legacy Android ($sdBase/Android/data & obb)
+        val legacyDataOut = RootShell.execForOutput("ls -1 \"$sdBase/Android/data\" 2>/dev/null")
+        if (legacyDataOut.isNotBlank()) {
+            for (pkg in legacyDataOut.lines()) {
                 val cleanPkg = pkg.trim()
-                if (cleanPkg.isBlank() || cleanPkg == ".nomedia") continue
+                if (cleanPkg.isBlank() || cleanPkg == ".mountx_canary" || cleanPkg == ".nomedia") continue
+
                 val existing = detected[cleanPkg]
                 if (existing == null) {
                     val isInstalled = installedApps.containsKey(cleanPkg)
                     val isRegistered = registeredPackages.contains(cleanPkg)
-                    val hasData = RootShell.exists("$sdBase/Android/data/$cleanPkg")
+                    val hasObb = RootShell.exists("$sdBase/Android/obb/$cleanPkg")
+                    val canary = RootShell.exists("$sdBase/Android/data/$cleanPkg/$CANARY_FILE")
 
                     detected[cleanPkg] = DiscoveredGame(
                         packageName = cleanPkg,
@@ -282,17 +300,115 @@ class DiskCatalogManager @Inject constructor(
                         source = DiscoverySource.SHALLOW_SCAN,
                         isInstalledOnDevice = isInstalled,
                         isAlreadyRegistered = isRegistered,
-                        hasDataOnSd = hasData,
-                        hasObbOnSd = true,
-                        canaryPresent = false
+                        hasDataOnSd = true,
+                        hasObbOnSd = hasObb,
+                        canaryPresent = canary,
+                        needsRestructure = true,
+                        originalPath = "$sdBase/Android/data/$cleanPkg"
                     )
-                } else {
-                    detected[cleanPkg] = existing.copy(hasObbOnSd = true)
+                }
+            }
+        }
+
+        // 4. Lapisan 3: Direktori Games / GameData non-standar
+        val outerDirs = listOf("$sdBase/Games", "$sdBase/GameData")
+        for (outerBase in outerDirs) {
+            val outerOut = RootShell.execForOutput("ls -1 \"$outerBase\" 2>/dev/null")
+            if (outerOut.isNotBlank()) {
+                for (folder in outerOut.lines()) {
+                    val cleanFolder = folder.trim()
+                    if (cleanFolder.isBlank() || cleanFolder.startsWith(".")) continue
+
+                    // Match against installed apps package names or app names
+                    val matchedPkg = installedApps.keys.firstOrNull { pkg ->
+                        pkg.equals(cleanFolder, ignoreCase = true) ||
+                                (installedApps[pkg]?.equals(cleanFolder, ignoreCase = true) == true)
+                    }
+
+                    if (matchedPkg != null && !detected.containsKey(matchedPkg)) {
+                        val isRegistered = registeredPackages.contains(matchedPkg)
+                        val folderPath = "$outerBase/$cleanFolder"
+                        detected[matchedPkg] = DiscoveredGame(
+                            packageName = matchedPkg,
+                            displayName = installedApps[matchedPkg] ?: cleanFolder,
+                            mode = MountMode.PKG,
+                            source = DiscoverySource.SHALLOW_SCAN,
+                            isInstalledOnDevice = true,
+                            isAlreadyRegistered = isRegistered,
+                            hasDataOnSd = true,
+                            hasObbOnSd = false,
+                            canaryPresent = false,
+                            needsRestructure = true,
+                            originalPath = folderPath
+                        )
+                    }
                 }
             }
         }
 
         detected.values.toList()
+    }
+
+    /**
+     * Atomically restructures game data from non-standard or legacy locations into the
+     * standard MountX directory structure ($sdBase/MountX/Android/data & obb).
+     * If source and destination are on the same filesystem, this completes in 0.1 seconds via mv.
+     */
+    suspend fun restructureGameToStandard(
+        sdBase: String,
+        game: DiscoveredGame,
+        onProgress: (Float, String) -> Unit = { _, _ -> }
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val pkg = game.packageName
+            val targetDataDir = "$sdBase/MountX/Android/data/$pkg"
+            val targetObbDir = "$sdBase/MountX/Android/obb/$pkg"
+
+            onProgress(0.1f, "Menyiapkan direktori standar MountX...")
+            RootShell.exec("mkdir -p \"$sdBase/MountX/Android/data\" \"$sdBase/MountX/Android/obb\" 2>/dev/null")
+
+            val origData = if (game.originalPath != null && RootShell.exists(game.originalPath)) {
+                game.originalPath
+            } else if (RootShell.exists("$sdBase/Android/data/$pkg")) {
+                "$sdBase/Android/data/$pkg"
+            } else null
+
+            if (origData != null && origData != targetDataDir) {
+                onProgress(0.35f, "Memindahkan struktur data game ke MountX/Android/data...")
+                val mvRes = RootShell.exec("mv -f \"$origData\" \"$targetDataDir\" 2>/dev/null")
+                if (!mvRes.isSuccess) {
+                    RootShell.exec("cp -a \"$origData\" \"$targetDataDir\" && rm -rf \"$origData\" 2>/dev/null")
+                }
+            }
+
+            val origObb = "$sdBase/Android/obb/$pkg"
+            if (RootShell.exists(origObb) && origObb != targetObbDir) {
+                onProgress(0.65f, "Memindahkan OBB resource ke MountX/Android/obb...")
+                val mvObbRes = RootShell.exec("mv -f \"$origObb\" \"$targetObbDir\" 2>/dev/null")
+                if (!mvObbRes.isSuccess) {
+                    RootShell.exec("cp -a \"$origObb\" \"$targetObbDir\" && rm -rf \"$origObb\" 2>/dev/null")
+                }
+            }
+
+            onProgress(0.85f, "Menyesuaikan izin akses direktori & SELinux...")
+            val identity = mountManager.resolveAppIdentity(pkg)
+            val uid = identity.uid
+            val gid = identity.gid
+            if (RootShell.exists(targetDataDir)) {
+                RootShell.exec("chown -R $uid:$gid \"$targetDataDir\" 2>/dev/null")
+                RootShell.exec("chmod -R 775 \"$targetDataDir\" 2>/dev/null")
+                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetDataDir\" 2>/dev/null")
+                RootShell.exec("touch \"$targetDataDir/$CANARY_FILE\" 2>/dev/null")
+            }
+            if (RootShell.exists(targetObbDir)) {
+                RootShell.exec("chown -R $uid:$gid \"$targetObbDir\" 2>/dev/null")
+                RootShell.exec("chmod -R 775 \"$targetObbDir\" 2>/dev/null")
+                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetObbDir\" 2>/dev/null")
+            }
+
+            onProgress(1.0f, "Selesai merapikan data game.")
+            AppLogger.success("DiskCatalog", "Successfully restructured $pkg to standard MountX layout.")
+        }
     }
 
     /**

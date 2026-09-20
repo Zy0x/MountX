@@ -105,6 +105,42 @@ object ModuleManager {
     }
 
     /**
+     * Checks if the module is installed in /data/adb/modules/MountX.
+     * If installed but outdated (versionCode < app versionCode) or broken,
+     * quietly synchronizes the module files without requiring reboot.
+     */
+    suspend fun checkAndSyncModuleSilently(context: Context): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            val propPath = "$MODULE_DIR/module.prop"
+            val exists = RootShell.exists(propPath)
+            if (!exists) {
+                // Also check ALT_MODULE_DIR
+                if (RootShell.exists("$ALT_MODULE_DIR/module.prop")) {
+                    installModuleDirectly(context)
+                    return@runCatching true
+                }
+                return@runCatching false
+            }
+
+            val propOut = RootShell.execForOutput("cat \"$propPath\" 2>/dev/null")
+            val installedVersionCode = propOut.lines()
+                .firstOrNull { it.startsWith("versionCode=") }
+                ?.substringAfter("=")
+                ?.trim()
+                ?.toIntOrNull() ?: 0
+
+            val currentVersionCode = app.mountx.BuildConfig.VERSION_CODE
+            if (installedVersionCode < currentVersionCode) {
+                AppLogger.info(TAG, "Syncing outdated module: installed=$installedVersionCode, current=$currentVersionCode")
+                installModuleDirectly(context)
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    /**
      * Builds a flashable Magisk/KernelSU ZIP file and saves it to external Downloads.
      */
     suspend fun exportModuleZip(context: Context): Result<File> = withContext(Dispatchers.IO) {
@@ -112,7 +148,7 @@ object ModuleManager {
             val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             if (!downloadDir.exists()) downloadDir.mkdirs()
 
-            val targetZip = File(downloadDir, "MountX-Module-v2.2.24.zip")
+            val targetZip = File(downloadDir, "MountX-Module-v${app.mountx.BuildConfig.VERSION_NAME}.zip")
             val assetFiles = context.assets.list("module") ?: emptyArray()
             if (assetFiles.isEmpty()) {
                 throw IllegalStateException("Module assets not found in package")

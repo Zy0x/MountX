@@ -67,6 +67,13 @@ fun StatusChip(
             Color(0xFFFF9800).copy(alpha = 0.45f),
             Color(0xFFFF9800)
         )
+        MountStatus.DISK_DETACHED -> Quintuple(
+            R.string.status_disk_detached,
+            Icons.Default.ErrorOutline,
+            Color(0xFF90A4AE).copy(alpha = 0.14f),
+            Color(0xFF90A4AE).copy(alpha = 0.45f),
+            Color(0xFF90A4AE)
+        )
         MountStatus.UNKNOWN -> Quintuple(
             R.string.status_unknown,
             Icons.AutoMirrored.Filled.HelpOutline,

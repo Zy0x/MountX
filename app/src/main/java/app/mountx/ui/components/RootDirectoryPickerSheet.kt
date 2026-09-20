@@ -1,0 +1,530 @@
+package app.mountx.ui.components
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderSpecial
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SdCard
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import app.mountx.R
+import app.mountx.root.RootShell
+import app.mountx.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+data class DirectoryItem(
+    val name: String,
+    val isParent: Boolean = false
+)
+
+private data class QuickStorageChip(
+    val label: String,
+    val path: String,
+    val icon: ImageVector
+)
+
+/**
+ * Root File Explorer Modal Bottom Sheet (ala MT-Manager)
+ * Allows browsing the full root filesystem, navigating via interactive breadcrumbs,
+ * jumping between physical and virtual partitions, and selecting a valid folder.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RootDirectoryPickerSheet(
+    initialPath: String = "/data/media/0",
+    sdBasePath: String = "/data/sdext2",
+    onDismiss: () -> Unit,
+    onPathSelected: (String) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var currentPath by remember {
+        mutableStateOf(if (initialPath.isNotBlank() && initialPath.startsWith("/")) initialPath.trimEnd('/') else "/data/media/0")
+    }
+    var directories by remember { mutableStateOf<List<DirectoryItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Quick access shortcut definitions
+    val quickShortcuts = remember(sdBasePath) {
+        listOf(
+            QuickStorageChip("Internal", "/data/media/0", Icons.Default.Smartphone),
+            QuickStorageChip("MicroSD", sdBasePath, Icons.Default.SdCard),
+            QuickStorageChip("Root (/)", "/", Icons.Default.Terminal),
+            QuickStorageChip("App Data", "/data/data", Icons.Default.FolderSpecial),
+            QuickStorageChip("OTG", "/mnt/media_rw", Icons.Default.Usb)
+        )
+    }
+
+    // Load directories whenever currentPath changes
+    LaunchedEffect(currentPath) {
+        isLoading = true
+        errorMessage = null
+        val path = if (currentPath.isEmpty()) "/" else currentPath
+        val items = withContext(Dispatchers.IO) {
+            try {
+                val res = RootShell.exec("ls -1pa \"$path\" 2>/dev/null")
+                if (!res.isSuccess && res.output.contains("Permission denied", ignoreCase = true)) {
+                    null
+                } else {
+                    val list = mutableListOf<DirectoryItem>()
+                    res.stdout.forEach { line ->
+                        val clean = line.trim()
+                        if (clean.endsWith("/") && clean != "./" && clean != "../") {
+                            val folderName = clean.removeSuffix("/")
+                            list.add(DirectoryItem(name = folderName))
+                        }
+                    }
+                    list.sortedBy { it.name.lowercase() }
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+        if (items == null) {
+            errorMessage = "Akses ditolak atau direktori tidak dapat dibaca"
+            directories = emptyList()
+        } else {
+            directories = items
+        }
+        isLoading = false
+    }
+
+    // Hierarchical back handling inside the picker: Navigate up if not at root
+    BackHandler {
+        if (currentPath != "/" && currentPath.isNotEmpty()) {
+            val parent = currentPath.substringBeforeLast('/').ifBlank { "/" }
+            currentPath = parent
+        } else {
+            onDismiss()
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = CyberSurfaceDark,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                color = CyberOnVariantDark.copy(alpha = 0.4f)
+            )
+        },
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.88f)
+                .navigationBarsPadding()
+        ) {
+            // Header: Title & Close
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = ElectricIndigo.copy(alpha = 0.15f),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = ElectricIndigoLight,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Column {
+                        Text(
+                            text = "Penjelajah Berkas Root",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = CyberOnBgDark
+                        )
+                        Text(
+                            text = "Pilih direktori penyimpanan sistem atau kartu memori",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = CyberOnVariantDark
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Tutup",
+                        tint = CyberOnVariantDark
+                    )
+                }
+            }
+
+            // Quick Access Chips Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                quickShortcuts.forEach { chip ->
+                    val isSelected = currentPath == chip.path || currentPath.startsWith("${chip.path}/")
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSelected) ElectricIndigo.copy(alpha = 0.2f) else CyberSurfaceVariantDark,
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) ElectricIndigo else CyberBorderDark
+                        ),
+                        modifier = Modifier.clickable {
+                            currentPath = chip.path
+                        }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = chip.icon,
+                                contentDescription = null,
+                                tint = if (isSelected) ElectricIndigoLight else CyberOnVariantDark,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = chip.label,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isSelected) ElectricIndigoLight else CyberOnSurfaceDark
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Breadcrumb Navigation Bar
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = CyberSurfaceVariantDark,
+                border = BorderStroke(0.8.dp, CyberBorderDark)
+            ) {
+                val segments = remember(currentPath) {
+                    if (currentPath == "/" || currentPath.isBlank()) listOf("") else currentPath.split("/").filter { it.isNotEmpty() }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Root token
+                    Text(
+                        text = "/",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = if (currentPath == "/") CyberEmerald else ElectricIndigoLight,
+                        modifier = Modifier
+                            .clickable { currentPath = "/" }
+                            .padding(horizontal = 4.dp)
+                    )
+
+                    var accum = ""
+                    segments.forEachIndexed { index, seg ->
+                        if (seg.isNotEmpty()) {
+                            accum += "/$seg"
+                            val target = accum
+                            val isLast = index == segments.size - 1
+
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = CyberOnVariantDark.copy(alpha = 0.5f),
+                                modifier = Modifier.size(14.dp)
+                            )
+
+                            Text(
+                                text = seg,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal
+                                ),
+                                color = if (isLast) CyberOnBgDark else ElectricIndigoLight,
+                                maxLines = 1,
+                                modifier = Modifier
+                                    .clickable { currentPath = target }
+                                    .padding(horizontal = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Directory Content List
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = ElectricIndigoLight,
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 2.5.dp
+                        )
+                    }
+                } else if (errorMessage != null) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = errorMessage!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = NeonCrimson
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    val parent = currentPath.substringBeforeLast('/').ifBlank { "/" }
+                                    currentPath = parent
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, CyberBorderDark)
+                            ) {
+                                Text("Kembali ke Direktori Induk", color = CyberOnSurfaceDark, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                } else if (directories.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "(Direktori kosong atau tidak ada subfolder)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CyberOnVariantDark
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Up to Parent Item (..)
+                        if (currentPath != "/" && currentPath.isNotEmpty()) {
+                            item {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color.Transparent,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val parent = currentPath.substringBeforeLast('/').ifBlank { "/" }
+                                            currentPath = parent
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Induk",
+                                            tint = CyberOnVariantDark,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = ".. (Kembali ke folder induk)",
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = CyberOnVariantDark
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        items(directories, key = { it.name }) { item ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = CyberSurfaceVariantDark.copy(alpha = 0.5f),
+                                border = BorderStroke(0.6.dp, CyberBorderDark.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        currentPath = if (currentPath == "/") "/${item.name}" else "$currentPath/${item.name}"
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = ElectricIndigoLight,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = item.name,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        color = CyberOnBgDark,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        tint = CyberOnVariantDark.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom Sticky Action Bar: Selected Path & Confirm Button
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = CyberSurfaceVariantDark,
+                border = BorderStroke(1.dp, CyberBorderDark)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Path Display Box
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = CyberBgDark,
+                        border = BorderStroke(0.8.dp, CyberBorderDark),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Path:",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = CyberOnVariantDark
+                            )
+                            Text(
+                                text = currentPath,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = CyberEmerald,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, CyberBorderDark),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                        ) {
+                            Text("Batal", color = CyberOnVariantDark, fontWeight = FontWeight.Medium)
+                        }
+
+                        Button(
+                            onClick = {
+                                onPathSelected(currentPath)
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigo),
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(44.dp)
+                        ) {
+                            Text("Pilih Folder Ini", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -68,8 +68,8 @@ class MountWatchdogDaemon @Inject constructor(
      */
     fun start() {
         if (isRegistered) return
-        val filter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_ON)
+        val screenFilter = IntentFilter(Intent.ACTION_SCREEN_ON)
+        val mediaFilter = IntentFilter().apply {
             addAction(Intent.ACTION_MEDIA_EJECT)
             addAction(Intent.ACTION_MEDIA_UNMOUNTED)
             addDataScheme("file")
@@ -80,10 +80,11 @@ class MountWatchdogDaemon @Inject constructor(
         }
 
         try {
-            context.registerReceiver(eventReceiver, filter)
+            context.registerReceiver(eventReceiver, screenFilter)
+            context.registerReceiver(eventReceiver, mediaFilter)
             context.registerReceiver(eventReceiver, pkgFilter)
             isRegistered = true
-            AppLogger.info("Watchdog", "Passive integrity watchdog registered.")
+            AppLogger.info("Watchdog", "Passive integrity watchdog registered (screen, media, pkg).")
         } catch (e: Exception) {
             AppLogger.error("Watchdog", "Failed to register watchdog receiver: ${e.message}")
         }
@@ -137,7 +138,7 @@ class MountWatchdogDaemon @Inject constructor(
         val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
         for (g in games) {
             if (g.mountStatus == MountStatus.MOUNTED) {
-                gameDao.updateMountStatus(g.packageName, MountStatus.UNMOUNTED)
+                gameDao.updateMountStatus(g.packageName, MountStatus.DISK_DETACHED)
             }
         }
         AppLogger.success("Watchdog", "Emergency lazy unmount completed.")

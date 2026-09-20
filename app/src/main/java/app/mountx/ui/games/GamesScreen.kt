@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -56,6 +57,7 @@ import app.mountx.ui.components.ConfirmDialog
 import app.mountx.ui.components.NeedMigrationDialog
 import app.mountx.ui.theme.AuroraGradientBrush
 import app.mountx.ui.theme.CyberEmerald
+import app.mountx.ui.theme.ElectricIndigoLight
 import app.mountx.ui.theme.NeonCrimson
 import app.mountx.util.FormatUtils
 
@@ -82,6 +84,9 @@ fun GamesScreen(
     val isScanningDisks by viewModel.isScanningDisks.collectAsState()
     val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
     val operationProgress by viewModel.operationProgress.collectAsState()
+    val isRestructuring by viewModel.isRestructuring.collectAsState()
+    val restructureProgressMessage by viewModel.restructureProgressMessage.collectAsState()
+    var showRestructureDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.scanDiscoveredGames()
@@ -231,6 +236,7 @@ fun GamesScreen(
             discoveredGames = discoveredGames,
             onImportAllDiscovered = { viewModel.importAllDiscoveredGames() },
             onDismissDiscovered = { viewModel.dismissDiscovered() },
+            onRestructureDiscovered = { showRestructureDialog = true },
             searchQuery = searchQuery,
             filterStatus = filterStatus,
             sortOption = sortOption,
@@ -291,6 +297,21 @@ fun GamesScreen(
             }
         )
     }
+
+    if (showRestructureDialog) {
+        val needsRestructureList = discoveredGames.filter { it.needsRestructure }
+        SmartRestructureDialog(
+            gamesToRestructure = needsRestructureList,
+            isRestructuring = isRestructuring,
+            progressMessage = restructureProgressMessage,
+            onConfirm = {
+                viewModel.restructureAllGames(needsRestructureList) {
+                    showRestructureDialog = false
+                }
+            },
+            onDismiss = { showRestructureDialog = false }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -315,7 +336,8 @@ fun GamesContent(
     modifier: Modifier = Modifier,
     discoveredGames: List<DiscoveredGame> = emptyList(),
     onImportAllDiscovered: () -> Unit = {},
-    onDismissDiscovered: () -> Unit = {}
+    onDismissDiscovered: () -> Unit = {},
+    onRestructureDiscovered: () -> Unit = {}
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
     var gameToUnmount by remember { mutableStateOf<GameEntry?>(null) }
@@ -542,7 +564,8 @@ fun GamesContent(
                 DiscoveredGamesBanner(
                     discoveredGames = discoveredGames,
                     onImportAll = onImportAllDiscovered,
-                    onDismiss = onDismissDiscovered
+                    onDismiss = onDismissDiscovered,
+                    onRestructure = onRestructureDiscovered
                 )
             }
 
@@ -724,7 +747,9 @@ fun GamesContent(
                             ModernGameCard(
                                 game = game,
                                 onToggleMount = {
-                                    if (game.mountStatus == MountStatus.MOUNTED) {
+                                    if (game.mountStatus == MountStatus.DISK_DETACHED) {
+                                        // Ignore toggle when disk is detached
+                                    } else if (game.mountStatus == MountStatus.MOUNTED) {
                                         gameToUnmount = game
                                     } else if (game.mountStatus == MountStatus.NEED_MIGRATION) {
                                         gameForNeedMigration = game
@@ -870,6 +895,21 @@ fun ModernGameCard(
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
+                    } else if (game.mountStatus == MountStatus.DISK_DETACHED) {
+                        val slateColor = Color(0xFF90A4AE)
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = slateColor.copy(alpha = 0.16f),
+                            border = BorderStroke(0.8.dp, slateColor.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = stringResource(R.string.status_disk_detached),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = slateColor,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
                     } else if (game.mountStatus == MountStatus.ERROR) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
@@ -891,6 +931,7 @@ fun ModernGameCard(
             // Compact Switch (Toggle Tactile)
             Switch(
                 checked = isMounted,
+                enabled = game.mountStatus != MountStatus.DISK_DETACHED,
                 onCheckedChange = { onToggleMount() },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
@@ -898,7 +939,11 @@ fun ModernGameCard(
                     checkedBorderColor = CyberEmerald,
                     uncheckedThumbColor = MaterialTheme.colorScheme.outline,
                     uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    disabledCheckedThumbColor = Color.White.copy(alpha = 0.5f),
+                    disabledCheckedTrackColor = CyberEmerald.copy(alpha = 0.3f),
+                    disabledUncheckedThumbColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    disabledUncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                 ),
                 modifier = Modifier.scale(0.8f)
             )
@@ -911,6 +956,7 @@ private fun DiscoveredGamesBanner(
     discoveredGames: List<DiscoveredGame>,
     onImportAll: () -> Unit,
     onDismiss: () -> Unit,
+    onRestructure: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -997,6 +1043,35 @@ private fun DiscoveredGamesBanner(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                val hasRestructure = discoveredGames.any { it.needsRestructure }
+                if (hasRestructure) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Button(
+                        onClick = onRestructure,
+                        modifier = Modifier.height(30.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigoLight),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoFixHigh,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.portability_btn_restructure),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.width(6.dp))
                 Button(
                     onClick = onImportAll,

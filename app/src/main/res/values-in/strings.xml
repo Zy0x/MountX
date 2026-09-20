@@ -127,6 +127,7 @@
     <string name="status_unmounted">Tidak Di-mount</string>
     <string name="status_error">Error</string>
     <string name="status_need_migration">Perlu Migrasi</string>
+    <string name="status_disk_detached">Disk Belum Terhubung</string>
     <string name="status_unknown">Tidak Diketahui</string>
     <string name="status_loading">Memuat…</string>
     <string name="dialog_need_migration_title">Migrasi Data Diperlukan</string>
@@ -601,6 +602,7 @@
     <string name="portability_banner_title">Ditemukan %1$d Game di MicroSD</string>
     <string name="portability_banner_desc">Data game terdeteksi pada MicroSD Anda. Ketuk untuk memulihkan dan menyinkronkan izin secara instan.</string>
     <string name="portability_btn_restore">Pulihkan &amp; Sinkronkan</string>
+    <string name="portability_btn_restructure">Rapikan Struktur</string>
     <string name="portability_btn_dismiss">Abaikan</string>
     <string name="portability_sheet_title">Deteksi Game MicroSD</string>
     <string name="portability_unlinked_label">Data Belum Terhubung</string>

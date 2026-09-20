@@ -858,20 +858,21 @@ private fun StorageTabContent(
 
         val customItems = mountPoints.filter { it.resolveCategory() == MountPointCategory.CUSTOM }.map { pt ->
             val isCustomMounted = isMounted && pt.enabled
+            val resolvedCustomBytes = if (pt.sizeBytes > 0L) pt.sizeBytes else safeBreakdown.customBytes
             UnifiedCategoryItem(
                 id = pt.id,
                 title = pt.label ?: "Kustom (${pt.targetPath.substringAfterLast('/').ifEmpty { pt.targetPath }})",
                 subtitle = pt.targetPath,
-                bytes = pt.sizeBytes,
+                bytes = resolvedCustomBytes,
                 icon = Icons.Default.Folder,
                 iconTint = Color(0xFF00897B),
                 isMicroSd = isCustomMounted,
                 isRisk = false,
                 mountCategory = MountPointCategory.CUSTOM,
                 internalPath = pt.targetPath,
-                internalBytes = if (isCustomMounted) 0L else pt.sizeBytes,
+                internalBytes = if (isCustomMounted) 0L else resolvedCustomBytes,
                 sdPath = pt.sourcePath,
-                sdBytes = pt.sizeBytes,
+                sdBytes = resolvedCustomBytes,
                 isCategoryMounted = isCustomMounted
             )
         }
@@ -1600,6 +1601,8 @@ private fun AddCustomDirectoryDialog(
     var internalPathText by remember { mutableStateOf("") }
     var customSdPathText by remember { mutableStateOf("") }
     var isManualSdPath by remember { mutableStateOf(false) }
+    var showRootPickerForInternal by remember { mutableStateOf(false) }
+    var showRootPickerForSd by remember { mutableStateOf(false) }
 
     val suggestions = listOf(
         Triple("Telegram", "/data/media/0/Android/media/org.telegram.messenger", "$sdBase/MountX/Custom/Telegram"),
@@ -1727,6 +1730,15 @@ private fun AddCustomDirectoryDialog(
                     },
                     label = { Text(stringResource(R.string.dialog_add_custom_path_label)) },
                     placeholder = { Text(stringResource(R.string.dialog_add_custom_directory_hint), color = Color(0xFF64748B)) },
+                    trailingIcon = {
+                        IconButton(onClick = { showRootPickerForInternal = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = "Pilih Folder",
+                                tint = Color(0xFF818CF8)
+                            )
+                        }
+                    },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = customFieldColors,
@@ -1741,6 +1753,15 @@ private fun AddCustomDirectoryDialog(
                     },
                     label = { Text(stringResource(R.string.dialog_add_custom_sd_label)) },
                     placeholder = { Text("$sdBase/MountX/Custom/...", color = Color(0xFF64748B)) },
+                    trailingIcon = {
+                        IconButton(onClick = { showRootPickerForSd = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = "Pilih Folder",
+                                tint = Color(0xFF818CF8)
+                            )
+                        }
+                    },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = customFieldColors,
@@ -1792,6 +1813,36 @@ private fun AddCustomDirectoryDialog(
             }
         }
     )
+
+    if (showRootPickerForInternal) {
+        app.mountx.ui.components.RootDirectoryPickerSheet(
+            initialPath = internalPathText.ifBlank { "/data/media/0" },
+            sdBasePath = sdBase,
+            onDismiss = { showRootPickerForInternal = false },
+            onPathSelected = { pickedPath ->
+                internalPathText = pickedPath
+                if (labelText.isBlank()) {
+                    labelText = pickedPath.trimEnd('/').substringAfterLast('/').ifBlank { "custom" }
+                }
+                if (!isManualSdPath) {
+                    val folderName = pickedPath.trimEnd('/').substringAfterLast('/').ifBlank { "custom" }
+                    customSdPathText = "$sdBase/MountX/Custom/$folderName"
+                }
+            }
+        )
+    }
+
+    if (showRootPickerForSd) {
+        app.mountx.ui.components.RootDirectoryPickerSheet(
+            initialPath = customSdPathText.ifBlank { "$sdBase/MountX/Custom" },
+            sdBasePath = sdBase,
+            onDismiss = { showRootPickerForSd = false },
+            onPathSelected = { pickedPath ->
+                customSdPathText = pickedPath
+                isManualSdPath = true
+            }
+        )
+    }
 }
 
 @Composable

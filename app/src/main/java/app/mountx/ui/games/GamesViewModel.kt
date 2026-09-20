@@ -54,6 +54,12 @@ class GamesViewModel @Inject constructor(
     private val _discoveredGames = MutableStateFlow<List<DiscoveredGame>>(emptyList())
     val discoveredGames: StateFlow<List<DiscoveredGame>> = _discoveredGames.asStateFlow()
 
+    private val _isRestructuring = MutableStateFlow(false)
+    val isRestructuring: StateFlow<Boolean> = _isRestructuring.asStateFlow()
+
+    private val _restructureProgressMessage = MutableStateFlow<String?>(null)
+    val restructureProgressMessage: StateFlow<String?> = _restructureProgressMessage.asStateFlow()
+
     private val _availableDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(emptyList())
     val availableDisks: StateFlow<List<app.mountx.data.model.SdCardDiskInfo>> = _availableDisks.asStateFlow()
 
@@ -526,6 +532,23 @@ class GamesViewModel @Inject constructor(
 
     fun dismissDiscovered() {
         _discoveredGames.value = emptyList()
+    }
+
+    fun restructureAllGames(games: List<DiscoveredGame>, onFinished: () -> Unit = {}) {
+        viewModelScope.launch {
+            _isRestructuring.value = true
+            val sdBase = appPreferences.sdBasePath.first()
+            for ((index, g) in games.withIndex()) {
+                val prefix = "[${index + 1}/${games.size}] "
+                gameRepository.restructureGame(g, sdBase) { _, msg ->
+                    _restructureProgressMessage.value = "$prefix$msg"
+                }
+            }
+            _restructureProgressMessage.value = null
+            _isRestructuring.value = false
+            scanDiscoveredGames()
+            onFinished()
+        }
     }
 
     fun scanCandidates(packageName: String, displayName: String) {

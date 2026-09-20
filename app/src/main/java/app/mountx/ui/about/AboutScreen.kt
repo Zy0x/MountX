@@ -406,11 +406,36 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.33 (Latest) ──
+                        // ── v2.2.34 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.34",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "4 Pilar Arsitektur Cerdas: Sinkronisasi 2 Arah Modul Root, Restrukturisasi Multi-Pola MicroSD, Penjelajah Berkas Root & Deteksi Disk Dinamis"
+                        ) {
+                            GithubSectionHeader("⚡ Modul Root & Sinkronisasi 2 Arah (Pilar 1)")
+                            GithubMarkdownBullet("• **Dukungan Multi Root Manager**: Skrip booting `service.sh` mendukung penuh Magisk, KernelSU, APatch, dan variannya dengan resolusi otomatis jalur modul.")
+                            GithubMarkdownBullet("• **Resolusi Jalur Bertingkat**: Boot mounting otomatis memprioritaskan jalur standar `MountX/Android/` dengan fallback aman ke `Android/` legacy dan mounting direktori media.")
+                            GithubMarkdownBullet("• **Sinkronisasi Senyap (Zero-Reboot)**: Aplikasi secara otomatis memperbarui skrip dan metadata modul di `/data/adb/modules/mountx/` saat versi baru dirilis tanpa perlu reboot manual.")
+
+                            GithubSectionHeader("🔍 Pemindaian Cerdas & Restrukturisasi Multi-Pola (Pilar 2)")
+                            GithubMarkdownBullet("• **Deteksi Multi-Folder**: Mendeteksi data game di MicroSD baik di folder standar `MountX/Android/`, legacy `Android/`, maupun direktori non-standar (`Games/*`, `GameData/*`).")
+                            GithubMarkdownBullet("• **Restrukturisasi Atomik Transparan**: Memindahkan data game yang berantakan ke struktur standar MountX secara atomik (0.1s dengan `mv` separtisi atau streaming dengan visualisasi progres) lengkap dengan penyesuaian izin dan konteks SELinux.")
+
+                            GithubSectionHeader("📁 Penjelajah Berkas Root ala MT-Manager (Pilar 3)")
+                            GithubMarkdownBullet("• **Root Directory Picker Interaktif**: Bottom sheet penjelajah direktori root (`/*`) dengan breadcrumb interaktif, navigasi riil, dan pintasan cepat (Internal, MicroSD, Root, App Data, OTG).")
+                            GithubMarkdownBullet("• **Pemilihan Jalur Kustom Presisi**: Trailing folder picker pada dialog direktori kustom dan kalkulasi ukuran nyata untuk kategori kustom dan media.")
+
+                            GithubSectionHeader("🛡️ Multi-MicroSD & Penanganan Disk Dinamis (Pilar 4)")
+                            GithubMarkdownBullet("• **Status Disk Detached**: Pengenalan status `DISK_DETACHED` dan kolom `preferredDiskUuid` (Room Migration 2 ke 3) untuk mencegah mount saat MicroSD dilepas atau kartu yang salah dimasukkan.")
+                            GithubMarkdownBullet("• **Pelepasan Darurat Dinamis**: Watchdog dan SystemSyncMonitor mendeteksi pelepasan disk secara dinamis dari `/proc/mounts` tanpa batasan hardcode `/data/sdext2`.")
+                        }
+
+                        // ── v2.2.33 ──
                         GithubReleaseCard(
                             version = "v2.2.33",
                             releaseDate = "21 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "Perbaikan Total Penghapusan Data Kategori, Eliminasi Opsi Internal Semu saat Ter-mount & Pembersihan VFS Multi-Jalur"
                         ) {
                             GithubSectionHeader("🗑️ Perbaikan Total Hapus Data Kategori")

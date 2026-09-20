@@ -12,9 +12,11 @@ import androidx.core.app.NotificationCompat
 import app.mountx.MainActivity
 import app.mountx.R
 import app.mountx.data.db.GameDao
+import app.mountx.data.model.MountStatus
 import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
+import app.mountx.util.AppPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,7 +46,8 @@ sealed class SystemSyncEvent {
 class SystemSyncMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gameDao: GameDao,
-    private val mountManager: MountManager
+    private val mountManager: MountManager,
+    private val appPreferences: AppPreferences
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -155,7 +159,9 @@ class SystemSyncMonitor @Inject constructor(
     private suspend fun handleEmergencyMediaEject() {
         AppLogger.warn("SystemSyncMonitor", "EMERGENCY: MicroSD Ejection detected! Executing protocol...")
 
-        // 1. Kill active game processes
+        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+
+        // 1. Kill active game processes and mark status as DISK_DETACHED
         try {
             val games = gameDao.getAllGamesSync()
             for (game in games) {
@@ -164,15 +170,33 @@ class SystemSyncMonitor @Inject constructor(
                     RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
                     AppLogger.warn("SystemSyncMonitor", "Force-stopped active process: ${game.packageName}")
                 }
+                if (game.mountStatus == MountStatus.MOUNTED) {
+                    gameDao.updateMountStatus(game.packageName, MountStatus.DISK_DETACHED)
+                }
             }
         } catch (e: Exception) {
             AppLogger.error("SystemSyncMonitor", "Failed to check/kill processes: ${e.message}")
         }
 
-        // 2. Instant lazy unmount across all namespaces
+        // 2. Instant lazy unmount across all namespaces dynamically
         try {
-            mountManager.unmountAll("/data/sdext2")
-            RootShell.exec("umount -f -l /data/sdext2 2>/dev/null")
+            mountManager.unmountAll(sdBase)
+            RootShell.exec("umount -f -l \"$sdBase\" 2>/dev/null")
+            if (sdBase != "/data/sdext2") {
+                mountManager.unmountAll("/data/sdext2")
+                RootShell.exec("umount -f -l /data/sdext2 2>/dev/null")
+            }
+            // Dynamic cleanup for any remaining mountpoints matching game paths from /proc/mounts
+            val mountsOutput = RootShell.execForOutput("cat /proc/mounts 2>/dev/null")
+            mountsOutput.lines().forEach { line ->
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size >= 2) {
+                    val target = parts[1]
+                    if (target.contains("/Android/data/") || target.contains("/Android/obb/") || target.contains("/MountX/")) {
+                        RootShell.exec("umount -f -l \"$target\" 2>/dev/null")
+                    }
+                }
+            }
         } catch (e: Exception) {
             AppLogger.error("SystemSyncMonitor", "Failed lazy unmount: ${e.message}")
         }

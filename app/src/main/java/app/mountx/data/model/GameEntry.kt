@@ -17,7 +17,8 @@ enum class MountStatus {
     UNMOUNTED,
     ERROR,
     NEED_MIGRATION,
-    UNKNOWN
+    UNKNOWN,
+    DISK_DETACHED
 }
 
 /**
@@ -33,7 +34,8 @@ data class GameEntry(
     val dataSizeBytes: Long = 0L,
     val isEnabled: Boolean = true,
     val addedAt: Long = System.currentTimeMillis(),
-    val mountPoints: List<MountPointConfig> = emptyList()
+    val mountPoints: List<MountPointConfig> = emptyList(),
+    val preferredDiskUuid: String? = null
 )
 
 /**
