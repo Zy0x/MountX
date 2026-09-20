@@ -837,6 +837,14 @@ class GameRepository @Inject constructor(
             gameDao.updateDataSize(packageName, resolvedSize)
         }
 
+        val isExt1MountedReal = isDataMountedReal || isObbMountedReal
+        // Self-healing: If kernel reports NO active mount point and external storage has only empty folder skeleton (<= 64KB),
+        // but DB has stale MOUNTED, correct it to UNMOUNTED.
+        if (game != null && game.mountStatus == MountStatus.MOUNTED && !isExt1MountedReal && ext2Bytes <= 64 * 1024L) {
+            AppLogger.warn("GameRepo", "Self-healing: Correcting stale MOUNTED status for $packageName to UNMOUNTED (no active VFS mount & ext2 is skeleton).")
+            gameDao.updateMountStatus(packageName, MountStatus.UNMOUNTED)
+        }
+
         AppStorageBreakdown(
             apkBytes = apkBytes,
             dexBytes = dexBytes,

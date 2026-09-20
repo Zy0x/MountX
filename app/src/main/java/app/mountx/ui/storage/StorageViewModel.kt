@@ -712,18 +712,53 @@ class StorageViewModel @Inject constructor(
     fun exportConfig(uri: Uri) {
         viewModelScope.launch {
             runCatching {
+                val currentSdBase = appPreferences.sdBasePath.first()
                 val games = gameRepository.observeGames().first()
-                val jsonArr = JSONArray()
-                games.forEach { g ->
-                    val obj = JSONObject().apply {
-                        put("packageName", g.packageName)
-                        put("displayName", g.displayName)
-                        put("mode", g.mode.name)
+                val rootObj = JSONObject().apply {
+                    put("schemaVersion", 2)
+                    put("exportedAt", System.currentTimeMillis())
+                    put("appVersion", app.mountx.BuildConfig.VERSION_NAME)
+                    put("sdBase", currentSdBase)
+
+                    val gamesArr = JSONArray()
+                    games.forEach { g ->
+                        val gameObj = JSONObject().apply {
+                            put("packageName", g.packageName)
+                            put("displayName", g.displayName)
+                            put("mode", g.mode.name)
+                            put("isEnabled", g.isEnabled)
+                            put("dataSizeBytes", g.dataSizeBytes)
+
+                            val mpsArr = JSONArray()
+                            g.mountPoints.forEach { mp ->
+                                val mpObj = JSONObject().apply {
+                                    put("id", mp.id)
+                                    put("category", mp.category.name)
+                                    // Normalize sourcePath to relative path if within sdBase
+                                    val relSource = if (mp.sourcePath.startsWith(currentSdBase)) {
+                                        mp.sourcePath.removePrefix(currentSdBase).removePrefix("/")
+                                    } else {
+                                        mp.sourcePath
+                                    }
+                                    put("relativeSourcePath", relSource)
+                                    put("targetPath", mp.targetPath)
+                                    put("enabled", mp.enabled)
+                                    put("isVirtualContainer", mp.isVirtualContainer)
+                                    if (mp.containerImgPath != null) put("containerImgPath", mp.containerImgPath)
+                                    if (mp.diskUuid != null) put("diskUuid", mp.diskUuid)
+                                    if (mp.label != null) put("label", mp.label)
+                                }
+                                mpsArr.put(mpObj)
+                            }
+                            put("mountPoints", mpsArr)
+                        }
+                        gamesArr.put(gameObj)
                     }
-                    jsonArr.put(obj)
+                    put("games", gamesArr)
                 }
+
                 context.contentResolver.openOutputStream(uri)?.use { os ->
-                    os.write(jsonArr.toString(2).toByteArray())
+                    os.write(rootObj.toString(2).toByteArray())
                 }
                 _statusMessage.value = "EXPORT_OK"
             }.onFailure {
@@ -739,18 +774,97 @@ class StorageViewModel @Inject constructor(
                     it.bufferedReader().readText()
                 } ?: error("Unable to open file")
 
-                val jsonArr = JSONArray(content)
-                for (i in 0 until jsonArr.length()) {
-                    val obj = jsonArr.getJSONObject(i)
-                    val pkg = obj.getString("packageName")
-                    val name = obj.optString("displayName", pkg)
-                    val modeStr = obj.optString("mode", "PKG")
-                    val mode = try {
-                        app.mountx.data.model.MountMode.valueOf(modeStr)
-                    } catch (e: Exception) {
-                        app.mountx.data.model.MountMode.PKG
+                val currentSdBase = appPreferences.sdBasePath.first()
+                val trimmed = content.trim()
+
+                if (trimmed.startsWith("{")) {
+                    // Schema v2 (JSONObject with metadata & granular mountPoints)
+                    val rootObj = JSONObject(trimmed)
+                    val gamesArr = rootObj.optJSONArray("games") ?: JSONArray()
+                    for (i in 0 until gamesArr.length()) {
+                        val obj = gamesArr.getJSONObject(i)
+                        val pkg = obj.getString("packageName")
+                        val name = obj.optString("displayName", pkg)
+                        val modeStr = obj.optString("mode", "PKG")
+                        val mode = runCatching { app.mountx.data.model.MountMode.valueOf(modeStr) }
+                            .getOrDefault(app.mountx.data.model.MountMode.PKG)
+                        val isEnabled = obj.optBoolean("isEnabled", true)
+                        val sizeBytes = obj.optLong("dataSizeBytes", 0L)
+
+                        val mpsList = mutableListOf<app.mountx.data.model.MountPointConfig>()
+                        val mpsArr = obj.optJSONArray("mountPoints")
+                        if (mpsArr != null) {
+                            for (j in 0 until mpsArr.length()) {
+                                val mpObj = mpsArr.getJSONObject(j)
+                                val id = mpObj.optString("id", "mp_${pkg}_$j")
+                                val catStr = mpObj.optString("category", "EXTERNAL_DATA")
+                                val category = runCatching { app.mountx.data.model.MountPointCategory.valueOf(catStr) }
+                                    .getOrDefault(app.mountx.data.model.MountPointCategory.EXTERNAL_DATA)
+                                val relSource = mpObj.optString("relativeSourcePath", "")
+                                val absSource = if (relSource.startsWith("/")) {
+                                    relSource
+                                } else if (relSource.isNotBlank()) {
+                                    "$currentSdBase/$relSource"
+                                } else {
+                                    "$currentSdBase/MountX/Android/data/$pkg"
+                                }
+                                val targetPath = mpObj.optString("targetPath", "/data/media/0/Android/data/$pkg")
+                                val enabled = mpObj.optBoolean("enabled", true)
+                                val isVirtualContainer = mpObj.optBoolean("isVirtualContainer", false)
+                                val containerImgPath = mpObj.optString("containerImgPath").ifBlank { null }
+                                val diskUuid = mpObj.optString("diskUuid").ifBlank { null }
+                                val label = mpObj.optString("label").ifBlank { null }
+
+                                mpsList.add(
+                                    app.mountx.data.model.MountPointConfig(
+                                        id = id,
+                                        category = category,
+                                        sourcePath = absSource,
+                                        targetPath = targetPath,
+                                        enabled = enabled,
+                                        isVirtualContainer = isVirtualContainer,
+                                        containerImgPath = containerImgPath,
+                                        diskUuid = diskUuid,
+                                        label = label
+                                    )
+                                )
+                            }
+                        }
+
+                        val existing = gameRepository.getGame(pkg)
+                        if (existing != null) {
+                            val mergedPoints = if (mpsList.isNotEmpty()) mpsList else existing.mountPoints
+                            gameRepository.updateGame(existing.copy(
+                                displayName = name,
+                                mode = mode,
+                                isEnabled = isEnabled,
+                                mountPoints = mergedPoints
+                            ))
+                        } else {
+                            gameRepository.addGame(
+                                packageName = pkg,
+                                displayName = name,
+                                mode = mode,
+                                mountPoints = mpsList,
+                                initialSizeBytes = sizeBytes
+                            )
+                        }
                     }
-                    gameRepository.addGame(pkg, name, mode)
+                } else {
+                    // Fallback to legacy Schema v1 (JSONArray)
+                    val jsonArr = JSONArray(trimmed)
+                    for (i in 0 until jsonArr.length()) {
+                        val obj = jsonArr.getJSONObject(i)
+                        val pkg = obj.getString("packageName")
+                        val name = obj.optString("displayName", pkg)
+                        val modeStr = obj.optString("mode", "PKG")
+                        val mode = runCatching { app.mountx.data.model.MountMode.valueOf(modeStr) }
+                            .getOrDefault(app.mountx.data.model.MountMode.PKG)
+                        val existing = gameRepository.getGame(pkg)
+                        if (existing == null) {
+                            gameRepository.addGame(pkg, name, mode)
+                        }
+                    }
                 }
                 _statusMessage.value = "IMPORT_OK"
             }.onFailure {

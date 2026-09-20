@@ -1,16 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Solid dark base -->
     <path
-        android:fillColor="#1A1A2E"
-        android:pathData="M0,0h108v108h-108z"/>
+        android:pathData="M0,0h108v108h-108z"
+        android:fillColor="#0B0F19" />
+
+    <!-- Ambient center radial glow -->
     <path
-        android:fillColor="#16213E"
-        android:pathData="M0,54 Q27,10 54,54 Q81,98 108,54 L108,108 L0,108 Z"/>
+        android:pathData="M54,54m-48,0a48,48 0,1 1,96 0a48,48 0,1 1,-96 0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="48"
+                android:type="radial">
+                <item android:offset="0.0" android:color="#24344D" />
+                <item android:offset="0.55" android:color="#131C2E" />
+                <item android:offset="1.0" android:color="#0B0F19" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle cyber accent ambient ring -->
     <path
-        android:fillColor="#0F3460"
-        android:pathData="M0,70 Q27,40 54,70 Q81,100 108,70 L108,108 L0,108 Z"/>
+        android:pathData="M54,54m-38,0a38,38 0,1 1,76 0a38,38 0,1 1,-76 0"
+        android:strokeWidth="0.8"
+        android:strokeColor="#1E3555" />
 </vector>

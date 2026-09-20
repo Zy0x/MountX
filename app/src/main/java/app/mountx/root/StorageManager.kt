@@ -1481,6 +1481,10 @@ class StorageManager {
         conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)?
     ) {
+        if (sourceDir.trimEnd('/') == destDir.trimEnd('/')) {
+            AppLogger.warn("StorageManager", "sourceDir and destDir are identical ($sourceDir). Skipping copy.")
+            return
+        }
         val estimatedPointBytes = if (pointSizeBytes > 0L) pointSizeBytes else getDirSizeBytes(sourceDir)
         val initialDestBytes = getDirSizeBytes(destDir)
         val existedInitially = RootShell.exists(destDir)
@@ -1552,14 +1556,25 @@ class StorageManager {
         // Ensure destination directory exists
         RootShell.exec("mkdir -p \"$destDir\"")
 
+        // Collision Guard: Never copy a directory to itself
+        if (sourceDir.trimEnd('/') == destDir.trimEnd('/')) {
+            AppLogger.warn("StorageManager", "Source and destination paths are identical ($sourceDir). Skipping copy.")
+            reportProgress(estimatedPointBytes)
+            return
+        }
+
         val baseCpCmd = when (conflictStrategy) {
             ConflictStrategy.MERGE -> "cp -a -u \"$sourceDir/.\" \"$destDir/\""
             else -> "cp -a -f \"$sourceDir/.\" \"$destDir/\""
         }
 
+        val timestamp = System.currentTimeMillis()
+        val scriptFile = "/data/local/tmp/mountx_cp_$timestamp.sh"
+        val exitFile = "/data/local/tmp/mountx_cp_exit_$timestamp.txt"
+
         val runnerScript = """
             mkdir -p "$destDir"
-            (exec $baseCpCmd) &
+            $baseCpCmd &
             CP_PID=${'$'}!
             echo "STARTED:${'$'}CP_PID"
             
@@ -1586,33 +1601,59 @@ class StorageManager {
             
             wait ${'$'}CP_PID
             EXIT_CODE=${'$'}?
+            echo "${'$'}EXIT_CODE" > "$exitFile"
             echo "COPY_EXIT:${'$'}EXIT_CODE"
         """.trimIndent()
 
         var copyExitCode = -1
 
-        val streamRes = RootShell.execStreaming(runnerScript) { line ->
-            val trimmed = line.trim()
-            if (trimmed.startsWith("PROGRESS_BYTES:")) {
-                val b = trimmed.removePrefix("PROGRESS_BYTES:").trim().toLongOrNull()
-                if (b != null && b > 0L) {
-                    reportProgress(b)
+        val streamRes = try {
+            val encodedScript = android.util.Base64.encodeToString(runnerScript.toByteArray(), android.util.Base64.NO_WRAP)
+            RootShell.exec("echo \"$encodedScript\" | base64 -d > \"$scriptFile\" && chmod 755 \"$scriptFile\"")
+            RootShell.execStreaming("sh \"$scriptFile\"") { line ->
+                val trimmed = line.trim()
+                AppLogger.info("StorageManager", "CP_STREAM: $trimmed")
+                if (trimmed.startsWith("PROGRESS_BYTES:")) {
+                    val b = trimmed.removePrefix("PROGRESS_BYTES:").trim().toLongOrNull()
+                    if (b != null && b > 0L) {
+                        reportProgress(b)
+                    }
+                } else if (trimmed.startsWith("PROGRESS_FALLBACK:")) {
+                    val totalDst = trimmed.removePrefix("PROGRESS_FALLBACK:").trim().toLongOrNull()
+                    if (totalDst != null) {
+                        val delta = (totalDst - initialDestBytes).coerceAtLeast(0L)
+                        reportProgress(delta)
+                    }
+                } else if (trimmed.startsWith("COPY_EXIT:")) {
+                    copyExitCode = trimmed.removePrefix("COPY_EXIT:").trim().toIntOrNull() ?: 0
                 }
-            } else if (trimmed.startsWith("PROGRESS_FALLBACK:")) {
-                val totalDst = trimmed.removePrefix("PROGRESS_FALLBACK:").trim().toLongOrNull()
-                if (totalDst != null) {
-                    val delta = (totalDst - initialDestBytes).coerceAtLeast(0L)
-                    reportProgress(delta)
-                }
-            } else if (trimmed.startsWith("COPY_EXIT:")) {
-                copyExitCode = trimmed.removePrefix("COPY_EXIT:").trim().toIntOrNull() ?: 0
             }
+        } finally {
+            // Read exit code from file if stream didn't catch it
+            if (copyExitCode == -1 && RootShell.exists(exitFile)) {
+                val savedExit = RootShell.execForOutput("cat \"$exitFile\" 2>/dev/null").toIntOrNull()
+                if (savedExit != null) {
+                    copyExitCode = savedExit
+                    AppLogger.info("StorageManager", "Recovered copy exit code from $exitFile: $copyExitCode")
+                }
+            }
+            RootShell.exec("rm -f \"$scriptFile\" \"$exitFile\" 2>/dev/null")
         }
 
         // Final point progress
         reportProgress(estimatedPointBytes)
 
-        if (copyExitCode != 0 && !RootShell.exists(destDir)) {
+        // Resilient fallback: If copyExitCode is still -1 but streamRes succeeded and destination size matches source (>= 90%)
+        if (copyExitCode == -1 && streamRes.isSuccess) {
+            val srcSz = getDirSizeBytes(sourceDir)
+            val dstSz = getDirSizeBytes(destDir)
+            if (dstSz >= (srcSz * 0.90)) {
+                AppLogger.info("StorageManager", "Copy stream completed with exit code -1, but verified $dstSz bytes copied (>= 90% of $srcSz). Marking copy as successful.")
+                copyExitCode = 0
+            }
+        }
+
+        if (copyExitCode != 0) {
             // Clean up partial destination garbage if newly created
             if (!existedInitially) {
                 RootShell.exec("rm -rf \"$destDir\"")
@@ -1719,9 +1760,35 @@ class StorageManager {
                     MountPointCategory.CUSTOM -> "Custom Path"
                 }
 
+                // Safety Guard: Ensure targetPath is NOT an active mount point across any namespaces before copy/cleanup
+                val relPath = targetPath
+                    .removePrefix("/sdcard/")
+                    .removePrefix("/data/media/0/")
+                    .removePrefix("/storage/emulated/0/")
+                    .removePrefix("/mnt/user/0/primary/")
+                    .removePrefix("/")
+                for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/mnt/user/0", "/mnt/pass_through/0", "/storage")) {
+                    RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"$ns/emulated/0/$relPath\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"$ns/primary/$relPath\" 2>/dev/null")
+                }
+                RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+
                 when (direction) {
                     MoveDirection.TO_SD -> {
                         val currentSrcSize = getDirSizeBytes(targetPath).let { if (it > 0L) it else point.sizeBytes }
+                        val currentDestSize = getDirSizeBytes(sourcePath)
+
+                        // Safety Guard: Already on MicroSD!
+                        // If internal is empty/skeleton (<= 64KB) and destination on SD already has real data (> 1MB), skip redundant copy!
+                        if (currentSrcSize <= 64 * 1024L && currentDestSize > 1024 * 1024L) {
+                            AppLogger.info("StorageManager", "Data is already present on MicroSD ($currentDestSize bytes) and internal is empty ($currentSrcSize bytes). Skipping redundant copy; ensuring permissions.")
+                            RootShell.exec("chown -R $uid:1023 \"$sourcePath\"")
+                            RootShell.exec("chmod -R 777 \"$sourcePath\"")
+                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\"")
+                            continue
+                        }
+
                         if (point.isVirtualContainer) {
                             val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
                             val imgParent = java.io.File(imgFile).parent ?: "$sdBase/.mountx/containers"
@@ -1753,7 +1820,9 @@ class StorageManager {
                                         conflictStrategy = conflictStrategy,
                                         onProgress = onProgress
                                     )
-                                    RootShell.exec("rm -rf \"$targetPath\"/*")
+                                    if (!RootShell.isMountpoint(targetPath)) {
+                                        RootShell.exec("rm -rf \"$targetPath\"/*")
+                                    }
                                 }
                                 RootShell.exec("umount -l \"$tempMount\"")
                                 RootShell.exec("losetup -d \"$loopDev\"")
@@ -1840,12 +1909,33 @@ class StorageManager {
                                         isFinished = false
                                     )
                                 )
-                                RootShell.exec("rm -rf \"$targetPath\"/*")
+                                if (!RootShell.isMountpoint(targetPath) && targetPath.trimEnd('/') != sourcePath.trimEnd('/')) {
+                                    RootShell.exec("rm -rf \"$targetPath\"/*")
+                                }
                             }
                         }
                     }
                     MoveDirection.TO_INTERNAL -> {
                         val currentSrcSize = getDirSizeBytes(sourcePath).let { if (it > 0L) it else point.sizeBytes }
+                        val currentDestSize = getDirSizeBytes(targetPath)
+
+                        // Safety Guard 1: Already on Internal!
+                        // If source on SD is empty/skeleton (<= 64KB) and internal already has real data (> 1MB), skip redundant copy!
+                        if (currentSrcSize <= 64 * 1024L && currentDestSize > 1024 * 1024L) {
+                            AppLogger.info("StorageManager", "Data is already present on Internal ($currentDestSize bytes) and MicroSD is empty ($currentSrcSize bytes). Skipping redundant copy TO_INTERNAL.")
+                            RootShell.exec("rm -rf \"$sourcePath\"")
+                            RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
+                            continue
+                        }
+
+                        // Safety Guard 2: Size ratio guard for OVERWRITE
+                        // If source on SD is <= 64KB and destination in internal has >= 10MB, NEVER let OVERWRITE destroy internal data!
+                        if (currentSrcSize <= 64 * 1024L && currentDestSize >= 10 * 1024 * 1024L) {
+                            AppLogger.error("StorageManager", "CRITICAL SAFETY: Source on SD ($currentSrcSize bytes) is empty/skeleton while internal has $currentDestSize bytes. Aborting overwrite to prevent data loss!")
+                            RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
+                            continue
+                        }
+
                         if (point.isVirtualContainer) {
                             val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
                             if (RootShell.exists(imgFile)) {
@@ -1877,6 +1967,7 @@ class StorageManager {
                                 RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
                                 RootShell.exec("rm -f \"$imgFile\"")
                                 RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
+                                RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
                             }
                         } else {
                             if (RootShell.exists(sourcePath)) {
@@ -1924,6 +2015,9 @@ class StorageManager {
                                 RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\"")
                                 RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
 
+                                // Clean up canary in internal target directory so canary check never thinks internal is mounted
+                                RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
+
                                 // Step 3: Cleanup on MicroSD
                                 onProgress?.invoke(
                                     OperationProgress(
@@ -1942,7 +2036,10 @@ class StorageManager {
                                         isFinished = false
                                     )
                                 )
-                                RootShell.exec("rm -rf \"$sourcePath\"")
+                                val destVerifiedSize = getDirSizeBytes(targetPath)
+                                if (destVerifiedSize > 0L && sourcePath.trimEnd('/') != targetPath.trimEnd('/')) {
+                                    RootShell.exec("rm -rf \"$sourcePath\"")
+                                }
                             }
                         }
                     }

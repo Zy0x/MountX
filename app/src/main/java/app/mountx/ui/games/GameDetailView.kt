@@ -752,29 +752,30 @@ private fun StorageTabContent(
         isSelectionMode = false
     }
 
-    val isMounted = game.mountStatus == MountStatus.MOUNTED || breakdown.isExt1Mounted
+    val isRealDataOnSd = breakdown.ext2Bytes > 64 * 1024L
+    val isMounted = (game.mountStatus == MountStatus.MOUNTED || breakdown.isExt1Mounted) && isRealDataOnSd
     val hasExtDataOnSd = if (isMounted) {
-        breakdown.ext2DataBytes > 0L || breakdown.isExt1Mounted
+        breakdown.ext2DataBytes > 64 * 1024L || breakdown.isExt1Mounted
     } else {
-        breakdown.ext2DataBytes > 0L && breakdown.ext1DataBytes == 0L
+        breakdown.ext2DataBytes > 64 * 1024L && breakdown.ext1DataBytes <= 64 * 1024L
     }
     val hasExtObbOnSd = if (isMounted) {
-        breakdown.ext2ObbBytes > 0L || breakdown.isExt1Mounted
+        breakdown.ext2ObbBytes > 64 * 1024L || breakdown.isExt1Mounted
     } else {
-        breakdown.ext2ObbBytes > 0L && breakdown.ext1ObbBytes == 0L
+        breakdown.ext2ObbBytes > 64 * 1024L && breakdown.ext1ObbBytes <= 64 * 1024L
     }
 
     val categories = remember(breakdown, isMounted, hasExtDataOnSd, hasExtObbOnSd, mountPoints, packageInfo, sdBase) {
         val (dataBytes, dataSubtitle, isDataSd) = when {
-            isMounted -> Triple(breakdown.ext2DataBytes, "Data utama game", true)
-            breakdown.ext2DataBytes > 0L && breakdown.ext1DataBytes > 0L -> {
+            isMounted && breakdown.ext2DataBytes > 64 * 1024L -> Triple(breakdown.ext2DataBytes, "Data utama game", true)
+            breakdown.ext2DataBytes > 64 * 1024L && breakdown.ext1DataBytes > 64 * 1024L -> {
                 Triple(
                     breakdown.ext1DataBytes,
                     "Data utama game • ${FormatUtils.formatExactBytes(breakdown.ext2DataBytes)} di MicroSD",
                     false
                 )
             }
-            breakdown.ext2DataBytes > 0L && breakdown.ext1DataBytes == 0L -> {
+            breakdown.ext2DataBytes > 64 * 1024L && breakdown.ext1DataBytes <= 64 * 1024L -> {
                 Triple(breakdown.ext2DataBytes, "Data utama game", true)
             }
             else -> {
@@ -787,15 +788,15 @@ private fun StorageTabContent(
         }
 
         val (obbBytes, obbSubtitle, isObbSd) = when {
-            isMounted -> Triple(breakdown.ext2ObbBytes, "File ekspansi game", true)
-            breakdown.ext2ObbBytes > 0L && breakdown.ext1ObbBytes > 0L -> {
+            isMounted && breakdown.ext2ObbBytes > 64 * 1024L -> Triple(breakdown.ext2ObbBytes, "File ekspansi game", true)
+            breakdown.ext2ObbBytes > 64 * 1024L && breakdown.ext1ObbBytes > 64 * 1024L -> {
                 Triple(
                     breakdown.ext1ObbBytes,
                     "File ekspansi game • ${FormatUtils.formatExactBytes(breakdown.ext2ObbBytes)} di MicroSD",
                     false
                 )
             }
-            breakdown.ext2ObbBytes > 0L && breakdown.ext1ObbBytes == 0L -> {
+            breakdown.ext2ObbBytes > 64 * 1024L && breakdown.ext1ObbBytes <= 64 * 1024L -> {
                 Triple(breakdown.ext2ObbBytes, "File ekspansi game", true)
             }
             else -> {
@@ -1217,10 +1218,10 @@ private fun StorageTabContent(
                         }
                         if (bytes > 0L) bytes else breakdown.ext2Bytes
                     }
-                    val canRestore = isMounted || (restoreBytes > 0L)
+                    val canRestore = isMounted && (restoreBytes > 64 * 1024L)
                     OutlinedButton(
                         onClick = {
-                            val internalExistingBytes = breakdown.ext1DataBytes + breakdown.ext1ObbBytes
+                            val internalExistingBytes = if (isMounted) 0L else (breakdown.ext1DataBytes + breakdown.ext1ObbBytes)
                             migrationConfirmData = MigrationConfirmData(
                                 direction = MoveDirection.TO_INTERNAL,
                                 totalBytes = restoreBytes,
@@ -1253,7 +1254,7 @@ private fun StorageTabContent(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (restoreBytes > 0L) {
+                            text = if (canRestore && restoreBytes > 64 * 1024L) {
                                 stringResource(R.string.manage_btn_restore_internal_with_size, FormatUtils.formatBytes(restoreBytes))
                             } else {
                                 stringResource(R.string.manage_btn_restore_internal)
@@ -1375,35 +1376,49 @@ private fun StorageTabContent(
             internalFreeBytes = internalFreeBytes,
             selectedCategoryIds = selectedCategoryIds,
             categories = categories,
+            currentSdBase = mountPoints.firstOrNull { it.sourcePath.isNotBlank() }?.let { pt ->
+                availableDisks.flatMap { it.partitions }.firstOrNull { part ->
+                    part.mountPoint != null && pt.sourcePath.startsWith(part.mountPoint)
+                }?.mountPoint
+            } ?: sdBase,
             onDismiss = { showTargetModal = false },
             onConfirmMove = { dir, targetDisk, targetPartition ->
                 showTargetModal = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
                 val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase)
+                val isToInternal = dir == MoveDirection.TO_INTERNAL
                 val totalBytes = targetPoints.sumOf { pt ->
                     val cat = pt.resolveCategory()
                     when (cat) {
-                        MountPointCategory.EXTERNAL_DATA -> breakdown.ext1DataBytes
-                        MountPointCategory.OBB_STORAGE -> breakdown.ext1ObbBytes
+                        MountPointCategory.EXTERNAL_DATA -> if (isToInternal) breakdown.ext2DataBytes else breakdown.ext1DataBytes
+                        MountPointCategory.OBB_STORAGE -> if (isToInternal) breakdown.ext2ObbBytes else breakdown.ext1ObbBytes
                         else -> pt.sizeBytes
                     }
-                }.let { if (it > 0L) it else breakdown.ext1Bytes }
+                }.let { if (it > 0L) it else if (isToInternal) breakdown.ext2Bytes else breakdown.ext1Bytes }
 
-                val freeSpace = targetPartition?.freeBytes ?: targetDisk?.totalFreeBytes ?: 0L
+                val freeSpace = if (isToInternal) internalFreeBytes else (targetPartition?.freeBytes ?: targetDisk?.totalFreeBytes ?: 0L)
                 val targetExistingBytes = targetPoints.sumOf { pt ->
                     val cat = pt.resolveCategory()
                     when (cat) {
-                        MountPointCategory.EXTERNAL_DATA -> breakdown.ext2DataBytes
-                        MountPointCategory.OBB_STORAGE -> breakdown.ext2ObbBytes
+                        MountPointCategory.EXTERNAL_DATA -> if (isToInternal) {
+                            if (isMounted) 0L else breakdown.ext1DataBytes
+                        } else breakdown.ext2DataBytes
+                        MountPointCategory.OBB_STORAGE -> if (isToInternal) {
+                            if (isMounted) 0L else breakdown.ext1ObbBytes
+                        } else breakdown.ext2ObbBytes
                         else -> 0L
                     }
                 }
 
+                val extLocationName = targetPartition?.shortName ?: targetDisk?.displayName ?: "MicroSD"
+                val sourceName = if (isToInternal) extLocationName else "Memori Internal"
+                val destName = if (isToInternal) "Memori Internal" else extLocationName
+
                 migrationConfirmData = MigrationConfirmData(
                     direction = dir,
                     totalBytes = totalBytes,
-                    sourceName = "Memori Internal",
-                    destName = targetPartition?.shortName ?: targetDisk?.displayName ?: "MicroSD",
+                    sourceName = sourceName,
+                    destName = destName,
                     destFreeBytes = freeSpace,
                     destExistingBytes = targetExistingBytes,
                     targetDisk = targetDisk,
@@ -2495,6 +2510,7 @@ private fun SmartStoragePartitionBottomSheet(
     internalFreeBytes: Long,
     selectedCategoryIds: Set<String>,
     categories: List<UnifiedCategoryItem>,
+    currentSdBase: String = "/data/sdext2",
     onDismiss: () -> Unit,
     onConfirmMove: (dir: MoveDirection, targetDisk: SdCardDiskInfo?, targetPartition: PartitionInfo?) -> Unit
 ) {
@@ -2505,27 +2521,36 @@ private fun SmartStoragePartitionBottomSheet(
         availableDisks
     }
 
-    var selectedDisk by remember(externalDisks) {
-        mutableStateOf<SdCardDiskInfo?>(externalDisks.firstOrNull())
-    }
-
-    var selectedPartition by remember(selectedDisk) {
-        mutableStateOf<PartitionInfo?>(selectedDisk?.partitions?.firstOrNull())
-    }
-
-    var isTargetInternal by remember { mutableStateOf(false) }
-
     val selectedItems = remember(selectedCategoryIds, categories) {
         categories.filter { selectedCategoryIds.contains(it.id) }
     }
     val allSelectedOnInternal = remember(selectedItems) {
-        selectedItems.all { !it.isMicroSd }
+        selectedItems.isNotEmpty() && selectedItems.all { !it.isMicroSd }
+    }
+    val allSelectedOnMicroSd = remember(selectedItems) {
+        selectedItems.isNotEmpty() && selectedItems.all { it.isMicroSd }
     }
     val totalSelectedBytes = remember(selectedItems) {
         selectedItems.sumOf { it.bytes }
     }
     val hasRiskSelected = remember(selectedItems) {
         selectedItems.any { it.isRisk }
+    }
+
+    var isTargetInternal by remember(allSelectedOnMicroSd) { mutableStateOf(allSelectedOnMicroSd) }
+
+    var selectedDisk by remember(externalDisks) {
+        mutableStateOf<SdCardDiskInfo?>(externalDisks.firstOrNull())
+    }
+
+    var selectedPartition by remember(selectedDisk, allSelectedOnMicroSd, currentSdBase) {
+        val allParts = selectedDisk?.partitions ?: emptyList()
+        val validPart = if (allSelectedOnMicroSd) {
+            allParts.firstOrNull { it.mountPoint != null && it.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/') }
+        } else {
+            allParts.firstOrNull()
+        }
+        mutableStateOf(validPart)
     }
 
     ModalBottomSheet(
@@ -2716,21 +2741,29 @@ private fun SmartStoragePartitionBottomSheet(
                         // Option 2+: External Disks (MicroSD / USB OTG)
                         if (externalDisks.isNotEmpty()) {
                             externalDisks.forEach { disk ->
+                                val hasOtherPartitions = disk.partitions.any { part ->
+                                    !part.mountPoint.isNullOrBlank() && part.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/')
+                                }
+                                val isDiskDisabled = allSelectedOnMicroSd && !hasOtherPartitions
                                 val isSelected = !isTargetInternal && selectedDisk == disk
                                 Card(
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isDiskDisabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                        else MaterialTheme.colorScheme.surface
+                                    ),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (isSelected) MaterialTheme.colorScheme.primary
+                                        if (!isDiskDisabled && isSelected) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
+                                        .clickable(enabled = !isDiskDisabled) {
                                             isTargetInternal = false
                                             selectedDisk = disk
-                                            selectedPartition = disk.partitions.firstOrNull()
+                                            selectedPartition = disk.partitions.firstOrNull { it.mountPoint != null && it.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/') }
+                                                ?: disk.partitions.firstOrNull()
                                         }
                                 ) {
                                     Row(
@@ -2745,7 +2778,8 @@ private fun SmartStoragePartitionBottomSheet(
                                             modifier = Modifier
                                                 .size(36.dp)
                                                 .background(
-                                                    color = if (disk.diskType == DiskType.USB_OTG) Color(0xFF7E57C2).copy(alpha = 0.12f)
+                                                    color = if (isDiskDisabled) Color.Gray.copy(alpha = 0.15f)
+                                                            else if (disk.diskType == DiskType.USB_OTG) Color(0xFF7E57C2).copy(alpha = 0.12f)
                                                             else Color(0xFF3BA71A).copy(alpha = 0.12f),
                                                     shape = RoundedCornerShape(8.dp)
                                                 )
@@ -2753,7 +2787,9 @@ private fun SmartStoragePartitionBottomSheet(
                                             Icon(
                                                 imageVector = if (disk.diskType == DiskType.USB_OTG) Icons.Default.Usb else Icons.Default.SdCard,
                                                 contentDescription = null,
-                                                tint = if (disk.diskType == DiskType.USB_OTG) Color(0xFF7E57C2) else Color(0xFF3BA71A),
+                                                tint = if (isDiskDisabled) Color.Gray
+                                                       else if (disk.diskType == DiskType.USB_OTG) Color(0xFF7E57C2)
+                                                       else Color(0xFF3BA71A),
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -2768,22 +2804,29 @@ private fun SmartStoragePartitionBottomSheet(
                                                     fontSize = 13.5.sp,
                                                     fontWeight = FontWeight.Bold
                                                 ),
-                                                color = MaterialTheme.colorScheme.onSurface
+                                                color = if (isDiskDisabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                        else MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
-                                                text = "${FormatUtils.formatLegendBytes(disk.totalFreeBytes)} / ${FormatUtils.formatLegendBytes(disk.totalSizeBytes)}",
+                                                text = if (isDiskDisabled) stringResource(R.string.manage_current_location_disabled)
+                                                       else "${FormatUtils.formatLegendBytes(disk.totalFreeBytes)} / ${FormatUtils.formatLegendBytes(disk.totalSizeBytes)}",
                                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (isDiskDisabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                        else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
 
                                         RadioButton(
-                                            selected = isSelected,
-                                            onClick = {
-                                                isTargetInternal = false
-                                                selectedDisk = disk
-                                                selectedPartition = disk.partitions.firstOrNull()
-                                            }
+                                            selected = !isDiskDisabled && isSelected,
+                                            onClick = if (!isDiskDisabled) {
+                                                {
+                                                    isTargetInternal = false
+                                                    selectedDisk = disk
+                                                    selectedPartition = disk.partitions.firstOrNull { it.mountPoint != null && it.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/') }
+                                                        ?: disk.partitions.firstOrNull()
+                                                }
+                                            } else null,
+                                            enabled = !isDiskDisabled
                                         )
                                     }
                                 }
@@ -2863,7 +2906,8 @@ private fun SmartStoragePartitionBottomSheet(
                                 modalStep = 2
                             }
                         },
-                        enabled = isTargetInternal || selectedDisk != null || externalDisks.isEmpty(),
+                        enabled = (isTargetInternal && !allSelectedOnInternal) ||
+                            (!isTargetInternal && (selectedDisk == null || !allSelectedOnMicroSd || selectedDisk!!.partitions.any { !it.mountPoint.isNullOrBlank() && it.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/') })),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         modifier = Modifier
@@ -2897,18 +2941,25 @@ private fun SmartStoragePartitionBottomSheet(
                     ) {
                         if (partitions.isNotEmpty()) {
                             partitions.forEach { partition ->
-                                val isSelected = selectedPartition == partition
+                                val isCurrentPartition = allSelectedOnMicroSd && (
+                                    (!partition.mountPoint.isNullOrBlank() && partition.mountPoint.trimEnd('/') == currentSdBase.trimEnd('/')) ||
+                                    (partition.mountPoint.isNullOrBlank() && currentSdBase == "/data/sdext2" && partition.partitionNumber == 3)
+                                )
+                                val isSelected = !isCurrentPartition && selectedPartition == partition
                                 Card(
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isCurrentPartition) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                        else MaterialTheme.colorScheme.surface
+                                    ),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (isSelected) MaterialTheme.colorScheme.primary
+                                        if (!isCurrentPartition && isSelected) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { selectedPartition = partition }
+                                        .clickable(enabled = !isCurrentPartition) { selectedPartition = partition }
                                 ) {
                                     Row(
                                         modifier = Modifier
@@ -2921,12 +2972,16 @@ private fun SmartStoragePartitionBottomSheet(
                                             contentAlignment = Alignment.Center,
                                             modifier = Modifier
                                                 .size(36.dp)
-                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp))
+                                                .background(
+                                                    if (isCurrentPartition) Color.Gray.copy(alpha = 0.15f)
+                                                    else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.SdStorage,
                                                 contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
+                                                tint = if (isCurrentPartition) Color.Gray else MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -2941,18 +2996,22 @@ private fun SmartStoragePartitionBottomSheet(
                                                     fontSize = 13.5.sp,
                                                     fontWeight = FontWeight.Bold
                                                 ),
-                                                color = MaterialTheme.colorScheme.onSurface
+                                                color = if (isCurrentPartition) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                        else MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
-                                                text = "${FormatUtils.formatLegendBytes(partition.freeBytes)} / ${FormatUtils.formatLegendBytes(partition.sizeBytes)}",
+                                                text = if (isCurrentPartition) stringResource(R.string.manage_current_location_disabled)
+                                                       else "${FormatUtils.formatLegendBytes(partition.freeBytes)} / ${FormatUtils.formatLegendBytes(partition.sizeBytes)}",
                                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (isCurrentPartition) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                        else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
 
                                         RadioButton(
                                             selected = isSelected,
-                                            onClick = { selectedPartition = partition }
+                                            onClick = if (!isCurrentPartition) { { selectedPartition = partition } } else null,
+                                            enabled = !isCurrentPartition
                                         )
                                     }
                                 }
@@ -3034,6 +3093,7 @@ private fun SmartStoragePartitionBottomSheet(
 
                         Button(
                             onClick = { modalStep = 3 },
+                            enabled = selectedPartition != null && (!allSelectedOnMicroSd || selectedPartition?.mountPoint?.trimEnd('/') != currentSdBase.trimEnd('/')),
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             modifier = Modifier
@@ -3082,7 +3142,13 @@ private fun SmartStoragePartitionBottomSheet(
                             )
                             SummaryRow(
                                 label = stringResource(R.string.manage_summary_from),
-                                value = if (isTargetInternal) stringResource(R.string.manage_location_badge_microsd) else stringResource(R.string.manage_internal_memory_label)
+                                value = if (isTargetInternal) {
+                                    val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                                    val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
+                                    "$diskName$partName"
+                                } else {
+                                    stringResource(R.string.manage_internal_memory_label)
+                                }
                             )
                             SummaryRow(
                                 label = stringResource(R.string.manage_summary_to),

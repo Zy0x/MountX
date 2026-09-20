@@ -304,7 +304,8 @@ class MountManager {
         isMedia: Boolean
     ) {
         if (!RootShell.exists(mp.sourcePath)) {
-            RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
+            AppLogger.warn("MountManager", "Source path ${mp.sourcePath} does not exist on SD storage. Skipping mount to prevent hiding internal data.")
+            return
         }
 
         RootShell.exec("chown -R $uid:$gid \"${mp.sourcePath}\" 2>/dev/null")

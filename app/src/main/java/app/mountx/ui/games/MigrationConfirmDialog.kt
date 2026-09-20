@@ -61,7 +61,7 @@ fun MigrationConfirmDialog(
 ) {
     var selectedStrategy by remember { mutableStateOf(ConflictStrategy.OVERWRITE) }
     val isSpaceLow = data.destFreeBytes in 1L until data.totalBytes
-    val hasConflict = data.destExistingBytes > 0L
+    val hasConflict = data.destExistingBytes > 64 * 1024L
     val isToSd = data.direction == MoveDirection.TO_SD
 
     Dialog(

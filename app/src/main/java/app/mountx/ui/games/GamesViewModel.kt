@@ -328,8 +328,9 @@ class GamesViewModel @Inject constructor(
                 game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
             }
 
-            // If restoring to internal, unmount from runtime namespaces first
-            if (direction == MoveDirection.TO_INTERNAL && game != null && game.mountStatus == MountStatus.MOUNTED) {
+            // Always unmount from runtime namespaces first before moving data in either direction
+            // to avoid circular reading/writing across bind mounts
+            if (game != null && game.mountStatus == MountStatus.MOUNTED) {
                 gameRepository.unmountGame(game) { prog ->
                     _operationProgress.value = prog
                 }
@@ -348,9 +349,36 @@ class GamesViewModel @Inject constructor(
                 _moveMessage.value = "SUCCESS"
 
                 if (game != null) {
-                    val updated = game.copy(mountPoints = effectivePoints)
-                    gameRepository.updateGame(updated)
-                    if (direction == MoveDirection.TO_SD) {
+                    if (direction == MoveDirection.TO_INTERNAL) {
+                        // Mark moved points as disabled, update game status to UNMOUNTED
+                        val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
+                        val updatedPoints = currentPoints.map { pt ->
+                            if (effectivePoints.any { it.id == pt.id || it.category == pt.category }) {
+                                pt.copy(enabled = false)
+                            } else {
+                                pt
+                            }
+                        }
+                        val allDisabled = updatedPoints.none { it.enabled }
+                        val updated = game.copy(
+                            mountPoints = updatedPoints,
+                            mountStatus = MountStatus.UNMOUNTED,
+                            isEnabled = if (allDisabled) false else game.isEnabled
+                        )
+                        gameRepository.updateGame(updated)
+                    } else {
+                        // TO_SD
+                        val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
+                        val updatedPoints = currentPoints.map { pt ->
+                            val moved = effectivePoints.firstOrNull { it.id == pt.id || it.category == pt.category }
+                            if (moved != null) moved.copy(enabled = true) else pt
+                        }
+                        val updated = game.copy(
+                            mountPoints = if (updatedPoints.isNotEmpty()) updatedPoints else effectivePoints,
+                            mountStatus = MountStatus.MOUNTED,
+                            isEnabled = true
+                        )
+                        gameRepository.updateGame(updated)
                         gameRepository.mountGame(updated, sdBase) { prog ->
                             _operationProgress.value = prog
                         }
@@ -387,8 +415,8 @@ class GamesViewModel @Inject constructor(
             val sdBase = appPreferences.sdBasePath.first()
             val game = games.value.firstOrNull { it.packageName == packageName }
 
-            // If restoring to internal, unmount from runtime namespaces first
-            if (direction == MoveDirection.TO_INTERNAL && game != null && game.mountStatus == MountStatus.MOUNTED) {
+            // Always unmount from runtime namespaces first before moving data in either direction
+            if (game != null && game.mountStatus == MountStatus.MOUNTED) {
                 gameRepository.unmountGame(game) { prog ->
                     _operationProgress.value = prog
                 }
@@ -406,10 +434,16 @@ class GamesViewModel @Inject constructor(
             if (result.isSuccess) {
                 _moveMessage.value = "SUCCESS"
 
-                // If moved to SD card, auto-mount immediately to Android runtime namespaces
-                if (direction == MoveDirection.TO_SD && game != null) {
-                    gameRepository.mountGame(game, sdBase) { prog ->
-                        _operationProgress.value = prog
+                if (game != null) {
+                    if (direction == MoveDirection.TO_INTERNAL) {
+                        val updated = game.copy(mountStatus = MountStatus.UNMOUNTED, isEnabled = false)
+                        gameRepository.updateGame(updated)
+                    } else {
+                        val updated = game.copy(mountStatus = MountStatus.MOUNTED, isEnabled = true)
+                        gameRepository.updateGame(updated)
+                        gameRepository.mountGame(updated, sdBase) { prog ->
+                            _operationProgress.value = prog
+                        }
                     }
                 }
 

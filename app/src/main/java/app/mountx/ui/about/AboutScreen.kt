@@ -406,11 +406,67 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.28 (Latest) ──
+                        // ── v2.2.31 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.31",
+                            releaseDate = "20 Sep 2026",
+                            isLatest = true,
+                            title = "Eliminasi Phantom Conflict Restore, Multi-Namespace VFS Unmount & Proteksi Tabrakan Partisi"
+                        ) {
+                            GithubSectionHeader("🛡️ Eliminasi Phantom Conflict & Keamanan VFS")
+                            GithubMarkdownBullet("• **Penanganan Phantom Conflict Restore**: Mengoreksi penghitungan ukuran target internal saat kaitan mount MicroSD masih aktif (`isMounted == true`) sehingga dialog tidak lagi memicu peringatan konflik fiktif saat mengembalikan data ke memori internal.")
+                            GithubMarkdownBullet("• **Pelepasan Mount Multi-Namespace**: Melepaskan kaitan VFS secara tuntas di seluruh namespace Android (`/mnt/runtime/*`, `/mnt/user/0`, `/storage`, dll) sebelum migrasi untuk mencegah tabrakan I/O atau kebocoran berkas.")
+                            GithubMarkdownBullet("• **Guard Identitas Partisi & Disk**: Menolak pemindahan data jika direktori sumber dan tujuan berada di partisi fisik yang sama baik di backend `StorageManager` maupun proteksi seleksi antarmuka.")
+
+                            GithubSectionHeader("⚡ Verifikasi Pengujian Nyata")
+                            GithubMarkdownBullet("• **Uji End-to-End Pemulihan WuWa Berhasil**: Pemindahan data Wuthering Waves (140.9 MB) dari MicroSD kembali ke Internal berjalan mulus 100% dengan integritas berkas, kepemilikan `media_rw`, dan file `.nomedia` terjaga sempurna.")
+
+                            GithubSectionHeader("💾 Portabilitas Konfigurasi JSON v2")
+                            GithubMarkdownBullet("• **Normalisasi Jalur & Cadangan Portabel**: Skema JSON v2 menyimpan konfigurasi titik kait relatif sehingga bebas dipindahkan antar kartu MicroSD atau dipulihkan sewaktu-waktu tanpa terikat UUID hardware.")
+                        }
+
+                        // ── v2.2.30 ──
+                        GithubReleaseCard(
+                            version = "v2.2.30",
+                            releaseDate = "20 Sep 2026",
+                            isLatest = false,
+                            title = "Perbaikan Eksekusi Salin Berkas Shell & Pencegahan Konflik Partisi Sama"
+                        ) {
+                            GithubSectionHeader("⚡ Perbaikan Penyalinan & Shell Engine")
+                            GithubMarkdownBullet("• **Resolusi Eksekusi Salin Berkas**: Menghilangkan sintaks subshell yang tidak kompatibel dengan Android mksh/toybox pada skrip penyalinan latar belakang, mengatasi error `exit code -1` sehingga pemindahan data game berjalan konkret.")
+                            GithubMarkdownBullet("• **Guard Tabrakan Jalur Identik (Backend)**: Menolak proses penyalinan atau penghapusan berkas jika jalur sumber dan tujuan identik pada level `StorageManager` untuk menjamin Zero Data Loss mutlak.")
+
+                            GithubSectionHeader("🛡️ Antarmuka Cerdas & Proteksi Partisi Sama")
+                            GithubMarkdownBullet("• **Pencegahan Konflik Partisi Sama**: Pada modal Kelola Penyimpanan, partisi MicroSD aktif saat ini otomatis dinonaktifkan dengan status `Lokasi saat ini (Tidak dapat dipilih)` jika data yang dipilih sudah berada di partisi tersebut.")
+                            GithubMarkdownBullet("• **Arah & Target Cerdas (Smart Selection)**: Jika semua kategori yang dipilih bersumber dari MicroSD, opsi `Memori Internal` otomatis diaktifkan sebagai target pemulihan, memandu pengguna ke arah yang benar.")
+                        }
+
+                        // ── v2.2.29 ──
+                        GithubReleaseCard(
+                            version = "v2.2.29",
+                            releaseDate = "20 Sep 2026",
+                            isLatest = false,
+                            title = "Proteksi Konflik Data Zero-Loss, Portabilitas Konfigurasi v2 & Adaptive Icon Mulus"
+                        ) {
+                            GithubSectionHeader("🛡️ Keamanan & Integritas Data (Zero-Loss)")
+                            GithubMarkdownBullet("• **Pencegahan Penimpaan Berkas Kosong**: Menolak secara otomatis operasi penimpaan destruktif jika folder sumber kosong/kerangka direktori (<= 64KB) sementara tujuan memiliki berkas riil game (>= 10MB) guna mencegah hilangnya data pengguna.")
+                            GithubMarkdownBullet("• **Proteksi Partisi Sama (Self-Conflict Guard)**: Mendeteksi data yang telah berada di MicroSD tujuan sehingga mengeliminasi proses salin sirkular dan langsung memverifikasi izin VFS secara aman.")
+                            GithubMarkdownBullet("• **Pemeriksaan Kaitan VFS Pra-Operasi**: Memastikan kaitan mount dilepaskan dengan aman sebelum proses penyalinan atau pembersihan berkas untuk mencegah penghapusan data secara sirkular.")
+                            GithubMarkdownBullet("• **Sinkronisasi Status Atomik & Pembersihan Canary**: Memperbarui status unmount secara akurat di database saat pemulihan ke internal selesai serta membersihkan berkas penanda canary internal.")
+
+                            GithubSectionHeader("💾 Portabilitas Konfigurasi (Skema v2)")
+                            GithubMarkdownBullet("• **Ekspor & Impor Konfigurasi Skema v2**: Menyimpan metadata terstruktur mencakup profil game, titik kait granular, kategori berkas, dan penataan partisi relatif secara portabel.")
+                            GithubMarkdownBullet("• **Dukungan Kompatibilitas Mundur**: Tetap dapat membaca dan menggabungkan berkas konfigurasi lama secara otomatis.")
+
+                            GithubSectionHeader("🎨 Tampilan Ikon Launcher (Adaptive Icon)")
+                            GithubMarkdownBullet("• **Ikon App Drawer Mengikuti Wadah Sistem**: Menggunakan emblem transparan MountX di atas kanvas Cyberpunk mulus tanpa bingkai squircle kaku, menyatu elegan dengan bentuk wadah launcher (lingkaran, squircle, atau pebble).")
+                        }
+
+                        // ── v2.2.28 ──
                         GithubReleaseCard(
                             version = "v2.2.28",
                             releaseDate = "20 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "Progres Kernel Real-Time & Safe Zone Ikon App Drawer"
                         ) {
                             GithubSectionHeader("⚡ Penyalinan Data & Telemetri Nyata")
