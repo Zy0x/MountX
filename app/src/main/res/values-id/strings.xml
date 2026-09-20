@@ -889,6 +889,9 @@
     <string name="category_inspector_deleting">Menghapus data…</string>
     <string name="category_inspector_delete_success">Data kategori berhasil dihapus</string>
     <string name="category_inspector_delete_failed">Gagal menghapus data: %1$s</string>
+    <string name="category_inspector_internal_mounted_note">Dialihkan ke MicroSD</string>
+    <string name="category_inspector_delete_loc_sd_mounted_hint">Data kategori ini ter-mount ke MicroSD (%1$s). Menghapus data akan melepas kaitan mount dan menghapus berkas fisik di kartu memori.</string>
+    <string name="category_inspector_delete_loc_internal_hint">Data kategori ini tersimpan di memori internal (%1$s). Menghapus data akan menghapus berkas di penyimpanan lokal perangkat.</string>
 
     <!-- v2.2.22 Real-Time Progress Engine -->
     <string name="op_title_move_sd">Memindahkan Data ke MicroSD</string>

@@ -1115,13 +1115,17 @@ class GameRepository @Inject constructor(
 
             when (categoryId) {
                 "cache" -> {
-                    RootShell.exec("rm -rf \"/data/data/$packageName/cache\"/* 2>/dev/null")
-                    RootShell.exec("rm -rf \"/data/data/$packageName/code_cache\"/* 2>/dev/null")
-                    RootShell.exec("rm -rf \"/data/user/0/$packageName/cache\"/* 2>/dev/null")
-                    RootShell.exec("rm -rf \"/data/user/0/$packageName/code_cache\"/* 2>/dev/null")
-                    RootShell.exec("rm -rf \"/data/media/0/Android/data/$packageName/cache\"/* 2>/dev/null")
-                    externalBases.forEach { base ->
-                        RootShell.exec("rm -rf \"$base/Android/data/$packageName/cache\"/* 2>/dev/null")
+                    if (location == CategoryDeleteLocation.INTERNAL_ONLY || location == CategoryDeleteLocation.BOTH) {
+                        RootShell.exec("rm -rf \"/data/data/$packageName/cache\"/* \"/data/data/$packageName/code_cache\"/* 2>/dev/null")
+                        RootShell.exec("rm -rf \"/data/user/0/$packageName/cache\"/* \"/data/user/0/$packageName/code_cache\"/* 2>/dev/null")
+                        RootShell.exec("rm -rf \"/data/media/0/Android/data/$packageName/cache\"/* 2>/dev/null")
+                    }
+                    if (location == CategoryDeleteLocation.SD_ONLY || location == CategoryDeleteLocation.BOTH) {
+                        externalBases.forEach { base ->
+                            RootShell.exec("rm -rf \"$base/MountX/Android/data/$packageName/cache\" 2>/dev/null")
+                            RootShell.exec("rm -rf \"$base/Android/data/$packageName/cache\" 2>/dev/null")
+                            RootShell.exec("rm -rf \"$base/MountX/MountX/Android/data/$packageName/cache\" 2>/dev/null")
+                        }
                     }
                 }
                 "private" -> {
@@ -1131,66 +1135,169 @@ class GameRepository @Inject constructor(
                     val internalPath = "/data/media/0/Android/data/$packageName"
                     val isMounted = RootShell.isMountpoint(internalPath)
 
+                    if (isMounted) {
+                        RootShell.exec("umount -l \"$internalPath\" 2>/dev/null")
+                    }
+
                     if (location == CategoryDeleteLocation.SD_ONLY || location == CategoryDeleteLocation.BOTH) {
-                        if (isMounted) {
-                            RootShell.exec("umount -l \"$internalPath\" 2>/dev/null")
-                        }
+                        val sdPaths = mutableListOf<String>()
                         externalBases.forEach { base ->
-                            RootShell.exec("rm -rf \"$base/Android/data/$packageName\" 2>/dev/null")
+                            sdPaths.add("$base/MountX/Android/data/$packageName")
+                            sdPaths.add("$base/Android/data/$packageName")
+                            sdPaths.add("$base/MountX/MountX/Android/data/$packageName")
                         }
                         game?.mountPoints?.filter {
                             it.category == MountPointCategory.EXTERNAL_DATA || it.category == MountPointCategory.GAME_ASSETS
                         }?.forEach { mp ->
-                            RootShell.exec("rm -rf \"${mp.sourcePath}\" 2>/dev/null")
+                            if (mp.sourcePath.isNotBlank()) sdPaths.add(mp.sourcePath)
+                        }
+                        sdPaths.distinct().forEach { path ->
+                            RootShell.exec("rm -rf \"$path\" 2>/dev/null")
+                        }
+
+                        if (game != null) {
+                            val updatedPoints = game.mountPoints.map { mp ->
+                                if (mp.resolveCategory() == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.GAME_ASSETS) {
+                                    mp.copy(enabled = false)
+                                } else {
+                                    mp
+                                }
+                            }
+                            gameDao.updateGame(game.copy(mountPoints = updatedPoints))
                         }
                     }
 
                     if (location == CategoryDeleteLocation.INTERNAL_ONLY || location == CategoryDeleteLocation.BOTH) {
-                        if (isMounted && location == CategoryDeleteLocation.INTERNAL_ONLY) {
-                            RootShell.exec("umount -l \"$internalPath\" 2>/dev/null")
-                            RootShell.exec("rm -rf \"$internalPath\"/* 2>/dev/null")
-                            if (game != null && game.mountStatus == MountStatus.MOUNTED) {
-                                mountGame(game, sdBase)
-                            }
-                        } else {
-                            RootShell.exec("rm -rf \"$internalPath\"/* 2>/dev/null")
-                        }
+                        RootShell.exec("rm -rf \"$internalPath\" 2>/dev/null")
                     }
+
+                    // Always ensure clean, accessible internal directory exists
+                    RootShell.exec("mkdir -p \"$internalPath\" 2>/dev/null")
+                    val uid = try {
+                        context.packageManager.getPackageUid(packageName, 0)
+                    } catch (_: Exception) {
+                        1000
+                    }
+                    RootShell.exec("chown $uid:1023 \"$internalPath\" 2>/dev/null")
+                    RootShell.exec("chmod 775 \"$internalPath\" 2>/dev/null")
                     RootShell.exec("restorecon -FR \"$internalPath\" 2>/dev/null")
+
+                    if (location == CategoryDeleteLocation.INTERNAL_ONLY && isMounted && game != null && game.mountStatus == MountStatus.MOUNTED) {
+                        mountGame(game, sdBase)
+                    }
                 }
                 "obb" -> {
                     val internalPath = "/data/media/0/Android/obb/$packageName"
                     val isMounted = RootShell.isMountpoint(internalPath)
 
+                    if (isMounted) {
+                        RootShell.exec("umount -l \"$internalPath\" 2>/dev/null")
+                    }
+
                     if (location == CategoryDeleteLocation.SD_ONLY || location == CategoryDeleteLocation.BOTH) {
-                        if (isMounted) {
-                            RootShell.exec("umount -l \"$internalPath\" 2>/dev/null")
-                        }
+                        val sdPaths = mutableListOf<String>()
                         externalBases.forEach { base ->
-                            RootShell.exec("rm -rf \"$base/Android/obb/$packageName\" 2>/dev/null")
+                            sdPaths.add("$base/MountX/Android/obb/$packageName")
+                            sdPaths.add("$base/Android/obb/$packageName")
+                            sdPaths.add("$base/MountX/MountX/Android/obb/$packageName")
                         }
                         game?.mountPoints?.filter {
                             it.category == MountPointCategory.OBB_STORAGE
                         }?.forEach { mp ->
-                            RootShell.exec("rm -rf \"${mp.sourcePath}\" 2>/dev/null")
+                            if (mp.sourcePath.isNotBlank()) sdPaths.add(mp.sourcePath)
+                        }
+                        sdPaths.distinct().forEach { path ->
+                            RootShell.exec("rm -rf \"$path\" 2>/dev/null")
+                        }
+
+                        if (game != null) {
+                            val updatedPoints = game.mountPoints.map { mp ->
+                                if (mp.resolveCategory() == MountPointCategory.OBB_STORAGE) {
+                                    mp.copy(enabled = false)
+                                } else {
+                                    mp
+                                }
+                            }
+                            gameDao.updateGame(game.copy(mountPoints = updatedPoints))
                         }
                     }
 
                     if (location == CategoryDeleteLocation.INTERNAL_ONLY || location == CategoryDeleteLocation.BOTH) {
-                        if (isMounted && location == CategoryDeleteLocation.INTERNAL_ONLY) {
-                            RootShell.exec("umount -l \"$internalPath\" 2>/dev/null")
-                            RootShell.exec("rm -rf \"$internalPath\"/* 2>/dev/null")
-                            if (game != null && game.mountStatus == MountStatus.MOUNTED) {
-                                mountGame(game, sdBase)
+                        RootShell.exec("rm -rf \"$internalPath\" 2>/dev/null")
+                    }
+
+                    // Always ensure clean, accessible internal directory exists
+                    RootShell.exec("mkdir -p \"$internalPath\" 2>/dev/null")
+                    val uid = try {
+                        context.packageManager.getPackageUid(packageName, 0)
+                    } catch (_: Exception) {
+                        1000
+                    }
+                    RootShell.exec("chown $uid:1023 \"$internalPath\" 2>/dev/null")
+                    RootShell.exec("chmod 775 \"$internalPath\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"$internalPath\" 2>/dev/null")
+
+                    if (location == CategoryDeleteLocation.INTERNAL_ONLY && isMounted && game != null && game.mountStatus == MountStatus.MOUNTED) {
+                        mountGame(game, sdBase)
+                    }
+                }
+                "media" -> {
+                    val internalPath = "/data/media/0/Android/media/$packageName"
+                    val isMounted = RootShell.isMountpoint(internalPath)
+
+                    if (isMounted) {
+                        RootShell.exec("umount -l \"$internalPath\" 2>/dev/null")
+                    }
+
+                    if (location == CategoryDeleteLocation.SD_ONLY || location == CategoryDeleteLocation.BOTH) {
+                        val sdPaths = mutableListOf<String>()
+                        externalBases.forEach { base ->
+                            sdPaths.add("$base/MountX/Android/media/$packageName")
+                            sdPaths.add("$base/Android/media/$packageName")
+                            sdPaths.add("$base/MountX/MountX/Android/media/$packageName")
+                        }
+                        game?.mountPoints?.filter {
+                            it.category == MountPointCategory.MEDIA_DOWNLOADS
+                        }?.forEach { mp ->
+                            if (mp.sourcePath.isNotBlank()) sdPaths.add(mp.sourcePath)
+                        }
+                        sdPaths.distinct().forEach { path ->
+                            RootShell.exec("rm -rf \"$path\" 2>/dev/null")
+                        }
+
+                        if (game != null) {
+                            val updatedPoints = game.mountPoints.map { mp ->
+                                if (mp.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS) {
+                                    mp.copy(enabled = false)
+                                } else {
+                                    mp
+                                }
                             }
-                        } else {
-                            RootShell.exec("rm -rf \"$internalPath\"/* 2>/dev/null")
+                            gameDao.updateGame(game.copy(mountPoints = updatedPoints))
                         }
                     }
+
+                    if (location == CategoryDeleteLocation.INTERNAL_ONLY || location == CategoryDeleteLocation.BOTH) {
+                        RootShell.exec("rm -rf \"$internalPath\" 2>/dev/null")
+                    }
+
+                    RootShell.exec("mkdir -p \"$internalPath\" 2>/dev/null")
+                    val uid = try {
+                        context.packageManager.getPackageUid(packageName, 0)
+                    } catch (_: Exception) {
+                        1000
+                    }
+                    RootShell.exec("chown $uid:1023 \"$internalPath\" 2>/dev/null")
+                    RootShell.exec("chmod 775 \"$internalPath\" 2>/dev/null")
                     RootShell.exec("restorecon -FR \"$internalPath\" 2>/dev/null")
+
+                    if (location == CategoryDeleteLocation.INTERNAL_ONLY && isMounted && game != null && game.mountStatus == MountStatus.MOUNTED) {
+                        mountGame(game, sdBase)
+                    }
                 }
                 "apk" -> {
                     RootShell.exec("pm uninstall \"$packageName\"")
+                    gameDao.deleteGame(packageName)
                 }
                 "lib" -> {
                     val appInfo = try {
@@ -1203,10 +1310,41 @@ class GameRepository @Inject constructor(
                         RootShell.exec("rm -rf \"$libDir\"/* 2>/dev/null")
                     }
                 }
+                else -> {
+                    // Custom mount point deletion
+                    val customMp = game?.mountPoints?.firstOrNull { it.id == categoryId }
+                    if (customMp != null) {
+                        val src = customMp.sourcePath
+                        val tgt = customMp.targetPath
+                        if (RootShell.isMountpoint(tgt)) {
+                            RootShell.exec("umount -l \"$tgt\" 2>/dev/null")
+                        }
+                        if (location == CategoryDeleteLocation.SD_ONLY || location == CategoryDeleteLocation.BOTH) {
+                            if (src.isNotBlank()) {
+                                RootShell.exec("rm -rf \"$src\" 2>/dev/null")
+                            }
+                            val updatedPoints = game.mountPoints.filter { it.id != customMp.id }
+                            gameDao.updateGame(game.copy(mountPoints = updatedPoints))
+                        }
+                        if (location == CategoryDeleteLocation.INTERNAL_ONLY || location == CategoryDeleteLocation.BOTH) {
+                            if (tgt.isNotBlank()) {
+                                RootShell.exec("rm -rf \"$tgt\" 2>/dev/null")
+                                RootShell.exec("mkdir -p \"$tgt\" 2>/dev/null")
+                                RootShell.exec("restorecon -FR \"$tgt\" 2>/dev/null")
+                            }
+                        }
+                        if (location == CategoryDeleteLocation.INTERNAL_ONLY && game.mountStatus == MountStatus.MOUNTED && src.isNotBlank() && tgt.isNotBlank()) {
+                            RootShell.exec("mount -o bind \"$src\" \"$tgt\" 2>/dev/null")
+                        }
+                    }
+                }
             }
 
-            // Recalculate game data size
+            // After deletion, refresh mount status to accurately reflect unmounted state
+            refreshMountStatuses()
             calculateDataSize(packageName, sdBase)
+            syncModuleGamelist()
+            syncDiskCatalog(sdBase)
             AppLogger.success("Storage", "Category $categoryId deleted for $packageName ($location)")
             Result.success(Unit)
         } catch (e: Exception) {

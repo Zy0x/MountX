@@ -157,6 +157,9 @@ fun GamesScreen(
                 )
                 configuringApp = null
             },
+            onDeleteCategoryData = { catId, loc, callback ->
+                viewModel.deleteCategoryData(draftGame.packageName, catId, loc, callback)
+            },
             modifier = modifier
         )
     } else if (showAddSheet) {

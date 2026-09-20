@@ -758,12 +758,9 @@ private fun StorageTabContent(
 
     val categories = remember(safeBreakdown, isMounted, mountPoints, packageInfo, sdBase) {
         val existingDataPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
+        val isDataCatMounted = safeBreakdown.isDataMounted || (isMounted && existingDataPoint?.enabled == true)
         val (dataBytes, dataSubtitle, isDataSd) = when {
-            safeBreakdown.isDataMounted -> {
-                val size = if (safeBreakdown.ext2DataBytes > 0L) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
-                Triple(size, "Data utama game", true)
-            }
-            isMounted && existingDataPoint?.enabled == true -> {
+            isDataCatMounted -> {
                 val size = if (safeBreakdown.ext2DataBytes > 0L) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
                 Triple(size, "Data utama game", true)
             }
@@ -787,12 +784,9 @@ private fun StorageTabContent(
         }
 
         val existingObbPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
+        val isObbCatMounted = safeBreakdown.isObbMounted || (isMounted && existingObbPoint?.enabled == true)
         val (obbBytes, obbSubtitle, isObbSd) = when {
-            safeBreakdown.isObbMounted -> {
-                val size = if (safeBreakdown.ext2ObbBytes > 0L) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
-                Triple(size, "File ekspansi game", true)
-            }
-            isMounted && existingObbPoint?.enabled == true -> {
+            isObbCatMounted -> {
                 val size = if (safeBreakdown.ext2ObbBytes > 0L) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
                 Triple(size, "File ekspansi game", true)
             }
@@ -818,13 +812,9 @@ private fun StorageTabContent(
 
         val existingMediaPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS }
         val hasMedia = safeBreakdown.ext1MediaBytes > 0L || safeBreakdown.ext2MediaBytes > 0L || existingMediaPoint != null
-
+        val isMediaCatMounted = safeBreakdown.isMediaMounted || (isMounted && existingMediaPoint?.enabled == true)
         val (mediaBytes, mediaSubtitle, isMediaSd) = when {
-            safeBreakdown.isMediaMounted -> {
-                val size = if (safeBreakdown.ext2MediaBytes > 0L) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
-                Triple(size, "Berkas media & unduhan", true)
-            }
-            isMounted && existingMediaPoint?.enabled == true -> {
+            isMediaCatMounted -> {
                 val size = if (safeBreakdown.ext2MediaBytes > 0L) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
                 Triple(size, "Berkas media & unduhan", true)
             }
@@ -855,14 +845,19 @@ private fun StorageTabContent(
                 isRisk = false,
                 mountCategory = MountPointCategory.MEDIA_DOWNLOADS,
                 internalPath = existingMediaPoint?.targetPath ?: "/data/media/0/Android/media/$pkg",
-                internalBytes = safeBreakdown.ext1MediaBytes,
+                internalBytes = if (isMediaCatMounted) 0L else safeBreakdown.ext1MediaBytes,
                 sdPath = existingMediaPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/media/$pkg"),
-                sdBytes = safeBreakdown.ext2MediaBytes,
-                isCategoryMounted = isMounted && (existingMediaPoint?.enabled == true || safeBreakdown.isMediaMounted)
+                sdBytes = if (isMediaCatMounted) {
+                    if (safeBreakdown.ext2MediaBytes > 0L) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
+                } else {
+                    safeBreakdown.ext2MediaBytes
+                },
+                isCategoryMounted = isMediaCatMounted
             )
         } else null
 
         val customItems = mountPoints.filter { it.resolveCategory() == MountPointCategory.CUSTOM }.map { pt ->
+            val isCustomMounted = isMounted && pt.enabled
             UnifiedCategoryItem(
                 id = pt.id,
                 title = pt.label ?: "Kustom (${pt.targetPath.substringAfterLast('/').ifEmpty { pt.targetPath }})",
@@ -870,14 +865,14 @@ private fun StorageTabContent(
                 bytes = pt.sizeBytes,
                 icon = Icons.Default.Folder,
                 iconTint = Color(0xFF00897B),
-                isMicroSd = isMounted,
+                isMicroSd = isCustomMounted,
                 isRisk = false,
                 mountCategory = MountPointCategory.CUSTOM,
                 internalPath = pt.targetPath,
-                internalBytes = pt.sizeBytes,
+                internalBytes = if (isCustomMounted) 0L else pt.sizeBytes,
                 sdPath = pt.sourcePath,
                 sdBytes = pt.sizeBytes,
-                isCategoryMounted = isMounted
+                isCategoryMounted = isCustomMounted
             )
         }
 
@@ -957,10 +952,14 @@ private fun StorageTabContent(
                 isRisk = false,
                 mountCategory = MountPointCategory.EXTERNAL_DATA,
                 internalPath = "/data/media/0/Android/data/$pkg",
-                internalBytes = safeBreakdown.ext1DataBytes,
+                internalBytes = if (isDataCatMounted) 0L else safeBreakdown.ext1DataBytes,
                 sdPath = existingDataPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg"),
-                sdBytes = safeBreakdown.ext2DataBytes,
-                isCategoryMounted = isMounted && (existingDataPoint?.enabled == true || safeBreakdown.isDataMounted)
+                sdBytes = if (isDataCatMounted) {
+                    if (safeBreakdown.ext2DataBytes > 0L) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
+                } else {
+                    safeBreakdown.ext2DataBytes
+                },
+                isCategoryMounted = isDataCatMounted
             ),
             UnifiedCategoryItem(
                 id = "obb",
@@ -973,10 +972,14 @@ private fun StorageTabContent(
                 isRisk = false,
                 mountCategory = MountPointCategory.OBB_STORAGE,
                 internalPath = "/data/media/0/Android/obb/$pkg",
-                internalBytes = safeBreakdown.ext1ObbBytes,
+                internalBytes = if (isObbCatMounted) 0L else safeBreakdown.ext1ObbBytes,
                 sdPath = existingObbPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/obb/$pkg"),
-                sdBytes = safeBreakdown.ext2ObbBytes,
-                isCategoryMounted = isMounted && (existingObbPoint?.enabled == true || safeBreakdown.isObbMounted)
+                sdBytes = if (isObbCatMounted) {
+                    if (safeBreakdown.ext2ObbBytes > 0L) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
+                } else {
+                    safeBreakdown.ext2ObbBytes
+                },
+                isCategoryMounted = isObbCatMounted
             ),
             mediaItem
         ) + customItems
@@ -2137,12 +2140,13 @@ private fun CategoryInspectorBottomSheet(
                         }
 
                         Text(
-                            text = FormatUtils.formatExactBytes(item.internalBytes),
+                            text = if (item.isCategoryMounted) stringResource(R.string.category_inspector_internal_mounted_note)
+                                   else FormatUtils.formatExactBytes(item.internalBytes),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = if (item.isCategoryMounted) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -2335,7 +2339,7 @@ private fun CategoryDeleteConfirmDialog(
     val hasBoth = item.internalBytes > 0L && item.sdBytes > 0L
     val initialLocation = when {
         hasBoth -> CategoryDeleteLocation.BOTH
-        item.sdBytes > 0L -> CategoryDeleteLocation.SD_ONLY
+        item.isCategoryMounted || item.sdBytes > 0L -> CategoryDeleteLocation.SD_ONLY
         else -> CategoryDeleteLocation.INTERNAL_ONLY
     }
     var selectedLocation by remember { mutableStateOf(initialLocation) }
@@ -2400,6 +2404,38 @@ private fun CategoryDeleteConfirmDialog(
                             color = Color(0xFFE53935),
                             modifier = Modifier.padding(8.dp)
                         )
+                    }
+                }
+
+                if (!hasBoth) {
+                    val locationText = if (item.isCategoryMounted || item.sdBytes > 0L) {
+                        stringResource(R.string.category_inspector_delete_loc_sd_mounted_hint, FormatUtils.formatExactBytes(item.sdBytes))
+                    } else {
+                        stringResource(R.string.category_inspector_delete_loc_internal_hint, FormatUtils.formatExactBytes(item.internalBytes))
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (item.isCategoryMounted || item.sdBytes > 0L) Icons.Default.SdCard else Icons.Default.Smartphone,
+                                contentDescription = null,
+                                tint = if (item.isCategoryMounted || item.sdBytes > 0L) Color(0xFF3BA71A) else Color(0xFFDF4006),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = locationText,
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                 }
 

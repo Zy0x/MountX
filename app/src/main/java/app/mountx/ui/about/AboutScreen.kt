@@ -406,11 +406,32 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.32 (Latest) ──
+                        // ── v2.2.33 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.33",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "Perbaikan Total Penghapusan Data Kategori, Eliminasi Opsi Internal Semu saat Ter-mount & Pembersihan VFS Multi-Jalur"
+                        ) {
+                            GithubSectionHeader("🗑️ Perbaikan Total Hapus Data Kategori")
+                            GithubMarkdownBullet("• **Pembersihan Multi-Jalur MicroSD**: Penghapusan kategori data, obb, dan media kini menargetkan seluruh jalur fisik MicroSD modern (`MountX/Android/...`, `Android/...`, dan jalur kustom), sehingga berkas benar-benar terhapus tuntas.")
+                            GithubMarkdownBullet("• **Dukungan Kategori Lengkap**: Menambahkan penanganan penghapusan berkas untuk kategori `Media & Unduhan` dan direktori kustom pengguna.")
+                            GithubMarkdownBullet("• **Dukungan Mode Draf**: Fitur hapus kategori data kini tersambung penuh saat mengonfigurasi game baru pada layar pemilih aplikasi.")
+
+                            GithubSectionHeader("🛡️ Eliminasi Opsi Internal Semu saat Ter-mount")
+                            GithubMarkdownBullet("• **Anti-Duplikasi Ukuran Internal**: Kategori yang sedang ter-mount kini mengalokasikan ukuran fisik 0 B pada penyimpanan internal, mencegah munculnya pilihan hapus internal semu yang sebelumnya meremount kembali data dari MicroSD.")
+                            GithubMarkdownBullet("• **Inspektor & Dialog Informatif**: Rincian kategori kini menampilkan label `Dialihkan ke MicroSD` dan dialog konfirmasi menyajikan penjelasan lokasi fisik penghapusan secara transparan.")
+
+                            GithubSectionHeader("⚡ Rekonsiliasi Direktori & Sinkronisasi DB")
+                            GithubMarkdownBullet("• **Rekonsiliasi Izin Direktori**: Direktori internal lokal selalu diregenerasi secara bersih dengan UID pemilik paket, `chmod 775`, dan konteks SELinux yang valid agar game tetap dapat dijalankan tanpa crash.")
+                            GithubMarkdownBullet("• **Sinkronisasi Database Otomatis**: Titik kait yang dihapus dinonaktifkan dari database Room dan status mount VFS kernel disegarkan seketika.")
+                        }
+
+                        // ── v2.2.32 ──
                         GithubReleaseCard(
                             version = "v2.2.32",
                             releaseDate = "21 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "Presisi Deteksi Lokasi OBB [MicroSD], Pencegahan Stale Caching Antar-Game & Koreksi Concentric Chart"
                         ) {
                             GithubSectionHeader("🎯 Presisi Lokasi & Kategori OBB")
