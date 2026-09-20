@@ -54,6 +54,9 @@ class GamesViewModel @Inject constructor(
     private val _availableDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(emptyList())
     val availableDisks: StateFlow<List<app.mountx.data.model.SdCardDiskInfo>> = _availableDisks.asStateFlow()
 
+    private val _isScanningDisks = MutableStateFlow(false)
+    val isScanningDisks: StateFlow<Boolean> = _isScanningDisks.asStateFlow()
+
     val internalStorageInfo: StateFlow<app.mountx.data.model.InternalStorageInfo?> = storageRepository.observeInternalStorage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
@@ -225,7 +228,30 @@ class GamesViewModel @Inject constructor(
     fun loadAvailableDisks() {
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
-            _availableDisks.value = storageRepository.getAllDisks(sdBase)
+            val detected = storageRepository.detectPartitions(sdBase)
+            _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
+        }
+    }
+
+    fun refreshDisks() {
+        viewModelScope.launch {
+            _isScanningDisks.value = true
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val detected = storageRepository.detectPartitions(sdBase)
+                _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
+            } finally {
+                _isScanningDisks.value = false
+            }
+        }
+    }
+
+    fun quickMountPartition(partition: app.mountx.data.model.PartitionInfo) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            storageRepository.mountPartition(partition, sdBase)
+            val detected = storageRepository.detectPartitions(sdBase)
+            _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
         }
     }
 
@@ -233,7 +259,8 @@ class GamesViewModel @Inject constructor(
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
             storageRepository.mountAllPartitions(disk, sdBase)
-            _availableDisks.value = storageRepository.getAllDisks(sdBase)
+            val detected = storageRepository.detectPartitions(sdBase)
+            _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
         }
     }
 

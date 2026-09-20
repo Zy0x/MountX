@@ -713,11 +713,12 @@
     <!-- v2.2.18: 3-Step Guided Migration Hub & Multi-Disk Selection -->
     <string name="mount_step1_title">Step 1: Select Data to Offload</string>
     <string name="mount_step1_desc">Check the game data folders you wish to move to external storage.</string>
-    <string name="mount_step2_title">Step 2: Choose Target Storage Disk</string>
-    <string name="mount_step2_desc">Select external storage (MicroSD or USB Type-C SSD) to hold data.</string>
+    <string name="mount_step2_title">Step 2: Select Storage Disk &amp; Partition</string>
+    <string name="mount_step2_desc">Select external storage (Type-C SSD / MicroSD) and target partition to store game data.</string>
     <string name="mount_step3_title">Step 3: Review &amp; Execute</string>
     <string name="mount_step3_summary">Selected: %1$s • Free on %2$s: %3$s</string>
     <string name="mount_step3_summary_no_disk">Selected: %1$s • Please select target disk first</string>
+    <string name="mount_step3_summary_partition">Selected: %1$s • %2$s (%3$s) • Free: %4$s</string>
     <string name="mount_location_internal">On Internal Memory</string>
     <string name="mount_location_external">On %1$s</string>
     <string name="mount_location_sd">On MicroSD</string>
@@ -727,7 +728,20 @@
     <string name="mount_disk_ready_badge">Ready</string>
     <string name="mount_disk_quick_mount">Mount</string>
     <string name="mount_disk_no_disks_detected">No external storage disks detected.</string>
+    <string name="mount_disk_refresh">Rescan Storage</string>
+    <string name="mount_disk_refreshing">Scanning...</string>
+    <string name="mount_disk_partitions_header">Select Target Partition on this Disk:</string>
+    <string name="mount_partition_unmounted_warning">This partition is not mounted yet. Mount it first before transferring data.</string>
+    <string name="mount_partition_quick_mount">Mount Partition</string>
+    <string name="mount_partition_format_warning">Format %1$s does not natively support Linux permissions. Ext4 or f2fs partitions are recommended for games.</string>
+    <string name="mount_partition_recommended_badge">Recommended for Games</string>
+    <string name="mount_standard_storage_title">MountX Standard Storage</string>
+    <string name="mount_standard_storage_subtitle">System Target Directory (%1$s)</string>
+    <string name="mount_standard_storage_badge">Local Storage / Container</string>
+    <string name="mount_external_guidance_title">External Media (OTG / Type-C SSD)</string>
+    <string name="mount_external_guidance_desc">Connect a Type-C External SSD, USB OTG drive, or MicroSD to your phone, then tap \'Rescan Storage\' to select an external partition.</string>
     <string name="mount_btn_move_to_disk">Move to %1$s (%2$s)</string>
+    <string name="mount_btn_move_to_partition">Move to %1$s • %2$s (%3$s)</string>
     <string name="mount_btn_restore_internal">Restore to Internal Memory (%1$s)</string>
     <string name="mount_btn_restore_insufficient">Insufficient internal phone storage for restore</string>
     <string name="mount_btn_remove_game">Remove from MountX</string>

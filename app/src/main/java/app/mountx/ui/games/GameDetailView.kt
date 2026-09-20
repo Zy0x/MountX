@@ -49,6 +49,12 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.SdStorage
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import app.mountx.data.repository.CandidateDirectory
@@ -79,6 +85,7 @@ import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
+import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
@@ -104,10 +111,13 @@ fun GameDetailView(
     isLoadingCandidates: Boolean = false,
     availableDisks: List<SdCardDiskInfo> = emptyList(),
     internalFreeBytes: Long = 0L,
+    isScanningDisks: Boolean = false,
     onQuickMountDisk: (SdCardDiskInfo) -> Unit = {},
+    onQuickMountPartition: (PartitionInfo) -> Unit = {},
+    onRefreshDisks: () -> Unit = {},
     sdBase: String = "/data/sdext2",
     onDismiss: () -> Unit,
-    onMoveMountPoints: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?) -> Unit = { _, _, _ -> },
+    onMoveMountPoints: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?) -> Unit = { _, _, _, _ -> },
     onSaveGame: ((GameEntry) -> Unit)? = null,
     onUpdateMountPoints: ((List<MountPointConfig>) -> Unit)? = null,
     onDelete: () -> Unit = {},
@@ -337,7 +347,10 @@ fun GameDetailView(
                         breakdown = breakdown,
                         availableDisks = availableDisks,
                         internalFreeBytes = internalFreeBytes,
+                        isScanningDisks = isScanningDisks,
                         onQuickMountDisk = onQuickMountDisk,
+                        onQuickMountPartition = onQuickMountPartition,
+                        onRefreshDisks = onRefreshDisks,
                         onMountPointsChanged = { updated ->
                             currentMountPoints = updated
                             onUpdateMountPoints?.invoke(updated)
@@ -345,11 +358,11 @@ fun GameDetailView(
                         sdBase = sdBase,
                         isMoving = isMoving,
                         moveMessage = moveMessage,
-                        onMove = { dir, disk ->
+                        onMove = { dir, disk, partition ->
                             val updatedPoints = currentMountPoints.map { pt ->
-                                if (disk != null && dir == MoveDirection.TO_SD) {
+                                if (dir == MoveDirection.TO_SD) {
                                     val oldBase = sdBase
-                                    val newBase = disk.mountPath
+                                    val newBase = partition?.mountPoint ?: disk?.mountPath ?: sdBase
                                     val newSourcePath = if (pt.sourcePath.startsWith(oldBase)) {
                                         pt.sourcePath.replaceFirst(oldBase, newBase)
                                     } else if (!pt.sourcePath.startsWith(newBase)) {
@@ -357,14 +370,14 @@ fun GameDetailView(
                                     } else {
                                         pt.sourcePath
                                     }
-                                    pt.copy(diskUuid = disk.uuid, sourcePath = newSourcePath)
+                                    pt.copy(diskUuid = partition?.uuid ?: disk?.uuid, sourcePath = newSourcePath)
                                 } else {
                                     pt
                                 }
                             }
                             currentMountPoints = updatedPoints
                             onUpdateMountPoints?.invoke(updatedPoints)
-                            onMoveMountPoints(dir, updatedPoints, disk)
+                            onMoveMountPoints(dir, updatedPoints, disk, partition)
                         },
                         onSaveDraft = {
                             val activeSize = currentMountPoints.filter { it.enabled }.sumOf { it.sizeBytes }
@@ -696,12 +709,15 @@ private fun ManageTabContent(
     breakdown: AppStorageBreakdown? = null,
     availableDisks: List<SdCardDiskInfo> = emptyList(),
     internalFreeBytes: Long = 0L,
+    isScanningDisks: Boolean = false,
     onQuickMountDisk: (SdCardDiskInfo) -> Unit = {},
+    onQuickMountPartition: (PartitionInfo) -> Unit = {},
+    onRefreshDisks: () -> Unit = {},
     onMountPointsChanged: (List<MountPointConfig>) -> Unit,
     sdBase: String,
     isMoving: Boolean,
     moveMessage: String?,
-    onMove: (MoveDirection, SdCardDiskInfo?) -> Unit,
+    onMove: (MoveDirection, SdCardDiskInfo?, PartitionInfo?) -> Unit,
     onSaveDraft: () -> Unit,
     onCancelDraft: () -> Unit,
     onDelete: () -> Unit,
@@ -714,6 +730,51 @@ private fun ManageTabContent(
     val activeMountPoints = mountPoints.filter { it.enabled }
     val totalActiveSizeBytes = activeMountPoints.sumOf { getEffectiveMountPointSize(it, breakdown) }
 
+    // Synthetic fallback/default MountX storage partition (/data/sdext2)
+    val defaultMountXPartition = remember(sdBase, internalFreeBytes) {
+        PartitionInfo(
+            path = sdBase,
+            name = "sdext2",
+            diskName = "local",
+            partitionNumber = 1,
+            sizeBytes = internalFreeBytes,
+            usedBytes = 0L,
+            freeBytes = internalFreeBytes,
+            fsType = "f2fs",
+            mountPoint = sdBase,
+            label = "STANDAR_MOUNTX",
+            uuid = "local_mountx_default",
+            isMounted = true,
+            isTargetMount = true,
+            isPortableMount = false,
+            isMountTargetReady = true
+        )
+    }
+
+    // Helper to extract partitions from a disk (or synthesize one if disk has no raw partition table)
+    fun getDiskPartitions(disk: SdCardDiskInfo): List<PartitionInfo> {
+        return if (disk.partitions.isNotEmpty()) {
+            disk.partitions
+        } else {
+            listOf(
+                PartitionInfo(
+                    path = disk.devicePath,
+                    name = disk.diskName,
+                    diskName = disk.diskName,
+                    partitionNumber = 1,
+                    sizeBytes = disk.totalSizeBytes,
+                    usedBytes = disk.totalUsedBytes,
+                    freeBytes = disk.totalFreeBytes,
+                    fsType = "ext4",
+                    mountPoint = disk.mountPath,
+                    isMounted = disk.isMounted,
+                    isTargetMount = true,
+                    isMountTargetReady = true
+                )
+            )
+        }
+    }
+
     // Auto-select single disk or previously matched disk
     var selectedDisk by remember(availableDisks) {
         val matchingDisk = if (mountPoints.isNotEmpty()) {
@@ -723,10 +784,28 @@ private fun ManageTabContent(
         mutableStateOf(matchingDisk ?: availableDisks.firstOrNull())
     }
 
-    val targetFreeSpace = selectedDisk?.totalFreeBytes ?: 0L
-    val hasSufficientDiskSpace = selectedDisk != null && targetFreeSpace >= totalActiveSizeBytes
+    // Auto-select partition from selectedDisk, or default to fallback partition
+    var selectedPartition by remember(selectedDisk, availableDisks) {
+        val currentDisk = selectedDisk
+        val initialPartition: PartitionInfo? = if (currentDisk != null) {
+            val candidatePartitions = getDiskPartitions(currentDisk)
+            candidatePartitions.firstOrNull { it.isTargetMount }
+                ?: candidatePartitions.firstOrNull { it.isMounted }
+                ?: candidatePartitions.firstOrNull { it.fsType.lowercase() in listOf("ext4", "f2fs") }
+                ?: candidatePartitions.firstOrNull()
+        } else {
+            defaultMountXPartition
+        }
+        mutableStateOf(initialPartition)
+    }
+
+    val targetFreeSpace = selectedPartition?.freeBytes
+        ?: selectedDisk?.totalFreeBytes
+        ?: internalFreeBytes
+    val hasSufficientDiskSpace = targetFreeSpace >= totalActiveSizeBytes
     val hasSufficientInternalSpace = internalFreeBytes == 0L || internalFreeBytes >= totalActiveSizeBytes
-    val remainingTargetSpace = if (selectedDisk != null) (targetFreeSpace - totalActiveSizeBytes).coerceAtLeast(0L) else 0L
+    val remainingTargetSpace = (targetFreeSpace - totalActiveSizeBytes).coerceAtLeast(0L)
+    val isTargetMounted = selectedPartition?.isMounted ?: selectedDisk?.isMounted ?: (selectedDisk == null)
 
     val cyberEmerald = CyberEmerald
     val electricAmber = Color(0xFFFFB300)
@@ -734,7 +813,7 @@ private fun ManageTabContent(
 
     if (showCustomPathDialog) {
         CustomPathDialog(
-            sdBase = selectedDisk?.mountPath ?: sdBase,
+            sdBase = selectedPartition?.mountPoint ?: selectedDisk?.mountPath ?: sdBase,
             onDismiss = { showCustomPathDialog = false },
             onAdd = { customPoint ->
                 val boundPoint = if (selectedDisk != null) {
@@ -940,7 +1019,7 @@ private fun ManageTabContent(
                 }
             }
 
-            // ── LANGKAH 2: PILIH DISK PENYIMPANAN TUJUAN ──
+            // ── LANGKAH 2: PILIH DISK & PARTISI PENYIMPANAN TUJUAN ──
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -996,20 +1075,40 @@ private fun ManageTabContent(
                             }
                         }
 
-                        if (availableDisks.isNotEmpty()) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFF00ACC1).copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, Color(0xFF00ACC1).copy(alpha = 0.25f))
+                        // Rescan Storage Button
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.clickable(enabled = !isScanningDisks) { onRefreshDisks() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
+                                if (isScanningDisks) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(11.dp),
+                                        strokeWidth = 1.5.dp,
+                                        color = Color(0xFF00ACC1)
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        tint = Color(0xFF00ACC1),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
                                 Text(
-                                    text = "${availableDisks.size} Disk",
+                                    text = if (isScanningDisks) stringResource(R.string.mount_disk_refreshing)
+                                           else stringResource(R.string.mount_disk_refresh),
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.SemiBold
                                     ),
-                                    color = Color(0xFF00ACC1),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    color = Color(0xFF00ACC1)
                                 )
                             }
                         }
@@ -1017,44 +1116,20 @@ private fun ManageTabContent(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
 
-                    if (availableDisks.isEmpty()) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = electricAmber,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = stringResource(R.string.mount_disk_no_disks_detected),
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    } else {
+                    // ── DAFTAR DISK FISIK TERDETEKSI (MICRSD / USB OTG / SSD TYPE-C) ──
+                    if (availableDisks.isNotEmpty()) {
                         availableDisks.forEach { disk ->
-                            val isSelected = selectedDisk == disk
+                            val isDiskSelected = selectedDisk == disk
                             val isDiskMounted = disk.isMounted
-                            val isCapacityWarning = isSelected && totalActiveSizeBytes > disk.totalFreeBytes
+                            val partitionsOfThisDisk = getDiskPartitions(disk)
 
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) CyberEmerald.copy(alpha = 0.07f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                color = if (isDiskSelected) CyberEmerald.copy(alpha = 0.05f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                                 border = BorderStroke(
-                                    if (isSelected) 1.5.dp else 1.dp,
-                                    if (isSelected) CyberEmerald
+                                    if (isDiskSelected) 1.5.dp else 1.dp,
+                                    if (isDiskSelected) CyberEmerald
                                     else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                                 ),
                                 modifier = Modifier
@@ -1067,27 +1142,28 @@ private fun ManageTabContent(
                                         .padding(10.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    // Disk Header Row
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        // Custom Radio Indicator
+                                        // Custom Radio Indicator for Disk
                                         Box(
                                             modifier = Modifier
                                                 .size(18.dp)
                                                 .background(
-                                                    color = if (isSelected) CyberEmerald else Color.Transparent,
+                                                    color = if (isDiskSelected) CyberEmerald else Color.Transparent,
                                                     shape = RoundedCornerShape(9.dp)
                                                 )
                                                 .border(
-                                                    width = if (isSelected) 0.dp else 1.5.dp,
-                                                    color = if (isSelected) CyberEmerald else MaterialTheme.colorScheme.outline,
+                                                    width = if (isDiskSelected) 0.dp else 1.5.dp,
+                                                    color = if (isDiskSelected) CyberEmerald else MaterialTheme.colorScheme.outline,
                                                     shape = RoundedCornerShape(9.dp)
                                                 ),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            if (isSelected) {
+                                            if (isDiskSelected) {
                                                 Box(
                                                     modifier = Modifier
                                                         .size(6.dp)
@@ -1099,13 +1175,13 @@ private fun ManageTabContent(
                                         // Disk Icon
                                         Icon(
                                             imageVector = if (disk.diskType == DiskType.MICRO_SD) Icons.Default.SdCard
-                                            else Icons.Default.Storage,
+                                                          else Icons.Default.Storage,
                                             contentDescription = null,
-                                            tint = if (isSelected) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = if (isDiskSelected) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(20.dp)
                                         )
 
-                                        // Disk Name & Info
+                                        // Disk Name & Hardware Info
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = disk.displayName,
@@ -1119,13 +1195,13 @@ private fun ManageTabContent(
                                             )
                                             Text(
                                                 text = if (disk.diskType == DiskType.MICRO_SD) "Slot MicroSD Card"
-                                                else "Eksternal USB Type-C / OTG",
+                                                       else "Eksternal USB Type-C / OTG",
                                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
 
-                                        // Status Badge / Quick Mount
+                                        // Status Badge / Quick Mount Disk
                                         if (isDiskMounted) {
                                             Surface(
                                                 shape = RoundedCornerShape(4.dp),
@@ -1162,14 +1238,14 @@ private fun ManageTabContent(
                                         }
                                     }
 
-                                    // Visual Capacity Progress Bar
+                                    // Visual Capacity Progress Bar for Disk
                                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Text(
-                                                text = "Terpakai: ${FormatUtils.formatBytes(disk.totalUsedBytes)}",
+                                                text = "Total Disk: ${FormatUtils.formatBytes(disk.totalSizeBytes)}",
                                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -1179,7 +1255,7 @@ private fun ManageTabContent(
                                                     fontSize = 9.sp,
                                                     fontWeight = FontWeight.SemiBold
                                                 ),
-                                                color = if (isCapacityWarning) NeonCrimson else CyberEmerald
+                                                color = CyberEmerald
                                             )
                                         }
 
@@ -1187,45 +1263,423 @@ private fun ManageTabContent(
                                             progress = { disk.usedPercent },
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(5.dp),
+                                                .height(4.dp),
                                             color = if (disk.usedPercent > 0.9f) NeonCrimson else CyberEmerald,
                                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                                         )
                                     }
 
-                                    // Capacity Guard Warning
-                                    if (isCapacityWarning) {
-                                        val deficitBytes = totalActiveSizeBytes - disk.totalFreeBytes
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = NeonCrimson.copy(alpha = 0.1f),
-                                            border = BorderStroke(0.5.dp, NeonCrimson.copy(alpha = 0.4f)),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Error,
-                                                    contentDescription = null,
-                                                    tint = NeonCrimson,
-                                                    modifier = Modifier.size(13.dp)
-                                                )
-                                                Text(
-                                                    text = stringResource(
-                                                        R.string.mount_disk_capacity_warning,
-                                                        FormatUtils.formatBytes(deficitBytes)
+                                    // ── DAFTAR PARTISI PADA DISK TERPILIH ──
+                                    if (isDiskSelected) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(vertical = 4.dp),
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                        )
+
+                                        Text(
+                                            text = stringResource(R.string.mount_disk_partitions_header),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            partitionsOfThisDisk.forEach { part ->
+                                                val isPartSelected = selectedPartition?.path == part.path
+                                                val isFsLinux = part.fsType.lowercase() in listOf("ext4", "f2fs")
+                                                val isPartCapacityWarning = isPartSelected && totalActiveSizeBytes > part.freeBytes
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = if (isPartSelected) CyberEmerald.copy(alpha = 0.08f)
+                                                            else MaterialTheme.colorScheme.surface,
+                                                    border = BorderStroke(
+                                                        if (isPartSelected) 1.2.dp else 0.8.dp,
+                                                        if (isPartSelected) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                                                     ),
-                                                    style = MaterialTheme.typography.bodySmall.copy(
-                                                        fontSize = 9.5.sp,
-                                                        fontWeight = FontWeight.SemiBold
-                                                    ),
-                                                    color = NeonCrimson
-                                                )
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable { selectedPartition = part }
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(8.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            // Partition Radio Indicator
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(15.dp)
+                                                                    .background(
+                                                                        color = if (isPartSelected) CyberEmerald else Color.Transparent,
+                                                                        shape = RoundedCornerShape(7.5.dp)
+                                                                    )
+                                                                    .border(
+                                                                        width = if (isPartSelected) 0.dp else 1.2.dp,
+                                                                        color = if (isPartSelected) CyberEmerald else MaterialTheme.colorScheme.outline,
+                                                                        shape = RoundedCornerShape(7.5.dp)
+                                                                    ),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                if (isPartSelected) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(5.dp)
+                                                                            .background(Color.Black, RoundedCornerShape(2.5.dp))
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            // Partition Icon
+                                                            Icon(
+                                                                imageVector = Icons.Default.PieChart,
+                                                                contentDescription = null,
+                                                                tint = if (isPartSelected) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+
+                                                            // Partition Name & Badges
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                                ) {
+                                                                    Text(
+                                                                        text = part.cleanShortName,
+                                                                        style = MaterialTheme.typography.bodySmall.copy(
+                                                                            fontSize = 11.sp,
+                                                                            fontWeight = FontWeight.Bold
+                                                                        ),
+                                                                        color = MaterialTheme.colorScheme.onSurface
+                                                                    )
+
+                                                                    // Filesystem Badge
+                                                                    if (part.fsType.isNotBlank()) {
+                                                                        Surface(
+                                                                            shape = RoundedCornerShape(4.dp),
+                                                                            color = if (isFsLinux) CyberEmerald.copy(alpha = 0.15f)
+                                                                                    else electricAmber.copy(alpha = 0.15f),
+                                                                            border = BorderStroke(
+                                                                                0.5.dp,
+                                                                                if (isFsLinux) CyberEmerald.copy(alpha = 0.4f)
+                                                                                else electricAmber.copy(alpha = 0.4f)
+                                                                            )
+                                                                        ) {
+                                                                            Text(
+                                                                                text = part.fsType.uppercase(),
+                                                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                                                    fontSize = 8.5.sp,
+                                                                                    fontWeight = FontWeight.Bold
+                                                                                ),
+                                                                                color = if (isFsLinux) CyberEmerald else electricAmber,
+                                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                            )
+                                                                        }
+                                                                    }
+
+                                                                    if (isFsLinux) {
+                                                                        Surface(
+                                                                            shape = RoundedCornerShape(4.dp),
+                                                                            color = CyberEmerald.copy(alpha = 0.1f)
+                                                                        ) {
+                                                                            Text(
+                                                                                text = stringResource(R.string.mount_partition_recommended_badge),
+                                                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                                                                                color = CyberEmerald,
+                                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                Text(
+                                                                    text = "Bebas: ${FormatUtils.formatBytes(part.freeBytes)} / Total: ${FormatUtils.formatBytes(part.sizeBytes)}",
+                                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+
+                                                            // Mount Status or Quick Mount Partition Button
+                                                            if (part.isMounted) {
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(4.dp),
+                                                                    color = CyberEmerald.copy(alpha = 0.12f),
+                                                                    border = BorderStroke(0.5.dp, CyberEmerald.copy(alpha = 0.35f))
+                                                                ) {
+                                                                    Text(
+                                                                        text = stringResource(R.string.mount_disk_ready_badge),
+                                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                                            fontSize = 8.5.sp,
+                                                                            fontWeight = FontWeight.Bold
+                                                                        ),
+                                                                        color = CyberEmerald,
+                                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                                    )
+                                                                }
+                                                            } else {
+                                                                Button(
+                                                                    onClick = { onQuickMountPartition(part) },
+                                                                    shape = RoundedCornerShape(6.dp),
+                                                                    colors = ButtonDefaults.buttonColors(
+                                                                        containerColor = electricAmber,
+                                                                        contentColor = Color.Black
+                                                                    ),
+                                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                                    modifier = Modifier.height(24.dp)
+                                                                ) {
+                                                                    Text(
+                                                                        text = stringResource(R.string.mount_partition_quick_mount),
+                                                                        fontSize = 8.5.sp,
+                                                                        fontWeight = FontWeight.Bold
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Mini Partition Progress Bar
+                                                        LinearProgressIndicator(
+                                                            progress = { part.usedPercent },
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .height(3.dp),
+                                                            color = if (part.usedPercent > 0.9f) NeonCrimson else CyberEmerald,
+                                                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                                        )
+
+                                                        // Filesystem format warning (if FAT32/exFAT)
+                                                        if (isPartSelected && !isFsLinux && part.fsType.isNotBlank()) {
+                                                            Surface(
+                                                                shape = RoundedCornerShape(6.dp),
+                                                                color = electricAmber.copy(alpha = 0.08f),
+                                                                border = BorderStroke(0.5.dp, electricAmber.copy(alpha = 0.35f)),
+                                                                modifier = Modifier.fillMaxWidth()
+                                                            ) {
+                                                                Row(
+                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.Info,
+                                                                        contentDescription = null,
+                                                                        tint = electricAmber,
+                                                                        modifier = Modifier.size(12.dp)
+                                                                    )
+                                                                    Text(
+                                                                        text = stringResource(R.string.mount_partition_format_warning, part.fsType.uppercase()),
+                                                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 8.5.sp),
+                                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Capacity Guard Warning on Partition
+                                                        if (isPartCapacityWarning) {
+                                                            val deficitBytes = totalActiveSizeBytes - part.freeBytes
+                                                            Surface(
+                                                                shape = RoundedCornerShape(6.dp),
+                                                                color = NeonCrimson.copy(alpha = 0.08f),
+                                                                border = BorderStroke(0.5.dp, NeonCrimson.copy(alpha = 0.35f)),
+                                                                modifier = Modifier.fillMaxWidth()
+                                                            ) {
+                                                                Row(
+                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.Error,
+                                                                        contentDescription = null,
+                                                                        tint = NeonCrimson,
+                                                                        modifier = Modifier.size(12.dp)
+                                                                    )
+                                                                    Text(
+                                                                        text = stringResource(
+                                                                            R.string.mount_disk_capacity_warning,
+                                                                            FormatUtils.formatBytes(deficitBytes)
+                                                                        ),
+                                                                        style = MaterialTheme.typography.bodySmall.copy(
+                                                                            fontSize = 8.5.sp,
+                                                                            fontWeight = FontWeight.SemiBold
+                                                                        ),
+                                                                        color = NeonCrimson
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── OPSI TARGET CADANGAN / PENYIMPANAN STANDAR MOUNTX (/data/sdext2) ──
+                    val isStandardSelected = selectedDisk == null
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isStandardSelected) CyberEmerald.copy(alpha = 0.06f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        border = BorderStroke(
+                            if (isStandardSelected) 1.5.dp else 1.dp,
+                            if (isStandardSelected) CyberEmerald
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedDisk = null
+                                selectedPartition = defaultMountXPartition
+                            }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                // Radio indicator
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .background(
+                                            color = if (isStandardSelected) CyberEmerald else Color.Transparent,
+                                            shape = RoundedCornerShape(9.dp)
+                                        )
+                                        .border(
+                                            width = if (isStandardSelected) 0.dp else 1.5.dp,
+                                            color = if (isStandardSelected) CyberEmerald else MaterialTheme.colorScheme.outline,
+                                            shape = RoundedCornerShape(9.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isStandardSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .background(Color.Black, RoundedCornerShape(3.dp))
+                                        )
+                                    }
+                                }
+
+                                // Icon
+                                Icon(
+                                    imageVector = Icons.Default.PhoneAndroid,
+                                    contentDescription = null,
+                                    tint = if (isStandardSelected) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+
+                                // Name & Subtitle
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.mount_standard_storage_title),
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.mount_standard_storage_subtitle, sdBase),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                // Badge
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = CyberEmerald.copy(alpha = 0.12f),
+                                    border = BorderStroke(0.5.dp, CyberEmerald.copy(alpha = 0.35f))
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.mount_disk_ready_badge),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = CyberEmerald,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // Capacity Info
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.mount_standard_storage_badge),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Bebas: ${FormatUtils.formatBytes(internalFreeBytes)}",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = CyberEmerald
+                                )
+                            }
+                        }
+                    }
+
+                    // ── KARTU PANDUAN MEDIA EKSTERNAL JIKA BELUM ADA DISK TERDETEKSI ──
+                    if (availableDisks.isEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                            border = BorderStroke(1.dp, electricAmber.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Usb,
+                                        contentDescription = null,
+                                        tint = electricAmber,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.mount_external_guidance_title),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = electricAmber
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.mount_external_guidance_desc),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 }
                             }
@@ -1281,16 +1735,23 @@ private fun ManageTabContent(
                         }
                         Text(
                             text = if (selectedDisk != null) {
+                                val diskName = selectedDisk!!.hardwareTitle
+                                val partInfo = selectedPartition?.cleanShortName ?: "Part 1"
+                                val fsInfo = selectedPartition?.fsType?.uppercase() ?: "EXT4"
                                 stringResource(
-                                    R.string.mount_step3_summary,
+                                    R.string.mount_step3_summary_partition,
                                     FormatUtils.formatBytes(totalActiveSizeBytes),
-                                    selectedDisk!!.hardwareTitle,
+                                    "$diskName • $partInfo",
+                                    fsInfo,
                                     FormatUtils.formatBytes(remainingTargetSpace)
                                 )
                             } else {
                                 stringResource(
-                                    R.string.mount_step3_summary_no_disk,
-                                    FormatUtils.formatBytes(totalActiveSizeBytes)
+                                    R.string.mount_step3_summary_partition,
+                                    FormatUtils.formatBytes(totalActiveSizeBytes),
+                                    stringResource(R.string.mount_standard_storage_title),
+                                    "F2FS",
+                                    FormatUtils.formatBytes(remainingTargetSpace)
                                 )
                             },
                             style = MaterialTheme.typography.bodySmall.copy(
@@ -1426,42 +1887,79 @@ private fun ManageTabContent(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val diskTitle = selectedDisk?.hardwareTitle ?: "MicroSD"
-                            val canMoveToDisk = activeMountPoints.isNotEmpty() && selectedDisk != null && selectedDisk!!.isMounted && hasSufficientDiskSpace
+                            val targetDiskTitle = selectedDisk?.hardwareTitle ?: stringResource(R.string.mount_standard_storage_title)
+                            val targetPartTitle = selectedPartition?.cleanShortName ?: "Part 1"
+                            val canMoveToTarget = activeMountPoints.isNotEmpty() && isTargetMounted && hasSufficientDiskSpace
 
-                            // Move to Disk Button
-                            Button(
-                                onClick = { onMove(MoveDirection.TO_SD, selectedDisk) },
-                                enabled = canMoveToDisk,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(36.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            ) {
-                                Icon(Icons.Default.ArrowDownward, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(
-                                        R.string.mount_btn_move_to_disk,
-                                        diskTitle,
-                                        FormatUtils.formatBytes(totalActiveSizeBytes)
-                                    ),
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                            // If selected target partition is not mounted yet, show Quick Mount button first
+                            if (!isTargetMounted) {
+                                Button(
+                                    onClick = {
+                                        selectedPartition?.let { onQuickMountPartition(it) }
+                                            ?: selectedDisk?.let { onQuickMountDisk(it) }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = electricAmber,
+                                        contentColor = Color.Black
+                                    )
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = stringResource(R.string.mount_partition_quick_mount),
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            } else {
+                                // Move to Target Partition Button
+                                Button(
+                                    onClick = { onMove(MoveDirection.TO_SD, selectedDisk, selectedPartition) },
+                                    enabled = canMoveToTarget,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Icon(Icons.Default.ArrowDownward, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (selectedDisk != null) {
+                                            stringResource(
+                                                R.string.mount_btn_move_to_partition,
+                                                targetDiskTitle,
+                                                targetPartTitle,
+                                                FormatUtils.formatBytes(totalActiveSizeBytes)
+                                            )
+                                        } else {
+                                            stringResource(
+                                                R.string.mount_btn_move_to_disk,
+                                                targetDiskTitle,
+                                                FormatUtils.formatBytes(totalActiveSizeBytes)
+                                            )
+                                        },
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
 
                             // Restore to Internal Button (if game has data mounted/on SD)
                             if (isMounted) {
                                 OutlinedButton(
-                                    onClick = { onMove(MoveDirection.TO_INTERNAL, selectedDisk) },
+                                    onClick = { onMove(MoveDirection.TO_INTERNAL, selectedDisk, selectedPartition) },
                                     enabled = activeMountPoints.isNotEmpty() && hasSufficientInternalSpace,
                                     modifier = Modifier
                                         .weight(1f)

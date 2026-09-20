@@ -78,6 +78,7 @@ fun GamesScreen(
     val isMovingData by viewModel.isMovingData.collectAsState()
     val moveMessage by viewModel.moveMessage.collectAsState()
     val availableDisks by viewModel.availableDisks.collectAsState()
+    val isScanningDisks by viewModel.isScanningDisks.collectAsState()
     val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
 
     LaunchedEffect(Unit) {
@@ -123,7 +124,10 @@ fun GamesScreen(
             isLoadingCandidates = isScanningCandidates,
             availableDisks = availableDisks,
             internalFreeBytes = internalStorageInfo?.freeBytes ?: 0L,
+            isScanningDisks = isScanningDisks,
             onQuickMountDisk = { disk -> viewModel.quickMountDisk(disk) },
+            onQuickMountPartition = { part -> viewModel.quickMountPartition(part) },
+            onRefreshDisks = { viewModel.refreshDisks() },
             onDismiss = { configuringApp = null },
             onSaveGame = { newGame ->
                 viewModel.addGameWithMountPoints(
@@ -167,13 +171,17 @@ fun GamesScreen(
             isDraftMode = false,
             availableDisks = availableDisks,
             internalFreeBytes = internalStorageInfo?.freeBytes ?: 0L,
+            isScanningDisks = isScanningDisks,
             onQuickMountDisk = { disk -> viewModel.quickMountDisk(disk) },
+            onQuickMountPartition = { part -> viewModel.quickMountPartition(part) },
+            onRefreshDisks = { viewModel.refreshDisks() },
             onDismiss = {
                 viewModel.clearMoveMessage()
                 selectedGameForDetail = null
             },
-            onMoveMountPoints = { dir, pts, targetDisk ->
-                viewModel.moveMountPoints(updatedGame.packageName, pts, dir, targetDisk?.mountPath)
+            onMoveMountPoints = { dir, pts, targetDisk, targetPartition ->
+                val basePath = targetPartition?.mountPoint ?: targetDisk?.mountPath
+                viewModel.moveMountPoints(updatedGame.packageName, pts, dir, basePath)
             },
             onUpdateMountPoints = { pts ->
                 viewModel.updateMountPoints(updatedGame.packageName, pts)

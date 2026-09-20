@@ -5,6 +5,25 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.19] - 2026-09-20
+
+### Added & Improved
+- **Seleksi Multi-Disk & Partisi Spesifik (Disk & Partition Selection)**:
+  - Mengembangkan **Langkah 2 (Pilih Disk & Partisi Penyimpanan)** menjadi selektor hierarkis bertingkat:
+    - **Tingkat Disk**: Menampilkan seluruh media fisik yang terhubung (SSD Eksternal Type-C, Flashdisk USB OTG, atau MicroSD).
+    - **Tingkat Partisi**: Di dalam disk yang dipilih, pengguna kini dapat memilih **partisi spesifik** tempat data game akan disimpan (misalnya Partisi 1 exFAT untuk data umum vs Partisi 2 ext4 khusus direktori game).
+    - Menampilkan informasi detail per partisi: Nomor partisi/label, format filesystem (`ext4`, `f2fs`, `exFAT`, `FAT32`), kapasitas total, dan sisa ruang bebas.
+    - Menampilkan badge rekomendasi hijau (`✓ Disarankan untuk Game`) untuk partisi Linux native (`ext4`/`f2fs`), serta peringatan edukatif jika memilih format `exFAT`/`FAT32`.
+    - Tombol aksi cepat `[⚡ Pasang Partisi (Mount)]` jika partisi target belum terpasang di sistem Android.
+- **Opsi Target Penyimpanan Standar MountX (`/data/sdext2`)**:
+  - Menyediakan kartu target cadangan untuk Penyimpanan Standar MountX (direktori sistem lokal / virtual container) yang dapat dipilih secara langsung.
+  - Memastikan pengguna pada perangkat tanpa slot MicroSD fisik (seperti POCO F5 saat SSD Type-C belum dicolokkan) tetap memiliki opsi target yang jelas dan tidak menemui jalan buntu.
+- **Tombol Pindai Ulang Storage (OTG/SSD) Real-Time**:
+  - Menambahkan tombol pemindaian ulang storage di header Langkah 2 dan panduan koneksi media eksternal, dilengkapi animasi loading circular saat pemindaian sysfs dan block device berlangsung.
+- **Sinkronisasi Langkah 3 & Proteksi Eksekusi**:
+  - Ringkasan di Langkah 3 bottom bar menampilkan kombinasi disk dan partisi yang dipilih secara real-time: `Pindahkan [Ukuran] ke [Nama Disk] • [Nama Partisi] (Sisa: [Ruang Bebas])`.
+  - Tombol pemindahan dinonaktifkan dengan peringatan jika partisi belum di-mount, mencegah kegagalan pemindahan ke direktori yang belum terpasang.
+
 ## [2.2.18] - 2026-09-20
 
 ### Added & Improved
