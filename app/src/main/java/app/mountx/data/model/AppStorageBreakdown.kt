@@ -26,15 +26,28 @@ data class AppStorageBreakdown(
     val ext2DataBytes: Long = 0L,
     val ext2ObbBytes: Long = 0L,
     val ext2MediaBytes: Long = 0L,
-    val isExt1Mounted: Boolean = false
+    val isExt1Mounted: Boolean = false,
+    val isDataMounted: Boolean = false,
+    val isObbMounted: Boolean = false,
+    val isMediaMounted: Boolean = false
 ) {
     /** System & private storage (/data/app + /data/data) */
     val internalBytes: Long
         get() = apkBytes + dexBytes + libBytes + dataBytes + cacheBytes
 
-    /** Total data residing physically on phone internal memory (System + Shared /data/media/0) */
+    /** Physical internal storage occupied by shared Android folders (excluding bind-mounts from SD) */
+    val physicalExt1Bytes: Long
+        get() {
+            var sum = 0L
+            if (!isDataMounted) sum += ext1DataBytes
+            if (!isObbMounted) sum += ext1ObbBytes
+            if (!isMediaMounted) sum += ext1MediaBytes
+            return sum
+        }
+
+    /** Total data residing physically on phone internal memory (System + unmounted Shared /data/media/0) */
     val phoneInternalBytes: Long
-        get() = internalBytes + ext1Bytes
+        get() = internalBytes + physicalExt1Bytes
 
     /** Total data residing physically on secondary MicroSD partition */
     val microSdBytes: Long
@@ -44,7 +57,7 @@ data class AppStorageBreakdown(
     val externalBytes: Long
         get() = ext2Bytes
 
-    /** Grand total storage (Phone Internal + MicroSD) */
+    /** Grand total storage physically occupied across all media */
     val totalBytes: Long
         get() = phoneInternalBytes + microSdBytes
 

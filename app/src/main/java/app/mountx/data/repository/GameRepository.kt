@@ -717,6 +717,7 @@ class GameRepository @Inject constructor(
         // Use REAL mountpoint check (not DB status) to prevent stale-status false zeroing
         val isDataMountedReal = RootShell.isMountpoint(ext1Data)
         val isObbMountedReal = RootShell.isMountpoint(ext1Obb)
+        val isMediaMountedReal = RootShell.isMountpoint(ext1Media)
 
         // Build candidate paths for all known external storages (both MountX and legacy)
         val candidateExtDataPaths = externalBases.flatMap { listOf("$it/MountX/Android/data/$packageName", "$it/Android/data/$packageName") }.toMutableList()
@@ -837,7 +838,7 @@ class GameRepository @Inject constructor(
             gameDao.updateDataSize(packageName, resolvedSize)
         }
 
-        val isExt1MountedReal = isDataMountedReal || isObbMountedReal
+        val isExt1MountedReal = isDataMountedReal || isObbMountedReal || isMediaMountedReal
         // Self-healing: If kernel reports NO active mount point and external storage has only empty folder skeleton (<= 64KB),
         // but DB has stale MOUNTED, correct it to UNMOUNTED.
         if (game != null && game.mountStatus == MountStatus.MOUNTED && !isExt1MountedReal && ext2Bytes <= 64 * 1024L) {
@@ -859,7 +860,10 @@ class GameRepository @Inject constructor(
             ext2DataBytes = ext2DataBytes,
             ext2ObbBytes = ext2ObbBytes,
             ext2MediaBytes = ext2MediaBytes,
-            isExt1Mounted = isDataMountedReal || isObbMountedReal
+            isExt1Mounted = isExt1MountedReal,
+            isDataMounted = isDataMountedReal,
+            isObbMounted = isObbMountedReal,
+            isMediaMounted = isMediaMountedReal
         )
     }
 

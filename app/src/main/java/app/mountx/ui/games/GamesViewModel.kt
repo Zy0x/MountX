@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -122,14 +123,22 @@ class GamesViewModel @Inject constructor(
     private val _storageBreakdown = MutableStateFlow<Pair<Long, Long>>(Pair(0L, 0L))
     val storageBreakdown: StateFlow<Pair<Long, Long>> = _storageBreakdown.asStateFlow()
 
-    private val _detailedStorage = MutableStateFlow(AppStorageBreakdown())
-    val detailedStorage: StateFlow<AppStorageBreakdown> = _detailedStorage.asStateFlow()
+    private val _storageBreakdownMap = MutableStateFlow<Map<String, AppStorageBreakdown>>(emptyMap())
+    private val _activePackageName = MutableStateFlow<String?>(null)
+
+    private val _detailedStorage = MutableStateFlow<AppStorageBreakdown?>(null)
+    val detailedStorage: StateFlow<AppStorageBreakdown?> = _detailedStorage.asStateFlow()
 
     private val _operationProgress = MutableStateFlow<OperationProgress?>(null)
     val operationProgress: StateFlow<OperationProgress?> = _operationProgress.asStateFlow()
 
     fun clearOperationProgress() {
         _operationProgress.value = null
+    }
+
+    fun clearDetailedStorage() {
+        _activePackageName.value = null
+        _detailedStorage.value = null
     }
 
     fun setSearchQuery(query: String) {
@@ -154,7 +163,16 @@ class GamesViewModel @Inject constructor(
         }
     }
 
-    fun loadStorageBreakdown(packageName: String) {
+    fun loadStorageBreakdown(packageName: String, force: Boolean = false) {
+        _activePackageName.value = packageName
+        val cached = _storageBreakdownMap.value[packageName]
+        if (cached != null && !force) {
+            _detailedStorage.value = cached
+            _storageBreakdown.value = Pair(cached.ext1Bytes, cached.ext2Bytes)
+            return
+        }
+        // When switching to a new package without cache, clear detailedStorage to avoid stale cross-game data leak
+        _detailedStorage.value = null
         viewModelScope.launch {
             try {
                 app.mountx.util.AppLogger.info("GamesVM", "loadStorageBreakdown started for $packageName")
@@ -162,8 +180,11 @@ class GamesViewModel @Inject constructor(
                 app.mountx.util.AppLogger.info("GamesVM", "sdBase: $sdBase")
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
                 app.mountx.util.AppLogger.info("GamesVM", "breakdown: total=${breakdown.totalBytes}, ext1=${breakdown.ext1Bytes}, ext2=${breakdown.ext2Bytes}, data=${breakdown.ext1DataBytes}")
-                _detailedStorage.value = breakdown
-                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                _storageBreakdownMap.update { it + (packageName to breakdown) }
+                if (_activePackageName.value == packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
             } catch (e: Exception) {
                 app.mountx.util.AppLogger.error("GamesVM", "loadStorageBreakdown failed for $packageName: ${e.message}")
             }
@@ -231,8 +252,11 @@ class GamesViewModel @Inject constructor(
                 }
             }
             val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
-            _detailedStorage.value = breakdown
-            _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            _storageBreakdownMap.update { it + (game.packageName to breakdown) }
+            if (_activePackageName.value == game.packageName) {
+                _detailedStorage.value = breakdown
+                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            }
             refresh()
         }
     }
@@ -387,8 +411,11 @@ class GamesViewModel @Inject constructor(
 
                 gameRepository.calculateDataSize(packageName, sdBase)
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
-                _detailedStorage.value = breakdown
-                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                _storageBreakdownMap.update { it + (packageName to breakdown) }
+                if (_activePackageName.value == packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
             } else {
                 _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
             }
@@ -449,8 +476,11 @@ class GamesViewModel @Inject constructor(
 
                 gameRepository.calculateDataSize(packageName, sdBase)
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
-                _detailedStorage.value = breakdown
-                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                _storageBreakdownMap.update { it + (packageName to breakdown) }
+                if (_activePackageName.value == packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
             } else {
                 _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
             }
@@ -536,8 +566,11 @@ class GamesViewModel @Inject constructor(
             val res = gameRepository.deleteCategoryData(context, packageName, categoryId, location, sdBase)
             if (res.isSuccess) {
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
-                _detailedStorage.value = breakdown
-                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                _storageBreakdownMap.update { it + (packageName to breakdown) }
+                if (_activePackageName.value == packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
                 refresh()
                 onResult(true, null)
             } else {

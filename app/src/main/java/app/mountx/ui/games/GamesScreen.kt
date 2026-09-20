@@ -123,6 +123,13 @@ fun GamesScreen(
             )
         }
 
+        LaunchedEffect(configuringApp?.packageName) {
+            val pkg = configuringApp?.packageName
+            if (pkg != null) {
+                viewModel.loadStorageBreakdown(pkg)
+            }
+        }
+
         GameDetailView(
             game = draftGame,
             breakdown = detailedStorage,
@@ -137,7 +144,10 @@ fun GamesScreen(
             onQuickMountDisk = { disk -> viewModel.quickMountDisk(disk) },
             onQuickMountPartition = { part -> viewModel.quickMountPartition(part) },
             onRefreshDisks = { viewModel.refreshDisks() },
-            onDismiss = { configuringApp = null },
+            onDismiss = {
+                viewModel.clearDetailedStorage()
+                configuringApp = null
+            },
             onSaveGame = { newGame ->
                 viewModel.addGameWithMountPoints(
                     packageName = newGame.packageName,
@@ -187,6 +197,7 @@ fun GamesScreen(
             onRefreshDisks = { viewModel.refreshDisks() },
             onDismiss = {
                 viewModel.clearMoveMessage()
+                viewModel.clearDetailedStorage()
                 selectedGameForDetail = null
                 viewModel.selectGameForDetail(null)
             },

@@ -406,11 +406,31 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.31 (Latest) ──
+                        // ── v2.2.32 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.32",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "Presisi Deteksi Lokasi OBB [MicroSD], Pencegahan Stale Caching Antar-Game & Koreksi Concentric Chart"
+                        ) {
+                            GithubSectionHeader("🎯 Presisi Lokasi & Kategori OBB")
+                            GithubMarkdownBullet("• **Deteksi OBB MicroSD Akurat**: Menghapus ambang batas artifisial (> 64KB) pada kategori OBB sehingga berkas/folder ekspansi (misal 4.00 KB) yang telah dipindahkan ke MicroSD kini konsisten berlabel `[MicroSD]` (hijau).")
+                            GithubMarkdownBullet("• **Inspeksi Mountpoint Kernel Riil**: Status mount OBB, Data Game, dan Media kini dievaluasi langsung terhadap VFS kernel mountpoint per-kategori.")
+                            GithubMarkdownBullet("• **Tombol Restore Berkas Ringan**: Tombol `Kembalikan ke Memori Internal` kini tetap aktif untuk kategori OBB berukuran kecil (> 0 byte).")
+
+                            GithubSectionHeader("🚀 Isolasi Caching & Anti-Stale Antar-Game")
+                            GithubMarkdownBullet("• **Pencegahan Kebocoran Data Breakdown**: Breakdown penyimpanan kini diisolasi per `packageName` dalam map cache, sehingga perpindahan antar-game tidak lagi menampilkan lonjakan data game sebelumnya (*stale flash*).")
+                            GithubMarkdownBullet("• **Indikator Loading Halus**: Menampilkan indikator linear saat kalkulasi penyimpanan game baru sedang berlangsung.")
+
+                            GithubSectionHeader("📊 Koreksi Concentric Storage Chart (Anti-Double Counting)")
+                            GithubMarkdownBullet("• **Eliminasi Penghitungan Ganda**: Memori telepon internal (`phoneInternalBytes`) kini mengecualikan bind-mount MicroSD, sehingga total ukuran dan persentase irisan chart Donut mencerminkan ruang penyimpanan fisik asli secara akurat (100%).")
+                        }
+
+                        // ── v2.2.31 ──
                         GithubReleaseCard(
                             version = "v2.2.31",
                             releaseDate = "20 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "Eliminasi Phantom Conflict Restore, Multi-Namespace VFS Unmount & Proteksi Tabrakan Partisi"
                         ) {
                             GithubSectionHeader("🛡️ Eliminasi Phantom Conflict & Keamanan VFS")

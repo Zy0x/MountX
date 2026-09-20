@@ -115,7 +115,7 @@ import kotlin.math.sin
 @Composable
 fun GameDetailView(
     game: GameEntry,
-    breakdown: AppStorageBreakdown,
+    breakdown: AppStorageBreakdown? = null,
     isMoving: Boolean = false,
     moveMessage: String? = null,
     onClearMoveMessage: () -> Unit = {},
@@ -699,7 +699,7 @@ private fun SummaryRow(
 private fun StorageTabContent(
     game: GameEntry,
     mountPoints: List<MountPointConfig>,
-    breakdown: AppStorageBreakdown,
+    breakdown: AppStorageBreakdown?,
     availableDisks: List<SdCardDiskInfo>,
     internalFreeBytes: Long,
     isMoving: Boolean,
@@ -713,6 +713,7 @@ private fun StorageTabContent(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val safeBreakdown = breakdown ?: AppStorageBreakdown()
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedCategoryIds by remember { mutableStateOf(setOf("data", "obb")) }
     var showTargetModal by remember { mutableStateOf(false) }
@@ -752,55 +753,61 @@ private fun StorageTabContent(
         isSelectionMode = false
     }
 
-    val isRealDataOnSd = breakdown.ext2Bytes > 64 * 1024L
-    val isMounted = (game.mountStatus == MountStatus.MOUNTED || breakdown.isExt1Mounted) && isRealDataOnSd
-    val hasExtDataOnSd = if (isMounted) {
-        breakdown.ext2DataBytes > 64 * 1024L || breakdown.isExt1Mounted
-    } else {
-        breakdown.ext2DataBytes > 64 * 1024L && breakdown.ext1DataBytes <= 64 * 1024L
-    }
-    val hasExtObbOnSd = if (isMounted) {
-        breakdown.ext2ObbBytes > 64 * 1024L || breakdown.isExt1Mounted
-    } else {
-        breakdown.ext2ObbBytes > 64 * 1024L && breakdown.ext1ObbBytes <= 64 * 1024L
-    }
+    val isRealDataOnSd = safeBreakdown.ext2Bytes > 0L
+    val isMounted = safeBreakdown.isExt1Mounted || (game.mountStatus == MountStatus.MOUNTED && isRealDataOnSd)
 
-    val categories = remember(breakdown, isMounted, hasExtDataOnSd, hasExtObbOnSd, mountPoints, packageInfo, sdBase) {
+    val categories = remember(safeBreakdown, isMounted, mountPoints, packageInfo, sdBase) {
+        val existingDataPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
         val (dataBytes, dataSubtitle, isDataSd) = when {
-            isMounted && breakdown.ext2DataBytes > 64 * 1024L -> Triple(breakdown.ext2DataBytes, "Data utama game", true)
-            breakdown.ext2DataBytes > 64 * 1024L && breakdown.ext1DataBytes > 64 * 1024L -> {
+            safeBreakdown.isDataMounted -> {
+                val size = if (safeBreakdown.ext2DataBytes > 0L) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
+                Triple(size, "Data utama game", true)
+            }
+            isMounted && existingDataPoint?.enabled == true -> {
+                val size = if (safeBreakdown.ext2DataBytes > 0L) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
+                Triple(size, "Data utama game", true)
+            }
+            safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes > 64 * 1024L -> {
                 Triple(
-                    breakdown.ext1DataBytes,
-                    "Data utama game • ${FormatUtils.formatExactBytes(breakdown.ext2DataBytes)} di MicroSD",
+                    safeBreakdown.ext1DataBytes,
+                    "Data utama game • ${FormatUtils.formatExactBytes(safeBreakdown.ext2DataBytes)} di MicroSD",
                     false
                 )
             }
-            breakdown.ext2DataBytes > 64 * 1024L && breakdown.ext1DataBytes <= 64 * 1024L -> {
-                Triple(breakdown.ext2DataBytes, "Data utama game", true)
+            safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes <= 4096L -> {
+                Triple(safeBreakdown.ext2DataBytes, "Data utama game", true)
             }
             else -> {
                 Triple(
-                    if (breakdown.ext1DataBytes > 0L) breakdown.ext1DataBytes else breakdown.ext1Bytes,
+                    if (safeBreakdown.ext1DataBytes > 0L) safeBreakdown.ext1DataBytes else safeBreakdown.ext1Bytes,
                     "Data utama game",
                     false
                 )
             }
         }
 
+        val existingObbPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
         val (obbBytes, obbSubtitle, isObbSd) = when {
-            isMounted && breakdown.ext2ObbBytes > 64 * 1024L -> Triple(breakdown.ext2ObbBytes, "File ekspansi game", true)
-            breakdown.ext2ObbBytes > 64 * 1024L && breakdown.ext1ObbBytes > 64 * 1024L -> {
+            safeBreakdown.isObbMounted -> {
+                val size = if (safeBreakdown.ext2ObbBytes > 0L) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
+                Triple(size, "File ekspansi game", true)
+            }
+            isMounted && existingObbPoint?.enabled == true -> {
+                val size = if (safeBreakdown.ext2ObbBytes > 0L) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
+                Triple(size, "File ekspansi game", true)
+            }
+            safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes > 64 * 1024L -> {
                 Triple(
-                    breakdown.ext1ObbBytes,
-                    "File ekspansi game • ${FormatUtils.formatExactBytes(breakdown.ext2ObbBytes)} di MicroSD",
+                    safeBreakdown.ext1ObbBytes,
+                    "File ekspansi game • ${FormatUtils.formatExactBytes(safeBreakdown.ext2ObbBytes)} di MicroSD",
                     false
                 )
             }
-            breakdown.ext2ObbBytes > 64 * 1024L && breakdown.ext1ObbBytes <= 64 * 1024L -> {
-                Triple(breakdown.ext2ObbBytes, "File ekspansi game", true)
+            safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes <= 4096L -> {
+                Triple(safeBreakdown.ext2ObbBytes, "File ekspansi game", true)
             }
             else -> {
-                Triple(breakdown.ext1ObbBytes, "File ekspansi game", false)
+                Triple(safeBreakdown.ext1ObbBytes, "File ekspansi game", false)
             }
         }
 
@@ -809,25 +816,30 @@ private fun StorageTabContent(
         val apkInternalDir = if (apkSrc.endsWith(".apk")) java.io.File(apkSrc).parent ?: apkSrc else apkSrc
         val libSrc = packageInfo?.applicationInfo?.nativeLibraryDir ?: "/data/app/$pkg/lib"
 
-        val existingDataPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
-        val existingObbPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
         val existingMediaPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS }
-        val hasMedia = breakdown.ext1MediaBytes > 0L || breakdown.ext2MediaBytes > 0L || existingMediaPoint != null
+        val hasMedia = safeBreakdown.ext1MediaBytes > 0L || safeBreakdown.ext2MediaBytes > 0L || existingMediaPoint != null
 
         val (mediaBytes, mediaSubtitle, isMediaSd) = when {
-            isMounted -> Triple(breakdown.ext2MediaBytes, "Berkas media & unduhan", true)
-            breakdown.ext2MediaBytes > 0L && breakdown.ext1MediaBytes > 0L -> {
+            safeBreakdown.isMediaMounted -> {
+                val size = if (safeBreakdown.ext2MediaBytes > 0L) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
+                Triple(size, "Berkas media & unduhan", true)
+            }
+            isMounted && existingMediaPoint?.enabled == true -> {
+                val size = if (safeBreakdown.ext2MediaBytes > 0L) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
+                Triple(size, "Berkas media & unduhan", true)
+            }
+            safeBreakdown.ext2MediaBytes > 0L && safeBreakdown.ext1MediaBytes > 64 * 1024L -> {
                 Triple(
-                    breakdown.ext1MediaBytes,
-                    "Berkas media & unduhan • ${FormatUtils.formatExactBytes(breakdown.ext2MediaBytes)} di MicroSD",
+                    safeBreakdown.ext1MediaBytes,
+                    "Berkas media & unduhan • ${FormatUtils.formatExactBytes(safeBreakdown.ext2MediaBytes)} di MicroSD",
                     false
                 )
             }
-            breakdown.ext2MediaBytes > 0L && breakdown.ext1MediaBytes == 0L -> {
-                Triple(breakdown.ext2MediaBytes, "Berkas media & unduhan", true)
+            safeBreakdown.ext2MediaBytes > 0L && safeBreakdown.ext1MediaBytes <= 4096L -> {
+                Triple(safeBreakdown.ext2MediaBytes, "Berkas media & unduhan", true)
             }
             else -> {
-                Triple(breakdown.ext1MediaBytes, "Berkas media & unduhan", false)
+                Triple(safeBreakdown.ext1MediaBytes, "Berkas media & unduhan", false)
             }
         }
 
@@ -843,10 +855,10 @@ private fun StorageTabContent(
                 isRisk = false,
                 mountCategory = MountPointCategory.MEDIA_DOWNLOADS,
                 internalPath = existingMediaPoint?.targetPath ?: "/data/media/0/Android/media/$pkg",
-                internalBytes = breakdown.ext1MediaBytes,
+                internalBytes = safeBreakdown.ext1MediaBytes,
                 sdPath = existingMediaPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/media/$pkg"),
-                sdBytes = breakdown.ext2MediaBytes,
-                isCategoryMounted = isMounted && (breakdown.ext2MediaBytes > 0L || breakdown.isExt1Mounted)
+                sdBytes = safeBreakdown.ext2MediaBytes,
+                isCategoryMounted = isMounted && (existingMediaPoint?.enabled == true || safeBreakdown.isMediaMounted)
             )
         } else null
 
@@ -874,14 +886,14 @@ private fun StorageTabContent(
                 id = "apk",
                 title = "APK",
                 subtitle = "File instalasi game",
-                bytes = breakdown.apkBytes,
+                bytes = safeBreakdown.apkBytes,
                 icon = Icons.Default.Android,
                 iconTint = Color(0xFF00897B),
                 isMicroSd = false,
                 isRisk = true,
                 mountCategory = MountPointCategory.APP_PACKAGE,
                 internalPath = apkInternalDir,
-                internalBytes = breakdown.apkBytes,
+                internalBytes = safeBreakdown.apkBytes,
                 sdPath = "$sdBase/MountX/app/$pkg",
                 sdBytes = 0L,
                 isCategoryMounted = false
@@ -890,14 +902,14 @@ private fun StorageTabContent(
                 id = "lib",
                 title = "Lib",
                 subtitle = "Pustaka asli game",
-                bytes = breakdown.libBytes,
+                bytes = safeBreakdown.libBytes,
                 icon = Icons.Default.Build,
                 iconTint = Color(0xFFFB8C00),
                 isMicroSd = false,
                 isRisk = true,
                 mountCategory = MountPointCategory.PRIVATE_INTERNAL,
                 internalPath = libSrc,
-                internalBytes = breakdown.libBytes,
+                internalBytes = safeBreakdown.libBytes,
                 sdPath = "$sdBase/MountX/lib/$pkg",
                 sdBytes = 0L,
                 isCategoryMounted = false
@@ -906,14 +918,14 @@ private fun StorageTabContent(
                 id = "private",
                 title = "Data Privat",
                 subtitle = "Data aplikasi (internal)",
-                bytes = breakdown.dataBytes,
+                bytes = safeBreakdown.dataBytes,
                 icon = Icons.Default.Lock,
                 iconTint = Color(0xFF43A047),
                 isMicroSd = false,
                 isRisk = false,
                 mountCategory = MountPointCategory.PRIVATE_INTERNAL,
                 internalPath = "/data/data/$pkg",
-                internalBytes = breakdown.dataBytes,
+                internalBytes = safeBreakdown.dataBytes,
                 sdPath = "$sdBase/MountX/data/$pkg",
                 sdBytes = 0L,
                 isCategoryMounted = false
@@ -922,14 +934,14 @@ private fun StorageTabContent(
                 id = "cache",
                 title = "Cache",
                 subtitle = "Cache sementara",
-                bytes = breakdown.cacheBytes,
+                bytes = safeBreakdown.cacheBytes,
                 icon = Icons.Default.Cached,
                 iconTint = Color(0xFFFFA000),
                 isMicroSd = false,
                 isRisk = false,
                 mountCategory = MountPointCategory.CACHE_SHADERS,
                 internalPath = "/data/data/$pkg/cache",
-                internalBytes = breakdown.cacheBytes,
+                internalBytes = safeBreakdown.cacheBytes,
                 sdPath = resolveSdPath(sdBase, "MountX/Android/data/$pkg/cache"),
                 sdBytes = 0L,
                 isCategoryMounted = false
@@ -945,10 +957,10 @@ private fun StorageTabContent(
                 isRisk = false,
                 mountCategory = MountPointCategory.EXTERNAL_DATA,
                 internalPath = "/data/media/0/Android/data/$pkg",
-                internalBytes = breakdown.ext1DataBytes,
+                internalBytes = safeBreakdown.ext1DataBytes,
                 sdPath = existingDataPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg"),
-                sdBytes = breakdown.ext2DataBytes,
-                isCategoryMounted = isMounted && (breakdown.ext2DataBytes > 0L || breakdown.isExt1Mounted)
+                sdBytes = safeBreakdown.ext2DataBytes,
+                isCategoryMounted = isMounted && (existingDataPoint?.enabled == true || safeBreakdown.isDataMounted)
             ),
             UnifiedCategoryItem(
                 id = "obb",
@@ -961,16 +973,16 @@ private fun StorageTabContent(
                 isRisk = false,
                 mountCategory = MountPointCategory.OBB_STORAGE,
                 internalPath = "/data/media/0/Android/obb/$pkg",
-                internalBytes = breakdown.ext1ObbBytes,
+                internalBytes = safeBreakdown.ext1ObbBytes,
                 sdPath = existingObbPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/obb/$pkg"),
-                sdBytes = breakdown.ext2ObbBytes,
-                isCategoryMounted = isMounted && (breakdown.ext2ObbBytes > 0L || breakdown.isExt1Mounted)
+                sdBytes = safeBreakdown.ext2ObbBytes,
+                isCategoryMounted = isMounted && (existingObbPoint?.enabled == true || safeBreakdown.isObbMounted)
             ),
             mediaItem
         ) + customItems
     }
 
-    val chartBreakdown = breakdown
+    val chartBreakdown = safeBreakdown
 
     Column(
         modifier = modifier
@@ -986,6 +998,15 @@ private fun StorageTabContent(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
             modifier = Modifier.fillMaxWidth()
         ) {
+            if (breakdown == null) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.5.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1207,21 +1228,22 @@ private fun StorageTabContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Left: Kembalikan ke Memori Internal (Dynamic real size)
-                    val restoreBytes = remember(breakdown, mountPoints) {
+                    val restoreBytes = remember(safeBreakdown, mountPoints) {
                         val bytes = mountPoints.filter { it.enabled }.sumOf { pt ->
                             val cat = pt.resolveCategory()
                             when (cat) {
-                                MountPointCategory.OBB_STORAGE -> breakdown.ext2ObbBytes
-                                MountPointCategory.EXTERNAL_DATA -> breakdown.ext2DataBytes
+                                MountPointCategory.OBB_STORAGE -> safeBreakdown.ext2ObbBytes
+                                MountPointCategory.EXTERNAL_DATA -> safeBreakdown.ext2DataBytes
+                                MountPointCategory.MEDIA_DOWNLOADS -> safeBreakdown.ext2MediaBytes
                                 else -> pt.sizeBytes
                             }
                         }
-                        if (bytes > 0L) bytes else breakdown.ext2Bytes
+                        if (bytes > 0L) bytes else safeBreakdown.ext2Bytes
                     }
-                    val canRestore = isMounted && (restoreBytes > 64 * 1024L)
+                    val canRestore = isMounted && (restoreBytes > 0L)
                     OutlinedButton(
                         onClick = {
-                            val internalExistingBytes = if (isMounted) 0L else (breakdown.ext1DataBytes + breakdown.ext1ObbBytes)
+                            val internalExistingBytes = if (isMounted) 0L else (safeBreakdown.ext1DataBytes + safeBreakdown.ext1ObbBytes)
                             migrationConfirmData = MigrationConfirmData(
                                 direction = MoveDirection.TO_INTERNAL,
                                 totalBytes = restoreBytes,
@@ -1231,7 +1253,7 @@ private fun StorageTabContent(
                                 destExistingBytes = internalExistingBytes,
                                 targetDisk = null,
                                 targetPartition = null,
-                                pointsToMigrate = mountPoints
+                                pointsToMigrate = mountPoints.filter { it.enabled }.ifEmpty { mountPoints }
                             )
                         },
                         enabled = canRestore,
@@ -1254,7 +1276,7 @@ private fun StorageTabContent(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (canRestore && restoreBytes > 64 * 1024L) {
+                            text = if (canRestore && restoreBytes > 0L) {
                                 stringResource(R.string.manage_btn_restore_internal_with_size, FormatUtils.formatBytes(restoreBytes))
                             } else {
                                 stringResource(R.string.manage_btn_restore_internal)
@@ -1390,22 +1412,26 @@ private fun StorageTabContent(
                 val totalBytes = targetPoints.sumOf { pt ->
                     val cat = pt.resolveCategory()
                     when (cat) {
-                        MountPointCategory.EXTERNAL_DATA -> if (isToInternal) breakdown.ext2DataBytes else breakdown.ext1DataBytes
-                        MountPointCategory.OBB_STORAGE -> if (isToInternal) breakdown.ext2ObbBytes else breakdown.ext1ObbBytes
+                        MountPointCategory.EXTERNAL_DATA -> if (isToInternal) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
+                        MountPointCategory.OBB_STORAGE -> if (isToInternal) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
+                        MountPointCategory.MEDIA_DOWNLOADS -> if (isToInternal) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
                         else -> pt.sizeBytes
                     }
-                }.let { if (it > 0L) it else if (isToInternal) breakdown.ext2Bytes else breakdown.ext1Bytes }
+                }.let { if (it > 0L) it else if (isToInternal) safeBreakdown.ext2Bytes else safeBreakdown.ext1Bytes }
 
                 val freeSpace = if (isToInternal) internalFreeBytes else (targetPartition?.freeBytes ?: targetDisk?.totalFreeBytes ?: 0L)
                 val targetExistingBytes = targetPoints.sumOf { pt ->
                     val cat = pt.resolveCategory()
                     when (cat) {
                         MountPointCategory.EXTERNAL_DATA -> if (isToInternal) {
-                            if (isMounted) 0L else breakdown.ext1DataBytes
-                        } else breakdown.ext2DataBytes
+                            if (isMounted) 0L else safeBreakdown.ext1DataBytes
+                        } else safeBreakdown.ext2DataBytes
                         MountPointCategory.OBB_STORAGE -> if (isToInternal) {
-                            if (isMounted) 0L else breakdown.ext1ObbBytes
-                        } else breakdown.ext2ObbBytes
+                            if (isMounted) 0L else safeBreakdown.ext1ObbBytes
+                        } else safeBreakdown.ext2ObbBytes
+                        MountPointCategory.MEDIA_DOWNLOADS -> if (isToInternal) {
+                            if (isMounted) 0L else safeBreakdown.ext1MediaBytes
+                        } else safeBreakdown.ext2MediaBytes
                         else -> 0L
                     }
                 }
@@ -3882,13 +3908,13 @@ fun ConcentricStorageChart(
     val totalBytes = breakdown.totalBytes
 
     val slices = remember(breakdown) {
-        listOf(
+        listOfNotNull(
             ChartSlice("Dex", breakdown.dexBytes, Color(0xFFAB47BC)),
             ChartSlice("Lib", breakdown.libBytes, Color(0xFFFB8C00)),
             ChartSlice("Data", breakdown.dataBytes, Color(0xFF00ACC1)),
             ChartSlice("Cache", breakdown.cacheBytes, Color(0xFFE57373)),
-            ChartSlice("Ext1", breakdown.ext1Bytes, Color(0xFF3149FF)),
-            ChartSlice("Ext2", breakdown.ext2Bytes, Color(0xFF43A047)),
+            if (breakdown.physicalExt1Bytes > 0) ChartSlice("Ext1", breakdown.physicalExt1Bytes, Color(0xFF3149FF)) else null,
+            if (breakdown.ext2Bytes > 0) ChartSlice("Ext2", breakdown.ext2Bytes, Color(0xFF43A047)) else null,
             ChartSlice("Apk", breakdown.apkBytes, Color(0xFFE91E63))
         )
     }
