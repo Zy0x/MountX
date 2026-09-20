@@ -71,8 +71,6 @@ fun AddAppPicker(
     onConfigureApp: ((InstalledAppInfo) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    BackHandler(onBack = onDismiss)
-
     var isManualMode by remember { mutableStateOf(false) }
     var selectedApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
     var pendingSystemApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
@@ -86,6 +84,21 @@ fun AddAppPicker(
 
     // Real-time search query
     var searchQuery by remember { mutableStateOf("") }
+
+    // Hierarchical Step-by-Step Back Navigation inside AddAppPicker
+    BackHandler(enabled = pendingSystemApp != null) {
+        pendingSystemApp = null
+    }
+    BackHandler(enabled = pendingSystemApp == null && selectedApp != null) {
+        selectedApp = null
+    }
+    BackHandler(enabled = pendingSystemApp == null && selectedApp == null && isManualMode) {
+        isManualMode = false
+    }
+    BackHandler(enabled = pendingSystemApp == null && selectedApp == null && !isManualMode && searchQuery.isNotEmpty()) {
+        searchQuery = ""
+    }
+    BackHandler(enabled = pendingSystemApp == null && selectedApp == null && !isManualMode && searchQuery.isEmpty(), onBack = onDismiss)
 
     val baseApps = remember(installedApps, showSystemApps, addedPackageNames) {
         val list = if (showSystemApps) {

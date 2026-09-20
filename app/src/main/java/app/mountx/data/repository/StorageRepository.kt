@@ -1,6 +1,7 @@
 package app.mountx.data.repository
 
 import app.mountx.data.model.BenchmarkResult
+import app.mountx.data.model.ConflictStrategy
 import app.mountx.data.model.DiskHardwareDetails
 import app.mountx.data.model.DiskIoConfig
 import app.mountx.data.model.FilesystemType
@@ -200,9 +201,10 @@ class StorageRepository @Inject constructor(
         mountPoints: List<MountPointConfig>,
         direction: MoveDirection,
         sdBase: String = "/data/sdext2",
+        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        storageManager.moveMountPoints(packageName, mountPoints, direction, sdBase, onProgress)
+        storageManager.moveMountPoints(packageName, mountPoints, direction, sdBase, conflictStrategy, onProgress)
     }
 
     suspend fun moveGameData(
@@ -210,9 +212,10 @@ class StorageRepository @Inject constructor(
         direction: MoveDirection,
         target: MigrationTarget = MigrationTarget.ALL,
         sdBase: String = "/data/sdext2",
+        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        storageManager.moveGameData(packageName, direction, target, sdBase, onProgress)
+        storageManager.moveGameData(packageName, direction, target, sdBase, conflictStrategy, onProgress)
     }
 
     suspend fun getDiskIoConfig(diskName: String): Result<DiskIoConfig> = withContext(Dispatchers.IO) {

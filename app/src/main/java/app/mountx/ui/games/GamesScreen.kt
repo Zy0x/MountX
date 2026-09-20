@@ -182,9 +182,9 @@ fun GamesScreen(
                 selectedGameForDetail = null
             },
             onToggleMount = { viewModel.toggleMount(updatedGame) },
-            onMoveMountPoints = { dir, pts, targetDisk, targetPartition ->
+            onMoveMountPoints = { dir, pts, targetDisk, targetPartition, conflictStrategy ->
                 val basePath = targetPartition?.mountPoint ?: targetDisk?.mountPath
-                viewModel.moveMountPoints(updatedGame.packageName, pts, dir, basePath)
+                viewModel.moveMountPoints(updatedGame.packageName, pts, dir, basePath, conflictStrategy)
             },
             onUpdateMountPoints = { pts ->
                 viewModel.updateMountPoints(updatedGame.packageName, pts)

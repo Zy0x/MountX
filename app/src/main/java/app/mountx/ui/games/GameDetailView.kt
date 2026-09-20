@@ -85,6 +85,7 @@ import android.content.Context
 import app.mountx.R
 import app.mountx.data.model.AppStorageBreakdown
 import app.mountx.data.model.CategoryDeleteLocation
+import app.mountx.data.model.ConflictStrategy
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MigrationTarget
 import app.mountx.data.model.DiskType
@@ -126,7 +127,7 @@ fun GameDetailView(
     onRefreshDisks: () -> Unit = {},
     sdBase: String = "/data/sdext2",
     onDismiss: () -> Unit,
-    onMoveMountPoints: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?) -> Unit = { _, _, _, _ -> },
+    onMoveMountPoints: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit = { _, _, _, _, _ -> },
     onSaveGame: ((GameEntry) -> Unit)? = null,
     onUpdateMountPoints: ((List<MountPointConfig>) -> Unit)? = null,
     onDelete: () -> Unit = {},
@@ -134,7 +135,16 @@ fun GameDetailView(
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    BackHandler(onBack = onDismiss)
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val coroutineScope = rememberCoroutineScope()
+
+    // Hierarchical Root BackHandlers: Step back from page 1 to 0 before closing
+    BackHandler(enabled = pagerState.currentPage != 0) {
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(0)
+        }
+    }
+    BackHandler(enabled = pagerState.currentPage == 0, onBack = onDismiss)
 
     val context = LocalContext.current
 
@@ -159,9 +169,6 @@ fun GameDetailView(
         }
         mutableStateOf(initial)
     }
-
-    val pagerState = rememberPagerState(pageCount = { 2 })
-    val coroutineScope = rememberCoroutineScope()
 
     // Resolve app package metadata from PackageManager
     val packageInfo = remember(game.packageName) {
@@ -359,7 +366,7 @@ fun GameDetailView(
                         isMoving = isMoving,
                         moveMessage = moveMessage,
                         sdBase = sdBase,
-                        onMove = { dir, pts, disk, partition ->
+                        onMove = { dir, pts, disk, partition, strategy ->
                             val updatedPoints = currentMountPoints.map { pt ->
                                 if (dir == MoveDirection.TO_SD) {
                                     val oldBase = sdBase
@@ -378,10 +385,7 @@ fun GameDetailView(
                             }
                             currentMountPoints = updatedPoints
                             onUpdateMountPoints?.invoke(updatedPoints)
-                            onMoveMountPoints(dir, pts, disk, partition)
-                        },
-                        onRestoreToInternal = {
-                            onMoveMountPoints(MoveDirection.TO_INTERNAL, currentMountPoints, null, null)
+                            onMoveMountPoints(dir, pts, disk, partition, strategy)
                         },
                         onUnmount = {
                             onToggleMount?.invoke()
@@ -679,8 +683,7 @@ private fun StorageTabContent(
     moveMessage: String?,
     sdBase: String = "/data/sdext2",
     packageInfo: android.content.pm.PackageInfo? = null,
-    onMove: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?) -> Unit,
-    onRestoreToInternal: () -> Unit,
+    onMove: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit,
     onUnmount: () -> Unit,
     onMountPointsChanged: (List<MountPointConfig>) -> Unit,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
@@ -693,6 +696,26 @@ private fun StorageTabContent(
     var inspectingCategory by remember { mutableStateOf<UnifiedCategoryItem?>(null) }
     var categoryToDelete by remember { mutableStateOf<UnifiedCategoryItem?>(null) }
     var isDeletingCategory by remember { mutableStateOf(false) }
+    var migrationConfirmData by remember { mutableStateOf<MigrationConfirmData?>(null) }
+
+    // Hierarchical Step-by-Step Back Navigation inside Storage Tab
+    BackHandler(enabled = migrationConfirmData != null) {
+        migrationConfirmData = null
+    }
+    BackHandler(enabled = migrationConfirmData == null && categoryToDelete != null) {
+        if (!isDeletingCategory) {
+            categoryToDelete = null
+        }
+    }
+    BackHandler(enabled = migrationConfirmData == null && categoryToDelete == null && inspectingCategory != null) {
+        inspectingCategory = null
+    }
+    BackHandler(enabled = migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && showTargetModal) {
+        showTargetModal = false
+    }
+    BackHandler(enabled = migrationConfirmData == null && categoryToDelete == null && inspectingCategory == null && !showTargetModal && isSelectionMode) {
+        isSelectionMode = false
+    }
 
     val isMounted = game.mountStatus == MountStatus.MOUNTED || breakdown.isExt1Mounted
     val hasExtDataOnSd = if (isMounted) {
@@ -1062,10 +1085,34 @@ private fun StorageTabContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Left: Kembalikan ke Memori Internal
-                    val canRestore = isMounted || (breakdown.ext2Bytes > 0L)
+                    // Left: Kembalikan ke Memori Internal (Dynamic real size)
+                    val restoreBytes = remember(breakdown, mountPoints) {
+                        val bytes = mountPoints.filter { it.enabled }.sumOf { pt ->
+                            val cat = pt.resolveCategory()
+                            when (cat) {
+                                MountPointCategory.OBB_STORAGE -> breakdown.ext2ObbBytes
+                                MountPointCategory.EXTERNAL_DATA -> breakdown.ext2DataBytes
+                                else -> pt.sizeBytes
+                            }
+                        }
+                        if (bytes > 0L) bytes else breakdown.ext2Bytes
+                    }
+                    val canRestore = isMounted || (restoreBytes > 0L)
                     OutlinedButton(
-                        onClick = onRestoreToInternal,
+                        onClick = {
+                            val internalExistingBytes = breakdown.ext1DataBytes + breakdown.ext1ObbBytes
+                            migrationConfirmData = MigrationConfirmData(
+                                direction = MoveDirection.TO_INTERNAL,
+                                totalBytes = restoreBytes,
+                                sourceName = "MicroSD",
+                                destName = "Memori Internal",
+                                destFreeBytes = internalFreeBytes,
+                                destExistingBytes = internalExistingBytes,
+                                targetDisk = null,
+                                targetPartition = null,
+                                pointsToMigrate = mountPoints
+                            )
+                        },
                         enabled = canRestore,
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(
@@ -1086,7 +1133,11 @@ private fun StorageTabContent(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = stringResource(R.string.manage_btn_restore_internal),
+                            text = if (restoreBytes > 0L) {
+                                stringResource(R.string.manage_btn_restore_internal_with_size, FormatUtils.formatBytes(restoreBytes))
+                            } else {
+                                stringResource(R.string.manage_btn_restore_internal)
+                            },
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -1181,10 +1232,52 @@ private fun StorageTabContent(
             onDismiss = { showTargetModal = false },
             onConfirmMove = { dir, targetDisk, targetPartition ->
                 showTargetModal = false
-                isSelectionMode = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
                 val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase)
-                onMove(dir, targetPoints, targetDisk, targetPartition)
+                val totalBytes = targetPoints.sumOf { pt ->
+                    val cat = pt.resolveCategory()
+                    when (cat) {
+                        MountPointCategory.EXTERNAL_DATA -> breakdown.ext1DataBytes
+                        MountPointCategory.OBB_STORAGE -> breakdown.ext1ObbBytes
+                        else -> pt.sizeBytes
+                    }
+                }.let { if (it > 0L) it else breakdown.ext1Bytes }
+
+                val freeSpace = targetPartition?.freeBytes ?: targetDisk?.totalFreeBytes ?: 0L
+                val targetExistingBytes = targetPoints.sumOf { pt ->
+                    val cat = pt.resolveCategory()
+                    when (cat) {
+                        MountPointCategory.EXTERNAL_DATA -> breakdown.ext2DataBytes
+                        MountPointCategory.OBB_STORAGE -> breakdown.ext2ObbBytes
+                        else -> 0L
+                    }
+                }
+
+                migrationConfirmData = MigrationConfirmData(
+                    direction = dir,
+                    totalBytes = totalBytes,
+                    sourceName = "Memori Internal",
+                    destName = targetPartition?.shortName ?: targetDisk?.displayName ?: "MicroSD",
+                    destFreeBytes = freeSpace,
+                    destExistingBytes = targetExistingBytes,
+                    targetDisk = targetDisk,
+                    targetPartition = targetPartition,
+                    pointsToMigrate = targetPoints
+                )
+            }
+        )
+    }
+
+    // ── MIGRATION CONFIRMATION DIALOG ──
+    if (migrationConfirmData != null) {
+        val confData = migrationConfirmData!!
+        MigrationConfirmDialog(
+            data = confData,
+            onDismiss = { migrationConfirmData = null },
+            onConfirm = { strategy ->
+                migrationConfirmData = null
+                isSelectionMode = false
+                onMove(confData.direction, confData.pointsToMigrate, confData.targetDisk, confData.targetPartition, strategy)
             }
         )
     }

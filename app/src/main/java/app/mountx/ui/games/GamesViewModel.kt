@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mountx.data.catalog.DiscoveredGame
+import app.mountx.data.model.ConflictStrategy
 import app.mountx.data.model.AppStorageBreakdown
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.InstalledAppInfo
@@ -307,7 +308,8 @@ class GamesViewModel @Inject constructor(
         packageName: String,
         mountPoints: List<app.mountx.data.model.MountPointConfig>,
         direction: MoveDirection,
-        targetDiskBase: String? = null
+        targetDiskBase: String? = null,
+        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE
     ) {
         viewModelScope.launch {
             _isMovingData.value = true
@@ -328,6 +330,7 @@ class GamesViewModel @Inject constructor(
                 mountPoints = mountPoints,
                 direction = direction,
                 sdBase = sdBase,
+                conflictStrategy = conflictStrategy,
                 onProgress = { prog -> _operationProgress.value = prog }
             )
             _isMovingData.value = false
@@ -365,7 +368,8 @@ class GamesViewModel @Inject constructor(
     fun moveData(
         packageName: String,
         direction: MoveDirection,
-        target: MigrationTarget = MigrationTarget.ALL
+        target: MigrationTarget = MigrationTarget.ALL,
+        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE
     ) {
         viewModelScope.launch {
             _isMovingData.value = true
@@ -385,6 +389,7 @@ class GamesViewModel @Inject constructor(
                 direction = direction,
                 target = target,
                 sdBase = sdBase,
+                conflictStrategy = conflictStrategy,
                 onProgress = { prog -> _operationProgress.value = prog }
             )
             _isMovingData.value = false

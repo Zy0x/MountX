@@ -377,6 +377,15 @@ fun AboutScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(12.dp)
                     ) {
+                        Text(text = "v2.2.23 (Back Navigation Berjenjang, Konfirmasi Migrasi & Resolusi Konflik Data)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "• Navigasi Back Gesture Berjenjang: Back gesture pada sub-layar (Kelola Penyimpanan, modal target partisi, inspeksi kategori, pencarian aplikasi, dialog) kini mundur bertahap per level secara intuitif.", fontSize = 11.sp)
+                        Text(text = "• Dialog Konfirmasi Pra-Migrasi: Menampilkan pratinjau arah sumber-tujuan, telemetri ukuran data fisik riil, sisa kapasitas bebas tujuan, dan validasi ruang otomatis.", fontSize = 11.sp)
+                        Text(text = "• Resolusi Konflik Data Ganda: Mendeteksi data yang ada di kedua media dengan pilihan strategi (Timpa & Perbarui, Gabungkan Berkas, atau Cadangkan Folder Lama).", fontSize = 11.sp)
+                        Text(text = "• Mesin Salin Atomic (Nol Risiko Kehilangan): Menggunakan penyalinan aman (cp -a), verifikasi ukuran integritas sebelum hapus berkas sumber, dan pembersihan sampah otomatis jika terjadi gangguan.", fontSize = 11.sp)
+                        Text(text = "• Pemulihan Ukuran Dinamis: Tombol kembalikan ke internal kini menampilkan ukuran fisik sebenarnya dari MicroSD secara real-time tanpa angka hardcode.", fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(text = "v2.2.22 (Real-Time Progress Engine & Live Telemetry Stepper)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(text = "• Kecepatan & Estimasi Waktu Real-Time: Menampilkan kecepatan transfer (MB/s) yang dihaluskan (EMA) dan estimasi sisa waktu (ETA) saat menyalin data berukuran puluhan GB.", fontSize = 11.sp)

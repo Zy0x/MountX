@@ -916,6 +916,27 @@
     <string name="op_status_success">Operation Completed Successfully</string>
     <string name="op_copying_item">Copying: %1$s</string>
     <string name="op_restoring_item">Restoring: %1$s</string>
+
+    <!-- v2.2.23 Migration Confirmation & Conflict Resolution -->
+    <string name="migration_confirm_title_to_sd">Confirm Data Migration</string>
+    <string name="migration_confirm_title_to_internal">Confirm Restore to Internal</string>
+    <string name="migration_confirm_subtitle">Please review migration details and target storage before proceeding.</string>
+    <string name="migration_confirm_source_label">Source Storage</string>
+    <string name="migration_confirm_dest_label">Destination</string>
+    <string name="migration_confirm_size_label">Total Data Size</string>
+    <string name="migration_confirm_free_space_label">Destination Free Space</string>
+    <string name="migration_confirm_storage_low">Insufficient space at destination (%1$s available, %2$s required).</string>
+    <string name="migration_confirm_conflict_title">Data Conflict Detected!</string>
+    <string name="migration_confirm_conflict_desc">Game data already exists at destination (%1$s). Choose conflict resolution strategy:</string>
+    <string name="migration_conflict_overwrite_title">Overwrite &amp; Update</string>
+    <string name="migration_conflict_overwrite_desc">Replace all destination files with source versions (Recommended).</string>
+    <string name="migration_conflict_merge_title">Merge Files (Keep Newer)</string>
+    <string name="migration_conflict_merge_desc">Only copy files that are newer or not present at destination.</string>
+    <string name="migration_conflict_backup_title">Backup Old Data First</string>
+    <string name="migration_conflict_backup_desc">Rename old folder at destination to a backup before copying.</string>
+    <string name="migration_confirm_btn_start_move">Start Migration</string>
+    <string name="migration_confirm_btn_start_restore">Start Restore</string>
+    <string name="manage_btn_restore_internal_with_size">Restore to Internal (%1$s)</string>
 </resources>
 
 

@@ -19,8 +19,10 @@ import app.mountx.data.model.GlobalTrimReport
 import app.mountx.data.model.TrimPartitionResult
 import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
+import app.mountx.data.model.ConflictStrategy
 import app.mountx.data.model.OperationProgress
 import app.mountx.data.model.OperationType
+import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -1366,14 +1368,34 @@ class StorageManager {
         opType: OperationType,
         title: String,
         subtitle: String,
+        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)?
     ) {
         val estimatedPointBytes = if (pointSizeBytes > 0L) pointSizeBytes else getDirSizeBytes(sourceDir)
         val initialDestBytes = getDirSizeBytes(destDir)
+        val existedInitially = RootShell.exists(destDir)
         val startTime = System.currentTimeMillis()
         var lastTime = startTime
         var lastBytes = 0L
         var smoothedSpeed = 0L
+
+        // Execute Conflict Strategy if destination already contains data
+        if (existedInitially && initialDestBytes > 0L) {
+            when (conflictStrategy) {
+                ConflictStrategy.BACKUP_FIRST -> {
+                    val ts = System.currentTimeMillis()
+                    val backupDir = "${destDir.trimEnd('/')}.mountx_bak_$ts"
+                    AppLogger.info("StorageManager", "Conflict BACKUP_FIRST: Backing up $destDir -> $backupDir")
+                    RootShell.exec("mv \"$destDir\" \"$backupDir\" && mkdir -p \"$destDir\"")
+                }
+                ConflictStrategy.MERGE -> {
+                    AppLogger.info("StorageManager", "Conflict MERGE: Merging newer files into $destDir")
+                }
+                ConflictStrategy.OVERWRITE -> {
+                    AppLogger.info("StorageManager", "Conflict OVERWRITE: Overwriting files in $destDir")
+                }
+            }
+        }
 
         val initialProg = if (totalMigrationBytes > 0L) {
             (overallProcessedBytes.toFloat() / totalMigrationBytes.toFloat()).coerceIn(0f, 1f)
@@ -1397,11 +1419,15 @@ class StorageManager {
             )
         )
 
-        coroutineScope {
+        val copyResult = coroutineScope {
             val copyDeferred = async(Dispatchers.IO) {
                 val parentDest = java.io.File(destDir).parent ?: destDir
                 RootShell.exec("mkdir -p \"$parentDest\"")
-                RootShell.exec("cp -a \"$sourceDir/.\" \"$destDir/\" 2>/dev/null || cp -a \"$sourceDir\" \"$parentDest/\"")
+                val cpCmd = when (conflictStrategy) {
+                    ConflictStrategy.MERGE -> "cp -a -u \"$sourceDir/.\" \"$destDir/\" 2>/dev/null || cp -a -u \"$sourceDir\" \"$parentDest/\""
+                    else -> "cp -a -f \"$sourceDir/.\" \"$destDir/\" 2>/dev/null || cp -a -f \"$sourceDir\" \"$parentDest/\""
+                }
+                RootShell.exec(cpCmd)
             }
 
             while (copyDeferred.isActive) {
@@ -1447,10 +1473,25 @@ class StorageManager {
                 )
             }
 
-            val copyRes = copyDeferred.await()
-            if (!copyRes.isSuccess && !RootShell.exists(destDir)) {
-                error("Failed to copy $sourceDir to $destDir: ${copyRes.stderr.joinToString("\n")}")
+            copyDeferred.await()
+        }
+
+        if (!copyResult.isSuccess && !RootShell.exists(destDir)) {
+            // Clean up partial destination garbage if newly created
+            if (!existedInitially) {
+                RootShell.exec("rm -rf \"$destDir\"")
             }
+            error("Failed to copy $sourceDir to $destDir: ${copyResult.stderr.joinToString("\n")}")
+        }
+
+        // Integrity Verification: Verify destination contains data before source can be deleted
+        val finalSrcBytes = getDirSizeBytes(sourceDir)
+        val finalDestBytes = getDirSizeBytes(destDir)
+        if (finalSrcBytes > 1024L * 1024L && finalDestBytes < (finalSrcBytes * 0.90)) {
+            if (!existedInitially) {
+                RootShell.exec("rm -rf \"$destDir\"")
+            }
+            error("Integritas data gagal diverifikasi! Ukuran tujuan ($finalDestBytes bytes) tidak cocok dengan sumber ($finalSrcBytes bytes). Pemindahan dibatalkan untuk melindungi data.")
         }
     }
 
@@ -1463,6 +1504,7 @@ class StorageManager {
         mountPoints: List<MountPointConfig>,
         direction: MoveDirection,
         sdBase: String = "/data/sdext2",
+        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -1492,13 +1534,12 @@ class StorageManager {
                 error("No active mount points configured for migration.")
             }
 
-            // Step 0: Preparing
-            var totalMigrationBytes = activePoints.sumOf { it.sizeBytes }
-            if (totalMigrationBytes <= 0L) {
-                totalMigrationBytes = activePoints.sumOf { pt ->
-                    val src = if (isToSd) pt.targetPath else pt.sourcePath
-                    getDirSizeBytes(src)
-                }
+            // Step 0: Preparing - calculate dynamic real sizes
+            var totalMigrationBytes = 0L
+            for (pt in activePoints) {
+                val src = if (isToSd) pt.targetPath else pt.sourcePath
+                val sz = getDirSizeBytes(src)
+                totalMigrationBytes += if (sz > 0L) sz else pt.sizeBytes
             }
 
             onProgress?.invoke(
@@ -1544,12 +1585,13 @@ class StorageManager {
 
                 when (direction) {
                     MoveDirection.TO_SD -> {
+                        val currentSrcSize = getDirSizeBytes(targetPath).let { if (it > 0L) it else point.sizeBytes }
                         if (point.isVirtualContainer) {
                             val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
                             val imgParent = java.io.File(imgFile).parent ?: "$sdBase/.mountx/containers"
                             RootShell.exec("mkdir -p \"$imgParent\"")
                             if (!RootShell.exists(imgFile)) {
-                                val sizeMb = ((point.sizeBytes / (1024 * 1024)) + 256).coerceAtLeast(512)
+                                val sizeMb = ((currentSrcSize / (1024 * 1024)) + 256).coerceAtLeast(512)
                                 RootShell.exec("dd if=/dev/zero of=\"$imgFile\" bs=1M count=0 seek=$sizeMb")
                                 RootShell.exec("mkfs.ext4 -F \"$imgFile\"")
                             }
@@ -1563,7 +1605,7 @@ class StorageManager {
                                         sourceDir = targetPath,
                                         destDir = tempMount,
                                         categoryName = categoryName,
-                                        pointSizeBytes = point.sizeBytes,
+                                        pointSizeBytes = currentSrcSize,
                                         overallProcessedBytes = accumulatedBytes,
                                         totalMigrationBytes = totalMigrationBytes,
                                         stepIndex = 1,
@@ -1572,6 +1614,7 @@ class StorageManager {
                                         opType = opType,
                                         title = title,
                                         subtitle = packageName,
+                                        conflictStrategy = conflictStrategy,
                                         onProgress = onProgress
                                     )
                                     RootShell.exec("rm -rf \"$targetPath\"/*")
@@ -1588,7 +1631,7 @@ class StorageManager {
                                     sourceDir = targetPath,
                                     destDir = sourcePath,
                                     categoryName = categoryName,
-                                    pointSizeBytes = point.sizeBytes,
+                                    pointSizeBytes = currentSrcSize,
                                     overallProcessedBytes = accumulatedBytes,
                                     totalMigrationBytes = totalMigrationBytes,
                                     stepIndex = 1,
@@ -1597,9 +1640,10 @@ class StorageManager {
                                     opType = opType,
                                     title = title,
                                     subtitle = packageName,
+                                    conflictStrategy = conflictStrategy,
                                     onProgress = onProgress
                                 )
-                                accumulatedBytes += point.sizeBytes
+                                accumulatedBytes += currentSrcSize
 
                                 // Step 2: Verify & Permissions
                                 onProgress?.invoke(
@@ -1651,6 +1695,7 @@ class StorageManager {
                         }
                     }
                     MoveDirection.TO_INTERNAL -> {
+                        val currentSrcSize = getDirSizeBytes(sourcePath).let { if (it > 0L) it else point.sizeBytes }
                         if (point.isVirtualContainer) {
                             val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
                             if (RootShell.exists(imgFile)) {
@@ -1664,7 +1709,7 @@ class StorageManager {
                                         sourceDir = tempMount,
                                         destDir = targetPath,
                                         categoryName = categoryName,
-                                        pointSizeBytes = point.sizeBytes,
+                                        pointSizeBytes = currentSrcSize,
                                         overallProcessedBytes = accumulatedBytes,
                                         totalMigrationBytes = totalMigrationBytes,
                                         stepIndex = 1,
@@ -1673,6 +1718,7 @@ class StorageManager {
                                         opType = opType,
                                         title = title,
                                         subtitle = packageName,
+                                        conflictStrategy = conflictStrategy,
                                         onProgress = onProgress
                                     )
                                     RootShell.exec("umount -l \"$tempMount\"")
@@ -1690,7 +1736,7 @@ class StorageManager {
                                     sourceDir = sourcePath,
                                     destDir = targetPath,
                                     categoryName = categoryName,
-                                    pointSizeBytes = point.sizeBytes,
+                                    pointSizeBytes = currentSrcSize,
                                     overallProcessedBytes = accumulatedBytes,
                                     totalMigrationBytes = totalMigrationBytes,
                                     stepIndex = 1,
@@ -1699,9 +1745,10 @@ class StorageManager {
                                     opType = opType,
                                     title = title,
                                     subtitle = packageName,
+                                    conflictStrategy = conflictStrategy,
                                     onProgress = onProgress
                                 )
-                                accumulatedBytes += point.sizeBytes
+                                accumulatedBytes += currentSrcSize
 
                                 // Step 2: Restore permissions & SELinux
                                 onProgress?.invoke(
@@ -1725,6 +1772,7 @@ class StorageManager {
                                 RootShell.exec("chown -R $uid:1023 \"$targetPath\"")
                                 RootShell.exec("chmod -R 775 \"$targetPath\"")
                                 RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\"")
+                                RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
 
                                 // Step 3: Cleanup on MicroSD
                                 onProgress?.invoke(
@@ -1802,6 +1850,7 @@ class StorageManager {
         direction: MoveDirection,
         target: MigrationTarget = MigrationTarget.ALL,
         sdBase: String = "/data/sdext2",
+        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
@@ -1886,6 +1935,7 @@ class StorageManager {
                                 opType = opType,
                                 title = title,
                                 subtitle = packageName,
+                                conflictStrategy = conflictStrategy,
                                 onProgress = onProgress
                             )
                             accumulatedBytes += dataSize
@@ -1916,6 +1966,7 @@ class StorageManager {
                                 opType = opType,
                                 title = title,
                                 subtitle = packageName,
+                                conflictStrategy = conflictStrategy,
                                 onProgress = onProgress
                             )
                             accumulatedBytes += obbSize
@@ -1947,6 +1998,7 @@ class StorageManager {
                                 opType = opType,
                                 title = title,
                                 subtitle = packageName,
+                                conflictStrategy = conflictStrategy,
                                 onProgress = onProgress
                             )
                             accumulatedBytes += dataSize
@@ -1976,6 +2028,7 @@ class StorageManager {
                                 opType = opType,
                                 title = title,
                                 subtitle = packageName,
+                                conflictStrategy = conflictStrategy,
                                 onProgress = onProgress
                             )
                             accumulatedBytes += obbSize

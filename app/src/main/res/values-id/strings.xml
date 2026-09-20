@@ -900,6 +900,27 @@
     <string name="op_status_success">Operasi Berhasil Diselesaikan</string>
     <string name="op_copying_item">Menyalin: %1$s</string>
     <string name="op_restoring_item">Memulihkan: %1$s</string>
+
+    <!-- v2.2.23 Migration Confirmation & Conflict Resolution -->
+    <string name="migration_confirm_title_to_sd">Konfirmasi Pemindahan Data</string>
+    <string name="migration_confirm_title_to_internal">Konfirmasi Pemulihan ke Internal</string>
+    <string name="migration_confirm_subtitle">Pastikan detail dan media penyimpanan tujuan sudah sesuai sebelum memulai.</string>
+    <string name="migration_confirm_source_label">Media Sumber</string>
+    <string name="migration_confirm_dest_label">Media Tujuan</string>
+    <string name="migration_confirm_size_label">Total Ukuran Data</string>
+    <string name="migration_confirm_free_space_label">Ruang Bebas Tujuan</string>
+    <string name="migration_confirm_storage_low">Kapasitas ruang di tujuan tidak mencukupi (%1$s tersedia, %2$s dibutuhkan).</string>
+    <string name="migration_confirm_conflict_title">Konflik Data Terdeteksi!</string>
+    <string name="migration_confirm_conflict_desc">Data game sudah ada di media tujuan (%1$s). Pilih strategi penanganan berkas di bawah ini:</string>
+    <string name="migration_conflict_overwrite_title">Timpa &amp; Perbarui (Overwrite)</string>
+    <string name="migration_conflict_overwrite_desc">Ganti seluruh berkas di tujuan dengan versi dari sumber (Direkomendasikan).</string>
+    <string name="migration_conflict_merge_title">Gabungkan Berkas (Merge)</string>
+    <string name="migration_conflict_merge_desc">Hanya salin berkas yang lebih baru atau belum ada di tujuan.</string>
+    <string name="migration_conflict_backup_title">Cadangkan Data Lama (Backup First)</string>
+    <string name="migration_conflict_backup_desc">Ubah nama folder lama di tujuan menjadi cadangan .bak sebelum menyalin.</string>
+    <string name="migration_confirm_btn_start_move">Lanjutkan Pemindahan</string>
+    <string name="migration_confirm_btn_start_restore">Lanjutkan Pemulihan</string>
+    <string name="manage_btn_restore_internal_with_size">Kembalikan ke Internal (%1$s)</string>
 </resources>
 
 
