@@ -112,18 +112,47 @@ jobs:
           VERSION=$(grep 'versionName' app/build.gradle.kts | grep -oP '"\K[^"]+')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Extract Changelog for This Version
+      - name: Extract Changelog Since Last Release
         id: changelog
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          # Extract changelog block for this version from CHANGELOG.md
-          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
-          if [ -z "$NOTES" ]; then
-            NOTES="See [CHANGELOG.md](CHANGELOG.md) for full release notes."
+          CURRENT_VERSION="${{ steps.version.outputs.version }}"
+
+          # Find previous public release tag (exclude current if exists)
+          PREV_TAG=$(gh release list --repo ${{ github.repository }} --limit 10 --json tagName \
+            --jq "[.[].tagName | select(. != \"v$CURRENT_VERSION\")] | first" 2>/dev/null || echo "")
+
+          echo "Current version : v$CURRENT_VERSION"
+          echo "Previous release: ${PREV_TAG:-none}"
+
+          if [ -z "$PREV_TAG" ]; then
+            PREV_VERSION=""
+          else
+            PREV_VERSION="${PREV_TAG#v}"
           fi
-          # Write to file to preserve multiline
-          echo "$NOTES" > /tmp/release_notes.md
-          echo "Release notes extracted for v$VERSION"
+
+          # Extract all sections from current down to (not including) previous release
+          if [ -z "$PREV_VERSION" ]; then
+            NOTES=$(awk '/^## \[/{found=1} found{print}' CHANGELOG.md)
+          else
+            NOTES=$(awk "/^## \[/{found=1} found && /^## \[$PREV_VERSION\]/{exit} found{print}" CHANGELOG.md)
+          fi
+
+          [ -z "$NOTES" ] && NOTES="See [CHANGELOG.md](CHANGELOG.md) for full release notes."
+
+          TOTAL_SECTIONS=$(echo "$NOTES" | grep -c "^## \[" || echo "1")
+          {
+            echo "## Release Notes — MountX v$CURRENT_VERSION"
+            echo ""
+            if [ "$TOTAL_SECTIONS" -gt 1 ]; then
+              echo "> This release includes **$TOTAL_SECTIONS** updates since \`${PREV_TAG:-initial release}\`."
+              echo ""
+            fi
+            echo "$NOTES"
+          } > /tmp/release_notes.md
+
+          echo "✅ Release notes: $TOTAL_SECTIONS section(s) aggregated"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Release APK Artifact
         uses: actions/download-artifact@v4
