@@ -1,105 +1,156 @@
+<div align="center">
+
+<img src="Icon/mountx_icon.png" alt="MountX Logo" width="96"/>
+
 # MountX
 
+**Move your games to MicroSD — without FUSE errors.**
+
 [![Build & Release](https://github.com/Zy0x/MountX/actions/workflows/build.yml/badge.svg)](https://github.com/Zy0x/MountX/actions/workflows/build.yml)
-[![Min SDK](https://img.shields.io/badge/Min%20SDK-Android%2010%20(API%2029)-brightgreen.svg)](https://developer.android.com)
-[![Target SDK](https://img.shields.io/badge/Target%20SDK-Android%2015%20(API%2035)-blue.svg)](https://developer.android.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Min SDK](https://img.shields.io/badge/Android-10%2B%20(API%2029)-brightgreen.svg)](https://developer.android.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/Zy0x/MountX?label=release)](https://github.com/Zy0x/MountX/releases/latest)
 
-MountX adalah aplikasi Android native dan modul root untuk memindahkan dan melakukan bind-mount data game (seperti Wuthering Waves, Honkai: Star Rail, Genshin Impact, Zenless Zone Zero, PUBG Mobile) dari penyimpanan internal ke partisi MicroSD eksternal tanpa error FUSE cross-device pada Android 10 ke atas.
-
----
-
-## Fitur Utama
-
-- **Game Manager**: Pengelolaan daftar game, seleksi mode mount (`PKG` atau `FILES`), dan kontrol mount/unmount langsung dari antarmuka.
-- **Physical Data Migration**: Pemindahan berkas data game antara penyimpanan internal (`/data/media/0/Android/data/...`) dan MicroSD (`/data/sdext2/Android/data/...`) secara aman dengan verifikasi integritas data.
-- **MicroSD Partition & Formatter**: Deteksi otomatis perangkat blok (`mmcblk*`, `sd*`), pemformatan partisi ke sistem berkas F2FS atau Ext4 dengan konfirmasi pengamanan.
-- **Root Compatibility**: Kompatibilitas dengan Magisk, KernelSU, dan APatch melalui integrasi `libsu`.
-- **Real-time Log Viewer**: Pemantauan log aktivitas mount secara langsung (`tail` mode) dengan penanda level log.
-- **Backup & Restore**: Ekspor dan impor konfigurasi daftar game dalam format JSON.
-- **Material Design 3 (Material You)**: Antarmuka modern dengan Dynamic Color, mode terang dan gelap AMOLED.
-- **Dukungan Multi-bahasa**: Bahasa Indonesia (ID) dan English (EN).
+</div>
 
 ---
 
-## Dua Mode Mount
+## What is MountX?
 
-| Mode | Keterangan | Rekomendasi Game |
-|---|---|---|
-| `PKG` | Mount seluruh direktori `Android/data/<package>` | Wuthering Waves, PUBG Mobile, COD Mobile |
-| `FILES` | Mount subdirektori `Android/data/<package>/files` (basis data tetap pada penyimpanan internal) | Honkai: Star Rail, Genshin Impact, Zenless Zone Zero |
+MountX is a native Android app + Magisk module that moves large game data (Wuthering Waves, Genshin Impact, Honkai: Star Rail, PUBG Mobile, and more) from internal storage to a dedicated MicroSD partition using kernel-level bind-mounts. Unlike FUSE-based solutions, MountX operates at the filesystem layer — no cross-device copy errors, no performance penalties. Supports Android 10–15 with Magisk, KernelSU, or APatch.
 
 ---
 
-## Persyaratan Sistem
+## Features
 
-1. Perangkat Android dengan akses Root (Magisk, KernelSU, atau APatch).
-2. Android 10 (API 29) hingga Android 15 (API 35+).
-3. Kartu MicroSD dengan partisi kedua beralamat `/dev/block/mmcblk0p3` (atau dapat disesuaikan pada menu Pengaturan).
-4. Partisi MicroSD diformat dengan sistem berkas F2FS atau Ext4.
-
----
-
-## Instalasi
-
-1. Unduh file APK dan arsip zip modul dari halaman [GitHub Releases](https://github.com/Zy0x/MountX/releases).
-2. Pasang `MountX-magisk-module.zip` melalui Magisk, KernelSU, atau APatch Manager, lalu muat ulang (reboot) perangkat.
-3. Pasang `MountX.apk` dan buka aplikasi.
-4. Berikan izin Superuser (Root) saat diminta.
-5. Konfigurasikan daftar game pada tab Games dan aktifkan mount.
+- **Bind-Mount Engine** — Transparent filesystem redirection using kernel bind-mounts. Games run from MicroSD as if nothing changed.
+- **Two Mount Modes** — `PKG` mode mounts the entire `Android/data/<package>` directory; `FILES` mode mounts only the `files` subdirectory, keeping the database on internal storage.
+- **Physical Data Migration** — Safe, verified transfer of game data between internal storage and MicroSD with integrity checks.
+- **Partition Tools** — Auto-detect block devices (`mmcblk*`, `sd*`), format partitions to F2FS or Ext4, run read/write benchmarks.
+- **I/O Booster** — Kernel block queue tuning (read-ahead, I/O scheduler, VFS cache pressure) applied at boot for maximum MicroSD throughput.
+- **Real-time Log Viewer** — Live tail of mount activity with color-coded log levels.
+- **Backup & Restore** — Export and import your app configuration as JSON.
+- **Root Framework Agnostic** — Works with Magisk, KernelSU, and APatch via `libsu`.
+- **Material Design 3** — Dynamic Color, AMOLED dark mode, and full light mode support.
+- **Multi-language** — English and Indonesian (Bahasa Indonesia) built-in.
 
 ---
 
-## Struktur Repositori
+## Screenshots
 
-```
-MountX/
-├── app/                  # Aplikasi Android Native (Kotlin, Jetpack Compose, Hilt, Room, libsu)
-│   ├── src/main/
-│   │   ├── java/app/mountx/
-│   │   │   ├── data/     # Room Database, Data Models, Repositories
-│   │   │   ├── di/       # Hilt Dependency Injection Modules
-│   │   │   ├── root/     # Engine Shell libsu, Mount & Storage Manager
-│   │   │   ├── service/  # Background Services & Boot Receiver
-│   │   │   ├── ui/       # Jetpack Compose Screens, ViewModels, & Navigation
-│   │   │   └── util/     # DataStore Preferences, Update Checker, Formatters
-│   │   └── res/          # Resource XML, String Localization (EN & ID)
-├── module/               # Modul Root (Magisk, KernelSU, APatch)
-│   ├── module.prop       # Metadata Modul
-│   ├── service.sh        # Skrip Eksekusi Boot-Time
-│   ├── config.conf       # Konfigurasi: SD_BASE, SD_BLOCK, FS_TYPE
-│   └── gamelist.conf     # Daftar Game Dinamis
-├── .github/workflows/    # CI/CD Automated Build Workflow
-└── README.md
-```
+### Dark Mode
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/real/01_dashboard_dark.png" width="200"/><br/><b>Dashboard</b></td>
+    <td align="center"><img src="docs/screenshots/real/02_storage_dark.png" width="200"/><br/><b>Storage Overview</b></td>
+    <td align="center"><img src="docs/screenshots/real/03_disk_detail_dark.png" width="200"/><br/><b>Disk Detail</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/real/04_disk_tools_dark.png" width="200"/><br/><b>Disk Tools</b></td>
+    <td align="center"><img src="docs/screenshots/real/05_partition_tools_dark.png" width="200"/><br/><b>Partition Tools</b></td>
+    <td align="center"><img src="docs/screenshots/real/06_games_dark.png" width="200"/><br/><b>Apps & Games</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/real/07_game_detail_dark.png" width="200"/><br/><b>App Storage Detail</b></td>
+    <td align="center"><img src="docs/screenshots/real/08_logs_dark.png" width="200"/><br/><b>Live Logs</b></td>
+    <td align="center"><img src="docs/screenshots/real/09_settings_dark.png" width="200"/><br/><b>Settings</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/real/15_about_dark.png" width="200"/><br/><b>About</b></td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
+
+### Light Mode
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/real/11_storage_light.png" width="200"/><br/><b>Storage (Light)</b></td>
+    <td align="center"><img src="docs/screenshots/real/12_games_light.png" width="200"/><br/><b>Apps & Games (Light)</b></td>
+    <td align="center"><img src="docs/screenshots/real/13_game_detail_light.png" width="200"/><br/><b>App Detail (Light)</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/real/14_settings_light.png" width="200"/><br/><b>Settings (Light)</b></td>
+    <td></td>
+    <td></td>
+  </tr>
+</table>
 
 ---
 
-## Build dari Source
+## Requirements
 
-Untuk melakukan kompilasi proyek secara lokal:
+1. **Rooted Android device** — Magisk, KernelSU, or APatch.
+2. **Android 10–15** (API 29–35).
+3. **MicroSD card** with a dedicated second partition (the app auto-detects block devices; configurable in Settings).
+4. **Partition filesystem** must be **F2FS** or **Ext4** (exFAT/FAT32 are not supported for bind-mounts).
+
+---
+
+## Quick Install
+
+**Step 1 — Download**
+
+Go to [GitHub Releases](https://github.com/Zy0x/MountX/releases/latest) and download:
+- `MountX-Magisk-vX.X.X.zip` — the root module
+- `MountX-vX.X.X.apk` — the companion app
+
+**Step 2 — Flash the module**
+
+Open your root manager (Magisk / KernelSU / APatch), flash the downloaded `.zip`, then **reboot**.
+
+**Step 3 — Install and configure the app**
+
+Install the APK, open MountX, grant root permission when prompted, and configure your MicroSD partition path in **Settings → SD Partition**.
+
+> For a detailed walkthrough, see [docs/INSTALL.md](docs/INSTALL.md).
+
+---
+
+## Build from Source
 
 ```bash
-# Clone repositori
+# Clone the repository
 git clone https://github.com/Zy0x/MountX.git
 cd MountX
 
-# Kompilasi Debug APK
-./gradlew assembleDebug
-
-# Kompilasi Release APK
-./gradlew assembleRelease
+# Build a signed release APK (requires keystore.properties)
+.\gradlew.bat assembleRelease
+# Output: app/build/outputs/apk/release/app-release.apk
 ```
 
----
-
-## CI/CD & GitHub Actions
-
-Repositori ini telah dikonfigurasi dengan alur kerja GitHub Actions. Untuk menandatangani APK rilis secara otomatis, ikuti petunjuk konfigurasi pada [KEYSTORE_SETUP.md](KEYSTORE_SETUP.md).
+> See [KEYSTORE_SETUP.md](KEYSTORE_SETUP.md) for signing configuration, and [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the full developer guide.
 
 ---
 
-## Lisensi & Atribusi
+## Documentation
 
-- Dilisensikan di bawah [MIT License](LICENSE).
-- Penulis: **Noir** ([@Zy0x](https://github.com/Zy0x)).
+| Document | Description |
+|---|---|
+| [INSTALL.md](docs/INSTALL.md) | Full installation guide, prerequisites, and troubleshooting |
+| [USAGE.md](docs/USAGE.md) | User manual — all features explained |
+| [FAQ.md](docs/FAQ.md) | Common questions and answers |
+| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer guide — how to build, contribute, and submit PRs |
+| [CHANGELOG.md](CHANGELOG.md) | Full version history |
+
+---
+
+## Support the Project
+
+MountX is free and open-source. If it saves your internal storage, consider buying me a coffee:
+
+| Platform | Link |
+|---|---|
+| ☕ Ko-fi | [ko.fi/Zy0x](https://ko.fi/Zy0x) *(placeholder)* |
+| 💳 PayPal | [paypal.me/Zy0x](https://paypal.me/Zy0x) *(placeholder)* |
+| 🇮🇩 Saweria | [saweria.co/Zy0x](https://saweria.co/Zy0x) *(placeholder)* |
+
+---
+
+## License
+
+Licensed under the [MIT License](LICENSE).
+
+**Author:** Noir ([@Zy0x](https://github.com/Zy0x))
