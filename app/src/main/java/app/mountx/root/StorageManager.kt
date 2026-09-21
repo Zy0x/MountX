@@ -30,6 +30,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
+ * Exception thrown when destination storage does not have sufficient space plus safety headroom.
+ */
+class InsufficientStorageException(
+    val requiredBytes: Long,
+    val availableBytes: Long,
+    val deficitBytes: Long,
+    val targetName: String,
+    message: String
+) : IllegalStateException(message)
+
+/**
  * Low-level storage and partition manager using root commands.
  * Handles device discovery, mounting/unmounting partitions, formatting (f2fs/ext4/etc),
  * and migrating physical game data between internal storage and MicroSD.
@@ -40,6 +51,29 @@ class StorageManager {
     private val diskHardwareCache = java.util.concurrent.ConcurrentHashMap<String, HwDiskCache>()
 
     private var cachedSupportedFilesystems: List<SupportedFilesystemInfo>? = null
+
+    /**
+     * Resolves available free space in bytes for any given directory or mount point.
+     */
+    suspend fun getAvailableFreeBytes(path: String): Long = withContext(Dispatchers.IO) {
+        try {
+            val stat = android.os.StatFs(path)
+            stat.availableBlocksLong * stat.blockSizeLong
+        } catch (_: Exception) {
+            val statRes = RootShell.exec("stat -f -c %s:%a \"$path\" 2>/dev/null")
+            val parts = statRes.output.trim().split(":")
+            if (parts.size >= 2) {
+                val bs = parts[0].toLongOrNull() ?: 0L
+                val avail = parts[1].toLongOrNull() ?: 0L
+                avail * bs
+            } else {
+                val dfRes = RootShell.exec("df -k \"$path\" 2>/dev/null | tail -1")
+                val tokens = dfRes.output.trim().split(Regex("\\s+"))
+                val availKb = tokens.getOrNull(3)?.toLongOrNull() ?: 0L
+                availKb * 1024L
+            }
+        }
+    }
 
     /**
      * Query internal storage (/data) statistics (total, used, free space).
@@ -80,7 +114,7 @@ class StorageManager {
     /**
      * Proactively verifies and creates the standardized MountX directory tree on external storage.
      * Ensures $sdBase/MountX/(Android/data, Android/obb, Android/media, Custom, app, containers)
-     * and .nomedia protection exist with proper permissions (775).
+     * Localized .nomedia is placed strictly in private subdirectories (data & obb) so gallery files are preserved.
      */
     suspend fun ensureMountXStorageStructure(sdBase: String = "/data/sdext2"): Unit = withContext(Dispatchers.IO) {
         runCatching {
@@ -93,7 +127,8 @@ class StorageManager {
                          "$mountXBase/Custom" \
                          "$mountXBase/app" \
                          "$mountXBase/containers" 2>/dev/null
-                touch "$mountXBase/Android/.nomedia" 2>/dev/null
+                touch "$mountXBase/Android/data/.nomedia" 2>/dev/null
+                touch "$mountXBase/Android/obb/.nomedia" 2>/dev/null
                 chown -R media_rw:media_rw "$mountXBase" 2>/dev/null
                 chmod -R 777 "$mountXBase" 2>/dev/null
             """.trimIndent())
@@ -104,8 +139,7 @@ class StorageManager {
     /**
      * Automatically migrates legacy root directories ($sdBase/Android/data, obb, media)
      * into the unified MountX directory tree ($sdBase/MountX/Android/...) when updating.
-     * Prevents orphan waste, duplicate files, and mounting path collisions.
-     * Cleans up empty legacy parent directories once migration succeeds.
+     * Preserves dotfiles using cp -an $src/. $dst/ and cleans up empty legacy parent directories.
      */
     suspend fun migrateLegacyStorageToMountX(sdBase: String = "/data/sdext2"): Unit = withContext(Dispatchers.IO) {
         runCatching {
@@ -144,12 +178,12 @@ class StorageManager {
                         if (mvRes.isSuccess && !RootShell.exists(legacyPkgPath)) {
                             migratedCount++
                         } else {
-                            RootShell.exec("cp -a \"$legacyPkgPath\" \"$modernPkgPath\" && rm -rf \"$legacyPkgPath\"")
+                            RootShell.exec("cp -an \"$legacyPkgPath/.\" \"$modernPkgPath/\" && rm -rf \"$legacyPkgPath\"")
                             migratedCount++
                         }
                     } else {
                         AppLogger.info("StorageManager", "Merging legacy storage into existing MountX directory: $legacyPkgPath -> $modernPkgPath")
-                        RootShell.exec("cp -an \"$legacyPkgPath\"/* \"$modernPkgPath\"/ 2>/dev/null")
+                        RootShell.exec("cp -an \"$legacyPkgPath/.\" \"$modernPkgPath/\" 2>/dev/null")
                         RootShell.exec("rm -rf \"$legacyPkgPath\" 2>/dev/null")
                         migratedCount++
                     }
@@ -1719,6 +1753,27 @@ class StorageManager {
                 totalMigrationBytes += if (sz > 0L) sz else pt.sizeBytes
             }
 
+            // Pre-Flight Free Space Guard
+            val targetBase = if (isToSd) sdBase else "/data"
+            val freeBytes = getAvailableFreeBytes(targetBase)
+            val headroom = maxOf(500 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
+            val requiredTotal = totalMigrationBytes + headroom
+
+            if (totalMigrationBytes > 0L && freeBytes < requiredTotal) {
+                val deficit = requiredTotal - freeBytes
+                val reqMb = requiredTotal / (1024 * 1024)
+                val availMb = freeBytes / (1024 * 1024)
+                val deficitMb = deficit / (1024 * 1024)
+                val targetLabel = if (isToSd) "MicroSD" else "Memori Internal"
+                throw InsufficientStorageException(
+                    requiredBytes = requiredTotal,
+                    availableBytes = freeBytes,
+                    deficitBytes = deficit,
+                    targetName = targetLabel,
+                    message = "Kapasitas ruang di $targetLabel tidak mencukupi! Dibutuhkan: ${reqMb} MB, Tersedia: ${availMb} MB (Kurang ${deficitMb} MB)."
+                )
+            }
+
             onProgress?.invoke(
                 OperationProgress(
                     type = opType,
@@ -1821,7 +1876,7 @@ class StorageManager {
                                         onProgress = onProgress
                                     )
                                     if (!RootShell.isMountpoint(targetPath)) {
-                                        RootShell.exec("rm -rf \"$targetPath\"/*")
+                                        RootShell.exec("rm -rf \"$targetPath\"/* \"$targetPath\"/.[!.]* 2>/dev/null")
                                     }
                                 }
                                 RootShell.exec("umount -l \"$tempMount\"")
@@ -1910,7 +1965,7 @@ class StorageManager {
                                     )
                                 )
                                 if (!RootShell.isMountpoint(targetPath) && targetPath.trimEnd('/') != sourcePath.trimEnd('/')) {
-                                    RootShell.exec("rm -rf \"$targetPath\"/*")
+                                    RootShell.exec("rm -rf \"$targetPath\"/* \"$targetPath\"/.[!.]* 2>/dev/null")
                                 }
                             }
                         }

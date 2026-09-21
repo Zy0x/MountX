@@ -1005,6 +1005,13 @@
     <string name="app_info_sd_target">Active MicroSD Target</string>
     <string name="app_info_btn_system_settings">System App Settings</string>
     <string name="app_info_btn_launch">Launch Game</string>
+
+    <!-- Media Visibility & Multi-User -->
+    <string name="category_preserve_media_title">Show in Gallery &amp; Media Players</string>
+    <string name="category_preserve_media_desc">Allow system media scanner to index media files without .nomedia restriction.</string>
+    <string name="user_profile_dual_apps">Dual Apps (User 999)</string>
+    <string name="user_profile_work">Work Profile (User %1$d)</string>
+    <string name="user_profile_custom">User Profile %1$d</string>
 </resources>
 
 

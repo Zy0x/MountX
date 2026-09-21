@@ -315,6 +315,10 @@ class GameRepository @Inject constructor(
             AppLogger.info("Games", "Mounting all ${games.size} registered games")
             for (g in games) {
                 if (g.isEnabled) {
+                    if (g.mountStatus == MountStatus.MOUNTED) {
+                        count++
+                        continue
+                    }
                     val res = mountManager.mountGame(g, sdBase)
                     if (res.isSuccess) {
                         gameDao.updateMountStatus(g.packageName, MountStatus.MOUNTED)
@@ -348,16 +352,44 @@ class GameRepository @Inject constructor(
     suspend fun syncModuleGamelist() = withContext(Dispatchers.IO) {
         val targetDirs = listOf("/data/adb/modules/MountX", "/data/adb/modules/Mountify")
         val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
-        val content = games.filter { it.isEnabled }.joinToString("\n") { g ->
+
+        // 1. Legacy gamelist.conf
+        val gamelistContent = games.filter { it.isEnabled }.joinToString("\n") { g ->
             val modeStr = when (g.mode) {
                 MountMode.PKG -> "pkg"
                 MountMode.FILES -> "files"
             }
             "${g.packageName}:$modeStr"
         }
+
+        // 2. Modern mountpoints.conf (POSIX pipe-delimited pipeline)
+        val mountpointsLines = mutableListOf<String>()
+        mountpointsLines.add("# MountX Modern Multi-Target Pipeline (v2.2.35)")
+        mountpointsLines.add("# Format: pkg|category|sourcePath|targetPath|preserveMedia|diskUuid|userId")
+
+        for (g in games.filter { it.isEnabled }) {
+            val points = if (g.mountPoints.isNotEmpty()) g.mountPoints else synthesizeLegacyMountPoints(g)
+            for (mp in points.filter { it.enabled }) {
+                val pkg = g.packageName
+                val category = mp.category.name
+                val sourcePath = mp.sourcePath
+                val targetPath = mp.targetPath
+                val preserveMedia = if (mp.preserveMedia || mp.category == MountPointCategory.MEDIA_DOWNLOADS) "1" else "0"
+                val diskUuid = mp.diskUuid ?: g.preferredDiskUuid ?: ""
+                val userId = when {
+                    targetPath.contains("/emulated/999/") || targetPath.contains("/user/999/") || targetPath.contains("/media/999/") -> "999"
+                    targetPath.contains("/emulated/10/") || targetPath.contains("/user/10/") || targetPath.contains("/media/10/") -> "10"
+                    else -> "0"
+                }
+                mountpointsLines.add("$pkg|$category|$sourcePath|$targetPath|$preserveMedia|$diskUuid|$userId")
+            }
+        }
+        val mountpointsContent = mountpointsLines.joinToString("\n")
+
         for (dir in targetDirs) {
             if (RootShell.exists(dir)) {
-                RootShell.exec("cat << 'EOF' > \"$dir/gamelist.conf\"\n$content\nEOF\n")
+                RootShell.exec("cat << 'EOF' > \"$dir/gamelist.conf\"\n$gamelistContent\nEOF\n")
+                RootShell.exec("cat << 'EOF' > \"$dir/mountpoints.conf\"\n$mountpointsContent\nEOF\n")
             }
         }
     }
@@ -405,6 +437,7 @@ class GameRepository @Inject constructor(
     suspend fun refreshMountStatuses() = withContext(Dispatchers.IO) {
         val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
         val mountedPaths = mountManager.getMountedPaths()
+        val isSdBaseMounted = mountManager.isMounted("/data/sdext2") || RootShell.exists("/data/sdext2/MountX")
 
         for (g in games) {
             val targetData = when (g.mode) {
@@ -412,14 +445,23 @@ class GameRepository @Inject constructor(
                 MountMode.PKG -> "Android/data/${g.packageName}"
             }
             val targetObb = "Android/obb/${g.packageName}"
-            val isMounted = mountedPaths.any { it.contains(targetData) || it.contains(targetObb) }
+            val isMounted = mountedPaths.any { mnt ->
+                mnt.contains(targetData) ||
+                mnt.contains(targetObb) ||
+                g.mountPoints.any { mp -> mp.targetPath.isNotBlank() && (mnt == mp.targetPath || mnt.contains(mp.targetPath)) }
+            }
+
             val newStatus = when {
                 isMounted -> MountStatus.MOUNTED
+                !isSdBaseMounted -> MountStatus.DISK_DETACHED
+                g.mountStatus == MountStatus.DISK_DETACHED && !isSdBaseMounted -> MountStatus.DISK_DETACHED
                 g.mountStatus == MountStatus.NEED_MIGRATION -> MountStatus.NEED_MIGRATION
                 g.mountStatus == MountStatus.ERROR -> MountStatus.ERROR
                 else -> MountStatus.UNMOUNTED
             }
-            gameDao.updateMountStatus(g.packageName, newStatus)
+            if (newStatus != g.mountStatus) {
+                gameDao.updateMountStatus(g.packageName, newStatus)
+            }
         }
     }
 

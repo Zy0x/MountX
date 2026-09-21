@@ -406,11 +406,43 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.34 (Latest) ──
+                        // ── v2.2.35 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.35",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "11 Pilar Keamanan, Multi-User, Sinkronisasi Modul & Keandalan VFS Terpadu"
+                        ) {
+                            GithubSectionHeader("🛡️ Root Picker Guardrail & Keamanan Sistem")
+                            GithubMarkdownBullet("• **Hard-Blacklist Virtual Filesystem**: Memblokir navigasi dan pemilihan folder kernel virtual (`/dev`, `/proc`, `/sys`, `/apex`) dengan badge bahaya merah dan tombol aksi nonaktif.")
+                            GithubMarkdownBullet("• **Dialog Risiko Sistem Kritis**: Folder sistem inti (`/`, `/system`, `/data`, `/vendor`, `/product`) dilindungi dengan modal bahaya merah dan checkbox persetujuan risiko eksplisit untuk mencegah salah pilih.")
+
+                            GithubSectionHeader("⚡ Pipeline Multi-Target Modul Root (mountpoints.conf)")
+                            GithubMarkdownBullet("• **Format Pipa POSIX Universal**: Parser POSIX sh pada `service.sh` membaca `mountpoints.conf` tanpa dependensi eksternal, kompatibel dengan Magisk, KernelSU, dan APatch.")
+                            GithubMarkdownBullet("• **Kaitan Multi-Namespace Android**: Menjamin akses berkas lintas aplikasi setelah reboot dengan pengaitan ke seluruh runtime namespaces (`/mnt/runtime/*`, `/storage/emulated/0`, `/data/media/0`).")
+                            GithubMarkdownBullet("• **Sinkronisasi Modul-Pertama**: Boot coordinator mendeteksi penanda kaitan modul (`/dev/.mountx_booted`) untuk sinkronisasi instan ke Room DB tanpa risiko stacked mounts ganda.")
+
+                            GithubSectionHeader("👥 Dukungan Universal Multi-User & Profil Kloning")
+                            GithubMarkdownBullet("• **Discovery Dinamis User ID**: Mendeteksi seluruh profil aktif melalui `pm list users` dan `/data/media/*` (Xiaomi Dual Apps User 999, Work Profile User 10+).")
+                            GithubMarkdownBullet("• **Isolasi Folder MicroSD Terpisah**: Setiap user profil memiliki alokasi struktur mandiri di `MountX/users/<userId>/Android/data/` tanpa saling timpa.")
+                            GithubMarkdownBullet("• **Penyesuaian UID / GID Resmi**: Formula matematis resmi Android `(userId * 100000) + appId` menjamin izin akses berkas sandbox tepat sasaran.")
+
+                            GithubSectionHeader("🖼️ Manajemen .nomedia Cerdas & Media Scanner")
+                            GithubMarkdownBullet("• **Scoping Terlokalisasi**: Mencegah penempatan file `.nomedia` pada direktori root `MountX/`, hanya diterapkan pada subdirektori privat game.")
+                            GithubMarkdownBullet("• **Sakelar Galeri Interaktif**: Opsi `Tampilkan di Galeri & Media` pada kategori Media & Unduhan serta folder Kustom dengan pembersihan `.nomedia` otomatis.")
+                            GithubMarkdownBullet("• **Pemicu Media Scanner Otomatis**: Menjalankan broadcast `MEDIA_SCANNER_SCAN_FILE` pasca-mount atau pemindahan berkas agar galeri sistem langsung terindeks.")
+
+                            GithubSectionHeader("💾 Pre-Flight Space Guard & Preservasi Dotfiles")
+                            GithubMarkdownBullet("• **Pencegahan Kegagalan Migrasi (Guard Space)**: Membatalkan pemindahan lebih awal jika sisa ruang target kurang dari ukuran data ditambah buffer aman `maxOf(500MB, 5% data)`.")
+                            GithubMarkdownBullet("• **Preservasi Berkas Tersembunyi**: Penyalinan dan migrasi direktori menggunakan `cp -an \"\$src/.\" \"\$dst/\"` memastikan dotfiles (`.config`, `.save`) tersalin utuh tanpa hilang.")
+                            GithubMarkdownBullet("• **Pre-Mount Force Stop**: Menghentikan proses aplikasi game di latar belakang sebelum bind-mount dikaitkan untuk mencegah divergensi mount namespace.")
+                        }
+
+                        // ── v2.2.34 ──
                         GithubReleaseCard(
                             version = "v2.2.34",
                             releaseDate = "21 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "4 Pilar Arsitektur Cerdas: Sinkronisasi 2 Arah Modul Root, Restrukturisasi Multi-Pola MicroSD, Penjelajah Berkas Root & Deteksi Disk Dinamis"
                         ) {
                             GithubSectionHeader("⚡ Modul Root & Sinkronisasi 2 Arah (Pilar 1)")

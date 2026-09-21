@@ -989,6 +989,13 @@
     <string name="app_info_sd_target">Direktori Kaitan MicroSD</string>
     <string name="app_info_btn_system_settings">Pengaturan Aplikasi Sistem</string>
     <string name="app_info_btn_launch">Buka Game</string>
+
+    <!-- Media Visibility & Multi-User -->
+    <string name="category_preserve_media_title">Tampilkan di Galeri &amp; Pemutar Media</string>
+    <string name="category_preserve_media_desc">Izinkan pemindai media sistem mengindeks berkas media tanpa batasan berkas .nomedia.</string>
+    <string name="user_profile_dual_apps">Dual Apps (User 999)</string>
+    <string name="user_profile_work">Profil Kerja (User %1$d)</string>
+    <string name="user_profile_custom">Profil Pengguna %1$d</string>
 </resources>
 
 

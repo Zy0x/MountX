@@ -70,6 +70,7 @@ fun RootDirectoryPickerSheet(
     var directories by remember { mutableStateOf<List<DirectoryItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showHighRiskDialog by remember { mutableStateOf(false) }
 
     // Quick access shortcut definitions
     val quickShortcuts = remember(sdBasePath) {
@@ -493,6 +494,24 @@ fun RootDirectoryPickerSheet(
                         }
                     }
 
+                    val securityLevel = remember(currentPath) { evaluatePathSecurity(currentPath) }
+
+                    if (securityLevel == PathSecurityLevel.HARD_BLOCKED_KERNEL) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0x22FF1744),
+                            border = BorderStroke(0.8.dp, Color(0x66FF1744)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "⚠️ Virtual Kernel Filesystem dilarang untuk mounting",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                color = Color(0xFFFF5252),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
                     // Action Buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -511,20 +530,173 @@ fun RootDirectoryPickerSheet(
 
                         Button(
                             onClick = {
-                                onPathSelected(currentPath)
-                                onDismiss()
+                                if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) {
+                                    showHighRiskDialog = true
+                                } else {
+                                    onPathSelected(currentPath)
+                                    onDismiss()
+                                }
                             },
+                            enabled = securityLevel != PathSecurityLevel.HARD_BLOCKED_KERNEL,
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigo),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) Color(0xFFFF1744) else ElectricIndigo,
+                                disabledContainerColor = CyberSurfaceVariantDark
+                            ),
                             modifier = Modifier
                                 .weight(1.5f)
                                 .height(44.dp)
                         ) {
-                            Text("Pilih Folder Ini", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) "Pilih (Risiko Tinggi)" else "Pilih Folder Ini",
+                                color = if (securityLevel == PathSecurityLevel.HARD_BLOCKED_KERNEL) CyberOnVariantDark.copy(alpha = 0.5f) else Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
             }
         }
     }
+
+    if (showHighRiskDialog) {
+        HighRiskDirectoryConfirmDialog(
+            path = currentPath,
+            onDismiss = { showHighRiskDialog = false },
+            onConfirm = {
+                showHighRiskDialog = false
+                onPathSelected(currentPath)
+                onDismiss()
+            }
+        )
+    }
+}
+
+enum class PathSecurityLevel {
+    SAFE,
+    HIGH_RISK_SYSTEM,
+    HARD_BLOCKED_KERNEL
+}
+
+private fun evaluatePathSecurity(path: String): PathSecurityLevel {
+    val clean = path.trim().trimEnd('/')
+    if (clean == "/dev" || clean.startsWith("/dev/") ||
+        clean == "/proc" || clean.startsWith("/proc/") ||
+        clean == "/sys" || clean.startsWith("/sys/") ||
+        clean == "/apex" || clean.startsWith("/apex/")
+    ) {
+        return PathSecurityLevel.HARD_BLOCKED_KERNEL
+    }
+    if (clean == "" || clean == "/" ||
+        clean == "/system" || clean.startsWith("/system/") ||
+        clean == "/vendor" || clean.startsWith("/vendor/") ||
+        clean == "/product" || clean.startsWith("/product/") ||
+        clean == "/system_ext" || clean.startsWith("/system_ext/") ||
+        clean == "/data" || clean == "/data/user" || clean == "/data/user_de"
+    ) {
+        return PathSecurityLevel.HIGH_RISK_SYSTEM
+    }
+    return PathSecurityLevel.SAFE
+}
+
+@Composable
+private fun HighRiskDirectoryConfirmDialog(
+    path: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    var userAgreed by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CyberSurfaceDark,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.Close,
+                    contentDescription = null,
+                    tint = Color(0xFFFF1744),
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = "Peringatan Risiko Sistem",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFFFF1744)
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Anda memilih direktori sistem inti:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CyberOnBgDark
+                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0x33FF1744),
+                    border = BorderStroke(1.dp, Color(0x66FF1744)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = path,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+                Text(
+                    text = "Mengaitkan bind-mount pada direktori ini dapat menyebabkan kegagalan booting (bootloop), penolakan izin konteks SELinux, atau kerusakan sistem.",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = CyberOnVariantDark
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { userAgreed = !userAgreed }
+                ) {
+                    Checkbox(
+                        checked = userAgreed,
+                        onCheckedChange = { userAgreed = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFFFF1744),
+                            checkmarkColor = Color.White
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Saya memahami risiko kerusakan sistem",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
+                        color = CyberOnBgDark
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = userAgreed,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFFF1744),
+                    disabledContainerColor = Color(0x33FF1744)
+                )
+            ) {
+                Text("Tetap Gunakan Jalur Ini", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, CyberBorderDark)
+            ) {
+                Text("Batal", color = CyberOnVariantDark)
+            }
+        }
+    )
 }

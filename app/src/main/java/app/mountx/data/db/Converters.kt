@@ -41,6 +41,7 @@ class Converters {
                 } else {
                     put("label", JSONObject.NULL)
                 }
+                put("preserveMedia", item.preserveMedia)
             }
             array.put(obj)
         }
@@ -71,7 +72,8 @@ class Converters {
                     containerImgPath = if (obj.has("containerImgPath") && !obj.isNull("containerImgPath")) obj.getString("containerImgPath") else null,
                     sizeBytes = obj.optLong("sizeBytes", 0L),
                     diskUuid = if (obj.has("diskUuid") && !obj.isNull("diskUuid")) obj.getString("diskUuid") else null,
-                    label = if (obj.has("label") && !obj.isNull("label")) obj.getString("label") else null
+                    label = if (obj.has("label") && !obj.isNull("label")) obj.getString("label") else null,
+                    preserveMedia = obj.optBoolean("preserveMedia", false)
                 )
                 list.add(config.copy(category = config.resolveCategory()))
             }

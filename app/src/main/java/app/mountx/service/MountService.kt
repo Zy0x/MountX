@@ -88,6 +88,9 @@ class MountService : Service() {
                     updateNotification(getString(R.string.notif_mounting_games))
                     storageRepository.mountSdPartition(blockDevice, sdBase)
 
+                    // Module-first parity: Refresh mount statuses first so any games already mounted
+                    // by root module service.sh are recognized and not stacked
+                    gameRepository.refreshMountStatuses()
                     val mountedCount = gameRepository.mountAll(sdBase)
 
                     updateNotification(

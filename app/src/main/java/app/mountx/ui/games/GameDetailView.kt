@@ -105,6 +105,9 @@ import app.mountx.ui.theme.NeonCrimson
 import app.mountx.ui.theme.SunsetAmber
 import app.mountx.util.FormatUtils
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import app.mountx.root.RootShell
+import app.mountx.root.MountManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -494,8 +497,18 @@ private data class UnifiedCategoryItem(
     val internalBytes: Long = 0L,
     val sdPath: String = "",
     val sdBytes: Long = 0L,
-    val isCategoryMounted: Boolean = false
+    val isCategoryMounted: Boolean = false,
+    val preserveMedia: Boolean = false,
+    val userId: Int = 0
 )
+
+private fun resolveUserIdFromPath(path: String): Int {
+    return when {
+        path.contains("/emulated/999/") || path.contains("/user/999/") || path.contains("/media/999/") || path.contains("/users/999/") -> 999
+        path.contains("/emulated/10/") || path.contains("/user/10/") || path.contains("/media/10/") || path.contains("/users/10/") -> 10
+        else -> 0
+    }
+}
 
 private fun resolveSdPath(sdBase: String, relativeMountXPath: String): String {
     val legacyRelative = relativeMountXPath.removePrefix("MountX/")
@@ -713,6 +726,7 @@ private fun StorageTabContent(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val safeBreakdown = breakdown ?: AppStorageBreakdown()
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedCategoryIds by remember { mutableStateOf(setOf("data", "obb")) }
@@ -834,6 +848,8 @@ private fun StorageTabContent(
         }
 
         val mediaItem = if (hasMedia) {
+            val mediaInternal = existingMediaPoint?.targetPath ?: "/data/media/0/Android/media/$pkg"
+            val mediaSd = existingMediaPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/media/$pkg")
             UnifiedCategoryItem(
                 id = "media",
                 title = "Media & Unduhan",
@@ -844,15 +860,17 @@ private fun StorageTabContent(
                 isMicroSd = isMediaSd,
                 isRisk = false,
                 mountCategory = MountPointCategory.MEDIA_DOWNLOADS,
-                internalPath = existingMediaPoint?.targetPath ?: "/data/media/0/Android/media/$pkg",
+                internalPath = mediaInternal,
                 internalBytes = if (isMediaCatMounted) 0L else safeBreakdown.ext1MediaBytes,
-                sdPath = existingMediaPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/media/$pkg"),
+                sdPath = mediaSd,
                 sdBytes = if (isMediaCatMounted) {
                     if (safeBreakdown.ext2MediaBytes > 0L) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
                 } else {
                     safeBreakdown.ext2MediaBytes
                 },
-                isCategoryMounted = isMediaCatMounted
+                isCategoryMounted = isMediaCatMounted,
+                preserveMedia = existingMediaPoint?.preserveMedia ?: true,
+                userId = resolveUserIdFromPath(mediaInternal)
             )
         } else null
 
@@ -873,9 +891,14 @@ private fun StorageTabContent(
                 internalBytes = if (isCustomMounted) 0L else resolvedCustomBytes,
                 sdPath = pt.sourcePath,
                 sdBytes = resolvedCustomBytes,
-                isCategoryMounted = isCustomMounted
+                isCategoryMounted = isCustomMounted,
+                preserveMedia = pt.preserveMedia,
+                userId = resolveUserIdFromPath(pt.targetPath)
             )
         }
+
+        val dataInternal = existingDataPoint?.targetPath ?: "/data/media/0/Android/data/$pkg"
+        val obbInternal = existingObbPoint?.targetPath ?: "/data/media/0/Android/obb/$pkg"
 
         listOfNotNull(
             UnifiedCategoryItem(
@@ -892,7 +915,8 @@ private fun StorageTabContent(
                 internalBytes = safeBreakdown.apkBytes,
                 sdPath = "$sdBase/MountX/app/$pkg",
                 sdBytes = 0L,
-                isCategoryMounted = false
+                isCategoryMounted = false,
+                userId = resolveUserIdFromPath(apkInternalDir)
             ),
             UnifiedCategoryItem(
                 id = "lib",
@@ -908,7 +932,8 @@ private fun StorageTabContent(
                 internalBytes = safeBreakdown.libBytes,
                 sdPath = "$sdBase/MountX/lib/$pkg",
                 sdBytes = 0L,
-                isCategoryMounted = false
+                isCategoryMounted = false,
+                userId = resolveUserIdFromPath(libSrc)
             ),
             UnifiedCategoryItem(
                 id = "private",
@@ -924,7 +949,8 @@ private fun StorageTabContent(
                 internalBytes = safeBreakdown.dataBytes,
                 sdPath = "$sdBase/MountX/data/$pkg",
                 sdBytes = 0L,
-                isCategoryMounted = false
+                isCategoryMounted = false,
+                userId = 0
             ),
             UnifiedCategoryItem(
                 id = "cache",
@@ -940,7 +966,8 @@ private fun StorageTabContent(
                 internalBytes = safeBreakdown.cacheBytes,
                 sdPath = resolveSdPath(sdBase, "MountX/Android/data/$pkg/cache"),
                 sdBytes = 0L,
-                isCategoryMounted = false
+                isCategoryMounted = false,
+                userId = 0
             ),
             UnifiedCategoryItem(
                 id = "data",
@@ -952,7 +979,7 @@ private fun StorageTabContent(
                 isMicroSd = isDataSd,
                 isRisk = false,
                 mountCategory = MountPointCategory.EXTERNAL_DATA,
-                internalPath = "/data/media/0/Android/data/$pkg",
+                internalPath = dataInternal,
                 internalBytes = if (isDataCatMounted) 0L else safeBreakdown.ext1DataBytes,
                 sdPath = existingDataPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg"),
                 sdBytes = if (isDataCatMounted) {
@@ -960,7 +987,8 @@ private fun StorageTabContent(
                 } else {
                     safeBreakdown.ext2DataBytes
                 },
-                isCategoryMounted = isDataCatMounted
+                isCategoryMounted = isDataCatMounted,
+                userId = resolveUserIdFromPath(dataInternal)
             ),
             UnifiedCategoryItem(
                 id = "obb",
@@ -972,7 +1000,7 @@ private fun StorageTabContent(
                 isMicroSd = isObbSd,
                 isRisk = false,
                 mountCategory = MountPointCategory.OBB_STORAGE,
-                internalPath = "/data/media/0/Android/obb/$pkg",
+                internalPath = obbInternal,
                 internalBytes = if (isObbCatMounted) 0L else safeBreakdown.ext1ObbBytes,
                 sdPath = existingObbPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/obb/$pkg"),
                 sdBytes = if (isObbCatMounted) {
@@ -980,7 +1008,8 @@ private fun StorageTabContent(
                 } else {
                     safeBreakdown.ext2ObbBytes
                 },
-                isCategoryMounted = isObbCatMounted
+                isCategoryMounted = isObbCatMounted,
+                userId = resolveUserIdFromPath(obbInternal)
             ),
             mediaItem
         ) + customItems
@@ -1475,11 +1504,38 @@ private fun StorageTabContent(
 
     // ── CATEGORY INSPECTOR MODAL BOTTOM SHEET ──
     if (inspectingCategory != null) {
+        val currentInspectItem = inspectingCategory!!
         CategoryInspectorBottomSheet(
-            item = inspectingCategory!!,
+            item = currentInspectItem,
             onDismiss = { inspectingCategory = null },
             onRequestDelete = {
                 categoryToDelete = inspectingCategory
+            },
+            onTogglePreserveMedia = { checked ->
+                val targetPath = currentInspectItem.sdPath.ifBlank { currentInspectItem.internalPath }
+                val internalPath = currentInspectItem.internalPath
+                val catId = currentInspectItem.id
+                val catType = currentInspectItem.mountCategory
+                coroutineScope.launch(Dispatchers.IO) {
+                    if (targetPath.isNotBlank()) {
+                        if (checked) {
+                            RootShell.exec("rm -f '$targetPath/.nomedia' '$internalPath/.nomedia' 2>/dev/null")
+                        } else {
+                            RootShell.exec("touch '$targetPath/.nomedia' 2>/dev/null")
+                        }
+                        MountManager.triggerMediaScan(targetPath)
+                        if (internalPath.isNotBlank()) {
+                            MountManager.triggerMediaScan(internalPath)
+                        }
+                    }
+                }
+                val updatedPoints = mountPoints.map { mp ->
+                    if (mp.id == catId || (mp.resolveCategory() == catType && catId == "media")) {
+                        mp.copy(preserveMedia = checked)
+                    } else mp
+                }
+                onMountPointsChanged(updatedPoints)
+                inspectingCategory = currentInspectItem.copy(preserveMedia = checked)
             }
         )
     }
@@ -1574,7 +1630,7 @@ private fun StorageTabContent(
             sdBase = sdBase,
             packageName = game.packageName,
             onDismiss = { showAddCustomDialog = false },
-            onAdd = { label, targetInternalPath, sourceSdPath ->
+            onAdd = { label, targetInternalPath, sourceSdPath, preserveMedia ->
                 showAddCustomDialog = false
                 val newPoint = MountPointConfig(
                     id = "custom_${System.currentTimeMillis()}",
@@ -1582,9 +1638,16 @@ private fun StorageTabContent(
                     sourcePath = sourceSdPath,
                     targetPath = targetInternalPath,
                     label = label,
-                    enabled = true
+                    enabled = true,
+                    preserveMedia = preserveMedia
                 )
                 onMountPointsChanged(mountPoints + newPoint)
+                if (preserveMedia) {
+                    coroutineScope.launch(Dispatchers.IO) {
+                        RootShell.exec("rm -f '$sourceSdPath/.nomedia' 2>/dev/null")
+                        MountManager.triggerMediaScan(sourceSdPath)
+                    }
+                }
             }
         )
     }
@@ -1595,12 +1658,13 @@ private fun AddCustomDirectoryDialog(
     sdBase: String,
     packageName: String,
     onDismiss: () -> Unit,
-    onAdd: (label: String, targetInternalPath: String, sourceSdPath: String) -> Unit
+    onAdd: (label: String, targetInternalPath: String, sourceSdPath: String, preserveMedia: Boolean) -> Unit
 ) {
     var labelText by remember { mutableStateOf("") }
     var internalPathText by remember { mutableStateOf("") }
     var customSdPathText by remember { mutableStateOf("") }
     var isManualSdPath by remember { mutableStateOf(false) }
+    var preserveMedia by remember { mutableStateOf(true) }
     var showRootPickerForInternal by remember { mutableStateOf(false) }
     var showRootPickerForSd by remember { mutableStateOf(false) }
 
@@ -1767,6 +1831,38 @@ private fun AddCustomDirectoryDialog(
                     colors = customFieldColors,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF162035)),
+                    border = BorderStroke(1.dp, Color(0xFF334366)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                text = stringResource(R.string.category_preserve_media_title),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                                color = Color(0xFFF1F5F9)
+                            )
+                            Text(
+                                text = stringResource(R.string.category_preserve_media_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                        Switch(
+                            checked = preserveMedia,
+                            onCheckedChange = { preserveMedia = it }
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1780,7 +1876,7 @@ private fun AddCustomDirectoryDialog(
                     }
                     val finalLabel = labelText.trim().ifEmpty { finalInternal.trimEnd('/').substringAfterLast('/') }
                     val finalSd = customSdPathText.trim().ifEmpty { "$sdBase/MountX/Custom/${finalLabel.replace(" ", "_")}" }
-                    onAdd(finalLabel, finalInternal, finalSd)
+                    onAdd(finalLabel, finalInternal, finalSd, preserveMedia)
                 },
                 enabled = internalPathText.isNotBlank(),
                 shape = RoundedCornerShape(12.dp),
@@ -1998,6 +2094,7 @@ private fun CategoryInspectorBottomSheet(
     item: UnifiedCategoryItem,
     onDismiss: () -> Unit,
     onRequestDelete: () -> Unit,
+    onTogglePreserveMedia: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -2063,7 +2160,7 @@ private fun CategoryInspectorBottomSheet(
 
                 Column(
                     horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = FormatUtils.formatExactBytes(item.bytes),
@@ -2091,6 +2188,29 @@ private fun CategoryInspectorBottomSheet(
                             color = if (item.isMicroSd) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
+                    }
+
+                    if (item.userId > 0) {
+                        val userLabel = when (item.userId) {
+                            999 -> stringResource(R.string.user_profile_dual_apps)
+                            10 -> stringResource(R.string.user_profile_work, item.userId)
+                            else -> stringResource(R.string.user_profile_custom, item.userId)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF6366F1).copy(alpha = 0.15f),
+                            border = BorderStroke(0.5.dp, Color(0xFF6366F1).copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = userLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = Color(0xFF818CF8),
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -2147,6 +2267,63 @@ private fun CategoryInspectorBottomSheet(
                                 fontWeight = FontWeight.Bold
                             ),
                             color = if (item.isCategoryMounted) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            // ── CARD 1B: MEDIA VISIBILITY (NO .NOMEDIA FILTER) ──
+            if (item.mountCategory == MountPointCategory.MEDIA_DOWNLOADS || item.mountCategory == MountPointCategory.CUSTOM) {
+                var isMediaVisible by remember(item.id, item.preserveMedia) { mutableStateOf(item.preserveMedia) }
+
+                Card(
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f).padding(end = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PermMedia,
+                                    contentDescription = null,
+                                    tint = Color(0xFF818CF8),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.category_preserve_media_title),
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.category_preserve_media_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isMediaVisible,
+                            onCheckedChange = { checked ->
+                                isMediaVisible = checked
+                                onTogglePreserveMedia?.invoke(checked)
+                            }
                         )
                     }
                 }

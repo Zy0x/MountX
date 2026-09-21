@@ -27,22 +27,53 @@ class OcclusionHazardException(
  */
 class MountManager {
 
-    /** Dynamically detects all target runtime namespaces including primary and dual apps */
-    private suspend fun getTargetNamespaces(): List<String> = withContext(Dispatchers.IO) {
-        val base = mutableListOf(
-            "/mnt/runtime/default/emulated/0",
-            "/mnt/runtime/read/emulated/0",
-            "/mnt/runtime/write/emulated/0",
-            "/mnt/runtime/full/emulated/0",
-            "/mnt/user/0/primary",
-            "/storage/emulated/0",
-            "/data/media/0"
-        )
-        if (RootShell.exists("/data/media/999")) {
-            base.add("/data/media/999")
-            base.add("/storage/emulated/999")
+    /** Resolves all active Android user IDs (User 0, Dual Apps 999, Work Profile 10+, etc.) */
+    suspend fun getActiveUserIds(): List<Int> = withContext(Dispatchers.IO) {
+        val userIds = mutableListOf(0)
+        val pmUsers = RootShell.exec("pm list users 2>/dev/null").stdout
+        for (line in pmUsers) {
+            val match = Regex("UserInfo\\{(\\d+):").find(line)
+            val id = match?.groupValues?.get(1)?.toIntOrNull()
+            if (id != null && !userIds.contains(id)) {
+                userIds.add(id)
+            }
         }
-        base
+        val mediaDirs = RootShell.exec("ls -1d /data/media/* 2>/dev/null").stdout
+        for (dir in mediaDirs) {
+            val name = dir.trim().substringAfterLast('/')
+            val id = name.toIntOrNull()
+            if (id != null && !userIds.contains(id)) {
+                userIds.add(id)
+            }
+        }
+        userIds.distinct()
+    }
+
+    /** Dynamically detects all target runtime namespaces across all active users/profiles */
+    private suspend fun getTargetNamespaces(): List<String> = withContext(Dispatchers.IO) {
+        val list = mutableListOf<String>()
+        val userIds = getActiveUserIds()
+        for (uid in userIds) {
+            list.add("/mnt/runtime/default/emulated/$uid")
+            list.add("/mnt/runtime/read/emulated/$uid")
+            list.add("/mnt/runtime/write/emulated/$uid")
+            list.add("/mnt/runtime/full/emulated/$uid")
+            list.add("/storage/emulated/$uid")
+            list.add("/data/media/$uid")
+            if (uid == 0) {
+                list.add("/mnt/user/0/primary")
+            }
+        }
+        list.filter { RootShell.exists(it) }
+    }
+
+    companion object {
+        /**
+         * Broadcasts media scanner trigger to update gallery and system media index immediately.
+         */
+        suspend fun triggerMediaScan(path: String): Unit = withContext(Dispatchers.IO) {
+            RootShell.exec("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d \"file://$path\" 2>/dev/null")
+        }
     }
 
     /**
@@ -78,6 +109,14 @@ class MountManager {
                     progressPercent = 0.2f
                 )
             )
+
+            // Pre-Mount Process Guard: stop active app if running to prevent file locks or stale namespace
+            val pgrepRes = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
+            if (pgrepRes.isSuccess && pgrepRes.output.isNotBlank()) {
+                RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
+                AppLogger.info("MountManager", "Force-stopped process before mount: ${game.packageName}")
+                delay(200)
+            }
 
             // Dynamic UID/GID resolution directly from stat /data/data/$pkg
             val identity = resolveAppIdentity(game.packageName)
@@ -172,20 +211,22 @@ class MountManager {
                         }
                         MountPointCategory.MEDIA_DOWNLOADS -> {
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
-                            // Ensure MountX Android namespace has .nomedia so game assets don't leak into gallery
-                            RootShell.exec("mkdir -p \"$sdBase/MountX/Android\" && touch \"$sdBase/MountX/Android/.nomedia\" 2>/dev/null")
-                            // Smart .nomedia: only place .nomedia in media folder if original target already had .nomedia
-                            val hadNomedia = RootShell.exists("${mp.targetPath}/.nomedia") || RootShell.exists("${mp.sourcePath}/.nomedia")
+                            // Localized .nomedia: only place .nomedia in media folder if original target already had .nomedia
+                            val hadNomedia = RootShell.exists("${mp.targetPath}/.nomedia")
                             if (hadNomedia) {
                                 RootShell.exec("touch \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
+                            } else {
+                                RootShell.exec("rm -f \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
                             }
                             mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = true)
+                            triggerMediaScan(mp.targetPath)
                         }
                         MountPointCategory.CACHE_SHADERS -> {
                             mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
                         }
                         MountPointCategory.CUSTOM -> {
                             mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
+                            triggerMediaScan(mp.targetPath)
                         }
                         MountPointCategory.PRIVATE_INTERNAL -> {
                             mountVirtualExt4Container(game.packageName, mp, sdBase, uid, gid)
@@ -193,9 +234,6 @@ class MountManager {
                         MountPointCategory.APP_PACKAGE -> {
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
                             RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\"")
-                            for (ns in namespaces) {
-                                RootShell.exec("nsenter --mount=\"$ns\" mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\" 2>/dev/null")
-                            }
                             RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                         }
                     }

@@ -421,28 +421,44 @@ class DiskCatalogManager @Inject constructor(
             val uid = identity.uid
             val gid = identity.gid
 
-            val dataDir = "$sdBase/Android/data/${game.packageName}"
-            val obbDir = "$sdBase/Android/obb/${game.packageName}"
+            val candidateDirs = mutableListOf(
+                "$sdBase/MountX/Android/data/${game.packageName}",
+                "$sdBase/MountX/Android/obb/${game.packageName}",
+                "$sdBase/MountX/Android/media/${game.packageName}",
+                "$sdBase/Android/data/${game.packageName}",
+                "$sdBase/Android/obb/${game.packageName}",
+                "$sdBase/Android/media/${game.packageName}"
+            )
 
-            // Fix permissions with dynamic UID & GID
-            if (RootShell.exists(dataDir)) {
-                RootShell.exec("chown -R $uid:$gid \"$dataDir\" 2>/dev/null")
-                RootShell.exec("chmod -R 775 \"$dataDir\" 2>/dev/null")
-                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$dataDir\" 2>/dev/null")
-                RootShell.exec("touch \"$dataDir/$CANARY_FILE\" 2>/dev/null")
+            // Include multi-user isolated directories ($sdBase/MountX/users/*)
+            val userDirsOut = RootShell.execForOutput("ls -1d \"$sdBase/MountX/users/\"*\"/Android/data/${game.packageName}\" \"$sdBase/MountX/users/\"*\"/Android/obb/${game.packageName}\" 2>/dev/null")
+            if (userDirsOut.isNotBlank()) {
+                candidateDirs.addAll(userDirsOut.lines().map { it.trim() }.filter { it.isNotBlank() })
             }
 
-            if (RootShell.exists(obbDir)) {
-                RootShell.exec("chown -R $uid:$gid \"$obbDir\" 2>/dev/null")
-                RootShell.exec("chmod -R 775 \"$obbDir\" 2>/dev/null")
-                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbDir\" 2>/dev/null")
+            // Include configured mount points source paths
+            for (mp in game.mountPoints) {
+                if (mp.sourcePath.isNotBlank() && !candidateDirs.contains(mp.sourcePath)) {
+                    candidateDirs.add(mp.sourcePath)
+                }
+            }
+
+            for (dir in candidateDirs.distinct()) {
+                if (RootShell.exists(dir)) {
+                    RootShell.exec("chown -R $uid:$gid \"$dir\" 2>/dev/null")
+                    RootShell.exec("chmod -R 775 \"$dir\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$dir\" 2>/dev/null")
+                    if (dir.contains("/data/") || dir.endsWith("/data/${game.packageName}")) {
+                        RootShell.exec("touch \"$dir/$CANARY_FILE\" 2>/dev/null")
+                    }
+                }
             }
 
             // Create root canary marker
             RootShell.exec("mkdir -p \"$sdBase/$CATALOG_DIR\" 2>/dev/null")
             RootShell.exec("touch \"$sdBase/$CANARY_FILE\" 2>/dev/null")
 
-            AppLogger.success("DiskCatalog", "Reconciled permissions for ${game.packageName} [UID: $uid, GID: $gid]")
+            AppLogger.success("DiskCatalog", "Reconciled permissions across all paths for ${game.packageName} [UID: $uid, GID: $gid]")
         }
     }
 

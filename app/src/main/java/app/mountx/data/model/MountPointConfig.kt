@@ -27,7 +27,8 @@ data class MountPointConfig(
     val containerImgPath: String? = null,
     val sizeBytes: Long = 0L,
     val diskUuid: String? = null,
-    val label: String? = null
+    val label: String? = null,
+    val preserveMedia: Boolean = false
 ) {
     /**
      * Resolves normalized category based on targetPath and ID to prevent misclassification

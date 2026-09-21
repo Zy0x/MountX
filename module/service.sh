@@ -1,23 +1,33 @@
 #!/system/bin/sh
 # =============================================================================
 # MountX — service.sh
-# Magisk module service script.
-# Runs after boot; bind-mounts game data folders from an external SD partition
-# into every active Android namespace.
+# Root Module Service Script (Magisk, KernelSU, APatch).
+# Runs after boot; bind-mounts game data folders and custom paths from external
+# storage into all Android runtime namespaces.
 #
 # Configuration files (in module directory):
-#   config.conf   — SD_BASE, SD_BLOCK, FS_TYPE
-#   gamelist.conf — one "pkg_name:mode" entry per line
+#   config.conf      — SD_BASE, SD_BLOCK, FS_TYPE, I/O tweaks
+#   mountpoints.conf — Modern multi-target pipeline (pkg|cat|src|dst|preserveMedia|diskUuid|userId)
+#   gamelist.conf    — Legacy fallback (pkg:mode)
 #
 # Author : Noir
 # License: MIT
 # =============================================================================
 
 # ── Module paths ──────────────────────────────────────────────────────────────
-if [ -d "/data/adb/modules/MountX" ]; then MODULE_DIR="/data/adb/modules/MountX"; elif [ -d "/data/adb/modules/Mountify" ]; then MODULE_DIR="/data/adb/modules/Mountify"; else MODULE_DIR="/data/adb/modules/MountX"; fi
+if [ -d "/data/adb/modules/MountX" ]; then
+    MODULE_DIR="/data/adb/modules/MountX"
+elif [ -d "/data/adb/modules/Mountify" ]; then
+    MODULE_DIR="/data/adb/modules/Mountify"
+else
+    MODULE_DIR="/data/adb/modules/MountX"
+fi
+
 CONFIG_FILE="${MODULE_DIR}/config.conf"
+MOUNTPOINTS_FILE="${MODULE_DIR}/mountpoints.conf"
 GAMELIST_FILE="${MODULE_DIR}/gamelist.conf"
 LOG_FILE="${MODULE_DIR}/mountx.log"
+BOOT_FLAG_FILE="/dev/.mountx_booted"
 
 # ── Default configuration values ─────────────────────────────────────────────
 SD_BASE="/data/sdext2"
@@ -48,7 +58,7 @@ log_error() { log "ERROR" "$@"; }
 # ── Initialise log for this boot ──────────────────────────────────────────────
 {
     echo "============================================================"
-    echo " MountX service started — $(date)"
+    echo " MountX service started (v2.2.35) — $(date)"
     echo "============================================================"
 } >> "${LOG_FILE}"
 
@@ -60,9 +70,8 @@ load_config() {
     fi
 
     while IFS='=' read -r key val; do
-        # Strip inline comments and leading/trailing whitespace
-        key=$(echo "${key}" | sed 's/#.*//' | tr -d ' \t')
-        val=$(echo "${val}" | sed 's/#.*//' | tr -d ' \t')
+        key=$(echo "${key}" | sed 's/#.*//' | tr -d ' \t\r')
+        val=$(echo "${val}" | sed 's/#.*//' | tr -d ' \t\r')
         [ -z "${key}" ] && continue
 
         case "${key}" in
@@ -94,7 +103,7 @@ wait_for_boot() {
             exit 1
         fi
     done
-    # Give system services a few extra seconds to settle
+    # Give system services and vold a few extra seconds to settle
     sleep 5
     log_info "Boot completed detected."
 }
@@ -102,7 +111,11 @@ wait_for_boot() {
 # ── Mount the SD partition ────────────────────────────────────────────────────
 mount_sd() {
     if ! [ -b "${SD_BLOCK}" ]; then
-        log_error "Block device ${SD_BLOCK} not found; aborting."
+        log_error "Block device ${SD_BLOCK} not found; checking active mounts."
+        if mountpoint -q "${SD_BASE}"; then
+            log_info "Target SD_BASE ${SD_BASE} is already mounted by system/vold."
+            return 0
+        fi
         exit 1
     fi
 
@@ -156,12 +169,10 @@ apply_io_tweaks() {
         [ -w "${queue_dir}/nomerges" ] && echo "0" > "${queue_dir}/nomerges"
     fi
 
-    # Apply to all virtual block device interfaces (BDI)
     for bdi in /sys/devices/virtual/bdi/*/read_ahead_kb; do
         [ -w "${bdi}" ] && echo "${READ_AHEAD_KB}" > "${bdi}" 2>/dev/null
     done
 
-    # Retain dentry and inode cache in RAM for instantaneous metadata lookups
     if [ -w "/proc/sys/vm/vfs_cache_pressure" ]; then
         echo "${VFS_CACHE_PRESSURE}" > /proc/sys/vm/vfs_cache_pressure
     fi
@@ -169,42 +180,181 @@ apply_io_tweaks() {
     log_info "I/O tweaks successfully applied to ${disk_name}."
 }
 
-# ── Read gamelist.conf into arrays ────────────────────────────────────────────
-# Returns pairs: GAME_PKGS[] and GAME_MODES[]
+# ── Unmount any stale bind-mounts for a target path ──────────────────────────
+umount_stale() {
+    local target="$1"
+    if mountpoint -q "${target}" 2>/dev/null; then
+        if umount -l "${target}" 2>/dev/null; then
+            log_info "  Unmounted stale bind-mount: ${target}"
+        fi
+    fi
+}
+
+# ── Dynamic UID/GID & SELinux Context Application ────────────────────────────
+apply_permissions() {
+    local pkg="$1"
+    local src_dir="$2"
+    local user_id="$3"
+    [ -z "${user_id}" ] && user_id="0"
+
+    local uid gid
+    if [ "${user_id}" = "0" ]; then
+        uid=$(stat -c '%u' "/data/data/${pkg}" 2>/dev/null || stat -c '%u' "/data/user/0/${pkg}" 2>/dev/null)
+        gid=$(stat -c '%g' "/data/data/${pkg}" 2>/dev/null || stat -c '%g' "/data/user/0/${pkg}" 2>/dev/null)
+    else
+        uid=$(stat -c '%u' "/data/user/${user_id}/${pkg}" 2>/dev/null)
+        gid=$(stat -c '%g' "/data/user/${user_id}/${pkg}" 2>/dev/null)
+    fi
+
+    # Fallback via pm list packages
+    if [ -z "${uid}" ] || [ -z "${gid}" ]; then
+        local raw_uid
+        raw_uid=$(pm list packages -U --user "${user_id}" 2>/dev/null | grep -F "package:${pkg}" | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+        if [ -n "${raw_uid}" ]; then
+            uid="${raw_uid}"
+            gid="${raw_uid}"
+        fi
+    fi
+
+    if [ -n "${uid}" ] && [ -n "${gid}" ]; then
+        chown -R "${uid}:${gid}" "${src_dir}" 2>/dev/null
+        chmod -R 0775 "${src_dir}" 2>/dev/null
+        chcon -R u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
+        log_info "  [${pkg}] Permissions set: ${uid}:${gid} on ${src_dir}"
+    else
+        chmod -R 0775 "${src_dir}" 2>/dev/null
+        chcon -R u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
+    fi
+}
+
+# ── Bind-mount into all active Android runtime namespaces (FUSE/Scoped Parity) ──
+bind_mount_to_runtime_namespaces() {
+    local src="$1"
+    local dst="$2"
+    local pkg="$3"
+    local user_id="$4"
+    [ -z "${user_id}" ] && user_id="0"
+
+    # Extract relative path from dst
+    local rel=""
+    case "${dst}" in
+        */Android/*)
+            rel="Android/"$(echo "${dst}" | sed 's|.*/Android/||')
+            ;;
+        *)
+            rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/||')
+            ;;
+    esac
+
+    local target_list=""
+    if [ -n "${rel}" ]; then
+        target_list="/mnt/runtime/default/emulated/${user_id}/${rel} \
+                     /mnt/runtime/read/emulated/${user_id}/${rel} \
+                     /mnt/runtime/write/emulated/${user_id}/${rel} \
+                     /mnt/runtime/full/emulated/${user_id}/${rel} \
+                     /storage/emulated/${user_id}/${rel} \
+                     /data/media/${user_id}/${rel}"
+        if [ "${user_id}" = "0" ]; then
+            target_list="${target_list} /mnt/user/0/primary/${rel}"
+        fi
+    else
+        target_list="${dst}"
+    fi
+
+    local count=0
+    for t in ${target_list}; do
+        if ! mountpoint -q "${t}" 2>/dev/null; then
+            mkdir -p "${t}" 2>/dev/null
+            if mount -o bind "${src}" "${t}" 2>/dev/null; then
+                count=$((count + 1))
+            fi
+        else
+            count=$((count + 1))
+        fi
+    done
+
+    # Also enter process mount namespace if the package is already running
+    for pid_ns_dir in /proc/*/ns/mnt; do
+        local pid_dir
+        pid_dir=$(dirname "$(dirname "${pid_ns_dir}")")
+        local cmdline
+        cmdline=$(cat "${pid_dir}/cmdline" 2>/dev/null | tr '\0' ' ' | cut -d' ' -f1)
+        if [ "${cmdline}" = "${pkg}" ]; then
+            nsenter --mount="${pid_ns_dir}" -- mount --bind "${src}" "${dst}" 2>/dev/null
+        fi
+    done
+
+    log_info "  [${pkg}] Bind-mounted to ${count} runtime namespaces: ${src} → ${dst}"
+}
+
+# ── Modern Multi-Target Array (mountpoints.conf) ──────────────────────────────
+load_mountpoints() {
+    if [ ! -f "${MOUNTPOINTS_FILE}" ]; then
+        return 1
+    fi
+
+    local entries=0
+    while IFS='|' read -r pkg cat src dst preserve_media disk_uuid user_id || [ -n "${pkg}" ]; do
+        case "${pkg}" in ''|\#*) continue ;; esac
+
+        pkg=$(echo "${pkg}" | tr -d '\r')
+        cat=$(echo "${cat}" | tr -d '\r')
+        src=$(echo "${src}" | tr -d '\r')
+        dst=$(echo "${dst}" | tr -d '\r')
+        preserve_media=$(echo "${preserve_media}" | tr -d '\r')
+        disk_uuid=$(echo "${disk_uuid}" | tr -d '\r')
+        user_id=$(echo "${user_id}" | tr -d '\r')
+        [ -z "${user_id}" ] && user_id="0"
+
+        if [ -z "${pkg}" ] || [ -z "${src}" ] || [ -z "${dst}" ]; then
+            continue
+        fi
+
+        if [ ! -d "${src}" ]; then
+            log_warn "  [${pkg}] Source directory missing on SD: ${src}; skipping."
+            continue
+        fi
+
+        # Smart .nomedia localized scoping
+        if [ "${preserve_media}" = "1" ] || [ "${cat}" = "MEDIA_DOWNLOADS" ] || [ "${cat}" = "CUSTOM" ]; then
+            # Do not hide from gallery unless original destination had .nomedia
+            if [ ! -f "${dst}/.nomedia" ]; then
+                rm -f "${src}/.nomedia" 2>/dev/null
+            fi
+        else
+            # Ensure private game data has .nomedia
+            touch "${src}/.nomedia" 2>/dev/null
+        fi
+
+        apply_permissions "${pkg}" "${src}" "${user_id}"
+        bind_mount_to_runtime_namespaces "${src}" "${dst}" "${pkg}" "${user_id}"
+        entries=$((entries + 1))
+    done < "${MOUNTPOINTS_FILE}"
+
+    log_info "Processed ${entries} entry(ies) from mountpoints.conf."
+    [ ${entries} -gt 0 ] && return 0 || return 1
+}
+
+# ── Legacy gamelist.conf Processor (Fallback) ─────────────────────────────────
 GAME_PKGS=""
 GAME_MODES=""
 
 load_gamelist() {
     if [ ! -f "${GAMELIST_FILE}" ]; then
-        log_warn "gamelist.conf not found at ${GAMELIST_FILE}; no games will be mounted."
+        log_warn "gamelist.conf not found; no legacy games to process."
         return
     fi
 
     local count=0
     while IFS= read -r line || [ -n "${line}" ]; do
-        # Strip leading/trailing whitespace
         line=$(echo "${line}" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        # Skip empty lines and comments
-        case "${line}" in
-            ''|\#*) continue ;;
-        esac
+        case "${line}" in ''|\#*) continue ;; esac
 
         local pkg mode
         pkg=$(echo "${line}" | cut -d':' -f1)
         mode=$(echo "${line}" | cut -d':' -f2)
 
-        if [ -z "${pkg}" ] || [ -z "${mode}" ]; then
-            log_warn "gamelist.conf: malformed line ignored → '${line}'"
-            continue
-        fi
-
-        case "${mode}" in
-            pkg|files) ;;
-            *)
-                log_warn "gamelist.conf: unknown mode '${mode}' for '${pkg}'; skipping."
-                continue
-                ;;
-        esac
+        [ -z "${pkg}" ] || [ -z "${mode}" ] && continue
 
         GAME_PKGS="${GAME_PKGS}${pkg} "
         GAME_MODES="${GAME_MODES}${mode} "
@@ -214,192 +364,62 @@ load_gamelist() {
     log_info "gamelist.conf loaded: ${count} game(s) registered."
 }
 
-# ── Unmount any stale bind-mounts for a target path ──────────────────────────
-umount_stale() {
-    local target="$1"
-    if mountpoint -q "${target}"; then
-        if umount -l "${target}" 2>/dev/null; then
-            log_info "  Unmounted stale bind-mount: ${target}"
-        else
-            log_warn "  Could not unmount: ${target}"
-        fi
-    fi
-}
-
-# ── Apply ownership, permissions, and SELinux context to SD source dir ────────
-apply_permissions() {
-    local pkg="$1"
-    local src_dir="$2"
-
-    local uid gid
-    uid=$(stat -c '%u' "/data/data/${pkg}" 2>/dev/null)
-    gid=$(stat -c '%g' "/data/data/${pkg}" 2>/dev/null)
-
-    if [ -z "${uid}" ] || [ -z "${gid}" ]; then
-        log_warn "  [${pkg}] Could not determine UID/GID; skipping chown."
-        return
-    fi
-
-    chown -R "${uid}:${gid}" "${src_dir}" 2>/dev/null \
-        && log_info "  [${pkg}] chown ${uid}:${gid} → ${src_dir}" \
-        || log_warn "  [${pkg}] chown failed on ${src_dir}"
-
-    chmod -R 0771 "${src_dir}" 2>/dev/null \
-        || log_warn "  [${pkg}] chmod failed on ${src_dir}"
-
-    # Restore SELinux context to match the app's data directory
-    local ctx
-    ctx=$(ls -Z "/data/data/${pkg}" 2>/dev/null | awk '{print $1}' | head -n1)
-    if [ -n "${ctx}" ]; then
-        chcon -R "${ctx}" "${src_dir}" 2>/dev/null \
-            && log_info "  [${pkg}] SELinux context '${ctx}' applied." \
-            || log_warn "  [${pkg}] chcon failed."
-    else
-        log_warn "  [${pkg}] Could not read SELinux context."
-    fi
-}
-
-# ── Bind-mount src → dst in every active PID namespace ───────────────────────
-bind_mount_all_ns() {
-    local src="$1"
-    local dst="$2"
-    local pkg="$3"
-
-    local bound=0 failed=0
-
-    for pid_ns_dir in /proc/*/ns/mnt; do
-        local pid_dir
-        pid_dir=$(dirname "$(dirname "${pid_ns_dir}")")
-        local pid
-        pid=$(basename "${pid_dir}")
-
-        # Only mount into the target package's process(es)
-        local cmdline
-        cmdline=$(cat "${pid_dir}/cmdline" 2>/dev/null | tr '\0' ' ' | cut -d' ' -f1)
-        [ "${cmdline}" = "${pkg}" ] || continue
-
-        # Perform the bind-mount inside the process's mount namespace
-        if nsenter --mount="${pid_ns_dir}" -- mount --bind "${src}" "${dst}" 2>/dev/null; then
-            log_info "  [${pkg}] bind-mounted in namespace of PID ${pid}"
-            bound=$((bound + 1))
-        else
-            log_warn "  [${pkg}] bind-mount failed in namespace of PID ${pid}"
-            failed=$((failed + 1))
-        fi
-    done
-
-    # Fallback: also bind-mount in the global namespace
-    if mount --bind "${src}" "${dst}" 2>/dev/null; then
-        log_info "  [${pkg}] bind-mounted in global namespace: ${src} → ${dst}"
-        bound=$((bound + 1))
-    else
-        log_warn "  [${pkg}] global namespace bind-mount failed: ${src} → ${dst}"
-        failed=$((failed + 1))
-    fi
-
-    log_info "  [${pkg}] bind-mount summary: ${bound} succeeded, ${failed} failed."
-}
-
-# ── Process a single game entry ───────────────────────────────────────────────
 process_game() {
     local pkg="$1"
     local mode="$2"
-    local ts
-    ts=$(date '+%Y-%m-%d %H:%M:%S')
-    log_info "── Processing [${pkg}] mode=${mode} at ${ts}"
 
-    # Internal (system) data, obb, and media paths
     local int_data="/data/media/0/Android/data/${pkg}"
     local int_obb="/data/media/0/Android/obb/${pkg}"
     local int_media="/data/media/0/Android/media/${pkg}"
 
-    # External SD source data and obb paths (Check MountX modern first, then legacy fallback)
     local sd_data="${SD_BASE}/MountX/Android/data/${pkg}"
-    if [ ! -d "${sd_data}" ] && [ -d "${SD_BASE}/Android/data/${pkg}" ]; then
-        sd_data="${SD_BASE}/Android/data/${pkg}"
-    fi
+    [ ! -d "${sd_data}" ] && [ -d "${SD_BASE}/Android/data/${pkg}" ] && sd_data="${SD_BASE}/Android/data/${pkg}"
 
     local sd_obb="${SD_BASE}/MountX/Android/obb/${pkg}"
-    if [ ! -d "${sd_obb}" ] && [ -d "${SD_BASE}/Android/obb/${pkg}" ]; then
-        sd_obb="${SD_BASE}/Android/obb/${pkg}"
-    fi
+    [ ! -d "${sd_obb}" ] && [ -d "${SD_BASE}/Android/obb/${pkg}" ] && sd_obb="${SD_BASE}/Android/obb/${pkg}"
 
     local sd_media="${SD_BASE}/MountX/Android/media/${pkg}"
-    if [ ! -d "${sd_media}" ] && [ -d "${SD_BASE}/Android/media/${pkg}" ]; then
-        sd_media="${SD_BASE}/Android/media/${pkg}"
-    fi
+    [ ! -d "${sd_media}" ] && [ -d "${SD_BASE}/Android/media/${pkg}" ] && sd_media="${SD_BASE}/Android/media/${pkg}"
 
-    # Determine data source and destination sub-paths based on mode
     local src_data dst_data
     case "${mode}" in
-        pkg)
-            src_data="${sd_data}"
-            dst_data="${int_data}"
-            ;;
-        files)
-            src_data="${sd_data}/files"
-            dst_data="${int_data}/files"
-            ;;
+        pkg)   src_data="${sd_data}"; dst_data="${int_data}" ;;
+        files) src_data="${sd_data}/files"; dst_data="${int_data}/files" ;;
     esac
 
-    # 1. Mount Data if present on SD
     if [ -d "${src_data}" ]; then
-        if [ ! -d "${dst_data}" ]; then
-            mkdir -p "${dst_data}" || log_warn "  [${pkg}] Could not create destination data dir"
-        fi
-        umount_stale "${dst_data}"
-        apply_permissions "${pkg}" "${src_data}"
-        bind_mount_all_ns "${src_data}" "${dst_data}" "${pkg}"
-    else
-        log_warn "  [${pkg}] Data source not found on SD: ${src_data}"
+        touch "${src_data}/.nomedia" 2>/dev/null
+        apply_permissions "${pkg}" "${src_data}" "0"
+        bind_mount_to_runtime_namespaces "${src_data}" "${dst_data}" "${pkg}" "0"
     fi
 
-    # 2. Mount OBB if present on SD
     if [ -d "${sd_obb}" ]; then
-        log_info "  [${pkg}] OBB directory detected on SD: ${sd_obb}"
-        if [ ! -d "${int_obb}" ]; then
-            mkdir -p "${int_obb}" || log_warn "  [${pkg}] Could not create destination obb dir"
-        fi
-        umount_stale "${int_obb}"
-        apply_permissions "${pkg}" "${sd_obb}"
-        bind_mount_all_ns "${sd_obb}" "${int_obb}" "${pkg}"
+        touch "${sd_obb}/.nomedia" 2>/dev/null
+        apply_permissions "${pkg}" "${sd_obb}" "0"
+        bind_mount_to_runtime_namespaces "${sd_obb}" "${int_obb}" "${pkg}" "0"
     fi
 
-    # 3. Mount Media if present on SD
     if [ -d "${sd_media}" ]; then
-        log_info "  [${pkg}] Media directory detected on SD: ${sd_media}"
-        if [ ! -d "${int_media}" ]; then
-            mkdir -p "${int_media}" || log_warn "  [${pkg}] Could not create destination media dir"
-        fi
-        umount_stale "${int_media}"
-        apply_permissions "${pkg}" "${sd_media}"
-        bind_mount_all_ns "${sd_media}" "${int_media}" "${pkg}"
+        apply_permissions "${pkg}" "${sd_media}" "0"
+        bind_mount_to_runtime_namespaces "${sd_media}" "${int_media}" "${pkg}" "0"
     fi
 }
 
 # ── Safe-Uninstall Guard ──────────────────────────────────────────────────────
-# Detects if MountX app was uninstalled. If so, unmounts all bind-mounts,
-# restores internal Android storage permissions, and disables module self-reliantly.
 check_safe_uninstall() {
-    log_info "Validating MountX application installation…"
     if ! pm path app.mountx >/dev/null 2>&1 && ! pm path app.mountx.debug >/dev/null 2>&1; then
         log_warn "MountX app is not installed! Safe-Uninstall protocol triggered."
-        # Unmount all active bind mounts pointing to SD_BASE
         for m in $(grep "${SD_BASE}" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
             if [ "${m}" != "${SD_BASE}" ]; then
                 umount -l "${m}" 2>/dev/null
             fi
         done
-        # Restore ownership & permissions on internal Android directories
         chmod 775 /data/media/0/Android/data 2>/dev/null
         chmod 775 /data/media/0/Android/obb 2>/dev/null
         restorecon -R /data/media/0/Android 2>/dev/null
-        # Disable Magisk module to avoid stale mounts
         touch "${MODULE_DIR}/disable" 2>/dev/null
-        log_warn "MountX module disabled automatically. Safe-uninstall cleanup completed."
         exit 0
     fi
-    log_info "MountX app verified present."
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -409,25 +429,37 @@ main() {
     load_config
     mount_sd
     apply_io_tweaks
-    load_gamelist
 
-    if [ -z "${GAME_PKGS}" ]; then
-        log_warn "No games in gamelist; nothing to mount."
-        exit 0
+    # Ensure localized subdirectories exist without placing .nomedia on $SD_BASE/MountX
+    mkdir -p "${SD_BASE}/MountX/Android/data" \
+             "${SD_BASE}/MountX/Android/obb" \
+             "${SD_BASE}/MountX/Android/media" \
+             "${SD_BASE}/MountX/containers" 2>/dev/null
+    touch "${SD_BASE}/MountX/Android/data/.nomedia" 2>/dev/null
+    touch "${SD_BASE}/MountX/Android/obb/.nomedia" 2>/dev/null
+
+    local loaded_pipeline=0
+    if load_mountpoints; then
+        loaded_pipeline=1
     fi
 
-    log_info "Starting bind-mount loop…"
+    if [ ${loaded_pipeline} -eq 0 ]; then
+        log_info "Running fallback gamelist processor..."
+        load_gamelist
+        if [ -n "${GAME_PKGS}" ]; then
+            local i=1
+            for pkg in ${GAME_PKGS}; do
+                local mode
+                mode=$(echo "${GAME_MODES}" | cut -d' ' -f"${i}")
+                process_game "${pkg}" "${mode}"
+                i=$((i + 1))
+            done
+        fi
+    fi
 
-    # Iterate parallel arrays using positional IFS splitting
-    local i=1
-    for pkg in ${GAME_PKGS}; do
-        local mode
-        mode=$(echo "${GAME_MODES}" | cut -d' ' -f"${i}")
-        process_game "${pkg}" "${mode}"
-        i=$((i + 1))
-    done
-
-    log_info "All games processed. MountX service done."
+    # Touch boot status marker so BootReceiver/UI can recognize completion
+    touch "${BOOT_FLAG_FILE}" 2>/dev/null
+    log_info "MountX boot marker touched at ${BOOT_FLAG_FILE}. Service completed."
 }
 
 main
