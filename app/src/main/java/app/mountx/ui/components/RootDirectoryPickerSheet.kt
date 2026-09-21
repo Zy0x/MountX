@@ -65,6 +65,7 @@ fun RootDirectoryPickerSheet(
     onPathSelected: (String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     var currentPath by remember {
         mutableStateOf(if (initialPath.isNotBlank() && initialPath.startsWith("/")) initialPath.trimEnd('/') else "/data/media/0")
     }
@@ -99,8 +100,8 @@ fun RootDirectoryPickerSheet(
                     res.stdout.forEach { line ->
                         val clean = line.trim()
                         if (clean.endsWith("/") && clean != "./" && clean != "../") {
-                            val folderName = clean.removeSuffix("/")
-                            list.add(DirectoryItem(name = folderName))
+                            val dirName = clean.removeSuffix("/")
+                            list.add(DirectoryItem(name = dirName))
                         }
                     }
                     list.sortedBy { it.name.lowercase() }
@@ -110,7 +111,7 @@ fun RootDirectoryPickerSheet(
             }
         }
         if (items == null) {
-            errorMessage = "Akses ditolak atau direktori tidak dapat dibaca"
+            errorMessage = "Akses ditolak atau gagal membaca direktori"
             directories = emptyList()
         } else {
             directories = items
@@ -159,14 +160,14 @@ fun RootDirectoryPickerSheet(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = ElectricIndigo.copy(alpha = 0.15f),
+                        color = ElectricIndigo.copy(alpha = if (isDark) 0.15f else 0.10f),
                         modifier = Modifier.size(38.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
                                 contentDescription = null,
-                                tint = ElectricIndigoLight,
+                                tint = if (isDark) ElectricIndigoLight else Color(0xFF4F46E5),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -176,12 +177,12 @@ fun RootDirectoryPickerSheet(
                             text = "Penjelajah Berkas Root",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = CyberOnBgDark
+                            color = if (isDark) Color(0xFFFAF8F5) else Color(0xFF1C1917)
                         )
                         Text(
                             text = "Pilih direktori penyimpanan sistem atau kartu memori",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                            color = CyberOnVariantDark
+                            color = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
                         )
                     }
                 }
@@ -193,7 +194,7 @@ fun RootDirectoryPickerSheet(
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Tutup",
-                        tint = CyberOnVariantDark
+                        tint = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
                     )
                 }
             }
@@ -210,10 +211,18 @@ fun RootDirectoryPickerSheet(
                     val isSelected = currentPath == chip.path || currentPath.startsWith("${chip.path}/")
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = if (isSelected) ElectricIndigo.copy(alpha = 0.2f) else CyberSurfaceVariantDark,
+                        color = if (isSelected) {
+                            if (isDark) ElectricIndigo.copy(alpha = 0.25f) else Color(0xFF4F46E5).copy(alpha = 0.12f)
+                        } else {
+                            if (isDark) Color(0xFF1C1917) else Color(0xFFFAF8F5)
+                        },
                         border = BorderStroke(
                             1.dp,
-                            if (isSelected) ElectricIndigo else CyberBorderDark
+                            if (isSelected) {
+                                if (isDark) ElectricIndigo else Color(0xFF4F46E5)
+                            } else {
+                                if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD)
+                            }
                         ),
                         modifier = Modifier.clickable {
                             currentPath = chip.path
@@ -227,7 +236,11 @@ fun RootDirectoryPickerSheet(
                             Icon(
                                 imageVector = chip.icon,
                                 contentDescription = null,
-                                tint = if (isSelected) ElectricIndigoLight else CyberOnVariantDark,
+                                tint = if (isSelected) {
+                                    if (isDark) ElectricIndigoLight else Color(0xFF4F46E5)
+                                } else {
+                                    if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
+                                },
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
@@ -236,14 +249,16 @@ fun RootDirectoryPickerSheet(
                                     fontSize = 11.5.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 ),
-                                color = if (isSelected) ElectricIndigoLight else CyberOnSurfaceDark
+                                color = if (isSelected) {
+                                    if (isDark) ElectricIndigoLight else Color(0xFF4F46E5)
+                                } else {
+                                    if (isDark) Color(0xFFFAF8F5) else Color(0xFF1C1917)
+                                }
                             )
                         }
                     }
                 }
             }
-
-            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
             // Breadcrumb Navigation Bar
             Surface(
@@ -344,7 +359,7 @@ fun RootDirectoryPickerSheet(
                             Text(
                                 text = errorMessage!!,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = NeonCrimson
+                                color = if (isDark) WarmCrimsonDark else WarmCrimsonLight
                             )
                             OutlinedButton(
                                 onClick = {
@@ -352,9 +367,16 @@ fun RootDirectoryPickerSheet(
                                     currentPath = parent
                                 },
                                 shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, CyberBorderDark)
+                                border = BorderStroke(1.dp, if (isDark) OutlinedNeutralBorderDark else OutlinedNeutralBorderLight),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (isDark) OutlinedNeutralBgDark else OutlinedNeutralBgLight
+                                )
                             ) {
-                                Text("Kembali ke Direktori Induk", color = CyberOnSurfaceDark, fontSize = 12.sp)
+                                Text(
+                                    text = "Kembali ke Direktori Induk",
+                                    color = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight,
+                                    fontSize = 12.sp
+                                )
                             }
                         }
                     }
@@ -366,7 +388,7 @@ fun RootDirectoryPickerSheet(
                         Text(
                             text = "(Direktori kosong atau tidak ada subfolder)",
                             style = MaterialTheme.typography.bodySmall,
-                            color = CyberOnVariantDark
+                            color = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
                         )
                     }
                 } else {
@@ -460,8 +482,8 @@ fun RootDirectoryPickerSheet(
             // Bottom Sticky Action Bar: Selected Path & Confirm Button
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = CyberSurfaceVariantDark,
-                border = BorderStroke(1.dp, CyberBorderDark)
+                color = if (isDark) Color(0xFF1C1917) else Color(0xFFFAF8F5),
+                border = BorderStroke(1.dp, if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD))
             ) {
                 Column(
                     modifier = Modifier
@@ -472,8 +494,8 @@ fun RootDirectoryPickerSheet(
                     // Path Display Box
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = CyberBgDark,
-                        border = BorderStroke(0.8.dp, CyberBorderDark),
+                        color = if (isDark) Color(0xFF0F1117) else Color(0xFFF2EFE9),
+                        border = BorderStroke(0.8.dp, if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -484,7 +506,7 @@ fun RootDirectoryPickerSheet(
                             Text(
                                 text = "Path:",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = CyberOnVariantDark
+                                color = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
                             )
                             Text(
                                 text = currentPath,
@@ -493,7 +515,7 @@ fun RootDirectoryPickerSheet(
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = CyberEmerald,
+                                color = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)
@@ -506,14 +528,14 @@ fun RootDirectoryPickerSheet(
                     if (securityLevel == PathSecurityLevel.HARD_BLOCKED_KERNEL) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = Color(0x22FF1744),
-                            border = BorderStroke(0.8.dp, Color(0x66FF1744)),
+                            color = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight,
+                            border = BorderStroke(0.8.dp, if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
                                 text = "⚠️ Virtual Kernel Filesystem dilarang untuk mounting",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
-                                color = Color(0xFFFF5252),
+                                color = if (isDark) WarmCrimsonDark else WarmCrimsonLight,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
@@ -527,12 +549,19 @@ fun RootDirectoryPickerSheet(
                         OutlinedButton(
                             onClick = onDismiss,
                             shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, CyberBorderDark),
+                            border = BorderStroke(1.dp, if (isDark) OutlinedNeutralBorderDark else OutlinedNeutralBorderLight),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (isDark) OutlinedNeutralBgDark else OutlinedNeutralBgLight
+                            ),
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp)
                         ) {
-                            Text("Batal", color = CyberOnVariantDark, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = "Batal",
+                                color = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
 
                         Button(
@@ -547,7 +576,11 @@ fun RootDirectoryPickerSheet(
                             enabled = securityLevel != PathSecurityLevel.HARD_BLOCKED_KERNEL,
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) Color(0xFFDC2626) else Color(0xFF4F46E5),
+                                containerColor = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) {
+                                    if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                                } else {
+                                    if (isDark) ElectricIndigo else Color(0xFF4F46E5)
+                                },
                                 disabledContainerColor = if (isDark) Color(0xFF292524) else Color(0xFFE5E7EB)
                             ),
                             modifier = Modifier
@@ -613,6 +646,10 @@ private fun HighRiskDirectoryConfirmDialog(
     onConfirm: () -> Unit
 ) {
     var userAgreed by remember { mutableStateOf(false) }
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val crimson = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+    val crimsonBg = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+    val crimsonBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -623,13 +660,13 @@ private fun HighRiskDirectoryConfirmDialog(
                 Icon(
                     imageVector = androidx.compose.material.icons.Icons.Default.Close,
                     contentDescription = null,
-                    tint = Color(0xFFFF1744),
+                    tint = crimson,
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
                     text = "Peringatan Risiko Sistem",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color(0xFFFF1744)
+                    color = crimson
                 )
             }
         },
@@ -642,8 +679,8 @@ private fun HighRiskDirectoryConfirmDialog(
                 )
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0x33FF1744),
-                    border = BorderStroke(1.dp, Color(0x66FF1744)),
+                    color = crimsonBg,
+                    border = BorderStroke(1.dp, crimsonBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -651,7 +688,7 @@ private fun HighRiskDirectoryConfirmDialog(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = crimson,
                         modifier = Modifier.padding(10.dp)
                     )
                 }
@@ -670,7 +707,7 @@ private fun HighRiskDirectoryConfirmDialog(
                         checked = userAgreed,
                         onCheckedChange = { userAgreed = it },
                         colors = CheckboxDefaults.colors(
-                            checkedColor = Color(0xFFFF1744),
+                            checkedColor = crimson,
                             checkmarkColor = Color.White
                         )
                     )
@@ -689,8 +726,8 @@ private fun HighRiskDirectoryConfirmDialog(
                 enabled = userAgreed,
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFFF1744),
-                    disabledContainerColor = Color(0x33FF1744)
+                    containerColor = crimson,
+                    disabledContainerColor = crimson.copy(alpha = 0.25f)
                 )
             ) {
                 Text("Tetap Gunakan Jalur Ini", color = Color.White, fontWeight = FontWeight.Bold)
@@ -700,9 +737,12 @@ private fun HighRiskDirectoryConfirmDialog(
             OutlinedButton(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                border = BorderStroke(1.dp, if (isDark) OutlinedNeutralBorderDark else OutlinedNeutralBorderLight),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = if (isDark) OutlinedNeutralBgDark else OutlinedNeutralBgLight
+                )
             ) {
-                Text("Batal", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Batal", color = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight)
             }
         }
     )

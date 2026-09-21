@@ -44,13 +44,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountx.R
 import app.mountx.data.model.PartitionInfo
-import app.mountx.ui.theme.CyberEmerald
-import app.mountx.ui.theme.ElectricCyan
-import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.BadgeMountedTextDark
+import app.mountx.ui.theme.BadgeMountedTextLight
+import app.mountx.ui.theme.WarmCrimsonDark
+import app.mountx.ui.theme.WarmCrimsonLight
 import app.mountx.util.FormatUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +69,11 @@ fun PartitionToolsBottomSheet(
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val accentColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+    val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+    val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+    val skyColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -95,12 +102,12 @@ fun PartitionToolsBottomSheet(
                         modifier = Modifier
                             .size(34.dp)
                             .clip(CircleShape)
-                            .background(ElectricCyan.copy(alpha = 0.15f))
+                            .background(accentColor.copy(alpha = if (isDark) 0.15f else 0.10f))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Tune,
                             contentDescription = null,
-                            tint = ElectricCyan,
+                            tint = accentColor,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -142,7 +149,7 @@ fun PartitionToolsBottomSheet(
             // Action 1: Format & Ganti Filesystem
             PartitionActionItem(
                 icon = Icons.Default.Build,
-                iconTint = NeonCrimson,
+                iconTint = crimsonColor,
                 title = stringResource(R.string.storage_action_format_change_fs),
                 subtitle = stringResource(R.string.storage_action_format_change_fs_desc),
                 onClick = onFormatClick
@@ -153,7 +160,7 @@ fun PartitionToolsBottomSheet(
             // Action 2: Ganti Label Partisi (Non-destructive)
             PartitionActionItem(
                 icon = Icons.AutoMirrored.Filled.Label,
-                iconTint = Color(0xFF38BDF8),
+                iconTint = skyColor,
                 title = stringResource(R.string.storage_action_rename_label),
                 subtitle = stringResource(R.string.storage_action_rename_label_desc),
                 onClick = onEditLabelClick
@@ -164,7 +171,7 @@ fun PartitionToolsBottomSheet(
             // Action 3: Check Filesystem (fsck)
             PartitionActionItem(
                 icon = Icons.Default.Security,
-                iconTint = if (partition.isMounted) MaterialTheme.colorScheme.onSurfaceVariant else ElectricCyan,
+                iconTint = if (partition.isMounted) MaterialTheme.colorScheme.onSurfaceVariant else accentColor,
                 title = stringResource(R.string.storage_fsck_button),
                 subtitle = if (partition.isMounted) {
                     stringResource(R.string.storage_fsck_mounted_warning)
@@ -180,7 +187,7 @@ fun PartitionToolsBottomSheet(
             // Action 3: TRIM Partition (fstrim)
             PartitionActionItem(
                 icon = Icons.Default.CleaningServices,
-                iconTint = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                iconTint = if (partition.isMounted) emeraldColor else MaterialTheme.colorScheme.onSurfaceVariant,
                 title = stringResource(R.string.storage_action_trim_partition),
                 subtitle = if (partition.isMounted) {
                     stringResource(R.string.storage_action_trim_partition_desc)
@@ -226,7 +233,7 @@ fun PartitionToolsBottomSheet(
                             text = partition.fsType.ifBlank { "RAW" }.uppercase(),
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.onSurface
+                            color = if (partition.isMounted) emeraldColor else MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Row(
@@ -238,7 +245,7 @@ fun PartitionToolsBottomSheet(
                             text = partition.mountPoint ?: stringResource(R.string.storage_status_unmounted_badge),
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace,
-                            color = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (partition.isMounted) emeraldColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (!partition.uuid.isNullOrBlank()) {
@@ -265,7 +272,7 @@ fun PartitionToolsBottomSheet(
                                 text = partition.label,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = ElectricCyan
+                                color = accentColor
                             )
                         }
                     }

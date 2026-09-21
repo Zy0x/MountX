@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,9 +62,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.mountx.R
-import app.mountx.ui.theme.CyberEmerald
-import app.mountx.ui.theme.ElectricCyan
-import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.BadgeMountedBgDark
+import app.mountx.ui.theme.BadgeMountedBgLight
+import app.mountx.ui.theme.BadgeMountedTextDark
+import app.mountx.ui.theme.BadgeMountedTextLight
+import app.mountx.ui.theme.WarmCrimsonBgDark
+import app.mountx.ui.theme.WarmCrimsonBgLight
+import app.mountx.ui.theme.WarmCrimsonBorderDark
+import app.mountx.ui.theme.WarmCrimsonBorderLight
+import app.mountx.ui.theme.WarmCrimsonDark
+import app.mountx.ui.theme.WarmCrimsonLight
+import app.mountx.ui.theme.HyperCyan
+import app.mountx.ui.theme.SlateCyanLight
 
 /**
  * State representation for any asynchronous root operation.
@@ -90,18 +100,19 @@ sealed class OperationState {
 }
 
 /**
- * Universal interactive progress and confirmation overlay dialog.
- * Guarantees consistent visual feedback across all critical operations.
+ * High-priority interactive progress overlay with real-time feedback.
+ * MT-Manager & Partition-Wizard style visual experience.
  */
 @Composable
 fun OperationProgressOverlay(
     state: OperationState?,
-    onDismiss: () -> Unit,
+    onDismiss: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (state == null) return
 
     val isCancellable = state !is OperationState.InProgress
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     Dialog(
         onDismissRequest = { if (isCancellable) onDismiss() },
@@ -117,9 +128,9 @@ fun OperationProgressOverlay(
             border = BorderStroke(
                 width = 1.dp,
                 color = when (state) {
-                    is OperationState.InProgress -> ElectricCyan.copy(alpha = 0.5f)
-                    is OperationState.Success -> CyberEmerald.copy(alpha = 0.5f)
-                    is OperationState.Error -> NeonCrimson.copy(alpha = 0.5f)
+                    is OperationState.InProgress -> (if (isDark) HyperCyan else MaterialTheme.colorScheme.primary).copy(alpha = 0.5f)
+                    is OperationState.Success -> (if (isDark) BadgeMountedTextDark else BadgeMountedTextLight).copy(alpha = 0.5f)
+                    is OperationState.Error -> (if (isDark) WarmCrimsonDark else WarmCrimsonLight).copy(alpha = 0.5f)
                 }
             ),
             shadowElevation = 8.dp,
@@ -161,6 +172,9 @@ private fun InProgressContent(state: OperationState.InProgress) {
         label = "rot"
     )
 
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val accentColor = if (isDark) HyperCyan else MaterialTheme.colorScheme.primary
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -170,7 +184,7 @@ private fun InProgressContent(state: OperationState.InProgress) {
         CircularProgressIndicator(
             progress = { state.progressPercent ?: 0.5f },
             strokeWidth = 3.dp,
-            color = ElectricCyan,
+            color = accentColor,
             trackColor = MaterialTheme.colorScheme.surfaceVariant,
             modifier = Modifier
                 .size(54.dp)
@@ -205,7 +219,7 @@ private fun InProgressContent(state: OperationState.InProgress) {
                 .fillMaxWidth()
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp)),
-            color = ElectricCyan,
+            color = accentColor,
             trackColor = MaterialTheme.colorScheme.surfaceVariant
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -215,7 +229,7 @@ private fun InProgressContent(state: OperationState.InProgress) {
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace
             ),
-            color = ElectricCyan
+            color = accentColor
         )
     }
 }
@@ -226,18 +240,21 @@ private fun SuccessContent(
     onDismiss: () -> Unit
 ) {
     var isLogExpanded by remember { mutableStateOf(false) }
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val successColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+    val successBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(52.dp)
-            .background(Color(0x1F15803D), CircleShape)
-            .border(1.dp, Color(0xFF15803D).copy(alpha = 0.4f), CircleShape)
+            .background(successBg, CircleShape)
+            .border(1.dp, successColor.copy(alpha = 0.4f), CircleShape)
     ) {
         Icon(
             imageVector = Icons.Default.Check,
             contentDescription = null,
-            tint = Color(0xFF15803D),
+            tint = successColor,
             modifier = Modifier.size(26.dp)
         )
     }
@@ -265,8 +282,8 @@ private fun SuccessContent(
         Spacer(modifier = Modifier.height(12.dp))
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF1C1917),
-            border = BorderStroke(1.dp, Color(0xFF44403C)),
+            color = if (isDark) Color(0xFF1C1917) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            border = BorderStroke(1.dp, if (isDark) Color(0xFF44403C) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -281,7 +298,7 @@ private fun SuccessContent(
                         Text(
                             text = k,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = Color(0xFFE7E5E4)
+                            color = if (isDark) Color(0xFFE7E5E4) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = v,
@@ -290,7 +307,7 @@ private fun SuccessContent(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = Color(0xFF86EFAC)
+                            color = successColor
                         )
                     }
                 }
@@ -327,8 +344,8 @@ private fun SuccessContent(
         ) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF1C1917),
-                border = BorderStroke(1.dp, Color(0xFF44403C)),
+                color = if (isDark) Color(0xFF1C1917) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                border = BorderStroke(1.dp, if (isDark) Color(0xFF44403C) else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp)
@@ -338,7 +355,7 @@ private fun SuccessContent(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
-                    color = Color(0xFFE7E5E4),
+                    color = if (isDark) Color(0xFFE7E5E4) else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
                         .heightIn(max = 160.dp)
                         .verticalScroll(rememberScrollState())
@@ -354,7 +371,7 @@ private fun SuccessContent(
         onClick = onDismiss,
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF4F46E5),
+            containerColor = MaterialTheme.colorScheme.primary,
             contentColor = Color.White
         ),
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 0.dp),
@@ -376,18 +393,22 @@ private fun ErrorContent(
     onDismiss: () -> Unit
 ) {
     var isLogExpanded by remember { mutableStateOf(false) }
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val errorColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+    val errorBg = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+    val errorBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(52.dp)
-            .background(NeonCrimson.copy(alpha = 0.15f), CircleShape)
-            .border(1.dp, NeonCrimson.copy(alpha = 0.4f), CircleShape)
+            .background(errorBg, CircleShape)
+            .border(1.dp, errorBorder, CircleShape)
     ) {
         Icon(
             imageVector = Icons.Default.Warning,
             contentDescription = null,
-            tint = NeonCrimson,
+            tint = errorColor,
             modifier = Modifier.size(26.dp)
         )
     }
@@ -408,7 +429,7 @@ private fun ErrorContent(
     Text(
         text = state.errorMessage,
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-        color = NeonCrimson
+        color = errorColor
     )
 
     if (!state.rawLog.isNullOrBlank()) {
@@ -440,8 +461,8 @@ private fun ErrorContent(
         ) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = Color.Black.copy(alpha = 0.6f),
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                color = if (isDark) Color.Black.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                border = BorderStroke(0.5.dp, if (isDark) MaterialTheme.colorScheme.outline.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp)
@@ -450,7 +471,7 @@ private fun ErrorContent(
                     text = state.rawLog,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
-                    color = NeonCrimson.copy(alpha = 0.9f),
+                    color = errorColor,
                     modifier = Modifier
                         .heightIn(max = 160.dp)
                         .verticalScroll(rememberScrollState())

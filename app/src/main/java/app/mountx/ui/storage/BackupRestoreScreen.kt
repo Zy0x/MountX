@@ -24,11 +24,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.luminance
 import app.mountx.R
 import app.mountx.ui.components.SectionHeader
-import app.mountx.ui.theme.CyberEmerald
+import app.mountx.ui.theme.BadgeMountedBgDark
+import app.mountx.ui.theme.BadgeMountedBgLight
+import app.mountx.ui.theme.BadgeMountedTextDark
+import app.mountx.ui.theme.BadgeMountedTextLight
 import app.mountx.ui.theme.MountXTheme
-import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.WarmCrimsonBgDark
+import app.mountx.ui.theme.WarmCrimsonBgLight
+import app.mountx.ui.theme.WarmCrimsonBorderDark
+import app.mountx.ui.theme.WarmCrimsonBorderLight
+import app.mountx.ui.theme.WarmCrimsonDark
+import app.mountx.ui.theme.WarmCrimsonLight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,9 +93,22 @@ fun BackupRestoreScreen(
             if (statusMessage != null) {
                 item {
                     val isSuccess = statusMessage?.contains("OK") == true
-                    val containerColor = if (isSuccess) CyberEmerald.copy(alpha = 0.12f) else NeonCrimson.copy(alpha = 0.12f)
-                    val borderColor = if (isSuccess) CyberEmerald.copy(alpha = 0.4f) else NeonCrimson.copy(alpha = 0.4f)
-                    val contentColor = if (isSuccess) CyberEmerald else NeonCrimson
+                    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                    val containerColor = if (isSuccess) {
+                        if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+                    } else {
+                        if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+                    }
+                    val borderColor = if (isSuccess) {
+                        (if (isDark) BadgeMountedTextDark else BadgeMountedTextLight).copy(alpha = 0.4f)
+                    } else {
+                        if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+                    }
+                    val contentColor = if (isSuccess) {
+                        if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+                    } else {
+                        if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                    }
 
                     Card(
                         shape = RoundedCornerShape(14.dp),

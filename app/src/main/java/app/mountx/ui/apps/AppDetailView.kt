@@ -97,7 +97,7 @@ import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.SdCardDiskInfo
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.NeedMigrationDialog
@@ -1423,7 +1423,7 @@ private fun StorageTabContent(
                     }
 
                     // Right: Alternating Mount / Unmount / Migrate button
-                    val isDark = isSystemInDarkTheme()
+                    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                     val hasInternalData = safeBreakdown.ext1Bytes > 0L || game.dataSizeBytes > 0L
                     val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION || (!isMounted && !isRealDataOnSd && hasInternalData)
 
@@ -2229,7 +2229,7 @@ private fun CategoryInspectorBottomSheet(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(

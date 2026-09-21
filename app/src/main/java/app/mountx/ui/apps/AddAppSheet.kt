@@ -49,9 +49,16 @@ import app.mountx.data.model.SmartGamePresets
 import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.theme.AuroraGradientBrush
-import app.mountx.ui.theme.CyberEmerald
-import app.mountx.ui.theme.EmeraldActive
-import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.BadgeMountedBgDark
+import app.mountx.ui.theme.BadgeMountedBgLight
+import app.mountx.ui.theme.BadgeMountedTextDark
+import app.mountx.ui.theme.BadgeMountedTextLight
+import app.mountx.ui.theme.WarmCrimsonBgDark
+import app.mountx.ui.theme.WarmCrimsonBgLight
+import app.mountx.ui.theme.WarmCrimsonBorderDark
+import app.mountx.ui.theme.WarmCrimsonBorderLight
+import app.mountx.ui.theme.WarmCrimsonDark
+import app.mountx.ui.theme.WarmCrimsonLight
 
 /**
  * Dedicated Full-Screen Application Picker for MountX.
@@ -335,6 +342,11 @@ fun AddAppPicker(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
                 shadowElevation = 8.dp
             ) {
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                val crimsonBg = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+                val crimsonBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+
                 Column(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -347,13 +359,13 @@ fun AddAppPicker(
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
-                                .background(NeonCrimson.copy(alpha = 0.12f), RoundedCornerShape(7.dp)),
+                                .background(crimsonBg, RoundedCornerShape(7.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = NeonCrimson,
+                                tint = crimsonColor,
                                 modifier = Modifier.size(15.dp)
                             )
                         }
@@ -369,34 +381,31 @@ fun AddAppPicker(
 
                     // Selected App Preview Mini Card (Two-tier layout: App Name up to 2 lines + Full-Width Package Container)
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                        shape = RoundedCornerShape(9.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 9.dp, vertical = 7.dp),
-                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                                .padding(10.dp)
                         ) {
-                            // Tier 1: App Icon + App Display Name (up to 2 lines)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(9.dp)
                             ) {
                                 AppIconImage(
                                     packageName = sysApp.packageName,
-                                    size = 28.dp
+                                    size = 36.dp
                                 )
-
                                 Text(
                                     text = sysApp.displayName,
                                     style = MaterialTheme.typography.titleSmall.copy(
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        lineHeight = 15.sp
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        lineHeight = 16.5.sp
                                     ),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 2,
@@ -404,12 +413,11 @@ fun AddAppPicker(
                                     modifier = Modifier.weight(1f)
                                 )
                             }
-
-                            // Tier 2: Dedicated Full-Width Code Box for Package Name
+                            Spacer(modifier = Modifier.height(6.dp))
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f),
-                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                shape = RoundedCornerShape(5.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
@@ -419,13 +427,11 @@ fun AddAppPicker(
                                         fontFamily = FontFamily.Monospace,
                                         lineHeight = 13.sp
                                     ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                                     maxLines = 2,
                                     softWrap = true,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 7.dp, vertical = 4.dp)
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
                                 )
                             }
                         }
@@ -434,8 +440,8 @@ fun AddAppPicker(
                     // Risk Alert Callout Box
                     Surface(
                         shape = RoundedCornerShape(9.dp),
-                        color = NeonCrimson.copy(alpha = 0.08f),
-                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.2f)),
+                        color = crimsonBg,
+                        border = BorderStroke(1.dp, crimsonBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
@@ -482,7 +488,7 @@ fun AddAppPicker(
                                 }
                                 pendingSystemApp = null
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson),
+                            colors = ButtonDefaults.buttonColors(containerColor = crimsonColor),
                             shape = RoundedCornerShape(7.dp),
                             modifier = Modifier
                                 .height(34.dp)
@@ -688,7 +694,11 @@ private fun AppPickerItemCard(
     // Hoist expensive luminance calculation outside recomposition hot path
     val surfaceColor = MaterialTheme.colorScheme.surface
     val isDark = remember(surfaceColor) { surfaceColor.luminance() < 0.5f }
-    val gameBadgeColor = remember(isDark) { if (isDark) CyberEmerald else EmeraldActive }
+    val gameBadgeColor = remember(isDark) { if (isDark) BadgeMountedTextDark else BadgeMountedTextLight }
+    val gameBadgeBg = remember(isDark) { if (isDark) BadgeMountedBgDark else BadgeMountedBgLight }
+    val crimsonColor = remember(isDark) { if (isDark) WarmCrimsonDark else WarmCrimsonLight }
+    val crimsonBg = remember(isDark) { if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight }
+    val crimsonBorder = remember(isDark) { if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight }
 
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -696,7 +706,7 @@ private fun AppPickerItemCard(
         border = BorderStroke(
             width = 1.dp,
             color = if (app.isSystemApp) {
-                NeonCrimson.copy(alpha = 0.28f)
+                crimsonBorder
             } else {
                 MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
             }
@@ -740,21 +750,21 @@ private fun AppPickerItemCard(
                     if (app.isSystemApp) {
                         Box(
                             modifier = Modifier
-                                .background(NeonCrimson.copy(alpha = 0.14f), RoundedCornerShape(3.dp))
-                                .border(1.dp, NeonCrimson.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                                .background(crimsonBg, RoundedCornerShape(3.dp))
+                                .border(1.dp, crimsonBorder, RoundedCornerShape(3.dp))
                                 .padding(horizontal = 3.5.dp, vertical = 1.dp)
                         ) {
                             Text(
                                 text = stringResource(R.string.add_app_tag_system),
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
                                 fontWeight = FontWeight.Bold,
-                                color = NeonCrimson
+                                color = crimsonColor
                             )
                         }
                     } else if (app.isGame) {
                         Box(
                             modifier = Modifier
-                                .background(gameBadgeColor.copy(alpha = 0.14f), RoundedCornerShape(3.dp))
+                                .background(gameBadgeBg, RoundedCornerShape(3.dp))
                                 .border(1.dp, gameBadgeColor.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
                                 .padding(horizontal = 3.5.dp, vertical = 1.dp)
                         ) {
@@ -860,16 +870,20 @@ private fun ConfigureAppView(
                             modifier = Modifier.weight(1f, fill = false)
                         )
                         if (app.isSystemApp) {
+                            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                            val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                            val crimsonBg = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+                            val crimsonBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
                             Surface(
                                 shape = RoundedCornerShape(3.dp),
-                                color = NeonCrimson.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f))
+                                color = crimsonBg,
+                                border = BorderStroke(1.dp, crimsonBorder)
                             ) {
                                 Text(
                                     text = stringResource(R.string.add_app_tag_system),
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
                                     fontWeight = FontWeight.Bold,
-                                    color = NeonCrimson,
+                                    color = crimsonColor,
                                     modifier = Modifier.padding(horizontal = 3.5.dp, vertical = 1.dp)
                                 )
                             }
@@ -896,10 +910,13 @@ private fun ConfigureAppView(
 
         // Smart Preset Banner
         if (preset != null) {
+            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+            val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+            val emeraldBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
             Card(
                 shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = CyberEmerald.copy(alpha = 0.12f)),
-                border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.35f)),
+                colors = CardDefaults.cardColors(containerColor = emeraldBg),
+                border = BorderStroke(1.dp, emeraldColor.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
@@ -910,7 +927,7 @@ private fun ConfigureAppView(
                         Icon(
                             Icons.Default.AutoAwesome,
                             contentDescription = null,
-                            tint = CyberEmerald,
+                            tint = emeraldColor,
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
@@ -919,7 +936,7 @@ private fun ConfigureAppView(
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = CyberEmerald
+                            color = emeraldColor
                         )
                     }
                     Spacer(modifier = Modifier.height(3.dp))

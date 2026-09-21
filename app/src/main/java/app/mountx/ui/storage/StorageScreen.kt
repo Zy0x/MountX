@@ -100,14 +100,22 @@ import app.mountx.ui.components.OperationProgressOverlay
 import app.mountx.ui.components.SectionHeader
 import app.mountx.ui.components.StatusChip
 import app.mountx.ui.theme.AmberWarn
-import app.mountx.ui.theme.CyberEmerald
-import app.mountx.ui.theme.ElectricCyan
+import app.mountx.ui.theme.BadgeMountedBgDark
+import app.mountx.ui.theme.BadgeMountedBgLight
+import app.mountx.ui.theme.BadgeMountedTextDark
+import app.mountx.ui.theme.BadgeMountedTextLight
 import app.mountx.ui.theme.MountXTheme
-import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.WarmCrimsonBgDark
+import app.mountx.ui.theme.WarmCrimsonBgLight
+import app.mountx.ui.theme.WarmCrimsonBorderDark
+import app.mountx.ui.theme.WarmCrimsonBorderLight
+import app.mountx.ui.theme.WarmCrimsonDark
+import app.mountx.ui.theme.WarmCrimsonLight
 import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.WarmAmberLight
 import app.mountx.ui.theme.TerracottaRedLight
 import app.mountx.ui.theme.SlateCyanLight
+import app.mountx.ui.theme.HyperCyan
 import app.mountx.ui.theme.adaptiveAmber
 import app.mountx.ui.theme.adaptiveAmberContainer
 import app.mountx.ui.theme.adaptiveCrimson
@@ -971,6 +979,9 @@ private fun MultiDiskTelemetryCard(
 
                 val diskIcon = if (disk.diskType == DiskType.USB_OTG) Icons.Default.Usb else Icons.Default.SdCard
                 val diskUsedPct = disk.usedPercent
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+                val emeraldBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
 
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -985,7 +996,7 @@ private fun MultiDiskTelemetryCard(
                             Icon(
                                 imageVector = diskIcon,
                                 contentDescription = null,
-                                tint = CyberEmerald,
+                                tint = emeraldColor,
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -1056,12 +1067,16 @@ private fun MultiDiskTelemetryCard(
 
             // 3. Offloaded Games Summary Footer
             if (offloadedStats.first > 0) {
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+                val emeraldBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+
                 Spacer(modifier = Modifier.height(10.dp))
                 Surface(
                     onClick = onNavigateToGames,
                     shape = RoundedCornerShape(10.dp),
-                    color = CyberEmerald.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.25f)),
+                    color = emeraldBg,
+                    border = BorderStroke(1.dp, emeraldColor.copy(alpha = if (isDark) 0.5f else 0.4f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1075,7 +1090,7 @@ private fun MultiDiskTelemetryCard(
                             Icon(
                                 Icons.Default.CheckCircle,
                                 contentDescription = null,
-                                tint = CyberEmerald,
+                                tint = emeraldColor,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -1091,7 +1106,7 @@ private fun MultiDiskTelemetryCard(
                         Icon(
                             Icons.Default.ChevronRight,
                             contentDescription = null,
-                            tint = CyberEmerald,
+                            tint = emeraldColor,
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -1191,17 +1206,19 @@ private fun InternalDiskVisualMapCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val internalIconColor = if (isDark) HyperCyan else SlateCyanLight
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(ElectricCyan.copy(alpha = 0.12f))
+                        .background(internalIconColor.copy(alpha = 0.12f))
                 ) {
                     Icon(
                         imageVector = Icons.Default.PhoneAndroid,
                         contentDescription = null,
-                        tint = ElectricCyan,
+                        tint = internalIconColor,
                         modifier = Modifier.size(17.dp)
                     )
                 }
@@ -1404,17 +1421,19 @@ private fun DiskVisualMapOverviewCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 val diskIcon = if (disk.diskType == DiskType.USB_OTG) Icons.Default.Usb else Icons.Default.SdCard
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val diskIconColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(CyberEmerald.copy(alpha = 0.12f))
+                        .background(if (isDark) BadgeMountedBgDark else BadgeMountedBgLight)
                 ) {
                     Icon(
                         imageVector = diskIcon,
                         contentDescription = null,
-                        tint = CyberEmerald,
+                        tint = diskIconColor,
                         modifier = Modifier.size(17.dp)
                     )
                 }
@@ -1680,10 +1699,11 @@ private fun InteractivePartitionSliderBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                 Icon(
                     imageVector = Icons.Default.SwapHoriz,
                     contentDescription = null,
-                    tint = ElectricCyan,
+                    tint = if (isDark) HyperCyan else SlateCyanLight,
                     modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
@@ -1717,11 +1737,12 @@ private fun InteractivePartitionSliderBar(
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 partitions.forEachIndexed { idx, p ->
+                    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                     val weight = (p.sizeKb.toFloat() / validTotalKb.toFloat()).coerceIn(0.06f, 1f)
                     val baseColor = when (p.fsType) {
-                        FilesystemType.F2FS -> CyberEmerald
+                        FilesystemType.F2FS -> if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
                         FilesystemType.EXT4 -> MaterialTheme.colorScheme.primary
-                        FilesystemType.FAT32, FilesystemType.EXFAT -> ElectricCyan
+                        FilesystemType.FAT32, FilesystemType.EXFAT -> if (isDark) HyperCyan else SlateCyanLight
                         else -> MaterialTheme.colorScheme.secondary
                     }
 
@@ -1877,18 +1898,20 @@ private fun PartitionDividerHandle(
             },
         contentAlignment = Alignment.Center
     ) {
+        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        val accentColor = if (isDark) HyperCyan else SlateCyanLight
         // High-contrast AOMEI-style handle pill with active dragging visual feedback
         Surface(
             shape = RoundedCornerShape(4.dp),
-            color = if (isDragging) ElectricCyan else Color(0xFF1E293B),
-            border = BorderStroke(1.5.dp, if (isDragging) Color.White else ElectricCyan),
+            color = if (isDragging) accentColor else (if (isDark) Color(0xFF1E293B) else Color(0xFFFAF8F5)),
+            border = BorderStroke(1.5.dp, if (isDragging) (if (isDark) Color.White else Color(0xFF0F172A)) else (if (isDark) accentColor else Color(0xFFCBD5E1))),
             shadowElevation = if (isDragging) 6.dp else 3.dp,
             modifier = Modifier
                 .width(if (isDragging) 16.dp else 14.dp)
                 .height(32.dp)
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                val lineColor = if (isDragging) Color(0xFF0F1117) else ElectricCyan
+                val lineColor = if (isDragging) (if (isDark) Color(0xFF0F1117) else Color.White) else (if (isDark) accentColor else Color(0xFF64748B))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -2034,12 +2057,13 @@ private fun PartitionWizardDialog(
                                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
+                                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                                         Text(
                                             text = stringResource(R.string.storage_wizard_unallocated, FormatUtils.formatBytes(unallocatedKb * 1024L)),
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (unallocatedKb > 1024L * 1024L) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (unallocatedKb > 1024L * 1024L) (if (isDark) BadgeMountedTextDark else BadgeMountedTextLight) else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         )
                                     }
@@ -2122,10 +2146,15 @@ private fun PartitionWizardDialog(
 
                         // 4. Critical Warning & Checkbox
                         item {
+                            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                            val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                            val crimsonBg = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+                            val crimsonBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = NeonCrimson.copy(alpha = 0.08f),
-                                border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f)),
+                                color = crimsonBg,
+                                border = BorderStroke(1.dp, crimsonBorder),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
@@ -2133,7 +2162,7 @@ private fun PartitionWizardDialog(
                                         Icon(
                                             Icons.Default.Security,
                                             contentDescription = null,
-                                            tint = NeonCrimson,
+                                            tint = crimsonColor,
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
@@ -2156,7 +2185,7 @@ private fun PartitionWizardDialog(
                                             checked = isConfirmedCheckbox,
                                             onCheckedChange = { isConfirmedCheckbox = it },
                                             colors = CheckboxDefaults.colors(
-                                                checkedColor = NeonCrimson,
+                                                checkedColor = crimsonColor,
                                                 checkmarkColor = Color.White
                                             )
                                         )
@@ -2173,10 +2202,12 @@ private fun PartitionWizardDialog(
 
                         if (repartitionError != null) {
                             item {
+                                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                                val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
                                 Text(
                                     text = stringResource(R.string.storage_wizard_error, repartitionError),
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
-                                    color = NeonCrimson,
+                                    color = crimsonColor,
                                     modifier = Modifier.padding(horizontal = 4.dp)
                                 )
                             }
@@ -2203,11 +2234,13 @@ private fun PartitionWizardDialog(
                             Text(stringResource(R.string.common_close), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
+                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                        val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
                         Button(
                             onClick = onTriggerApply,
                             enabled = isConfirmedCheckbox && !isRepartitioning && partitions.isNotEmpty(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = NeonCrimson,
+                                containerColor = crimsonColor,
                                 contentColor = Color.White
                             ),
                             shape = RoundedCornerShape(10.dp),
@@ -2257,6 +2290,12 @@ private fun WizardPartitionCard(
     modifier: Modifier = Modifier
 ) {
     var rawTextKb by remember(config.sizeKb) { mutableStateOf(config.sizeKb.toString()) }
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val cyanColor = if (isDark) HyperCyan else SlateCyanLight
+    val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+    val emeraldBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+    val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+    val crimsonBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -2281,15 +2320,16 @@ private fun WizardPartitionCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.width(8.dp))
+
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = if (index == 0) ElectricCyan.copy(alpha = 0.15f) else CyberEmerald.copy(alpha = 0.15f)
+                        color = if (index == 0) cyanColor.copy(alpha = 0.15f) else emeraldBg
                     ) {
                         Text(
                             text = if (index == 0) stringResource(R.string.storage_badge_portable) else stringResource(R.string.storage_partition_target_mount),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (index == 0) ElectricCyan else CyberEmerald,
+                            color = if (index == 0) cyanColor else emeraldColor,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -2303,7 +2343,7 @@ private fun WizardPartitionCard(
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = stringResource(R.string.storage_wizard_remove_partition),
-                            tint = NeonCrimson,
+                            tint = crimsonColor,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -2323,7 +2363,7 @@ private fun WizardPartitionCard(
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (index == 0) ElectricCyan else CyberEmerald
+                        color = if (index == 0) cyanColor else emeraldColor
                     )
                 )
 
@@ -2369,8 +2409,8 @@ private fun WizardPartitionCard(
                         Surface(
                             onClick = onAllocateUnallocated,
                             shape = RoundedCornerShape(6.dp),
-                            color = CyberEmerald.copy(alpha = 0.15f),
-                            border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.5f)),
+                            color = emeraldBg,
+                            border = BorderStroke(1.dp, emeraldColor.copy(alpha = 0.5f)),
                             modifier = Modifier.height(26.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
@@ -2378,7 +2418,7 @@ private fun WizardPartitionCard(
                                     stringResource(R.string.storage_wizard_add_remaining, String.format(java.util.Locale.US, "%.1fG", unallocatedKb / 1024.0 / 1024.0)),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberEmerald
+                                    color = emeraldColor
                                 )
                             }
                         }
@@ -2398,8 +2438,8 @@ private fun WizardPartitionCard(
                     onSizeKbChange(targetKb)
                 },
                 colors = SliderDefaults.colors(
-                    thumbColor = if (index == 0) ElectricCyan else CyberEmerald,
-                    activeTrackColor = if (index == 0) ElectricCyan else CyberEmerald,
+                    thumbColor = if (index == 0) cyanColor else emeraldColor,
+                    activeTrackColor = if (index == 0) cyanColor else emeraldColor,
                     inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 modifier = Modifier
@@ -2515,16 +2555,16 @@ private fun WizardPartitionCard(
                         onClick = { onFsChange(fs) },
                         shape = RoundedCornerShape(8.dp),
                         color = if (isSelected) {
-                            if (fs == FilesystemType.F2FS) CyberEmerald.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            if (fs == FilesystemType.F2FS) emeraldBg else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                         } else {
                             MaterialTheme.colorScheme.surface
                         },
                         border = BorderStroke(
                             if (isSelected) 1.5.dp else 1.dp,
                             if (isSelected) {
-                                (if (fs == FilesystemType.F2FS) CyberEmerald else MaterialTheme.colorScheme.primary)
+                                (if (fs == FilesystemType.F2FS) emeraldColor else MaterialTheme.colorScheme.primary)
                             } else {
-                                if (!isSupported) NeonCrimson.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                if (!isSupported) crimsonBorder else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                             }
                         ),
                         modifier = Modifier
@@ -2540,7 +2580,7 @@ private fun WizardPartitionCard(
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                     ),
                                     color = if (isSelected) {
-                                        if (fs == FilesystemType.F2FS) CyberEmerald else MaterialTheme.colorScheme.primary
+                                        if (fs == FilesystemType.F2FS) emeraldColor else MaterialTheme.colorScheme.primary
                                     } else if (!isSupported) {
                                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                     } else {
@@ -2553,7 +2593,7 @@ private fun WizardPartitionCard(
                                         modifier = Modifier
                                             .size(5.dp)
                                             .clip(CircleShape)
-                                            .background(NeonCrimson)
+                                            .background(crimsonColor)
                                     )
                                 }
                             }
@@ -2569,7 +2609,7 @@ private fun WizardPartitionCard(
                 Text(
                     text = "⚠ ${selectedFsInfo.description}",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                    color = NeonCrimson
+                    color = crimsonColor
                 )
             }
         }
@@ -2596,6 +2636,11 @@ private fun SingleFormatDialog(
     }
     var labelInput by remember { mutableStateOf(partition?.label?.takeIf { it.isNotBlank() } ?: defaultLabel) }
 
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+    val crimsonBg = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+    val crimsonBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+
     AlertDialog(
         onDismissRequest = { if (!isFormatting) onDismiss() },
         title = {
@@ -2603,7 +2648,7 @@ private fun SingleFormatDialog(
                 Icon(
                     Icons.Default.Tune,
                     contentDescription = null,
-                    tint = NeonCrimson,
+                    tint = crimsonColor,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -2623,8 +2668,8 @@ private fun SingleFormatDialog(
                 // Warning text
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = NeonCrimson.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f)),
+                    color = crimsonBg,
+                    border = BorderStroke(1.dp, crimsonBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -2757,9 +2802,12 @@ private fun FormatFsRadioOption(
     onSelect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+    val emeraldBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
     val isEnabled = isKernelSupported
     val borderColor = if (isSelected) {
-        if (isRecommended) CyberEmerald else MaterialTheme.colorScheme.primary
+        if (isRecommended) emeraldColor else MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.outline.copy(alpha = if (isEnabled) 0.4f else 0.15f)
     }
@@ -2798,13 +2846,13 @@ private fun FormatFsRadioOption(
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = CyberEmerald.copy(alpha = 0.18f)
+                            color = emeraldBg
                         ) {
                             Text(
                                 text = stringResource(R.string.common_recommended),
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberEmerald,
+                                color = emeraldColor,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
@@ -2812,13 +2860,13 @@ private fun FormatFsRadioOption(
                     Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = if (isKernelSupported) CyberEmerald.copy(alpha = 0.12f) else AmberWarn.copy(alpha = 0.15f)
+                        color = if (isKernelSupported) emeraldBg else AmberWarn.copy(alpha = 0.15f)
                     ) {
                         Text(
                             text = if (isKernelSupported) "Kernel Ready" else "Unsupported",
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isKernelSupported) CyberEmerald else AmberWarn,
+                            color = if (isKernelSupported) emeraldColor else AmberWarn,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
@@ -3021,6 +3069,12 @@ private fun UnmountPartitionConfirmDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+    val crimsonBg = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+    val crimsonBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+    val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
@@ -3031,7 +3085,7 @@ private fun UnmountPartitionConfirmDialog(
                 Icon(
                     imageVector = Icons.Default.Eject,
                     contentDescription = null,
-                    tint = NeonCrimson,
+                    tint = crimsonColor,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -3108,13 +3162,13 @@ private fun UnmountPartitionConfirmDialog(
                                     modifier = Modifier
                                         .size(24.dp)
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(NeonCrimson.copy(alpha = 0.15f))
+                                        .background(crimsonBg)
                                 ) {
                                     Text(
                                         text = "P${partition.partitionNumber.takeIf { it > 0 } ?: 1}",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = NeonCrimson
+                                        color = crimsonColor
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -3136,7 +3190,7 @@ private fun UnmountPartitionConfirmDialog(
                                     text = partition.fsType.uppercase(),
                                     fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberEmerald,
+                                    color = emeraldColor,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
@@ -3151,7 +3205,7 @@ private fun UnmountPartitionConfirmDialog(
                                 text = partition.mountPoint ?: stringResource(R.string.storage_status_unmounted_badge),
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace,
-                                color = if (partition.isTargetMount) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (partition.isTargetMount) emeraldColor else MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
                             if (partition.sizeBytes > 0L) {
@@ -3170,8 +3224,8 @@ private fun UnmountPartitionConfirmDialog(
                 if (partition.isTargetMount) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = NeonCrimson.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.45f)),
+                        color = crimsonBg,
+                        border = BorderStroke(1.dp, crimsonBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -3181,14 +3235,14 @@ private fun UnmountPartitionConfirmDialog(
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = NeonCrimson,
+                                tint = crimsonColor,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = stringResource(R.string.storage_unmount_confirm_warning_game),
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
-                                color = NeonCrimson,
+                                color = crimsonColor,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -3199,7 +3253,7 @@ private fun UnmountPartitionConfirmDialog(
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson, contentColor = Color.White),
+                colors = ButtonDefaults.buttonColors(containerColor = crimsonColor, contentColor = Color.White),
                 shape = RoundedCornerShape(10.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                 modifier = Modifier.height(36.dp)
@@ -3236,6 +3290,11 @@ private fun EjectDiskConfirmDialog(
     val mountedPartitions = disk.partitions.filter { it.isMounted }
     val hasActiveGameMounts = mountedPartitions.any { it.isTargetMount }
 
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val crimsonColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+    val crimsonBg = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+    val crimsonBorder = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface,
@@ -3246,7 +3305,7 @@ private fun EjectDiskConfirmDialog(
                 Icon(
                     imageVector = Icons.Default.Eject,
                     contentDescription = null,
-                    tint = NeonCrimson,
+                    tint = crimsonColor,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -3326,12 +3385,12 @@ private fun EjectDiskConfirmDialog(
                                 text = disk.devicePath,
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace,
-                                color = ElectricCyan
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 text = "${mountedPartitions.size} partisi terpasang",
                                 fontSize = 10.sp,
-                                color = NeonCrimson,
+                                color = crimsonColor,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -3342,8 +3401,8 @@ private fun EjectDiskConfirmDialog(
                 if (hasActiveGameMounts) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = NeonCrimson.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.45f)),
+                        color = crimsonBg,
+                        border = BorderStroke(1.dp, crimsonBorder),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -3353,14 +3412,14 @@ private fun EjectDiskConfirmDialog(
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = NeonCrimson,
+                                tint = crimsonColor,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = stringResource(R.string.storage_unmount_confirm_warning_game),
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
-                                color = NeonCrimson,
+                                color = crimsonColor,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -3371,7 +3430,7 @@ private fun EjectDiskConfirmDialog(
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
+                colors = ButtonDefaults.buttonColors(containerColor = crimsonColor, contentColor = Color.White),
                 shape = RoundedCornerShape(10.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                 modifier = Modifier.height(36.dp)
@@ -3417,7 +3476,7 @@ private fun EditPartitionLabelDialog(
                 Icon(
                     Icons.AutoMirrored.Filled.Label,
                     contentDescription = null,
-                    tint = ElectricCyan,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))

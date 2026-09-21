@@ -66,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -78,13 +79,10 @@ import app.mountx.data.model.DiskHardwareDetails
 import app.mountx.data.model.DiskIoConfig
 import app.mountx.data.model.IoPreset
 import app.mountx.data.model.SdCardDiskInfo
-import androidx.compose.foundation.isSystemInDarkTheme
 import app.mountx.ui.theme.BadgeMountedBgDark
 import app.mountx.ui.theme.BadgeMountedBgLight
 import app.mountx.ui.theme.BadgeMountedTextDark
 import app.mountx.ui.theme.BadgeMountedTextLight
-import app.mountx.ui.theme.CyberEmerald
-import app.mountx.ui.theme.ElectricCyan
 import app.mountx.ui.theme.OutlinedNeutralBgDark
 import app.mountx.ui.theme.OutlinedNeutralBgLight
 import app.mountx.ui.theme.OutlinedNeutralBorderDark
@@ -219,6 +217,9 @@ private fun DiskToolsHeader(
     onBack: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val boltColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -234,12 +235,12 @@ private fun DiskToolsHeader(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(CircleShape)
-                        .background(ElectricCyan.copy(alpha = 0.15f))
+                        .background(boltColor.copy(alpha = if (isDark) 0.15f else 0.10f))
                 ) {
                     Icon(
                         imageVector = Icons.Default.Bolt,
                         contentDescription = null,
-                        tint = ElectricCyan,
+                        tint = boltColor,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -319,6 +320,11 @@ private fun DiskToolsHubView(
     hardwareDetails: DiskHardwareDetails?,
     onNavigate: (DiskToolsPage) -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val boosterColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+    val maintColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+    val benchColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -330,8 +336,8 @@ private fun DiskToolsHubView(
         val currentSched = ioConfig?.scheduler ?: "none"
         CyberMenuTile(
             icon = Icons.Default.Speed,
-            iconTint = ElectricCyan,
-            iconBg = ElectricCyan.copy(alpha = 0.15f),
+            iconTint = boosterColor,
+            iconBg = boosterColor.copy(alpha = if (isDark) 0.15f else 0.10f),
             title = stringResource(R.string.storage_io_booster_title),
             subtitle = "$currentRa KB • $currentSched",
             onClick = { onNavigate(DiskToolsPage.IO_BOOSTER) }
@@ -340,8 +346,8 @@ private fun DiskToolsHubView(
         // 2. Flash Maintenance Tile
         CyberMenuTile(
             icon = Icons.Default.CleaningServices,
-            iconTint = CyberEmerald,
-            iconBg = CyberEmerald.copy(alpha = 0.15f),
+            iconTint = maintColor,
+            iconBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight,
             title = stringResource(R.string.storage_flash_maint_title),
             subtitle = stringResource(R.string.storage_flash_maintenance_desc),
             onClick = { onNavigate(DiskToolsPage.MAINTENANCE) }
@@ -355,8 +361,8 @@ private fun DiskToolsHubView(
         }
         CyberMenuTile(
             icon = Icons.Default.PlayArrow,
-            iconTint = Color(0xFF38BDF8),
-            iconBg = Color(0xFF38BDF8).copy(alpha = 0.15f),
+            iconTint = benchColor,
+            iconBg = benchColor.copy(alpha = if (isDark) 0.15f else 0.10f),
             title = stringResource(R.string.storage_benchmark_title),
             subtitle = benchSubtitle,
             onClick = { onNavigate(DiskToolsPage.BENCHMARK) }
@@ -367,7 +373,6 @@ private fun DiskToolsHubView(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
         Spacer(modifier = Modifier.height(4.dp))
 
-        val isDark = isSystemInDarkTheme()
         Text(
             text = stringResource(R.string.storage_hardware_info_title).uppercase(),
             style = MaterialTheme.typography.labelSmall.copy(
@@ -520,7 +525,10 @@ private fun DiskIoBoosterSubPage(
     onApplyCustomConfig: (DiskIoConfig) -> Unit
 ) {
     val currentConfig = ioConfig ?: DiskIoConfig()
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val activePresetColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+    val raColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+    val schedColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
     var selectedReadAhead by remember(ioConfig) { mutableIntStateOf(currentConfig.readAheadKb) }
     var selectedScheduler by remember(ioConfig) { mutableStateOf(currentConfig.scheduler) }
     var isPersistent by remember(ioConfig) { mutableStateOf(currentConfig.isBootPersistent) }
@@ -571,11 +579,11 @@ private fun DiskIoBoosterSubPage(
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(
                         1.dp,
-                        if (isActive) ElectricCyan else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                        if (isActive) activePresetColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
                     ),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (isActive) ElectricCyan.copy(alpha = 0.15f) else Color.Transparent,
-                        contentColor = if (isActive) ElectricCyan else MaterialTheme.colorScheme.onSurface
+                        containerColor = if (isActive) activePresetColor.copy(alpha = if (isDark) 0.2f else 0.12f) else Color.Transparent,
+                        contentColor = if (isActive) activePresetColor else MaterialTheme.colorScheme.onSurface
                     ),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     modifier = Modifier
@@ -612,12 +620,12 @@ private fun DiskIoBoosterSubPage(
                     label = { Text("${kb}K", fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                     shape = RoundedCornerShape(8.dp),
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = ElectricCyan.copy(alpha = 0.2f),
-                        selectedLabelColor = ElectricCyan
+                        selectedContainerColor = raColor.copy(alpha = if (isDark) 0.2f else 0.12f),
+                        selectedLabelColor = raColor
                     ),
                     border = BorderStroke(
                         1.dp,
-                        if (isSelected) ElectricCyan else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                        if (isSelected) raColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                     ),
                     modifier = Modifier
                         .weight(1f)
@@ -650,12 +658,12 @@ private fun DiskIoBoosterSubPage(
                     label = { Text(sched, fontSize = 10.5.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                     shape = RoundedCornerShape(8.dp),
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = CyberEmerald.copy(alpha = 0.2f),
-                        selectedLabelColor = CyberEmerald
+                        selectedContainerColor = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight,
+                        selectedLabelColor = schedColor
                     ),
                     border = BorderStroke(
                         1.dp,
-                        if (isSelected) CyberEmerald else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                        if (isSelected) schedColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                     ),
                     modifier = Modifier.height(32.dp)
                 )
@@ -731,7 +739,7 @@ private fun DiskMaintenanceSubPage(
     onRunGlobalTrim: () -> Unit,
     onRunUrgentGc: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     Column(
         modifier = Modifier
@@ -842,7 +850,9 @@ private fun DiskBenchmarkSubPage(
     benchmarkResult: BenchmarkResult?,
     onRunBenchmark: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val speedColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+    val latencyColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
 
     Column(
         modifier = Modifier
@@ -885,7 +895,7 @@ private fun DiskBenchmarkSubPage(
                 Card(
                     shape = RoundedCornerShape(10.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.4f)),
+                    border = BorderStroke(1.dp, speedColor.copy(alpha = 0.4f)),
                     modifier = Modifier.weight(1f)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -899,7 +909,7 @@ private fun DiskBenchmarkSubPage(
                             text = "${benchmarkResult.sequentialReadMbPerSec} MB/s",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = ElectricCyan
+                            color = speedColor
                         )
                     }
                 }
@@ -907,7 +917,7 @@ private fun DiskBenchmarkSubPage(
                 Card(
                     shape = RoundedCornerShape(10.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                    border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.4f)),
+                    border = BorderStroke(1.dp, latencyColor.copy(alpha = 0.4f)),
                     modifier = Modifier.weight(1f)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -921,7 +931,7 @@ private fun DiskBenchmarkSubPage(
                             text = "${benchmarkResult.accessLatencyMs} ms",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyberEmerald
+                            color = latencyColor
                         )
                     }
                 }

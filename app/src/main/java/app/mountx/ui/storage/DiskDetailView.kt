@@ -78,7 +78,6 @@ import app.mountx.data.model.FilesystemType
 import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
-import androidx.compose.foundation.isSystemInDarkTheme
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.ConfirmDialog
 import app.mountx.ui.components.SectionHeader
@@ -86,9 +85,6 @@ import app.mountx.ui.theme.BadgeMountedBgDark
 import app.mountx.ui.theme.BadgeMountedBgLight
 import app.mountx.ui.theme.BadgeMountedTextDark
 import app.mountx.ui.theme.BadgeMountedTextLight
-import app.mountx.ui.theme.CyberEmerald
-import app.mountx.ui.theme.ElectricCyan
-import app.mountx.ui.theme.NeonCrimson
 import app.mountx.ui.theme.OutlinedNeutralBgDark
 import app.mountx.ui.theme.OutlinedNeutralBgLight
 import app.mountx.ui.theme.OutlinedNeutralBorderDark
@@ -271,7 +267,7 @@ private fun DiskHardwareOverviewCard(
 ) {
     val diskTypeIcon = if (disk.diskType == DiskType.MICRO_SD) Icons.Default.SdStorage else Icons.Default.Usb
     val hasUnmounted = disk.partitions.any { !it.isMounted }
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -531,7 +527,7 @@ private fun DiskMiniVisualMapCard(
     partitions: List<PartitionInfo>,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val totalBytes = partitions.sumOf { it.sizeBytes }.coerceAtLeast(1L)
 
     Card(
@@ -661,7 +657,7 @@ private fun DiskPartitionCard(
     onOpenTools: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val mountedColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
     val mountedBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
     val borderMounted = if (isDark) BadgeMountedTextDark.copy(alpha = 0.5f) else BadgeMountedTextLight.copy(alpha = 0.4f)

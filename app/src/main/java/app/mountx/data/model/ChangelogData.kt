@@ -56,12 +56,50 @@ data class ChangelogRelease(
 
 object ChangelogHistory {
     val releases: List<ChangelogRelease> = listOf(
-        // ── v2.2.43 (Latest) ──
+        // ── v2.2.44 (Latest) ──
+        ChangelogRelease(
+            version = "v2.2.44",
+            releaseDate = "22 Sep 2026",
+            summary = "Light Theme Aesthetic Overhaul: Zero Neon Glare, Elimination of Pitch-Black Containers in MT-Manager File Picker & Harmonized Storage Badges",
+            isLatest = true,
+            categories = listOf(
+                CategoryChange(
+                    category = ChangeCategoryType.UI_UX,
+                    features = listOf(
+                        FeatureChange(
+                            title = "MT-Manager Style File Picker Light Mode Harmonization",
+                            details = listOf(
+                                "Eliminated pitch-black container leaks in RootDirectoryPickerSheet bottom action bar, path container box, and quick access chips when Light theme is active.",
+                                "Switched color resolution from isSystemInDarkTheme() to dynamic surface luminance detection, resolving inverted theme bugs when device system night mode is active.",
+                                "Refactored High Risk directory warning dialog to use semantic Warm Crimson tokens."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Storage Screen & Sub-sections Neon Glare Elimination",
+                            details = listOf(
+                                "Replaced harsh neon cyan, emerald, and crimson colors across StorageScreen with soft, high-contrast semantic tokens (BadgeMounted, WarmCrimson, SlateCyanLight).",
+                                "Refactored interactive partition slider bar and draggable handle pill to render Soft Warm Sandstone surfaces and subtle slate borders in Light mode.",
+                                "Updated partition cards, recommended badges, filesystem selector chips, and destructive repartition warnings to gracefully adapt to both Light and Dark themes."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Universal Operation Overlay & Sheet Polishing",
+                            details = listOf(
+                                "Overhauled OperationProgressOverlay progress indicators, technical log views, and action buttons for accessible contrast and zero black container bleed.",
+                                "Refactored DiskToolsBottomSheet, PartitionToolsBottomSheet, DiskDetailView, and BackupRestoreScreen to eliminate harsh neon badges and ensure cohesive Sandstone aesthetics."
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+
+        // ── v2.2.43 ──
         ChangelogRelease(
             version = "v2.2.43",
             releaseDate = "22 Sep 2026",
             summary = "Soft Warm Sandstone & Earthy Mineral Visual Refactor, Tight Emblem Scaling, Compact Typography & Responsive Changelog Modal",
-            isLatest = true,
+            isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.UI_UX,
