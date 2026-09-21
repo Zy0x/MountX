@@ -1,4 +1,4 @@
-package app.mountx.ui.games
+package app.mountx.ui.apps
 
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -142,6 +142,61 @@ fun GameDetailView(
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
+) = AppDetailView(
+    game = game,
+    breakdown = breakdown,
+    isMoving = isMoving,
+    moveMessage = moveMessage,
+    onClearMoveMessage = onClearMoveMessage,
+    isDraftMode = isDraftMode,
+    candidateDirectories = candidateDirectories,
+    isLoadingCandidates = isLoadingCandidates,
+    availableDisks = availableDisks,
+    internalFreeBytes = internalFreeBytes,
+    isScanningDisks = isScanningDisks,
+    onQuickMountDisk = onQuickMountDisk,
+    onQuickMountPartition = onQuickMountPartition,
+    onRefreshDisks = onRefreshDisks,
+    sdBase = sdBase,
+    onDismiss = onDismiss,
+    onMoveMountPoints = onMoveMountPoints,
+    onSaveGame = onSaveGame,
+    onUpdateMountPoints = onUpdateMountPoints,
+    onDelete = onDelete,
+    onMount = onMount,
+    onUnmount = onUnmount,
+    onToggleMount = onToggleMount,
+    onDeleteCategoryData = onDeleteCategoryData,
+    modifier = modifier
+)
+
+@Composable
+fun AppDetailView(
+    game: GameEntry,
+    breakdown: AppStorageBreakdown? = null,
+    isMoving: Boolean = false,
+    moveMessage: String? = null,
+    onClearMoveMessage: () -> Unit = {},
+    isDraftMode: Boolean = false,
+    candidateDirectories: List<CandidateDirectory> = emptyList(),
+    isLoadingCandidates: Boolean = false,
+    availableDisks: List<SdCardDiskInfo> = emptyList(),
+    internalFreeBytes: Long = 0L,
+    isScanningDisks: Boolean = false,
+    onQuickMountDisk: (SdCardDiskInfo) -> Unit = {},
+    onQuickMountPartition: (PartitionInfo) -> Unit = {},
+    onRefreshDisks: () -> Unit = {},
+    sdBase: String = "/data/sdext2",
+    onDismiss: () -> Unit,
+    onMoveMountPoints: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit = { _, _, _, _, _ -> },
+    onSaveGame: ((GameEntry) -> Unit)? = null,
+    onUpdateMountPoints: ((List<MountPointConfig>) -> Unit)? = null,
+    onDelete: () -> Unit = {},
+    onMount: (() -> Unit)? = null,
+    onUnmount: (() -> Unit)? = null,
+    onToggleMount: (() -> Unit)? = null,
+    onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
+    modifier: Modifier = Modifier
 ) {
     val pagerState = rememberPagerState(pageCount = { 2 })
     val coroutineScope = rememberCoroutineScope()
@@ -236,6 +291,7 @@ fun GameDetailView(
                     }
                 },
                 actions = {
+                    // System App Details Button
                     IconButton(
                         onClick = {
                             try {
@@ -262,6 +318,31 @@ fun GameDetailView(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = stringResource(R.string.game_detail_system_info),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Delete App Button
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .background(
+                                    color = NeonCrimson.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = stringResource(R.string.dialog_delete_app_title),
+                                tint = NeonCrimson,
                                 modifier = Modifier.size(15.dp)
                             )
                         }

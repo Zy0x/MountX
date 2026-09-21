@@ -1,15 +1,15 @@
 package app.mountx.ui.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.SdStorage
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.SdStorage
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.ui.graphics.vector.ImageVector
 import app.mountx.R
@@ -26,11 +26,11 @@ sealed class Screen(
         icon = Icons.Filled.Home,
         unselectedIcon = Icons.Outlined.Home
     )
-    object Games : Screen(
-        route = "games",
-        titleRes = R.string.nav_games,
-        icon = Icons.Filled.SportsEsports,
-        unselectedIcon = Icons.Outlined.SportsEsports
+    object Apps : Screen(
+        route = "apps",
+        titleRes = R.string.nav_apps,
+        icon = Icons.Filled.Apps,
+        unselectedIcon = Icons.Outlined.Apps
     )
     object Storage : Screen(
         route = "storage",
@@ -58,6 +58,7 @@ sealed class Screen(
     )
 
     companion object {
-        val bottomNavItems = listOf(Dashboard, Games, Storage, Logs, Settings)
+        val Games = Apps
+        val bottomNavItems = listOf(Dashboard, Apps, Storage, Logs, Settings)
     }
 }

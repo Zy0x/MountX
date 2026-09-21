@@ -1,9 +1,6 @@
 package app.mountx.data.model
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
-
-/** Mount mode determines how game data is bind-mounted from MicroSD */
+/** Mount mode determines how app data is bind-mounted from MicroSD */
 enum class MountMode {
     /** Mount the entire Android/data/PKG directory */
     PKG,
@@ -11,7 +8,7 @@ enum class MountMode {
     FILES
 }
 
-/** Current mount status of a game */
+/** Current mount status of an app */
 enum class MountStatus {
     MOUNTED,
     UNMOUNTED,
@@ -22,24 +19,7 @@ enum class MountStatus {
 }
 
 /**
- * Represents a game entry managed by MountX.
- * Stored in Room database.
- */
-@Entity(tableName = "games")
-data class GameEntry(
-    @PrimaryKey val packageName: String,
-    val displayName: String = "",
-    val mode: MountMode = MountMode.PKG,
-    val mountStatus: MountStatus = MountStatus.UNKNOWN,
-    val dataSizeBytes: Long = 0L,
-    val isEnabled: Boolean = true,
-    val addedAt: Long = System.currentTimeMillis(),
-    val mountPoints: List<MountPointConfig> = emptyList(),
-    val preferredDiskUuid: String? = null
-)
-
-/**
- * Metadata for installed application item shown in AddGameSheet.
+ * Metadata for installed application item shown in AddAppSheet.
  * Marked @Immutable for zero-recomposition 120 FPS LazyColumn scrolling.
  */
 @androidx.compose.runtime.Immutable

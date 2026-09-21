@@ -406,11 +406,38 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.37 (Latest) ──
+                        // ── v2.2.38 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.38",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "Sistem Teardown Penghapusan Aplikasi, Migrasi Bersih UI/Database 'Apps', Hub Portabilitas Konfigurasi Terpusat di Pengaturan & Proteksi Mutex Root"
+                        ) {
+                            GithubSectionHeader("🗑️ Sistem Teardown Penghapusan Aplikasi & Dialog Pilihan Aksi")
+                            GithubMarkdownBullet("• **Penghapusan Bersih dari Daftar Apps**: Pengguna kini dapat menghapus aplikasi dari daftar manajemen melalui tombol Hapus (Ikon Tong Sampah Merah) di header Detail Aplikasi maupun via gestur tekan-lama (*long-press*) pada kartu aplikasi di daftar utama.")
+                            GithubMarkdownBullet("• **Dialog Konfirmasi Dua Aksi**: Menghadirkan pilihan 'Pulihkan ke Internal & Hapus' (memindahkan data fisik kembali ke memori internal sebelum dihapus dari daftar) atau 'Lepas Kaitan Saja & Hapus' (melepas kaitan bind-mount dan mempertahankan data di MicroSD).")
+                            GithubMarkdownBullet("• **Teardown Process Guard & Folder Sanitization**: Menjalankan `am force-stop` otomatis sebelum unmount untuk mencegah file lock, melepas unmount paksa di seluruh namespace (`umount -f -l`), serta otomatis meregenerasi direktori internal kosong yang valid agar aplikasi tidak force close jika dibuka setelah dilepas.")
+
+                            GithubSectionHeader("🔄 Refaktor Bersih UI & Skema Database ('Games' ➔ 'Apps')")
+                            GithubMarkdownBullet("• **Evolusi Terminologi Menyeluruh**: Mengganti penamaan dan ikon halaman 'Games' menjadi 'Apps' pada bilah navigasi bawah, header layar, dan dialog operasional untuk mencerminkan kapabilitas MountX dalam mengaitkan seluruh jenis aplikasi Android.")
+                            GithubMarkdownBullet("• **Migrasi Database Room v4 (MIGRATION_3_4)**: Tabel Room lama `games` dimigrasikan secara aman ke tabel baru `apps` dengan `AppEntry`, `AppDao`, dan `AppRepository` terpadu.")
+
+                            GithubSectionHeader("📦 Hub Portabilitas Konfigurasi Terpusat di Pengaturan")
+                            GithubMarkdownBullet("• **Relokasi ke Pengaturan**: Memindahkan hub ekspor dan impor konfigurasi dari tab Penyimpanan ke layar Pengaturan agar navigasi lebih teratur dan intuitif.")
+                            GithubMarkdownBullet("• **Snapshot JSON Lengkap v2**: Format pencadangan mencakup seluruh preferensi sistem (jalur MicroSD, UUID disk, mode otomatis boot, preferensi konflik) dan seluruh daftar konfigurasi titik kait aplikasi.")
+                            GithubMarkdownBullet("• **Modal Validasi Impor Cerdas**: Pengguna dapat memilih antara 'Gabungkan (Merge)' untuk mempertahankan data yang ada atau 'Ganti Penuh (Replace All)' untuk pemulihan bersih.")
+
+                            GithubSectionHeader("⚡ Stabilitas Root & Pencegahan Race Condition")
+                            GithubMarkdownBullet("• **RootExecutionMutex**: Menyelaraskan seluruh mutasi mount, unmount, dan modifikasi modul root untuk meniadakan race condition antar-proses.")
+                            GithubMarkdownBullet("• **Hard Timeout 15 Detik**: Setiap perintah shell root dilengkapi batas waktu keras 15 detik dengan pembersihan subprocess dan stream otomatis.")
+                            GithubMarkdownBullet("• **Observasi Penyimpanan Event-Driven**: Mengeliminasi loop polling latar belakang `while (true)` demi pendinginan CPU dan efisiensi baterai maksimal.")
+                        }
+
+                        // ── v2.2.37 ──
                         GithubReleaseCard(
                             version = "v2.2.37",
                             releaseDate = "21 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "5 Pilar Keandalan Arsitektur, Multi-User Isolation, Pre-Flight Unmount Hard-Lock & Scoping Media Presisi"
                         ) {
                             GithubSectionHeader("👥 Isolasi Namespace Multi-User Universal & Ekstraksi Jalur Dinamis")

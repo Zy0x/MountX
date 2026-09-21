@@ -46,8 +46,8 @@ import app.mountx.ui.about.AboutViewModel
 import app.mountx.ui.components.ModernNavigationBar
 import app.mountx.ui.dashboard.DashboardScreen
 import app.mountx.ui.dashboard.DashboardViewModel
-import app.mountx.ui.games.GamesScreen
-import app.mountx.ui.games.GamesViewModel
+import app.mountx.ui.apps.AppsScreen
+import app.mountx.ui.apps.AppsViewModel
 import app.mountx.ui.logs.LogsScreen
 import app.mountx.ui.logs.LogsViewModel
 import app.mountx.ui.settings.SettingsScreen
@@ -270,22 +270,22 @@ fun MainTabsScreen(
             when (page) {
                 0 -> {
                     val dashboardVm = hiltViewModel<DashboardViewModel>()
-                    val gamesVm = hiltViewModel<GamesViewModel>()
+                    val appsVm = hiltViewModel<AppsViewModel>()
                     DashboardScreen(
                         viewModel = dashboardVm,
                         onNavigateToGames = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
                         onNavigateToStorage = { coroutineScope.launch { pagerState.animateScrollToPage(2) } },
                         onNavigateToLogs = { coroutineScope.launch { pagerState.animateScrollToPage(3) } },
                         onOpenGameDetail = { game ->
-                            gamesVm.selectGameForDetail(game)
+                            appsVm.selectGameForDetail(game)
                             coroutineScope.launch { pagerState.animateScrollToPage(1) }
                         }
                     )
                 }
                 1 -> {
-                    val gamesVm = hiltViewModel<GamesViewModel>()
-                    GamesScreen(
-                        viewModel = gamesVm,
+                    val appsVm = hiltViewModel<AppsViewModel>()
+                    AppsScreen(
+                        viewModel = appsVm,
                         isBottomBarVisible = isBottomBarVisible,
                         onPagerScrollEnabled = { isOuterPagerScrollEnabled = it },
                         onBottomBarVisibilityChanged = { isVisible -> isGamesSubScreenActive = !isVisible }

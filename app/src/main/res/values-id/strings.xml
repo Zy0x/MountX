@@ -5,9 +5,24 @@
 
     <string name="nav_dashboard">Beranda</string>
     <string name="nav_games">Game</string>
+    <string name="nav_apps">Aplikasi</string>
     <string name="nav_storage">Penyimpanan</string>
     <string name="nav_logs">Log</string>
     <string name="nav_settings">Pengaturan</string>
+
+    <!-- Portabilitas Konfigurasi (Settings) -->
+    <string name="settings_portability_title">Portabilitas Konfigurasi</string>
+    <string name="settings_portability_desc">Ekspor snapshot seluruh kaitan aplikasi dan preferensi ke berkas cadangan JSON, atau pulihkan di perangkat lain.</string>
+    <string name="settings_portability_export">Ekspor Snapshot</string>
+    <string name="settings_portability_import">Impor Snapshot</string>
+    <string name="settings_portability_import_dialog_title">Impor Konfigurasi Snapshot</string>
+    <string name="settings_portability_import_dialog_msg">Berkas cadangan berisi %1$d aplikasi dari perangkat %2$s.</string>
+    <string name="settings_portability_merge_btn">Gabungkan (Pertahankan yang Ada)</string>
+    <string name="settings_portability_merge_desc">Tambahkan aplikasi baru dari cadangan tanpa mengubah aplikasi yang sudah ada.</string>
+    <string name="settings_portability_replace_btn">Ganti Penuh (Pulihkan Bersih)</string>
+    <string name="settings_portability_replace_desc">Reset aplikasi dan pengaturan saat ini, lalu pulihkan utuh dari cadangan.</string>
+    <string name="settings_portability_export_success">Konfigurasi snapshot berhasil diekspor.</string>
+    <string name="settings_portability_import_success">Snapshot berhasil dipulihkan (%1$d aplikasi diimpor).</string>
 
     <string name="dashboard_title">MountX</string>
     <string name="dashboard_subtitle">Manajer Penyimpanan Game</string>
@@ -18,7 +33,7 @@
     <string name="dashboard_module_install_guide">Pasang modul Magisk MountX untuk mengaktifkan semua fitur.</string>
     <string name="dashboard_no_root">Akses Root Tidak Diberikan</string>
     <string name="dashboard_no_root_desc">Aplikasi ini memerlukan akses root. Silakan berikan izin root.</string>
-    <string name="dashboard_mounted_games">Game Ter-mount</string>
+    <string name="dashboard_mounted_games">Aplikasi Ter-mount</string>
     <string name="dashboard_mount_all">Mount Semua</string>
     <string name="dashboard_unmount_all">Unmount Semua</string>
     <string name="dashboard_refresh">Segarkan</string>
@@ -58,16 +73,17 @@
     <string name="root_none">Tanpa Root</string>
     <string name="root_unknown">Tidak Diketahui</string>
 
-    <string name="games_title">Game</string>
-    <string name="games_add">Tambah Game</string>
-    <string name="games_empty_title">Belum Ada Game</string>
-    <string name="games_empty_desc">Ketuk tombol + untuk menambahkan game.</string>
-    <string name="games_empty_cta">+ Tambah Game Pertama Anda</string>
-    <string name="games_search">Cari game…</string>
+    <string name="games_title">Aplikasi</string>
+    <string name="apps_title">Aplikasi</string>
+    <string name="games_add">Tambah Aplikasi</string>
+    <string name="games_empty_title">Belum Ada Aplikasi</string>
+    <string name="games_empty_desc">Ketuk tombol + untuk menambahkan aplikasi.</string>
+    <string name="games_empty_cta">+ Tambah Aplikasi Pertama Anda</string>
+    <string name="games_search">Cari aplikasi…</string>
     <string name="games_delete">Hapus</string>
     <string name="games_delete_confirm">Hapus %1$s dari daftar?</string>
-    <string name="games_delete_confirm_desc">Data game di MicroSD tidak akan terpengaruh.</string>
-    <string name="games_deleted_undo">Game dihapus. Batalkan?</string>
+    <string name="games_delete_confirm_desc">Data aplikasi di MicroSD tidak akan terpengaruh.</string>
+    <string name="games_deleted_undo">Aplikasi dihapus. Batalkan?</string>
     <string name="games_undo">Batalkan</string>
     <string name="games_mount">Mount</string>
     <string name="games_unmount">Unmount</string>

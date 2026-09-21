@@ -42,13 +42,13 @@ object DatabaseModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
         .fallbackToDestructiveMigration()
         .build()
     }
 
     @Provides
-    fun provideGameDao(database: AppDatabase): GameDao {
-        return database.gameDao()
+    fun provideAppDao(database: AppDatabase): app.mountx.data.db.AppDao {
+        return database.appDao()
     }
 }

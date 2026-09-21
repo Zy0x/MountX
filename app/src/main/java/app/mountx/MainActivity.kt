@@ -35,7 +35,7 @@ import app.mountx.data.model.RootSolution
 import app.mountx.data.model.StorageInfo
 import app.mountx.ui.components.ModernNavigationBar
 import app.mountx.ui.dashboard.DashboardContent
-import app.mountx.ui.games.GamesContent
+import app.mountx.ui.apps.GamesContent
 import app.mountx.ui.navigation.NavGraph
 import app.mountx.ui.navigation.Screen
 import app.mountx.ui.storage.StorageContent
@@ -252,8 +252,8 @@ fun FullAppPreviewLayout(
                         onToggleGameMount = {}
                     )
                 }
-                Screen.Games.route -> {
-                    app.mountx.ui.games.GamesContent(
+                Screen.Apps.route -> {
+                    app.mountx.ui.apps.GamesContent(
                         games = listOf(
                             app.mountx.data.model.GameEntry(
                                 packageName = "com.kurogame.wutheringwaves.global",
@@ -271,8 +271,8 @@ fun FullAppPreviewLayout(
                             )
                         ),
                         searchQuery = "",
-                        filterStatus = app.mountx.ui.games.GameFilterStatus.ALL,
-                        sortOption = app.mountx.ui.games.GameSortOption.SIZE_DESC,
+                        filterStatus = app.mountx.ui.apps.GameFilterStatus.ALL,
+                        sortOption = app.mountx.ui.apps.GameSortOption.SIZE_DESC,
                         onSearchQueryChange = {},
                         onFilterStatusChange = {},
                         onSortOptionChange = {},

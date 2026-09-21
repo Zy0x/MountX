@@ -1,4 +1,4 @@
-package app.mountx.ui.games
+package app.mountx.ui.apps
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import app.mountx.data.catalog.DiscoveredGame
 import app.mountx.data.model.ConflictStrategy
 import app.mountx.data.model.AppStorageBreakdown
+import app.mountx.data.model.AppEntry
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.InstalledAppInfo
 import app.mountx.data.model.MigrationTarget
@@ -13,7 +14,7 @@ import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.OperationProgress
-import app.mountx.data.repository.GameRepository
+import app.mountx.data.repository.AppRepository
 import app.mountx.data.repository.StorageRepository
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,16 +41,24 @@ enum class GameSortOption {
 }
 
 @HiltViewModel
-class GamesViewModel @Inject constructor(
-    private val gameRepository: GameRepository,
+class AppsViewModel @Inject constructor(
+    private val appRepository: AppRepository,
     private val storageRepository: StorageRepository,
     private val appPreferences: AppPreferences,
     private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    val games: StateFlow<List<GameEntry>> = gameRepository.observeGames()
+    private val gameRepository get() = appRepository
+
+    val apps: StateFlow<List<AppEntry>> = appRepository.observeApps()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val games: StateFlow<List<AppEntry>> get() = apps
+
+    fun removeApp(packageName: String, restoreToInternal: Boolean) {
+        removeGameWithOption(context, packageName, restoreToInternal)
+    }
 
     private val _discoveredGames = MutableStateFlow<List<DiscoveredGame>>(emptyList())
     val discoveredGames: StateFlow<List<DiscoveredGame>> = _discoveredGames.asStateFlow()
@@ -621,3 +630,8 @@ class GamesViewModel @Inject constructor(
         }
     }
 }
+
+typealias GamesViewModel = AppsViewModel
+typealias AppFilterStatus = GameFilterStatus
+typealias AppSortOption = GameSortOption
+

@@ -1,4 +1,4 @@
-package app.mountx.ui.games
+package app.mountx.ui.apps
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing

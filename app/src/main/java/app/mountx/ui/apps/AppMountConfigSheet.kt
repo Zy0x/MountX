@@ -1,4 +1,4 @@
-package app.mountx.ui.games
+package app.mountx.ui.apps
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background

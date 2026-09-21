@@ -34,6 +34,20 @@ class AppPreferences @Inject constructor(
         val KEY_BASELINE_READ_AHEAD_KB = androidx.datastore.preferences.core.intPreferencesKey("baseline_read_ahead_kb")
         val KEY_BASELINE_SCHEDULER = stringPreferencesKey("baseline_scheduler")
         val KEY_BASELINE_CAPTURED = booleanPreferencesKey("baseline_captured")
+        val KEY_CONFLICT_STRATEGY = stringPreferencesKey("conflict_strategy")
+    }
+
+    val conflictStrategy: Flow<app.mountx.data.model.ConflictStrategy> = context.dataStore.data.map { prefs ->
+        val name = prefs[KEY_CONFLICT_STRATEGY] ?: app.mountx.data.model.ConflictStrategy.MERGE.name
+        try {
+            app.mountx.data.model.ConflictStrategy.valueOf(name)
+        } catch (_: Exception) {
+            app.mountx.data.model.ConflictStrategy.MERGE
+        }
+    }
+
+    suspend fun setConflictStrategy(strategy: app.mountx.data.model.ConflictStrategy) {
+        context.dataStore.edit { it[KEY_CONFLICT_STRATEGY] = strategy.name }
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->

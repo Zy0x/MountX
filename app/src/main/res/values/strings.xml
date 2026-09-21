@@ -7,9 +7,24 @@
     <!-- Bottom Navigation -->
     <string name="nav_dashboard">Dashboard</string>
     <string name="nav_games">Games</string>
+    <string name="nav_apps">Apps</string>
     <string name="nav_storage">Storage</string>
     <string name="nav_logs">Logs</string>
     <string name="nav_settings">Settings</string>
+
+    <!-- Configuration Portability Hub (Settings) -->
+    <string name="settings_portability_title">Configuration Portability</string>
+    <string name="settings_portability_desc">Export your full app mounts and preferences snapshot to a JSON backup, or restore on another device.</string>
+    <string name="settings_portability_export">Export Snapshot</string>
+    <string name="settings_portability_import">Import Snapshot</string>
+    <string name="settings_portability_import_dialog_title">Import Snapshot Configuration</string>
+    <string name="settings_portability_import_dialog_msg">Backup file contains %1$d app(s) from %2$s.</string>
+    <string name="settings_portability_merge_btn">Merge (Keep Existing)</string>
+    <string name="settings_portability_merge_desc">Add new apps from backup without touching existing configured apps.</string>
+    <string name="settings_portability_replace_btn">Replace All (Clean Restore)</string>
+    <string name="settings_portability_replace_desc">Reset current apps and preferences, and restore cleanly from the snapshot.</string>
+    <string name="settings_portability_export_success">Snapshot configuration exported successfully.</string>
+    <string name="settings_portability_import_success">Snapshot restored successfully (%1$d apps imported).</string>
 
     <!-- Dashboard -->
     <string name="dashboard_title">MountX</string>
@@ -21,7 +36,7 @@
     <string name="dashboard_module_install_guide">Install the MountX Magisk module to enable all features.</string>
     <string name="dashboard_no_root">Root Access Not Granted</string>
     <string name="dashboard_no_root_desc">This app requires root access to function. Please grant root permission.</string>
-    <string name="dashboard_mounted_games">Mounted Games</string>
+    <string name="dashboard_mounted_games">Mounted Apps</string>
     <string name="dashboard_mount_all">Mount All</string>
     <string name="dashboard_unmount_all">Unmount All</string>
     <string name="dashboard_refresh">Refresh</string>
@@ -62,17 +77,18 @@
     <string name="root_none">No Root</string>
     <string name="root_unknown">Unknown</string>
 
-    <!-- Games Screen -->
-    <string name="games_title">Games</string>
-    <string name="games_add">Add Game</string>
-    <string name="games_empty_title">No Games Added</string>
-    <string name="games_empty_desc">Tap the + button to add a game to manage.</string>
-    <string name="games_empty_cta">+ Add Your First Game</string>
-    <string name="games_search">Search games…</string>
+    <!-- Apps Screen -->
+    <string name="games_title">Apps</string>
+    <string name="apps_title">Apps</string>
+    <string name="games_add">Add App</string>
+    <string name="games_empty_title">No Apps Added</string>
+    <string name="games_empty_desc">Tap the + button to add an app to manage.</string>
+    <string name="games_empty_cta">+ Add Your First App</string>
+    <string name="games_search">Search apps…</string>
     <string name="games_delete">Delete</string>
     <string name="games_delete_confirm">Remove %1$s from the list?</string>
-    <string name="games_delete_confirm_desc">The game data on MicroSD will not be affected.</string>
-    <string name="games_deleted_undo">Game removed. Undo?</string>
+    <string name="games_delete_confirm_desc">The app data on MicroSD will not be affected.</string>
+    <string name="games_deleted_undo">App removed. Undo?</string>
     <string name="games_undo">Undo</string>
     <string name="games_mount">Mount</string>
     <string name="games_unmount">Unmount</string>

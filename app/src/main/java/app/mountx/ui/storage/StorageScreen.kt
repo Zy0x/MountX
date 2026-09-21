@@ -169,18 +169,6 @@ fun StorageScreen(
         viewModel.loadSupportedFilesystems()
     }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri: Uri? ->
-        uri?.let { viewModel.exportConfig(it) }
-    }
-
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.importConfig(it) }
-    }
-
     if (selectedDiskForDetail != null) {
         DiskDetailView(
             disk = selectedDiskForDetail!!,
@@ -217,8 +205,6 @@ fun StorageScreen(
             onRefreshPartitions = { viewModel.detectPartitions(force = true) },
             onOpenDiskDetail = { disk -> viewModel.openDiskDetail(disk) },
             onClearStatusMessage = { viewModel.clearStatusMessage() },
-            onExportConfig = { exportLauncher.launch("mountx_config.json") },
-            onImportConfig = { importLauncher.launch(arrayOf("application/json")) },
             onNavigateToBackup = onNavigateToBackup,
             onNavigateToGames = onNavigateToGames,
             modifier = modifier
@@ -691,13 +677,6 @@ fun StorageContent(
                                     onOpenDiskDetail = onOpenDiskDetail
                                 )
                             }
-                            item {
-                                QuickBackupCard(
-                                    onExport = onExportConfig,
-                                    onImport = onImportConfig,
-                                    onOpenFullBackup = onNavigateToBackup
-                                )
-                            }
                         }
 
                         LazyColumn(
@@ -717,21 +696,13 @@ fun StorageContent(
                         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 28.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                    item {
-                        MultiDiskVisualMapSection(
-                            internalStorage = internalStorage,
-                            disks = effectiveDisks,
-                            onOpenDiskDetail = onOpenDiskDetail
-                        )
-                    }
-
-                    item {
-                        QuickBackupCard(
-                            onExport = onExportConfig,
-                            onImport = onImportConfig,
-                            onOpenFullBackup = onNavigateToBackup
-                        )
-                    }
+                        item {
+                            MultiDiskVisualMapSection(
+                                internalStorage = internalStorage,
+                                disks = effectiveDisks,
+                                onOpenDiskDetail = onOpenDiskDetail
+                            )
+                        }
                     }
                 }
             }
@@ -3526,124 +3497,6 @@ private fun EditPartitionLabelDialog(
             }
         }
     )
-}
-
-// ── Configuration Portability Hub (SAF) ──────────────────────
-@Composable
-private fun QuickBackupCard(
-    onExport: () -> Unit,
-    onImport: () -> Unit,
-    onOpenFullBackup: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        SectionHeader(title = stringResource(R.string.storage_backup_quick))
-
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = stringResource(R.string.backup_config_desc),
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Dual Portability Tiles
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    FilledTonalButton(
-                        onClick = onExport,
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp)
-                    ) {
-                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            stringResource(R.string.backup_config_export),
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = onImport,
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp)
-                    ) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            stringResource(R.string.backup_config_import),
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Link to Full Backup & Restore Screen
-                Surface(
-                    onClick = onOpenFullBackup,
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .sizeIn(minHeight = 44.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Column {
-                            Text(
-                                text = stringResource(R.string.backup_title),
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = stringResource(R.string.backup_data_desc),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Icon(
-                            Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
 // ── Previews ────────────────────────────────────────────────

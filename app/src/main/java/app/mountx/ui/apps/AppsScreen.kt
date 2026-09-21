@@ -1,4 +1,4 @@
-package app.mountx.ui.games
+package app.mountx.ui.apps
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -7,8 +7,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.platform.LocalDensity
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountx.R
 import app.mountx.data.catalog.DiscoveredGame
+import app.mountx.data.model.AppEntry
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.InstalledAppInfo
 import app.mountx.data.model.MountMode
@@ -64,7 +67,23 @@ import app.mountx.util.FormatUtils
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamesScreen(
-    viewModel: GamesViewModel,
+    viewModel: AppsViewModel,
+    modifier: Modifier = Modifier,
+    isBottomBarVisible: Boolean = true,
+    onPagerScrollEnabled: (Boolean) -> Unit = {},
+    onBottomBarVisibilityChanged: (Boolean) -> Unit = {}
+) = AppsScreen(
+    viewModel = viewModel,
+    modifier = modifier,
+    isBottomBarVisible = isBottomBarVisible,
+    onPagerScrollEnabled = onPagerScrollEnabled,
+    onBottomBarVisibilityChanged = onBottomBarVisibilityChanged
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppsScreen(
+    viewModel: AppsViewModel,
     modifier: Modifier = Modifier,
     isBottomBarVisible: Boolean = true,
     onPagerScrollEnabled: (Boolean) -> Unit = {},
@@ -256,6 +275,9 @@ fun GamesScreen(
             onSelectGameForDetail = { game ->
                 selectedGameForDetail = game
             },
+            onSelectGameForDelete = { game ->
+                gameToDelete = game
+            },
             modifier = modifier
         )
     }
@@ -335,6 +357,7 @@ fun GamesContent(
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onSelectGameForDetail: (GameEntry) -> Unit,
+    onSelectGameForDelete: (GameEntry) -> Unit = {},
     modifier: Modifier = Modifier,
     discoveredGames: List<DiscoveredGame> = emptyList(),
     onImportAllDiscovered: () -> Unit = {},
@@ -759,7 +782,8 @@ fun GamesContent(
                                         onToggleMount(game)
                                     }
                                 },
-                                onCardClick = { onSelectGameForDetail(game) }
+                                onCardClick = { onSelectGameForDetail(game) },
+                                onCardLongClick = { onSelectGameForDelete(game) }
                             )
                         }
                         item {
@@ -799,11 +823,27 @@ fun GamesContent(
 }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ModernAppCard(
+    game: GameEntry,
+    onToggleMount: () -> Unit,
+    onCardClick: () -> Unit,
+    onCardLongClick: (() -> Unit)? = null
+) = ModernGameCard(
+    game = game,
+    onToggleMount = onToggleMount,
+    onCardClick = onCardClick,
+    onCardLongClick = onCardLongClick
+)
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ModernGameCard(
     game: GameEntry,
     onToggleMount: () -> Unit,
-    onCardClick: () -> Unit
+    onCardClick: () -> Unit,
+    onCardLongClick: (() -> Unit)? = null
 ) {
     val isMounted = game.mountStatus == MountStatus.MOUNTED
 
@@ -817,7 +857,10 @@ fun ModernGameCard(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onCardClick)
+            .combinedClickable(
+                onClick = onCardClick,
+                onLongClick = onCardLongClick
+            )
     ) {
         Row(
             modifier = Modifier

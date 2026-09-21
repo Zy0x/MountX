@@ -21,35 +21,56 @@ import app.mountx.root.StorageManager
 import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.merge
+import app.mountx.service.SystemSyncMonitor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class StorageRepository @Inject constructor(
-    private val storageManager: StorageManager
+    private val storageManager: StorageManager,
+    private val systemSyncMonitor: SystemSyncMonitor
 ) {
 
+    private val _manualRefresh = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    fun refreshStorage() {
+        _manualRefresh.tryEmit(Unit)
+    }
+
     /**
-     * Poll storage info every 10 seconds.
+     * Event-driven storage info observation.
+     * Fires immediately, on broadcast media changes, and throttled to >= 3000ms.
+     * Stops automatically when UI unsubscribes (lifecycle aware), allowing deep sleep.
      */
     fun observeStorageInfo(mountPoint: String = "/data/sdext2"): Flow<StorageInfo?> = flow {
-        while (true) {
+        emit(storageManager.getStorageInfo(mountPoint))
+        merge(
+            _manualRefresh,
+            systemSyncMonitor.events
+        ).collect {
+            delay(3000L) // 3000ms debouncing to keep CPU cool
             emit(storageManager.getStorageInfo(mountPoint))
-            delay(10000L)
         }
     }.flowOn(Dispatchers.IO)
 
     /**
-     * Poll internal device storage (/data) every 10 seconds.
+     * Event-driven internal device storage (/data) observation.
      */
     fun observeInternalStorage(): Flow<InternalStorageInfo?> = flow {
-        while (true) {
+        emit(storageManager.getInternalStorageInfo())
+        merge(
+            _manualRefresh,
+            systemSyncMonitor.events
+        ).collect {
+            delay(3000L) // 3000ms debouncing to keep CPU cool
             emit(storageManager.getInternalStorageInfo())
-            delay(10000L)
         }
     }.flowOn(Dispatchers.IO)
 
@@ -204,7 +225,9 @@ class StorageRepository @Inject constructor(
         conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        storageManager.moveMountPoints(packageName, mountPoints, direction, sdBase, conflictStrategy, onProgress)
+        app.mountx.root.RootShell.rootExecutionMutex.withLock {
+            storageManager.moveMountPoints(packageName, mountPoints, direction, sdBase, conflictStrategy, onProgress)
+        }
     }
 
     suspend fun moveGameData(
@@ -215,7 +238,9 @@ class StorageRepository @Inject constructor(
         conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        storageManager.moveGameData(packageName, direction, target, sdBase, conflictStrategy, onProgress)
+        app.mountx.root.RootShell.rootExecutionMutex.withLock {
+            storageManager.moveGameData(packageName, direction, target, sdBase, conflictStrategy, onProgress)
+        }
     }
 
     suspend fun getDiskIoConfig(diskName: String): Result<DiskIoConfig> = withContext(Dispatchers.IO) {
