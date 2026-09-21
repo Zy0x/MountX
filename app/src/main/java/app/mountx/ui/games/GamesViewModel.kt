@@ -246,17 +246,35 @@ class GamesViewModel @Inject constructor(
     }
 
     fun toggleMount(game: GameEntry) {
+        if (game.mountStatus == app.mountx.data.model.MountStatus.MOUNTED) {
+            unmountGame(game)
+        } else {
+            mountGame(game)
+        }
+    }
+
+    fun mountGame(game: GameEntry) {
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
-            if (game.mountStatus == app.mountx.data.model.MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game) { prog ->
-                    _operationProgress.value = prog
-                }
-            } else {
-                gameRepository.mountGame(game, sdBase) { prog ->
-                    _operationProgress.value = prog
-                }
+            gameRepository.mountGame(game, sdBase) { prog ->
+                _operationProgress.value = prog
             }
+            val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
+            _storageBreakdownMap.update { it + (game.packageName to breakdown) }
+            if (_activePackageName.value == game.packageName) {
+                _detailedStorage.value = breakdown
+                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            }
+            refresh()
+        }
+    }
+
+    fun unmountGame(game: GameEntry) {
+        viewModelScope.launch {
+            gameRepository.unmountGame(game) { prog ->
+                _operationProgress.value = prog
+            }
+            val sdBase = appPreferences.sdBasePath.first()
             val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
             _storageBreakdownMap.update { it + (game.packageName to breakdown) }
             if (_activePackageName.value == game.packageName) {
@@ -331,6 +349,7 @@ class GamesViewModel @Inject constructor(
             try {
                 val sdBase = appPreferences.sdBasePath.first()
                 loadAvailableDisks()
+                gameRepository.refreshMountStatuses()
                 games.value.forEach { g ->
                     gameRepository.calculateDataSize(g.packageName, sdBase)
                 }

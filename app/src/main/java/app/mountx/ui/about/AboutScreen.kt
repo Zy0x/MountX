@@ -406,11 +406,31 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.35 (Latest) ──
+                        // ── v2.2.36 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.36",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "Smart Migration Guardrail & Rekonsiliasi Ground Truth Mount"
+                        ) {
+                            GithubSectionHeader("🛡️ Anti-Occlusion Hazard Tanpa Ambang Batas Arbitrer")
+                            GithubMarkdownBullet("• **Proteksi Seluruh Ukuran Data Internal**: Menghapus batasan lama (> 5MB). Berapapun ukuran data internal pada aplikasi, sistem menolak bind-mount jika direktori MicroSD masih kosong/belum dibuat.")
+                            GithubMarkdownBullet("• **Pencegahan Silent Success**: Memastikan proses mount gagal secara terhormat dengan pengecekan jumlah titik kait aktif (`totalMountedTargets > 0`) agar tidak memicu status palsu.")
+
+                            GithubSectionHeader("⚡ Deteksi Otomatis Status Kebutuhan Migrasi (Need Migration)")
+                            GithubMarkdownBullet("• **Auto-Flagging Cerdas**: Saat game unmounted memiliki data di memori internal sementara MicroSD kosong, sistem secara otomatis menandainya sebagai `NEED_MIGRATION`.")
+                            GithubMarkdownBullet("• **Tombol Aksi Pintar di Detail Aplikasi**: Tombol aksi bawah pada Detail Game secara adaptif beralih menjadi `Pindahkan Data ke MicroSD` (berwarna amber) dan langsung memicu alur transfer migrasi alih-alih loop mount kosong.")
+
+                            GithubSectionHeader("🔄 Rekonsiliasi Ground Truth Linux Mounts")
+                            GithubMarkdownBullet("• **Penyelarasan GamesViewModel**: Sinkronisasi berkala dan refresh UI kini memanggil `refreshMountStatuses()` untuk memverifikasi kaitan nyata langsung dari kernel `/proc/mounts`.")
+                            GithubMarkdownBullet("• **Pemisahan Callback Mount & Unmount**: Memisahkan aksi `onMount` dan `onUnmount` di seluruh lapisan UI agar tidak terjadi pemanggilan terbalik saat status sedang bertransisi.")
+                        }
+
+                        // ── v2.2.35 ──
                         GithubReleaseCard(
                             version = "v2.2.35",
                             releaseDate = "21 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "11 Pilar Keamanan, Multi-User, Sinkronisasi Modul & Keandalan VFS Terpadu"
                         ) {
                             GithubSectionHeader("🛡️ Root Picker Guardrail & Keamanan Sistem")

@@ -137,6 +137,8 @@ fun GameDetailView(
     onSaveGame: ((GameEntry) -> Unit)? = null,
     onUpdateMountPoints: ((List<MountPointConfig>) -> Unit)? = null,
     onDelete: () -> Unit = {},
+    onMount: (() -> Unit)? = null,
+    onUnmount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
@@ -393,8 +395,11 @@ fun GameDetailView(
                             onUpdateMountPoints?.invoke(updatedPoints)
                             onMoveMountPoints(dir, pts, disk, partition, strategy)
                         },
+                        onMount = {
+                            onMount?.invoke() ?: onToggleMount?.invoke()
+                        },
                         onUnmount = {
-                            onToggleMount?.invoke()
+                            onUnmount?.invoke() ?: onToggleMount?.invoke()
                         },
                         onMountPointsChanged = { updated ->
                             currentMountPoints = updated
@@ -720,6 +725,7 @@ private fun StorageTabContent(
     sdBase: String = "/data/sdext2",
     packageInfo: android.content.pm.PackageInfo? = null,
     onMove: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit,
+    onMount: () -> Unit,
     onUnmount: () -> Unit,
     onMountPointsChanged: (List<MountPointConfig>) -> Unit,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
@@ -1325,7 +1331,8 @@ private fun StorageTabContent(
                     }
 
                     // Right: Alternating Mount / Unmount / Migrate button
-                    val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION
+                    val hasInternalData = safeBreakdown.ext1Bytes > 0L || game.dataSizeBytes > 0L
+                    val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION || (!isMounted && !isRealDataOnSd && hasInternalData)
                     val actionBorderColor = when {
                         isNeedMigration -> SunsetAmber.copy(alpha = 0.8f)
                         isMounted -> SunsetAmber.copy(alpha = 0.7f)
@@ -1339,12 +1346,11 @@ private fun StorageTabContent(
 
                     OutlinedButton(
                         onClick = {
-                            if (isNeedMigration) {
-                                showNeedMigrationDialog = true
-                            } else if (isMounted) {
-                                showUnmountConfirmDialog = true
-                            } else {
-                                onUnmount()
+                            when {
+                                isNeedMigration -> showNeedMigrationDialog = true
+                                isMounted -> showUnmountConfirmDialog = true
+                                isRealDataOnSd -> onMount()
+                                else -> showNeedMigrationDialog = true
                             }
                         },
                         shape = RoundedCornerShape(10.dp),

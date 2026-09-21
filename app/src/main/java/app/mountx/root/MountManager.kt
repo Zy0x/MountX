@@ -141,12 +141,12 @@ class MountManager {
             )
 
             // Guard against accidental data occlusion:
-            // Do not bind-mount an empty MicroSD directory (< 128KB) over a populated internal directory (> 5MB).
+            // Do not bind-mount an empty/missing MicroSD directory over a populated internal directory.
             var hasOcclusionRisk = false
             var occlusionInternalBytes = 0L
             var occlusionSdBytes = 0L
             for (mp in game.mountPoints) {
-                if (mp.enabled && (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.OBB_STORAGE)) {
+                if (mp.enabled && (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.OBB_STORAGE || mp.category == MountPointCategory.GAME_ASSETS || mp.category == MountPointCategory.CUSTOM)) {
                     val srcExists = RootShell.exists(mp.sourcePath)
                     val srcSizeKb = if (srcExists) {
                         val duRes = RootShell.exec("du -sk \"${mp.sourcePath}\" 2>/dev/null")
@@ -160,11 +160,12 @@ class MountManager {
                         duRes.output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
                     } else 0L
 
-                    if (srcSizeKb <= 128L && targetSizeKb > 5120L) {
+                    // Hazard: Target has data in internal storage, but source on MicroSD is empty (<= 128KB) or missing
+                    if (targetExists && !targetMounted && targetSizeKb > 0L && (!srcExists || srcSizeKb <= 128L)) {
                         hasOcclusionRisk = true
                         occlusionInternalBytes = targetSizeKb * 1024L
                         occlusionSdBytes = srcSizeKb * 1024L
-                        AppLogger.warn("MountManager", "Occlusion hazard for ${mp.id}: source has only ${srcSizeKb}KB while target has ${targetSizeKb}KB")
+                        AppLogger.warn("MountManager", "Occlusion hazard for ${mp.id}: source has only ${srcSizeKb}KB (exists=$srcExists) while internal target has ${targetSizeKb}KB")
                         break
                     }
                 }
@@ -194,6 +195,7 @@ class MountManager {
                 )
             )
 
+            var totalMountedTargets = 0
             if (game.mountPoints.isNotEmpty()) {
                 // ── UNIVERSAL SMART MULTI-TARGET ARRAY ──
                 for (mp in game.mountPoints) {
@@ -205,7 +207,7 @@ class MountManager {
                         continue
                     }
 
-                    when (mp.category) {
+                    val mounted = when (mp.category) {
                         MountPointCategory.EXTERNAL_DATA, MountPointCategory.OBB_STORAGE, MountPointCategory.GAME_ASSETS -> {
                             mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
                         }
@@ -218,25 +220,35 @@ class MountManager {
                             } else {
                                 RootShell.exec("rm -f \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
                             }
-                            mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = true)
-                            triggerMediaScan(mp.targetPath)
+                            val res = mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = true)
+                            if (res) triggerMediaScan(mp.targetPath)
+                            res
                         }
                         MountPointCategory.CACHE_SHADERS -> {
                             mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
                         }
                         MountPointCategory.CUSTOM -> {
-                            mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
-                            triggerMediaScan(mp.targetPath)
+                            val res = mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
+                            if (res) triggerMediaScan(mp.targetPath)
+                            res
                         }
                         MountPointCategory.PRIVATE_INTERNAL -> {
                             mountVirtualExt4Container(game.packageName, mp, sdBase, uid, gid)
+                            true
                         }
                         MountPointCategory.APP_PACKAGE -> {
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
-                            RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\"")
+                            val res = RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\"")
                             RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
+                            res.isSuccess
                         }
                     }
+                    if (mounted) {
+                        totalMountedTargets++
+                    }
+                }
+                if (totalMountedTargets == 0) {
+                    throw IllegalStateException("Tidak ada direktori MicroSD yang ditemukan untuk di-mount. Pastikan data game sudah dipindahkan ke MicroSD.")
                 }
             } else {
                 // ── LEGACY FALLBACK (Mode PKG or FILES) ──
@@ -340,10 +352,10 @@ class MountManager {
         gid: Int,
         namespaces: List<String>,
         isMedia: Boolean
-    ) {
+    ): Boolean {
         if (!RootShell.exists(mp.sourcePath)) {
             AppLogger.warn("MountManager", "Source path ${mp.sourcePath} does not exist on SD storage. Skipping mount to prevent hiding internal data.")
-            return
+            return false
         }
 
         RootShell.exec("chown -R $uid:$gid \"${mp.sourcePath}\" 2>/dev/null")
@@ -359,11 +371,16 @@ class MountManager {
             .removePrefix("/mnt/user/0/primary/")
             .removePrefix("/")
 
+        var anyMounted = false
         for (namespace in namespaces) {
             val nsTarget = "$namespace/$relPath"
             RootShell.exec("mkdir -p \"$nsTarget\" 2>/dev/null")
-            RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+            val mountRes = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+            if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
+                anyMounted = true
+            }
         }
+        return anyMounted
     }
 
     /**
