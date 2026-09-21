@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,7 +62,10 @@ import app.mountx.ui.components.NeedMigrationDialog
 import app.mountx.ui.theme.AuroraGradientBrush
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.ElectricIndigoLight
+import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.TerracottaRedLight
+import app.mountx.ui.theme.WarmAmberLight
 import app.mountx.util.FormatUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -406,6 +410,10 @@ fun GamesContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (games.isNotEmpty()) {
+                            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                            val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
+                            val errCrimson = if (isDark) NeonCrimson else TerracottaRedLight
+
                             // Mount All Action
                             IconButton(
                                 onClick = onMountAll,
@@ -416,7 +424,7 @@ fun GamesContent(
                                     modifier = Modifier
                                         .size(26.dp)
                                         .background(
-                                            color = if (unmountedCount > 0) CyberEmerald.copy(alpha = 0.12f)
+                                            color = if (unmountedCount > 0) activeEmerald.copy(alpha = 0.12f)
                                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                                             shape = RoundedCornerShape(6.dp)
                                         ),
@@ -425,7 +433,7 @@ fun GamesContent(
                                     Icon(
                                         imageVector = Icons.Default.PlayArrow,
                                         contentDescription = stringResource(R.string.games_batch_mount_all),
-                                        tint = if (unmountedCount > 0) CyberEmerald
+                                        tint = if (unmountedCount > 0) activeEmerald
                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
                                         modifier = Modifier.size(14.dp)
                                     )
@@ -442,7 +450,7 @@ fun GamesContent(
                                     modifier = Modifier
                                         .size(26.dp)
                                         .background(
-                                            color = if (mountedCount > 0) NeonCrimson.copy(alpha = 0.12f)
+                                            color = if (mountedCount > 0) errCrimson.copy(alpha = 0.12f)
                                                     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                                             shape = RoundedCornerShape(6.dp)
                                         ),
@@ -451,7 +459,7 @@ fun GamesContent(
                                     Icon(
                                         imageVector = Icons.Default.Stop,
                                         contentDescription = stringResource(R.string.games_batch_unmount_all),
-                                        tint = if (mountedCount > 0) NeonCrimson
+                                        tint = if (mountedCount > 0) errCrimson
                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
                                         modifier = Modifier.size(14.dp)
                                     )
@@ -848,13 +856,17 @@ fun ModernGameCard(
     onCardLongClick: (() -> Unit)? = null
 ) {
     val isMounted = game.mountStatus == MountStatus.MOUNTED
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
+    val warnAmber = if (isDark) Color(0xFFFF9800) else WarmAmberLight
+    val errCrimson = if (isDark) NeonCrimson else TerracottaRedLight
 
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (isMounted) CyberEmerald.copy(alpha = 0.45f)
+            if (isMounted) activeEmerald.copy(alpha = 0.45f)
             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         ),
         modifier = Modifier
@@ -928,17 +940,16 @@ fun ModernGameCard(
 
                     // Need Migration badge inline
                     if (game.mountStatus == MountStatus.NEED_MIGRATION) {
-                        val amberColor = Color(0xFFFF9800)
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = amberColor.copy(alpha = 0.16f),
-                            border = BorderStroke(0.8.dp, amberColor.copy(alpha = 0.5f))
+                            color = warnAmber.copy(alpha = 0.16f),
+                            border = BorderStroke(0.8.dp, warnAmber.copy(alpha = 0.5f))
                         ) {
                             Text(
                                 text = stringResource(R.string.status_need_migration),
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
                                 fontWeight = FontWeight.Bold,
-                                color = amberColor,
+                                color = warnAmber,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
@@ -960,14 +971,14 @@ fun ModernGameCard(
                     } else if (game.mountStatus == MountStatus.ERROR) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = NeonCrimson.copy(alpha = 0.14f),
-                            border = BorderStroke(0.8.dp, NeonCrimson.copy(alpha = 0.4f))
+                            color = errCrimson.copy(alpha = 0.14f),
+                            border = BorderStroke(0.8.dp, errCrimson.copy(alpha = 0.4f))
                         ) {
                             Text(
                                 text = stringResource(R.string.status_error),
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
                                 fontWeight = FontWeight.Bold,
-                                color = NeonCrimson,
+                                color = errCrimson,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
@@ -982,13 +993,13 @@ fun ModernGameCard(
                 onCheckedChange = { onToggleMount() },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.White,
-                    checkedTrackColor = CyberEmerald,
-                    checkedBorderColor = CyberEmerald,
+                    checkedTrackColor = activeEmerald,
+                    checkedBorderColor = activeEmerald,
                     uncheckedThumbColor = MaterialTheme.colorScheme.outline,
                     uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
                     uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant,
                     disabledCheckedThumbColor = Color.White.copy(alpha = 0.5f),
-                    disabledCheckedTrackColor = CyberEmerald.copy(alpha = 0.3f),
+                    disabledCheckedTrackColor = activeEmerald.copy(alpha = 0.3f),
                     disabledUncheckedThumbColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
                     disabledUncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                 ),
@@ -1006,10 +1017,13 @@ private fun DiscoveredGamesBanner(
     onRestructure: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
+
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, activeEmerald.copy(alpha = 0.5f)),
         modifier = modifier
             .fillMaxWidth()
             .padding(bottom = 10.dp)
@@ -1025,13 +1039,13 @@ private fun DiscoveredGamesBanner(
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .background(CyberEmerald.copy(alpha = 0.15f), CircleShape),
+                        .background(activeEmerald.copy(alpha = 0.15f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.SportsEsports,
                         contentDescription = null,
-                        tint = CyberEmerald,
+                        tint = activeEmerald,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -1124,7 +1138,10 @@ private fun DiscoveredGamesBanner(
                     onClick = onImportAll,
                     modifier = Modifier.height(30.dp),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = activeEmerald,
+                        contentColor = if (isDark) Color.Black else Color.White
+                    ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                 ) {
                     Text(
@@ -1132,7 +1149,7 @@ private fun DiscoveredGamesBanner(
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.Black
+                            color = if (isDark) Color.Black else Color.White
                         )
                     )
                 }

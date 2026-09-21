@@ -122,12 +122,18 @@ import app.mountx.ui.theme.ElectricCyanBright
 import app.mountx.ui.theme.ElectricIndigo
 import app.mountx.ui.theme.EmeraldActive
 import app.mountx.ui.theme.EmeraldGlow
+import app.mountx.ui.theme.ForestGreenContainerLight
+import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.HyperCyan
 import app.mountx.ui.theme.HyperCyanBright
 import app.mountx.ui.theme.MountXTheme
 import app.mountx.ui.theme.NeonCrimson
 import app.mountx.ui.theme.StorageGradientBrush
 import app.mountx.ui.theme.SunsetAmber
+import app.mountx.ui.theme.TerracottaRedContainerLight
+import app.mountx.ui.theme.TerracottaRedLight
+import app.mountx.ui.theme.WarmAmberContainerLight
+import app.mountx.ui.theme.WarmAmberLight
 import app.mountx.util.FormatUtils
 
 @Composable
@@ -444,13 +450,15 @@ private fun SleekCompactHeader(
 
                 // Right: Modern Status Pill (Clean without redundant refresh button)
                 val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
-                val activeEmeraldGlow = if (isDark) EmeraldGlow else EmeraldActive.copy(alpha = 0.12f)
+                val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
+                val activeEmeraldGlow = if (isDark) EmeraldGlow else ForestGreenContainerLight
+                val noneCrimson = if (isDark) NeonCrimson else TerracottaRedLight
+                val noneCrimsonGlow = if (isDark) CrimsonGlow else TerracottaRedContainerLight
                 val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
                     RootSolution.MAGISK -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_magisk))
                     RootSolution.KERNELSU -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_kernelsu))
                     RootSolution.APATCH -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_apatch))
-                    RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
+                    RootSolution.NONE -> Triple(noneCrimson, noneCrimsonGlow, stringResource(R.string.root_none))
                 }
 
                 Surface(
@@ -494,14 +502,20 @@ private fun ContextualAlertBanner(
     status: AppStatus,
     onInstallModuleClick: () -> Unit = {}
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val errColor = if (isDark) NeonCrimson else TerracottaRedLight
+    val errContainer = if (isDark) CrimsonGlow else TerracottaRedContainerLight
+    val warnColor = if (isDark) SunsetAmber else WarmAmberLight
+    val warnContainer = if (isDark) AmberGlow else WarmAmberContainerLight
+
     when {
         status.rootSolution == RootSolution.NONE -> {
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = CrimsonGlow
+                    containerColor = errContainer
                 ),
-                border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.5f)),
+                border = BorderStroke(1.dp, errColor.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -510,14 +524,14 @@ private fun ContextualAlertBanner(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = NeonCrimson.copy(alpha = 0.18f),
+                        color = errColor.copy(alpha = 0.18f),
                         modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = NeonCrimson,
+                                tint = errColor,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -530,7 +544,7 @@ private fun ContextualAlertBanner(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = NeonCrimson
+                            color = errColor
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
@@ -547,9 +561,9 @@ private fun ContextualAlertBanner(
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = AmberGlow
+                    containerColor = warnContainer
                 ),
-                border = BorderStroke(1.dp, SunsetAmber.copy(alpha = 0.5f)),
+                border = BorderStroke(1.dp, warnColor.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
@@ -558,14 +572,14 @@ private fun ContextualAlertBanner(
                     ) {
                         Surface(
                             shape = CircleShape,
-                            color = SunsetAmber.copy(alpha = 0.18f),
+                            color = warnColor.copy(alpha = 0.18f),
                             modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Warning,
                                     contentDescription = null,
-                                    tint = SunsetAmber,
+                                    tint = warnColor,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -578,7 +592,7 @@ private fun ContextualAlertBanner(
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = SunsetAmber
+                                color = warnColor
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -595,7 +609,7 @@ private fun ContextualAlertBanner(
                     ) {
                         Button(
                             onClick = onInstallModuleClick,
-                            colors = ButtonDefaults.buttonColors(containerColor = SunsetAmber),
+                            colors = ButtonDefaults.buttonColors(containerColor = warnColor),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                             modifier = Modifier.height(32.dp)
@@ -603,17 +617,15 @@ private fun ContextualAlertBanner(
                             Icon(
                                 imageVector = Icons.Default.Extension,
                                 contentDescription = null,
-                                tint = Color.Black,
+                                tint = Color.White,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = stringResource(R.string.dashboard_btn_install_module),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = Color.Black
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         }
                     }
@@ -643,7 +655,9 @@ private fun SmartMasterControlCard(
     val haptic = LocalHapticFeedback.current
     val allMounted = totalCount > 0 && mountedCount == totalCount
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+    val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
+    val warnAmber = if (isDark) SunsetAmber else WarmAmberLight
+    val errCrimson = if (isDark) NeonCrimson else TerracottaRedLight
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -805,8 +819,8 @@ private fun SmartMasterControlCard(
                                         ),
                                         color = when {
                                             isMounted -> activeEmerald
-                                            game.mountStatus == MountStatus.NEED_MIGRATION -> SunsetAmber
-                                            game.mountStatus == MountStatus.ERROR -> NeonCrimson
+                                            game.mountStatus == MountStatus.NEED_MIGRATION -> warnAmber
+                                            game.mountStatus == MountStatus.ERROR -> errCrimson
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                                         },
                                         maxLines = 1,
@@ -818,20 +832,20 @@ private fun SmartMasterControlCard(
                                 val isError = game.mountStatus == MountStatus.ERROR
                                 val pillColor = when {
                                     isMounted -> activeEmerald
-                                    isNeedMigration -> SunsetAmber
-                                    isError -> NeonCrimson
+                                    isNeedMigration -> warnAmber
+                                    isError -> errCrimson
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                                 val pillBg = when {
                                     isMounted -> activeEmerald.copy(alpha = 0.15f)
-                                    isNeedMigration -> SunsetAmber.copy(alpha = 0.16f)
-                                    isError -> NeonCrimson.copy(alpha = 0.16f)
+                                    isNeedMigration -> warnAmber.copy(alpha = 0.16f)
+                                    isError -> errCrimson.copy(alpha = 0.16f)
                                     else -> MaterialTheme.colorScheme.surfaceVariant
                                 }
                                 val pillBorder = when {
                                     isMounted -> activeEmerald.copy(alpha = 0.4f)
-                                    isNeedMigration -> SunsetAmber.copy(alpha = 0.5f)
-                                    isError -> NeonCrimson.copy(alpha = 0.5f)
+                                    isNeedMigration -> warnAmber.copy(alpha = 0.5f)
+                                    isError -> errCrimson.copy(alpha = 0.5f)
                                     else -> MaterialTheme.colorScheme.outlineVariant
                                 }
                                 val pillText = when {
@@ -1121,9 +1135,10 @@ private fun DashboardTelemetryCard(
                     DiskType.MICRO_SD -> Icons.Default.SdCard
                     else -> Icons.Default.SdStorage
                 }
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                 val diskIconTint = when (disk.diskType) {
-                    DiskType.USB_OTG -> SunsetAmber
-                    else -> EmeraldActive
+                    DiskType.USB_OTG -> if (isDark) SunsetAmber else WarmAmberLight
+                    else -> if (isDark) CyberEmerald else ForestGreenLight
                 }
                 DiskTelemetryRow(
                     icon = diskIcon,
@@ -1261,7 +1276,7 @@ private fun DashboardMetricsRow(
         .filter { it.mountStatus == MountStatus.MOUNTED }
         .sumOf { it.dataSizeBytes }
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+    val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1376,7 +1391,7 @@ private fun NamespaceVerificationBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+    val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
 
     val infiniteTransition = rememberInfiniteTransition(label = "sheet_spin_anim")
     val spinAngle by infiniteTransition.animateFloat(

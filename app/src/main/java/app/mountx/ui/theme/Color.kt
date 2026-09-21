@@ -1,7 +1,11 @@
 package app.mountx.ui.theme
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 
 // ── 1. Vibrant Brand & Accent Palette (Cyber Aurora) ──
 val ElectricIndigo = Color(0xFF6366F1)
@@ -12,7 +16,7 @@ val HyperCyan = Color(0xFF06B6D4)
 val HyperCyanBright = Color(0xFF00E5FF)
 val HyperCyanDark = Color(0xFF0891B2)
 
-// ── 2. Dynamic Status Accents ──
+// ── 2. Dynamic Status Accents (Cyber Neon for Dark Mode) ──
 val CyberEmerald = Color(0xFF00F59B)
 val EmeraldActive = Color(0xFF10B981)
 val EmeraldGlow = Color(0x2600F59B)
@@ -24,6 +28,73 @@ val AmberGlow = Color(0x26F59E0B)
 val NeonCrimson = Color(0xFFFF3B5C)
 val CoralError = Color(0xFFEF4444)
 val CrimsonGlow = Color(0x26FF3B5C)
+
+// ── 2b. Calibrated Earthy Accents (Light Theme — Anti-Glare, WCAG AAA) ──
+val ForestGreenLight = Color(0xFF15803D)
+val ForestGreenContainerLight = Color(0xFFE8F5E9)
+val ForestGreenGlowLight = Color(0x1F15803D)
+
+val WarmAmberLight = Color(0xFFB45309)
+val WarmAmberContainerLight = Color(0xFFFEF3C7)
+val WarmAmberGlowLight = Color(0x1FB45309)
+
+val SlateCyanLight = Color(0xFF0369A1)
+val SlateCyanContainerLight = Color(0xFFE0F2FE)
+val SlateCyanGlowLight = Color(0x1F0369A1)
+
+val TerracottaRedLight = Color(0xFFB91C1C)
+val TerracottaRedContainerLight = Color(0xFFFEE2E2)
+val TerracottaRedGlowLight = Color(0x1FB91C1C)
+
+// Adaptive Semantic Helpers (Ensures zero glare in Light Mode while keeping Cyber Neon in Dark Mode)
+fun adaptiveEmerald(isDark: Boolean): Color = if (isDark) CyberEmerald else ForestGreenLight
+fun adaptiveEmeraldContainer(isDark: Boolean): Color = if (isDark) CyberEmerald.copy(alpha = 0.15f) else ForestGreenLight.copy(alpha = 0.12f)
+fun adaptiveEmeraldGlow(isDark: Boolean): Color = if (isDark) EmeraldGlow else ForestGreenGlowLight
+
+fun adaptiveAmber(isDark: Boolean): Color = if (isDark) SunsetAmber else WarmAmberLight
+fun adaptiveAmberContainer(isDark: Boolean): Color = if (isDark) SunsetAmber.copy(alpha = 0.15f) else WarmAmberLight.copy(alpha = 0.12f)
+
+fun adaptiveCyan(isDark: Boolean): Color = if (isDark) HyperCyan else SlateCyanLight
+fun adaptiveCyanContainer(isDark: Boolean): Color = if (isDark) HyperCyan.copy(alpha = 0.15f) else SlateCyanLight.copy(alpha = 0.12f)
+
+fun adaptiveCrimson(isDark: Boolean): Color = if (isDark) NeonCrimson else TerracottaRedLight
+fun adaptiveCrimsonContainer(isDark: Boolean): Color = if (isDark) NeonCrimson.copy(alpha = 0.15f) else TerracottaRedLight.copy(alpha = 0.12f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveEmerald(): Color = adaptiveEmerald(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveEmeraldContainer(): Color = adaptiveEmeraldContainer(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveEmeraldGlow(): Color = adaptiveEmeraldGlow(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveAmber(): Color = adaptiveAmber(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveAmberContainer(): Color = adaptiveAmberContainer(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveCyan(): Color = adaptiveCyan(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveCyanContainer(): Color = adaptiveCyanContainer(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveCrimson(): Color = adaptiveCrimson(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+
+@Composable
+@ReadOnlyComposable
+fun adaptiveCrimsonContainer(): Color = adaptiveCrimsonContainer(MaterialTheme.colorScheme.surface.luminance() < 0.5f)
 
 // ── 3. Cyber Midnight System (Dark Theme) ──
 val CyberBgDark = Color(0xFF090D16)

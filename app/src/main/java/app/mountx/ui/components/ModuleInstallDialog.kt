@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -28,7 +29,11 @@ import app.mountx.data.model.RootSolution
 import app.mountx.root.ModuleManager
 import app.mountx.root.RootDetector
 import app.mountx.ui.theme.CyberEmerald
+import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.SunsetAmber
+import app.mountx.ui.theme.WarmAmberLight
+import app.mountx.ui.theme.adaptiveAmber
+import app.mountx.ui.theme.adaptiveEmerald
 import kotlinx.coroutines.launch
 
 @Composable
@@ -75,14 +80,14 @@ fun ModuleInstallDialog(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = SunsetAmber.copy(alpha = 0.15f),
+                        color = adaptiveAmber().copy(alpha = 0.15f),
                         modifier = Modifier.size(42.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Extension,
                                 contentDescription = null,
-                                tint = SunsetAmber,
+                                tint = adaptiveAmber(),
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -132,17 +137,19 @@ fun ModuleInstallDialog(
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = if (rootSolution != RootSolution.NONE) CyberEmerald else SunsetAmber
+                            color = if (rootSolution != RootSolution.NONE) adaptiveEmerald() else adaptiveAmber()
                         )
                     }
                 }
 
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
                 // Action 1: Re-enable / Direct Install via Root
                 OutlinedCard(
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, adaptiveEmerald().copy(alpha = 0.5f)),
                     colors = CardDefaults.outlinedCardColors(
-                        containerColor = CyberEmerald.copy(alpha = 0.06f)
+                        containerColor = adaptiveEmerald().copy(alpha = 0.06f)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -154,7 +161,7 @@ fun ModuleInstallDialog(
                             Icon(
                                 imageVector = if (isDisabledState) Icons.Default.CheckCircle else Icons.Default.Bolt,
                                 contentDescription = null,
-                                tint = CyberEmerald,
+                                tint = adaptiveEmerald(),
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
@@ -166,7 +173,7 @@ fun ModuleInstallDialog(
                                     fontSize = 13.5.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = CyberEmerald
+                                color = adaptiveEmerald()
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))
@@ -203,7 +210,10 @@ fun ModuleInstallDialog(
                             },
                             enabled = !isOperating,
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberEmerald),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = adaptiveEmerald(),
+                                contentColor = if (isDark) Color.Black else Color.White
+                            ),
                             modifier = Modifier.fillMaxWidth().height(36.dp)
                         ) {
                             if (isOperating) {

@@ -44,6 +44,8 @@ import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.SectionHeader
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.EmeraldActive
+import app.mountx.ui.theme.ForestGreenLight
+import app.mountx.ui.theme.adaptiveEmerald
 import androidx.compose.ui.graphics.Brush
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -185,7 +187,7 @@ fun AboutScreen(
                                 Text(
                                     text = stringResource(R.string.about_up_to_date),
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                    color = if (isDark) CyberEmerald else EmeraldActive
+                                    color = if (isDark) CyberEmerald else ForestGreenLight
                                 )
                             }
                         } else if (checkError != null) {
@@ -401,11 +403,28 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.39 (Latest) ──
+                        // ── v2.2.40 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.40",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "Kalibrasi Nada Warna Deep Earthy Light Mode & Perbaikan Artefak Garis Ikon Emblem"
+                        ) {
+                            GithubSectionHeader("🎨 Kalibrasi Palet Deep Earthy Anti-Silau (Light Mode)")
+                            GithubMarkdownBullet("• **Penurunan Kecerahan Warna Terang**: Menurunkan kontras dan saturasi warna neon terang (hijau, kuning/amber, cyan, merah) pada Light Mode menjadi nada alami yang sejuk di mata: Forest Green (`#15803D`), Warm Amber (`#B45309`), Slate Cyan (`#0369A1`), dan Terracotta Red (`#B91C1C`).")
+                            GithubMarkdownBullet("• **Wadah Lembut (Soft Container Tints)**: Seluruh pill status, kartu telemetry, peringatan alert, dan indikator kapasitas disk kini menggunakan aksen transparan lembut (8–12% opacity) yang harmonis dengan latar Sandstone.")
+                            GithubMarkdownBullet("• **Preservasi Cyber Neon Dark Mode**: Seluruh palet Cyber Emerald, Sunset Amber, Hyper Cyan, dan Neon Crimson tetap aktif sepenuhnya saat perangkat beralih ke Dark Mode.")
+
+                            GithubSectionHeader("✨ Presisi Visual Ikon Emblem MountX")
+                            GithubMarkdownBullet("• **Eliminasi Artefak Garis Tepi**: Menghilangkan residu garis tepi 4px di sisi kiri dan kanan kanvas ikon `ic_mountx_emblem.png` serta merestrukturisasi kanvas 1254x1254 agar terpusat sempurna tanpa distorsi garis.")
+                            GithubMarkdownBullet("• **Penyempurnaan Switch & Komponen Antarmuka**: Track switch aktif kini menggunakan `ForestGreenLight` yang nyaman dipandang mata tanpa pantulan menyilaukan pada thumb putih.")
+                        }
+
+                        // ── v2.2.39 ──
                         GithubReleaseCard(
                             version = "v2.2.39",
                             releaseDate = "21 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "Penyempurnaan Tema Sandstone Light Mode, Audit Sistem & Integrasi Modal Terpadu"
                         ) {
                             GithubSectionHeader("🎨 Desain Sandstone Light Mode Premium & Kontras Tinggi")
@@ -862,10 +881,11 @@ private fun GithubReleaseCard(
                 }
 
                 if (isLatest) {
+                    val emeraldColor = adaptiveEmerald()
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = CyberEmerald.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.4f))
+                        color = emeraldColor.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, emeraldColor.copy(alpha = 0.4f))
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -874,14 +894,14 @@ private fun GithubReleaseCard(
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
-                                    .background(CyberEmerald, CircleShape)
+                                    .background(emeraldColor, CircleShape)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Latest",
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberEmerald
+                                color = emeraldColor
                             )
                         }
                     }

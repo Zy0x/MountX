@@ -104,6 +104,19 @@ import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.ElectricCyan
 import app.mountx.ui.theme.MountXTheme
 import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.ForestGreenLight
+import app.mountx.ui.theme.WarmAmberLight
+import app.mountx.ui.theme.TerracottaRedLight
+import app.mountx.ui.theme.SlateCyanLight
+import app.mountx.ui.theme.adaptiveAmber
+import app.mountx.ui.theme.adaptiveAmberContainer
+import app.mountx.ui.theme.adaptiveCrimson
+import app.mountx.ui.theme.adaptiveCrimsonContainer
+import app.mountx.ui.theme.adaptiveCyan
+import app.mountx.ui.theme.adaptiveCyanContainer
+import app.mountx.ui.theme.adaptiveEmerald
+import app.mountx.ui.theme.adaptiveEmeraldContainer
+import app.mountx.ui.theme.adaptiveEmeraldGlow
 import app.mountx.util.FormatUtils
 
 @Composable
@@ -315,7 +328,7 @@ fun StorageScreen(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.5.sp,
                         lineHeight = 14.sp,
-                        color = CyberEmerald,
+                        color = adaptiveEmerald(),
                         modifier = Modifier
                             .padding(10.dp)
                             .verticalScroll(rememberScrollState())
@@ -441,7 +454,7 @@ fun StorageScreen(
                     Icon(
                         Icons.Default.CleaningServices,
                         contentDescription = null,
-                        tint = if (hasNeedsCleaning) AmberWarn else CyberEmerald,
+                        tint = if (hasNeedsCleaning) adaptiveAmber() else adaptiveEmerald(),
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -499,7 +512,7 @@ fun StorageScreen(
                                         text = dirtyPart.fsType.uppercase(),
                                         fontSize = 9.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (hasNeedsCleaning) AmberWarn else CyberEmerald,
+                                        color = if (hasNeedsCleaning) adaptiveAmber() else adaptiveEmerald(),
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
@@ -511,8 +524,8 @@ fun StorageScreen(
                     if (hasNeedsCleaning && dirtyPart != null) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = AmberWarn.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, AmberWarn.copy(alpha = 0.5f)),
+                            color = adaptiveAmber().copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, adaptiveAmber().copy(alpha = 0.5f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
@@ -520,7 +533,7 @@ fun StorageScreen(
                                     Icon(
                                         Icons.Default.Warning,
                                         contentDescription = null,
-                                        tint = AmberWarn,
+                                        tint = adaptiveAmber(),
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -530,7 +543,7 @@ fun StorageScreen(
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold
                                         ),
-                                        color = AmberWarn
+                                        color = adaptiveAmber()
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
@@ -548,8 +561,8 @@ fun StorageScreen(
                                     },
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = AmberWarn,
-                                        contentColor = Color.Black
+                                        containerColor = adaptiveAmber(),
+                                        contentColor = Color.White
                                     ),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                                     modifier = Modifier.height(34.dp)
@@ -591,7 +604,7 @@ fun StorageScreen(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 lineHeight = 14.sp,
-                                color = if (hasNeedsCleaning) AmberWarn else CyberEmerald
+                                color = if (hasNeedsCleaning) adaptiveAmber() else adaptiveEmerald()
                             )
                         }
                     }
@@ -743,9 +756,9 @@ private fun DynamicIslandFeedback(
     ) {
         if (statusMessage == null) return@AnimatedVisibility
 
-        val containerColor = if (isSuccess) CyberEmerald.copy(alpha = 0.15f) else NeonCrimson.copy(alpha = 0.15f)
-        val borderColor = if (isSuccess) CyberEmerald.copy(alpha = 0.6f) else NeonCrimson.copy(alpha = 0.6f)
-        val contentColor = if (isSuccess) CyberEmerald else NeonCrimson
+        val containerColor = if (isSuccess) adaptiveEmerald().copy(alpha = 0.15f) else adaptiveCrimson().copy(alpha = 0.15f)
+        val borderColor = if (isSuccess) adaptiveEmerald().copy(alpha = 0.6f) else adaptiveCrimson().copy(alpha = 0.6f)
+        val contentColor = if (isSuccess) adaptiveEmerald() else adaptiveCrimson()
 
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -2830,10 +2843,10 @@ private fun FsckReportDialog(
     var isExpandedLog by remember { mutableStateOf(false) }
 
     val statusColor = when (report.status) {
-        FsckStatus.CLEAN -> CyberEmerald
-        FsckStatus.REPAIRED -> ElectricCyan
-        FsckStatus.DIRTY_WARNING -> AmberWarn
-        FsckStatus.ERROR -> NeonCrimson
+        FsckStatus.CLEAN -> adaptiveEmerald()
+        FsckStatus.REPAIRED -> adaptiveCyan()
+        FsckStatus.DIRTY_WARNING -> adaptiveAmber()
+        FsckStatus.ERROR -> adaptiveCrimson()
     }
 
     val statusBadgeText = when (report.status) {

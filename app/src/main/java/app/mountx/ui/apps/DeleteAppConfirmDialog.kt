@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,7 +43,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.mountx.R
 import app.mountx.ui.theme.CyberEmerald
+import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.TerracottaRedLight
+import app.mountx.ui.theme.adaptiveCrimson
+import app.mountx.ui.theme.adaptiveEmerald
 import app.mountx.util.FormatUtils
 
 @Composable
@@ -189,13 +194,13 @@ fun DeleteAppConfirmDialog(
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(NeonCrimson.copy(alpha = 0.14f), RoundedCornerShape(8.dp)),
+                                .background(adaptiveCrimson().copy(alpha = 0.14f), RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = null,
-                                tint = NeonCrimson,
+                                tint = adaptiveCrimson(),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -221,8 +226,8 @@ fun DeleteAppConfirmDialog(
                     if (!isStorageSufficient) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = NeonCrimson.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f)),
+                            color = adaptiveCrimson().copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, adaptiveCrimson().copy(alpha = 0.35f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -233,7 +238,7 @@ fun DeleteAppConfirmDialog(
                                 Icon(
                                     imageVector = Icons.Default.Warning,
                                     contentDescription = null,
-                                    tint = NeonCrimson,
+                                    tint = adaptiveCrimson(),
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
@@ -243,7 +248,7 @@ fun DeleteAppConfirmDialog(
                                         FormatUtils.formatBytes(requiredRestoreBytes)
                                     ),
                                     fontSize = 11.sp,
-                                    color = NeonCrimson,
+                                    color = adaptiveCrimson(),
                                     lineHeight = 15.sp
                                 )
                             }
@@ -294,7 +299,7 @@ fun DeleteAppConfirmDialog(
                                             text = FormatUtils.formatBytes(requiredRestoreBytes),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = CyberEmerald
+                                            color = adaptiveEmerald()
                                         )
                                     }
                                 }
@@ -325,7 +330,7 @@ fun DeleteAppConfirmDialog(
                             Icon(
                                 imageVector = Icons.Default.LinkOff,
                                 contentDescription = null,
-                                tint = NeonCrimson,
+                                tint = adaptiveCrimson(),
                                 modifier = Modifier.size(18.dp)
                             )
                             Column(modifier = Modifier.weight(1f)) {
@@ -376,6 +381,8 @@ private fun StepItem(
     isActive: Boolean,
     isDone: Boolean
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -386,7 +393,7 @@ private fun StepItem(
                 .size(18.dp)
                 .background(
                     when {
-                        isDone -> CyberEmerald
+                        isDone -> adaptiveEmerald()
                         isActive -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.surfaceVariant
                     },
@@ -398,7 +405,7 @@ private fun StepItem(
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
-                    tint = Color.Black,
+                    tint = if (isDark) Color.Black else Color.White,
                     modifier = Modifier.size(12.dp)
                 )
             } else {
@@ -416,7 +423,7 @@ private fun StepItem(
             fontSize = 11.sp,
             fontWeight = if (isActive || isDone) FontWeight.SemiBold else FontWeight.Normal,
             color = when {
-                isDone -> CyberEmerald
+                isDone -> adaptiveEmerald()
                 isActive -> MaterialTheme.colorScheme.primary
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }

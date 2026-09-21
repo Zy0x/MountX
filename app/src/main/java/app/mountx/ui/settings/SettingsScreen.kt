@@ -35,7 +35,11 @@ import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.ConfirmDialog
 import app.mountx.ui.components.SectionHeader
 import app.mountx.ui.theme.CyberEmerald
+import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.TerracottaRedLight
+import app.mountx.ui.theme.adaptiveCrimson
+import app.mountx.ui.theme.adaptiveEmerald
 import app.mountx.util.PermissionManager
 import app.mountx.util.ThemeMode
 
@@ -307,7 +311,7 @@ fun SettingsScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(
                         1.dp,
-                        if (permState.areAllGranted) CyberEmerald.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline
+                        if (permState.areAllGranted) adaptiveEmerald().copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -334,13 +338,13 @@ fun SettingsScreen(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
-                                        color = CyberEmerald.copy(alpha = 0.15f)
+                                        color = adaptiveEmerald().copy(alpha = 0.15f)
                                     ) {
                                         Text(
                                             text = "Aktif",
                                             fontSize = 9.5.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = CyberEmerald,
+                                            color = adaptiveEmerald(),
                                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
                                         )
                                     }
@@ -355,7 +359,7 @@ fun SettingsScreen(
                                 },
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = if (permState.areAllGranted) {
-                                    CyberEmerald.copy(alpha = 0.85f)
+                                    adaptiveEmerald().copy(alpha = 0.85f)
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                 }
@@ -364,14 +368,14 @@ fun SettingsScreen(
                         if (permState.areAllGranted) {
                             Surface(
                                 shape = androidx.compose.foundation.shape.CircleShape,
-                                color = CyberEmerald.copy(alpha = 0.15f),
+                                color = adaptiveEmerald().copy(alpha = 0.15f),
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.CheckCircle,
                                         contentDescription = "Semua Izin Diberikan",
-                                        tint = CyberEmerald,
+                                        tint = adaptiveEmerald(),
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -488,7 +492,7 @@ fun SettingsScreen(
                 Card(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.35f)),
+                    border = BorderStroke(1.dp, adaptiveCrimson().copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -526,7 +530,7 @@ fun SettingsScreen(
                                     .weight(1f)
                                     .height(36.dp),
                                 shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson),
+                                colors = ButtonDefaults.buttonColors(containerColor = adaptiveCrimson()),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                             ) {
                                 Text(
@@ -656,14 +660,14 @@ fun SettingsScreen(
                         onClick = { viewModel.executeImport(ImportMode.REPLACE_ALL) },
                         shape = RoundedCornerShape(10.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.4f)),
+                        border = BorderStroke(1.dp, adaptiveCrimson().copy(alpha = 0.4f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 text = stringResource(R.string.settings_portability_replace_btn),
                                 style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
-                                color = NeonCrimson
+                                color = adaptiveCrimson()
                             )
                             Text(
                                 text = stringResource(R.string.settings_portability_replace_desc),
