@@ -47,6 +47,12 @@ import app.mountx.ui.theme.EmeraldActive
 import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.adaptiveEmerald
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import app.mountx.data.model.CategoryChange
+import app.mountx.data.model.ChangelogHistory
+import app.mountx.data.model.ChangelogRelease
+import app.mountx.data.model.FeatureChange
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +68,7 @@ fun AboutScreen(
 
     var showChangelogDialog by remember { mutableStateOf(false) }
     var showLicenseDialog by remember { mutableStateOf(false) }
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     Scaffold(
         topBar = {
@@ -299,44 +306,115 @@ fun AboutScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            FilledTonalButton(
+                            // Ko-fi
+                            val kofiColor = Color(0xFFFF5E5B)
+                            Surface(
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://ko-fi.com/noir"))
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://ko-fi.com/zy0x_noir"))
                                     context.startActivity(intent)
                                 },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                color = kofiColor.copy(alpha = if (isDark) 0.15f else 0.10f),
+                                border = BorderStroke(1.dp, kofiColor.copy(alpha = if (isDark) 0.45f else 0.30f)),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(34.dp)
+                                    .height(36.dp)
                             ) {
-                                Text(stringResource(R.string.about_kofi), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 4.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_kofi),
+                                        contentDescription = stringResource(R.string.about_kofi),
+                                        tint = kofiColor,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.about_kofi),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = kofiColor
+                                    )
+                                }
                             }
-                            FilledTonalButton(
+
+                            // Saweria
+                            val saweriaColor = Color(0xFFE58B05)
+                            Surface(
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://saweria.co/noir"))
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://saweria.co/zy0x"))
                                     context.startActivity(intent)
                                 },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                color = saweriaColor.copy(alpha = if (isDark) 0.15f else 0.10f),
+                                border = BorderStroke(1.dp, saweriaColor.copy(alpha = if (isDark) 0.45f else 0.30f)),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(34.dp)
+                                    .height(36.dp)
                             ) {
-                                Text(stringResource(R.string.about_saweria), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 4.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_saweria),
+                                        contentDescription = stringResource(R.string.about_saweria),
+                                        tint = saweriaColor,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.about_saweria),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = saweriaColor
+                                    )
+                                }
                             }
-                            FilledTonalButton(
+
+                            // PayPal
+                            val paypalColor = Color(0xFF0079C1)
+                            Surface(
                                 onClick = {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://paypal.me/noir"))
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://paypal.me/theamagenta"))
                                     context.startActivity(intent)
                                 },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                color = paypalColor.copy(alpha = if (isDark) 0.15f else 0.10f),
+                                border = BorderStroke(1.dp, paypalColor.copy(alpha = if (isDark) 0.45f else 0.30f)),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(34.dp)
+                                    .height(36.dp)
                             ) {
-                                Text(stringResource(R.string.about_paypal), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 4.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_paypal),
+                                        contentDescription = stringResource(R.string.about_paypal),
+                                        tint = paypalColor,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.about_paypal),
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = paypalColor
+                                    )
+                                }
                             }
                         }
                     }
@@ -403,395 +481,8 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.40 (Latest) ──
-                        GithubReleaseCard(
-                            version = "v2.2.40",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = true,
-                            title = "Kalibrasi Nada Warna Deep Earthy Light Mode & Perbaikan Artefak Garis Ikon Emblem"
-                        ) {
-                            GithubSectionHeader("🎨 Kalibrasi Palet Deep Earthy Anti-Silau (Light Mode)")
-                            GithubMarkdownBullet("• **Penurunan Kecerahan Warna Terang**: Menurunkan kontras dan saturasi warna neon terang (hijau, kuning/amber, cyan, merah) pada Light Mode menjadi nada alami yang sejuk di mata: Forest Green (`#15803D`), Warm Amber (`#B45309`), Slate Cyan (`#0369A1`), dan Terracotta Red (`#B91C1C`).")
-                            GithubMarkdownBullet("• **Wadah Lembut (Soft Container Tints)**: Seluruh pill status, kartu telemetry, peringatan alert, dan indikator kapasitas disk kini menggunakan aksen transparan lembut (8–12% opacity) yang harmonis dengan latar Sandstone.")
-                            GithubMarkdownBullet("• **Preservasi Cyber Neon Dark Mode**: Seluruh palet Cyber Emerald, Sunset Amber, Hyper Cyan, dan Neon Crimson tetap aktif sepenuhnya saat perangkat beralih ke Dark Mode.")
-
-                            GithubSectionHeader("✨ Presisi Visual Ikon Emblem MountX")
-                            GithubMarkdownBullet("• **Eliminasi Artefak Garis Tepi**: Menghilangkan residu garis tepi 4px di sisi kiri dan kanan kanvas ikon `ic_mountx_emblem.png` serta merestrukturisasi kanvas 1254x1254 agar terpusat sempurna tanpa distorsi garis.")
-                            GithubMarkdownBullet("• **Penyempurnaan Switch & Komponen Antarmuka**: Track switch aktif kini menggunakan `ForestGreenLight` yang nyaman dipandang mata tanpa pantulan menyilaukan pada thumb putih.")
-                        }
-
-                        // ── v2.2.39 ──
-                        GithubReleaseCard(
-                            version = "v2.2.39",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = false,
-                            title = "Penyempurnaan Tema Sandstone Light Mode, Audit Sistem & Integrasi Modal Terpadu"
-                        ) {
-                            GithubSectionHeader("🎨 Desain Sandstone Light Mode Premium & Kontras Tinggi")
-                            GithubMarkdownBullet("• **Palet Warna Soft Warm Sandstone**: Mengganti latar belakang putih polos menjadi `#F2EFE9` dan kartu permukaan `#FAF8F5` dengan batas tegas 1.dp `#D6D3CD` demi kenyamanan mata dan estetika premium.")
-                            GithubMarkdownBullet("• **Modal & Dialog Adaptif Multi-Tema**: Seluruh dialog konfirmasi, hapus, migrasi, custom path, changelog, dan lisensi kini menggunakan wadah adaptif dengan kontras teks tajam.")
-                            GithubMarkdownBullet("• **Presisi Header & Emblem Transparan**: Seluruh header layar dan bar navigasi kini memiliki pembatas tegas 1.dp solid serta logo MountX transparan beresolusi tinggi.")
-
-                            GithubSectionHeader("🛡️ Penguatan Sistem Root & Mitigasi Race Condition")
-                            GithubMarkdownBullet("• **Multi-Point Canary Verification**: Canary verification kini memvalidasi integritas titik kait data, obb, dan custom mount points secara komprehensif.")
-                            GithubMarkdownBullet("• **Anti-Stacked Mount & Throttle Watchdog**: Menambahkan verifikasi `isMountpoint` sebelum remount otomatis dan throttle 30 detik pada event screen-on.")
-                            GithubMarkdownBullet("• **Pre-Flight Storage Reserve**: Memastikan cadangan penyimpanan internal minimal 1 GB sebelum proses migrasi balik atau restorasi dieksekusi.")
-                            GithubMarkdownBullet("• **Validasi Sanitasi Impor JSON**: Mencegah path traversal dan memfilter nama paket tidak valid secara ketat.")
-
-                            GithubSectionHeader("✨ Pembersihan Teks & Konsistensi Bahasa")
-                            GithubMarkdownBullet("• **Pembersihan Istilah Menyeluruh**: Menyempurnakan seluruh label antarmuka, hero banner, counter, dan dialog dari istilah lama 'Games' menjadi 'Apps' / 'Aplikasi'.")
-                        }
-
-                        // ── v2.2.38 ──
-                        GithubReleaseCard(
-                            version = "v2.2.38",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = false,
-                            title = "Sistem Teardown Penghapusan Aplikasi, Migrasi Bersih UI/Database 'Apps', Hub Portabilitas Konfigurasi Terpusat di Pengaturan & Proteksi Mutex Root"
-                        ) {
-                            GithubSectionHeader("🗑️ Sistem Teardown Penghapusan Aplikasi & Dialog Pilihan Aksi")
-                            GithubMarkdownBullet("• **Penghapusan Bersih dari Daftar Apps**: Pengguna kini dapat menghapus aplikasi dari daftar manajemen melalui tombol Hapus (Ikon Tong Sampah Merah) di header Detail Aplikasi maupun via gestur tekan-lama (*long-press*) pada kartu aplikasi di daftar utama.")
-                            GithubMarkdownBullet("• **Dialog Konfirmasi Dua Aksi**: Menghadirkan pilihan 'Pulihkan ke Internal & Hapus' (memindahkan data fisik kembali ke memori internal sebelum dihapus dari daftar) atau 'Lepas Kaitan Saja & Hapus' (melepas kaitan bind-mount dan mempertahankan data di MicroSD).")
-                            GithubMarkdownBullet("• **Teardown Process Guard & Folder Sanitization**: Menjalankan `am force-stop` otomatis sebelum unmount untuk mencegah file lock, melepas unmount paksa di seluruh namespace (`umount -f -l`), serta otomatis meregenerasi direktori internal kosong yang valid agar aplikasi tidak force close jika dibuka setelah dilepas.")
-
-                            GithubSectionHeader("🔄 Refaktor Bersih UI & Skema Database ('Games' ➔ 'Apps')")
-                            GithubMarkdownBullet("• **Evolusi Terminologi Menyeluruh**: Mengganti penamaan dan ikon halaman 'Games' menjadi 'Apps' pada bilah navigasi bawah, header layar, dan dialog operasional untuk mencerminkan kapabilitas MountX dalam mengaitkan seluruh jenis aplikasi Android.")
-                            GithubMarkdownBullet("• **Migrasi Database Room v4 (MIGRATION_3_4)**: Tabel Room lama `games` dimigrasikan secara aman ke tabel baru `apps` dengan `AppEntry`, `AppDao`, dan `AppRepository` terpadu.")
-
-                            GithubSectionHeader("📦 Hub Portabilitas Konfigurasi Terpusat di Pengaturan")
-                            GithubMarkdownBullet("• **Relokasi ke Pengaturan**: Memindahkan hub ekspor dan impor konfigurasi dari tab Penyimpanan ke layar Pengaturan agar navigasi lebih teratur dan intuitif.")
-                            GithubMarkdownBullet("• **Snapshot JSON Lengkap v2**: Format pencadangan mencakup seluruh preferensi sistem (jalur MicroSD, UUID disk, mode otomatis boot, preferensi konflik) dan seluruh daftar konfigurasi titik kait aplikasi.")
-                            GithubMarkdownBullet("• **Modal Validasi Impor Cerdas**: Pengguna dapat memilih antara 'Gabungkan (Merge)' untuk mempertahankan data yang ada atau 'Ganti Penuh (Replace All)' untuk pemulihan bersih.")
-
-                            GithubSectionHeader("⚡ Stabilitas Root & Pencegahan Race Condition")
-                            GithubMarkdownBullet("• **RootExecutionMutex**: Menyelaraskan seluruh mutasi mount, unmount, dan modifikasi modul root untuk meniadakan race condition antar-proses.")
-                            GithubMarkdownBullet("• **Hard Timeout 15 Detik**: Setiap perintah shell root dilengkapi batas waktu keras 15 detik dengan pembersihan subprocess dan stream otomatis.")
-                            GithubMarkdownBullet("• **Observasi Penyimpanan Event-Driven**: Mengeliminasi loop polling latar belakang `while (true)` demi pendinginan CPU dan efisiensi baterai maksimal.")
-                        }
-
-                        // ── v2.2.37 ──
-                        GithubReleaseCard(
-                            version = "v2.2.37",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = false,
-                            title = "5 Pilar Keandalan Arsitektur, Multi-User Isolation, Pre-Flight Unmount Hard-Lock & Scoping Media Presisi"
-                        ) {
-                            GithubSectionHeader("👥 Isolasi Namespace Multi-User Universal & Ekstraksi Jalur Dinamis")
-                            GithubMarkdownBullet("• **Ekstraksi Jalur Relatif Universal**: Menggunakan pemotong regex multi-user `extractRelativePath` untuk mendukung penuh Xiaomi Dual Apps (User 999), profil kerja (User 10+), dan folder kustom tanpa merusak hierarki berkas.")
-                            GithubMarkdownBullet("• **Isolasi Namespace Per-User**: Mengarahkan kaitan bind-mount khusus ke namespace target user bersangkutan (`getTargetNamespaces(userId)`) dengan formula matematis UID/GID sandbox resmi Android.")
-
-                            GithubSectionHeader("🛡️ Pre-Flight Unmount Hard-Lock & Proteksi Zero Data Loss")
-                            GithubMarkdownBullet("• **Pemeriksaan Kaitan Fail-Fast**: Memverifikasi pelepasan kaitan nyata (`isMountpoint`) sebelum pemindahan berkas `TO_INTERNAL`. Jika direktori internal masih terikat, operasi dibatalkan seketika demi mencegah *self-copy*.")
-                            GithubMarkdownBullet("• **Kunci Pengaman Pembersihan MicroSD**: Menolak pembersihan direktori sumber MicroSD jika target internal terdeteksi masih berstatus mountpoint, menjamin data pengguna 100% aman.")
-
-                            GithubSectionHeader("🚀 Guardrail Mount All Games & Mitigasi Error Palsu")
-                            GithubMarkdownBullet("• **Pengecualian Status Need Migration**: Tombol 'Mount All Games' secara otomatis melewati aplikasi yang membutuhkan migrasi sehingga tidak memicu error palsu pada dashboard maupun daftar game.")
-                            GithubMarkdownBullet("• **Konsistensi Status Room DB**: Eksepsi `OcclusionHazardException` tetap mempertahankan status `NEED_MIGRATION` tanpa pernah menurunkannya ke `ERROR`.")
-
-                            GithubSectionHeader("🖼️ Scoping Media Presisi & Pencegahan Penyembunyian Galeri")
-                            GithubMarkdownBullet("• **Eliminasi .nomedia Root**: Menghapus berkas `.nomedia` agresif pada induk `MountX/Android/` dan membersihkan sisa peninggalan versi sebelumnya.")
-                            GithubMarkdownBullet("• **Preservasi Media & Galeri**: Folder `Android/media/` serta direktori unduhan kustom (seperti 1DM) tetap dapat dipindai oleh MediaScanner Android.")
-
-                            GithubSectionHeader("🔄 Penyelarasan Alur Migrasi Modern Dashboard")
-                            GithubMarkdownBullet("• **Pipeline Migrasi Terpadu**: Fungsi `migrateGame` pada dashboard kini menghentikan aplikasi (*force stop*), melepas mount yang masih aktif, dan menyelaraskan struktur Room DB secara atomik.")
-                        }
-
-                        // ── v2.2.36 ──
-                        GithubReleaseCard(
-                            version = "v2.2.36",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = false,
-                            title = "Smart Migration Guardrail & Rekonsiliasi Ground Truth Mount"
-                        ) {
-                            GithubSectionHeader("🛡️ Anti-Occlusion Hazard Tanpa Ambang Batas Arbitrer")
-                            GithubMarkdownBullet("• **Proteksi Seluruh Ukuran Data Internal**: Menghapus batasan lama (> 5MB). Berapapun ukuran data internal pada aplikasi, sistem menolak bind-mount jika direktori MicroSD masih kosong/belum dibuat.")
-                            GithubMarkdownBullet("• **Pencegahan Silent Success**: Memastikan proses mount gagal secara terhormat dengan pengecekan jumlah titik kait aktif (`totalMountedTargets > 0`) agar tidak memicu status palsu.")
-
-                            GithubSectionHeader("⚡ Deteksi Otomatis Status Kebutuhan Migrasi (Need Migration)")
-                            GithubMarkdownBullet("• **Auto-Flagging Cerdas**: Saat game unmounted memiliki data di memori internal sementara MicroSD kosong, sistem secara otomatis menandainya sebagai `NEED_MIGRATION`.")
-                            GithubMarkdownBullet("• **Tombol Aksi Pintar di Detail Aplikasi**: Tombol aksi bawah pada Detail Game secara adaptif beralih menjadi `Pindahkan Data ke MicroSD` (berwarna amber) dan langsung memicu alur transfer migrasi alih-alih loop mount kosong.")
-
-                            GithubSectionHeader("🔄 Rekonsiliasi Ground Truth Linux Mounts")
-                            GithubMarkdownBullet("• **Penyelarasan GamesViewModel**: Sinkronisasi berkala dan refresh UI kini memanggil `refreshMountStatuses()` untuk memverifikasi kaitan nyata langsung dari kernel `/proc/mounts`.")
-                            GithubMarkdownBullet("• **Pemisahan Callback Mount & Unmount**: Memisahkan aksi `onMount` dan `onUnmount` di seluruh lapisan UI agar tidak terjadi pemanggilan terbalik saat status sedang bertransisi.")
-                        }
-
-                        // ── v2.2.35 ──
-                        GithubReleaseCard(
-                            version = "v2.2.35",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = false,
-                            title = "11 Pilar Keamanan, Multi-User, Sinkronisasi Modul & Keandalan VFS Terpadu"
-                        ) {
-                            GithubSectionHeader("🛡️ Root Picker Guardrail & Keamanan Sistem")
-                            GithubMarkdownBullet("• **Hard-Blacklist Virtual Filesystem**: Memblokir navigasi dan pemilihan folder kernel virtual (`/dev`, `/proc`, `/sys`, `/apex`) dengan badge bahaya merah dan tombol aksi nonaktif.")
-                            GithubMarkdownBullet("• **Dialog Risiko Sistem Kritis**: Folder sistem inti (`/`, `/system`, `/data`, `/vendor`, `/product`) dilindungi dengan modal bahaya merah dan checkbox persetujuan risiko eksplisit untuk mencegah salah pilih.")
-
-                            GithubSectionHeader("⚡ Pipeline Multi-Target Modul Root (mountpoints.conf)")
-                            GithubMarkdownBullet("• **Format Pipa POSIX Universal**: Parser POSIX sh pada `service.sh` membaca `mountpoints.conf` tanpa dependensi eksternal, kompatibel dengan Magisk, KernelSU, dan APatch.")
-                            GithubMarkdownBullet("• **Kaitan Multi-Namespace Android**: Menjamin akses berkas lintas aplikasi setelah reboot dengan pengaitan ke seluruh runtime namespaces (`/mnt/runtime/*`, `/storage/emulated/0`, `/data/media/0`).")
-                            GithubMarkdownBullet("• **Sinkronisasi Modul-Pertama**: Boot coordinator mendeteksi penanda kaitan modul (`/dev/.mountx_booted`) untuk sinkronisasi instan ke Room DB tanpa risiko stacked mounts ganda.")
-
-                            GithubSectionHeader("👥 Dukungan Universal Multi-User & Profil Kloning")
-                            GithubMarkdownBullet("• **Discovery Dinamis User ID**: Mendeteksi seluruh profil aktif melalui `pm list users` dan `/data/media/*` (Xiaomi Dual Apps User 999, Work Profile User 10+).")
-                            GithubMarkdownBullet("• **Isolasi Folder MicroSD Terpisah**: Setiap user profil memiliki alokasi struktur mandiri di `MountX/users/<userId>/Android/data/` tanpa saling timpa.")
-                            GithubMarkdownBullet("• **Penyesuaian UID / GID Resmi**: Formula matematis resmi Android `(userId * 100000) + appId` menjamin izin akses berkas sandbox tepat sasaran.")
-
-                            GithubSectionHeader("🖼️ Manajemen .nomedia Cerdas & Media Scanner")
-                            GithubMarkdownBullet("• **Scoping Terlokalisasi**: Mencegah penempatan file `.nomedia` pada direktori root `MountX/`, hanya diterapkan pada subdirektori privat game.")
-                            GithubMarkdownBullet("• **Sakelar Galeri Interaktif**: Opsi `Tampilkan di Galeri & Media` pada kategori Media & Unduhan serta folder Kustom dengan pembersihan `.nomedia` otomatis.")
-                            GithubMarkdownBullet("• **Pemicu Media Scanner Otomatis**: Menjalankan broadcast `MEDIA_SCANNER_SCAN_FILE` pasca-mount atau pemindahan berkas agar galeri sistem langsung terindeks.")
-
-                            GithubSectionHeader("💾 Pre-Flight Space Guard & Preservasi Dotfiles")
-                            GithubMarkdownBullet("• **Pencegahan Kegagalan Migrasi (Guard Space)**: Membatalkan pemindahan lebih awal jika sisa ruang target kurang dari ukuran data ditambah buffer aman `maxOf(500MB, 5% data)`.")
-                            GithubMarkdownBullet("• **Preservasi Berkas Tersembunyi**: Penyalinan dan migrasi direktori menggunakan `cp -an \"\$src/.\" \"\$dst/\"` memastikan dotfiles (`.config`, `.save`) tersalin utuh tanpa hilang.")
-                            GithubMarkdownBullet("• **Pre-Mount Force Stop**: Menghentikan proses aplikasi game di latar belakang sebelum bind-mount dikaitkan untuk mencegah divergensi mount namespace.")
-                        }
-
-                        // ── v2.2.34 ──
-                        GithubReleaseCard(
-                            version = "v2.2.34",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = false,
-                            title = "4 Pilar Arsitektur Cerdas: Sinkronisasi 2 Arah Modul Root, Restrukturisasi Multi-Pola MicroSD, Penjelajah Berkas Root & Deteksi Disk Dinamis"
-                        ) {
-                            GithubSectionHeader("⚡ Modul Root & Sinkronisasi 2 Arah (Pilar 1)")
-                            GithubMarkdownBullet("• **Dukungan Multi Root Manager**: Skrip booting `service.sh` mendukung penuh Magisk, KernelSU, APatch, dan variannya dengan resolusi otomatis jalur modul.")
-                            GithubMarkdownBullet("• **Resolusi Jalur Bertingkat**: Boot mounting otomatis memprioritaskan jalur standar `MountX/Android/` dengan fallback aman ke `Android/` legacy dan mounting direktori media.")
-                            GithubMarkdownBullet("• **Sinkronisasi Senyap (Zero-Reboot)**: Aplikasi secara otomatis memperbarui skrip dan metadata modul di `/data/adb/modules/mountx/` saat versi baru dirilis tanpa perlu reboot manual.")
-
-                            GithubSectionHeader("🔍 Pemindaian Cerdas & Restrukturisasi Multi-Pola (Pilar 2)")
-                            GithubMarkdownBullet("• **Deteksi Multi-Folder**: Mendeteksi data game di MicroSD baik di folder standar `MountX/Android/`, legacy `Android/`, maupun direktori non-standar (`Games/*`, `GameData/*`).")
-                            GithubMarkdownBullet("• **Restrukturisasi Atomik Transparan**: Memindahkan data game yang berantakan ke struktur standar MountX secara atomik (0.1s dengan `mv` separtisi atau streaming dengan visualisasi progres) lengkap dengan penyesuaian izin dan konteks SELinux.")
-
-                            GithubSectionHeader("📁 Penjelajah Berkas Root ala MT-Manager (Pilar 3)")
-                            GithubMarkdownBullet("• **Root Directory Picker Interaktif**: Bottom sheet penjelajah direktori root (`/*`) dengan breadcrumb interaktif, navigasi riil, dan pintasan cepat (Internal, MicroSD, Root, App Data, OTG).")
-                            GithubMarkdownBullet("• **Pemilihan Jalur Kustom Presisi**: Trailing folder picker pada dialog direktori kustom dan kalkulasi ukuran nyata untuk kategori kustom dan media.")
-
-                            GithubSectionHeader("🛡️ Multi-MicroSD & Penanganan Disk Dinamis (Pilar 4)")
-                            GithubMarkdownBullet("• **Status Disk Detached**: Pengenalan status `DISK_DETACHED` dan kolom `preferredDiskUuid` (Room Migration 2 ke 3) untuk mencegah mount saat MicroSD dilepas atau kartu yang salah dimasukkan.")
-                            GithubMarkdownBullet("• **Pelepasan Darurat Dinamis**: Watchdog dan SystemSyncMonitor mendeteksi pelepasan disk secara dinamis dari `/proc/mounts` tanpa batasan hardcode `/data/sdext2`.")
-                        }
-
-                        // ── v2.2.33 ──
-                        GithubReleaseCard(
-                            version = "v2.2.33",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = false,
-                            title = "Perbaikan Total Penghapusan Data Kategori, Eliminasi Opsi Internal Semu saat Ter-mount & Pembersihan VFS Multi-Jalur"
-                        ) {
-                            GithubSectionHeader("🗑️ Perbaikan Total Hapus Data Kategori")
-                            GithubMarkdownBullet("• **Pembersihan Multi-Jalur MicroSD**: Penghapusan kategori data, obb, dan media kini menargetkan seluruh jalur fisik MicroSD modern (`MountX/Android/...`, `Android/...`, dan jalur kustom), sehingga berkas benar-benar terhapus tuntas.")
-                            GithubMarkdownBullet("• **Dukungan Kategori Lengkap**: Menambahkan penanganan penghapusan berkas untuk kategori `Media & Unduhan` dan direktori kustom pengguna.")
-                            GithubMarkdownBullet("• **Dukungan Mode Draf**: Fitur hapus kategori data kini tersambung penuh saat mengonfigurasi game baru pada layar pemilih aplikasi.")
-
-                            GithubSectionHeader("🛡️ Eliminasi Opsi Internal Semu saat Ter-mount")
-                            GithubMarkdownBullet("• **Anti-Duplikasi Ukuran Internal**: Kategori yang sedang ter-mount kini mengalokasikan ukuran fisik 0 B pada penyimpanan internal, mencegah munculnya pilihan hapus internal semu yang sebelumnya meremount kembali data dari MicroSD.")
-                            GithubMarkdownBullet("• **Inspektor & Dialog Informatif**: Rincian kategori kini menampilkan label `Dialihkan ke MicroSD` dan dialog konfirmasi menyajikan penjelasan lokasi fisik penghapusan secara transparan.")
-
-                            GithubSectionHeader("⚡ Rekonsiliasi Direktori & Sinkronisasi DB")
-                            GithubMarkdownBullet("• **Rekonsiliasi Izin Direktori**: Direktori internal lokal selalu diregenerasi secara bersih dengan UID pemilik paket, `chmod 775`, dan konteks SELinux yang valid agar game tetap dapat dijalankan tanpa crash.")
-                            GithubMarkdownBullet("• **Sinkronisasi Database Otomatis**: Titik kait yang dihapus dinonaktifkan dari database Room dan status mount VFS kernel disegarkan seketika.")
-                        }
-
-                        // ── v2.2.32 ──
-                        GithubReleaseCard(
-                            version = "v2.2.32",
-                            releaseDate = "21 Sep 2026",
-                            isLatest = false,
-                            title = "Presisi Deteksi Lokasi OBB [MicroSD], Pencegahan Stale Caching Antar-Game & Koreksi Concentric Chart"
-                        ) {
-                            GithubSectionHeader("🎯 Presisi Lokasi & Kategori OBB")
-                            GithubMarkdownBullet("• **Deteksi OBB MicroSD Akurat**: Menghapus ambang batas artifisial (> 64KB) pada kategori OBB sehingga berkas/folder ekspansi (misal 4.00 KB) yang telah dipindahkan ke MicroSD kini konsisten berlabel `[MicroSD]` (hijau).")
-                            GithubMarkdownBullet("• **Inspeksi Mountpoint Kernel Riil**: Status mount OBB, Data Game, dan Media kini dievaluasi langsung terhadap VFS kernel mountpoint per-kategori.")
-                            GithubMarkdownBullet("• **Tombol Restore Berkas Ringan**: Tombol `Kembalikan ke Memori Internal` kini tetap aktif untuk kategori OBB berukuran kecil (> 0 byte).")
-
-                            GithubSectionHeader("🚀 Isolasi Caching & Anti-Stale Antar-Game")
-                            GithubMarkdownBullet("• **Pencegahan Kebocoran Data Breakdown**: Breakdown penyimpanan kini diisolasi per `packageName` dalam map cache, sehingga perpindahan antar-game tidak lagi menampilkan lonjakan data game sebelumnya (*stale flash*).")
-                            GithubMarkdownBullet("• **Indikator Loading Halus**: Menampilkan indikator linear saat kalkulasi penyimpanan game baru sedang berlangsung.")
-
-                            GithubSectionHeader("📊 Koreksi Concentric Storage Chart (Anti-Double Counting)")
-                            GithubMarkdownBullet("• **Eliminasi Penghitungan Ganda**: Memori telepon internal (`phoneInternalBytes`) kini mengecualikan bind-mount MicroSD, sehingga total ukuran dan persentase irisan chart Donut mencerminkan ruang penyimpanan fisik asli secara akurat (100%).")
-                        }
-
-                        // ── v2.2.31 ──
-                        GithubReleaseCard(
-                            version = "v2.2.31",
-                            releaseDate = "20 Sep 2026",
-                            isLatest = false,
-                            title = "Eliminasi Phantom Conflict Restore, Multi-Namespace VFS Unmount & Proteksi Tabrakan Partisi"
-                        ) {
-                            GithubSectionHeader("🛡️ Eliminasi Phantom Conflict & Keamanan VFS")
-                            GithubMarkdownBullet("• **Penanganan Phantom Conflict Restore**: Mengoreksi penghitungan ukuran target internal saat kaitan mount MicroSD masih aktif (`isMounted == true`) sehingga dialog tidak lagi memicu peringatan konflik fiktif saat mengembalikan data ke memori internal.")
-                            GithubMarkdownBullet("• **Pelepasan Mount Multi-Namespace**: Melepaskan kaitan VFS secara tuntas di seluruh namespace Android (`/mnt/runtime/*`, `/mnt/user/0`, `/storage`, dll) sebelum migrasi untuk mencegah tabrakan I/O atau kebocoran berkas.")
-                            GithubMarkdownBullet("• **Guard Identitas Partisi & Disk**: Menolak pemindahan data jika direktori sumber dan tujuan berada di partisi fisik yang sama baik di backend `StorageManager` maupun proteksi seleksi antarmuka.")
-
-                            GithubSectionHeader("⚡ Verifikasi Pengujian Nyata")
-                            GithubMarkdownBullet("• **Uji End-to-End Pemulihan WuWa Berhasil**: Pemindahan data Wuthering Waves (140.9 MB) dari MicroSD kembali ke Internal berjalan mulus 100% dengan integritas berkas, kepemilikan `media_rw`, dan file `.nomedia` terjaga sempurna.")
-
-                            GithubSectionHeader("💾 Portabilitas Konfigurasi JSON v2")
-                            GithubMarkdownBullet("• **Normalisasi Jalur & Cadangan Portabel**: Skema JSON v2 menyimpan konfigurasi titik kait relatif sehingga bebas dipindahkan antar kartu MicroSD atau dipulihkan sewaktu-waktu tanpa terikat UUID hardware.")
-                        }
-
-                        // ── v2.2.30 ──
-                        GithubReleaseCard(
-                            version = "v2.2.30",
-                            releaseDate = "20 Sep 2026",
-                            isLatest = false,
-                            title = "Perbaikan Eksekusi Salin Berkas Shell & Pencegahan Konflik Partisi Sama"
-                        ) {
-                            GithubSectionHeader("⚡ Perbaikan Penyalinan & Shell Engine")
-                            GithubMarkdownBullet("• **Resolusi Eksekusi Salin Berkas**: Menghilangkan sintaks subshell yang tidak kompatibel dengan Android mksh/toybox pada skrip penyalinan latar belakang, mengatasi error `exit code -1` sehingga pemindahan data game berjalan konkret.")
-                            GithubMarkdownBullet("• **Guard Tabrakan Jalur Identik (Backend)**: Menolak proses penyalinan atau penghapusan berkas jika jalur sumber dan tujuan identik pada level `StorageManager` untuk menjamin Zero Data Loss mutlak.")
-
-                            GithubSectionHeader("🛡️ Antarmuka Cerdas & Proteksi Partisi Sama")
-                            GithubMarkdownBullet("• **Pencegahan Konflik Partisi Sama**: Pada modal Kelola Penyimpanan, partisi MicroSD aktif saat ini otomatis dinonaktifkan dengan status `Lokasi saat ini (Tidak dapat dipilih)` jika data yang dipilih sudah berada di partisi tersebut.")
-                            GithubMarkdownBullet("• **Arah & Target Cerdas (Smart Selection)**: Jika semua kategori yang dipilih bersumber dari MicroSD, opsi `Memori Internal` otomatis diaktifkan sebagai target pemulihan, memandu pengguna ke arah yang benar.")
-                        }
-
-                        // ── v2.2.29 ──
-                        GithubReleaseCard(
-                            version = "v2.2.29",
-                            releaseDate = "20 Sep 2026",
-                            isLatest = false,
-                            title = "Proteksi Konflik Data Zero-Loss, Portabilitas Konfigurasi v2 & Adaptive Icon Mulus"
-                        ) {
-                            GithubSectionHeader("🛡️ Keamanan & Integritas Data (Zero-Loss)")
-                            GithubMarkdownBullet("• **Pencegahan Penimpaan Berkas Kosong**: Menolak secara otomatis operasi penimpaan destruktif jika folder sumber kosong/kerangka direktori (<= 64KB) sementara tujuan memiliki berkas riil game (>= 10MB) guna mencegah hilangnya data pengguna.")
-                            GithubMarkdownBullet("• **Proteksi Partisi Sama (Self-Conflict Guard)**: Mendeteksi data yang telah berada di MicroSD tujuan sehingga mengeliminasi proses salin sirkular dan langsung memverifikasi izin VFS secara aman.")
-                            GithubMarkdownBullet("• **Pemeriksaan Kaitan VFS Pra-Operasi**: Memastikan kaitan mount dilepaskan dengan aman sebelum proses penyalinan atau pembersihan berkas untuk mencegah penghapusan data secara sirkular.")
-                            GithubMarkdownBullet("• **Sinkronisasi Status Atomik & Pembersihan Canary**: Memperbarui status unmount secara akurat di database saat pemulihan ke internal selesai serta membersihkan berkas penanda canary internal.")
-
-                            GithubSectionHeader("💾 Portabilitas Konfigurasi (Skema v2)")
-                            GithubMarkdownBullet("• **Ekspor & Impor Konfigurasi Skema v2**: Menyimpan metadata terstruktur mencakup profil game, titik kait granular, kategori berkas, dan penataan partisi relatif secara portabel.")
-                            GithubMarkdownBullet("• **Dukungan Kompatibilitas Mundur**: Tetap dapat membaca dan menggabungkan berkas konfigurasi lama secara otomatis.")
-
-                            GithubSectionHeader("🎨 Tampilan Ikon Launcher (Adaptive Icon)")
-                            GithubMarkdownBullet("• **Ikon App Drawer Mengikuti Wadah Sistem**: Menggunakan emblem transparan MountX di atas kanvas Cyberpunk mulus tanpa bingkai squircle kaku, menyatu elegan dengan bentuk wadah launcher (lingkaran, squircle, atau pebble).")
-                        }
-
-                        // ── v2.2.28 ──
-                        GithubReleaseCard(
-                            version = "v2.2.28",
-                            releaseDate = "20 Sep 2026",
-                            isLatest = false,
-                            title = "Progres Kernel Real-Time & Safe Zone Ikon App Drawer"
-                        ) {
-                            GithubSectionHeader("⚡ Penyalinan Data & Telemetri Nyata")
-                            GithubMarkdownBullet("• **Progres Transfer Kernel Nyata**: Pemantauan langsung melalui penghitung byte I/O Linux kernel (`/proc/\$PID/io`) dengan interval 300ms, menghasilkan kenaikan persentase bertahap yang konkret (0% -> 100%) tanpa lonjakan tiba-tiba.")
-                            GithubMarkdownBullet("• **Kecepatan & Sisa Waktu Dinamis**: Menampilkan metrik kecepatan transfer riil (MB/s) dan estimasi sisa waktu (ETA) terhitung otomatis sepanjang proses penyalinan.")
-                            GithubMarkdownBullet("• **Fallback Graceful**: Sistem otomatis beralih ke kalkulasi ukuran direktori jika akses kernel I/O dibatasi pada varian kernel tertentu.")
-
-                            GithubSectionHeader("🎨 Penyempurnaan Tampilan (UI/UX)")
-                            GithubMarkdownBullet("• **Safe Zone Ikon App Drawer Android**: Menyesuaikan proporsi Adaptive Icon dengan batas aman ~18% inset (72dp pada kanvas 108dp) agar logo MountX tidak terpotong oleh masking lingkaran atau squircle di launcher sistem.")
-                        }
-
-                        // ── v2.2.27 ──
-                        GithubReleaseCard(
-                            version = "v2.2.27",
-                            releaseDate = "20 Sep 2026",
-                            isLatest = false,
-                            title = "Migrasi Terpusat MountX, Indikator Akses Hijau & Markdown Changelog"
-                        ) {
-                            GithubSectionHeader("🚀 Migrasi Otomatis & Standarisasi Direktori")
-                            GithubMarkdownBullet("• **Migrasi Otomatis Direktori MountX**: Mengalihkan seluruh data legacy dari `\$sdBase/Android/data` dan `\$sdBase/Android/obb` ke folder terpusat `\$sdBase/MountX/Android/` secara aman tanpa risiko kehilangan berkas.")
-                            GithubMarkdownBullet("• **Pembersihan Bersih Tanpa Sampah**: Direktori legacy kosong (`\$sdBase/Android/`) otomatis dibersihkan dan dihapus setelah migrasi diverifikasi berhasil guna menghindari duplikasi berkas.")
-                            GithubMarkdownBullet("• **Sinkronisasi Database Otomatis**: Memperbarui seluruh konfigurasi `sourcePath` pada database Room ke jalur terpusat MountX secara mulus di latar belakang.")
-
-                            GithubSectionHeader("🎨 Pembaruan Antarmuka (UI/UX)")
-                            GithubMarkdownBullet("• **Indikator Centang Hijau Izin Sistem**: Menu Perizinan & Hak Akses di Pengaturan kini menampilkan centang hijau modern (`CyberEmerald`) dan badge `Aktif` saat seluruh izin terpenuhi, dengan interaksi klik tetap terjaga.")
-                            GithubMarkdownBullet("• **Pembersihan Menu Pengaturan**: Menghilangkan kartu pengaturan \"Penyimpanan\" yang tidak lagi diperlukan agar antarmuka lebih ringkas dan fokus.")
-                            GithubMarkdownBullet("• **Changelog Gaya GitHub Markdown**: Seluruh riwayat pembaruan kini disajikan terstruktur layaknya GitHub Release Notes dengan tag rilis, badge status, kategori, dan capsule kode.")
-
-                            GithubSectionHeader("🐛 Perbaikan Bug & Stabilitas")
-                            GithubMarkdownBullet("• **Keamanan Jalur VFS**: Memastikan izin 777 dan berkas pelindung `.nomedia` otomatis dikonfigurasikan pada setiap kaitan baru di dalam direktori `MountX/`.")
-                        }
-
-                        // ── v2.2.26 ──
-                        GithubReleaseCard(
-                            version = "v2.2.26",
-                            releaseDate = "20 Sep 2026",
-                            title = "Desain Dialog Modern, Input Kontras Tinggi & Jalur Terpusat MountX"
-                        ) {
-                            GithubSectionHeader("🎨 Poles Desain & Antarmuka")
-                            GithubMarkdownBullet("• **Desain Dialog Cyber Midnight**: Seluruh dialog aplikasi kini menggunakan tema Cyber Midnight (`#111726`) dengan radius sudut 24dp modern.")
-                            GithubMarkdownBullet("• **Kotak Input Kontras Tinggi**: Field input direktori kustom kini berlatar solid (`#162035`) dengan border 1.5dp dan aksen fokus Electric Indigo jelas.")
-                            GithubMarkdownBullet("• **Saran Cepat 1-Ketuk**: Chip rekomendasi instan untuk `Telegram`, `WhatsApp`, `Download`, `DCIM`, dan `Pictures`.")
-                            GithubMarkdownBullet("• **Label Tombol Rapi**: Mengeliminasi duplikasi ikon `+` pada tombol Tambah Direktori Kustom.")
-
-                            GithubSectionHeader("🛠️ Pengoptimalan VFS & Jalur")
-                            GithubMarkdownBullet("• **Penyelarasan Jalur VFS**: Sanitasi canonical prefix `/sdcard/` dan inisialisasi proaktif folder `\$sdBase/MountX/` berizin 775.")
-                        }
-
-                        // ── v2.2.25 ──
-                        GithubReleaseCard(
-                            version = "v2.2.25",
-                            releaseDate = "19 Sep 2026",
-                            title = "Penyimpanan Terpusat MountX, Deteksi Cerdas Media & Aksi Cepat Migrasi"
-                        ) {
-                            GithubSectionHeader("📦 Penyimpanan Terpusat & Media")
-                            GithubMarkdownBullet("• **Struktur Direktori Terpusat MountX**: Seluruh data pengalihan dikumpulkan rapi di dalam folder induk `\$sdBase/MountX/` (Android/data, obb, media, app, containers).")
-                            GithubMarkdownBullet("• **Kompatibilitas Mundur Penuh**: Deteksi transparan data di jalur lama tanpa memerlukan migrasi paksa manual.")
-                            GithubMarkdownBullet("• **Deteksi Cerdas Media & Unduhan**: Mendukung pemindahan folder media bersama (`/data/media/0/Android/media/<pkg>`) dengan aturan proteksi `.nomedia` pintar.")
-                            GithubMarkdownBullet("• **Aksi Cepat Migrasi**: Badge status oranye `Perlu Migrasi` dengan aksi 1-klik `Satukan & Pindahkan ke MicroSD`.")
-                        }
-
-                        // ── v2.2.24 ──
-                        GithubReleaseCard(
-                            version = "v2.2.24",
-                            releaseDate = "18 Sep 2026",
-                            title = "Stabilisasi Ukuran VFS, Manajemen Modul Root & Info Aplikasi"
-                        ) {
-                            GithubSectionHeader("🛠️ Modul Root & Stabilitas VFS")
-                            GithubMarkdownBullet("• **Stabilisasi Deteksi Ukuran Game**: Mencegah penurunan ukuran ke 20KB saat skeleton ter-mount di atas data internal.")
-                            GithubMarkdownBullet("• **Manajemen Terpadu Modul Root**: Banner aktivasi instan via root serta ekspor berkas ZIP flashable langsung ke Download.")
-                            GithubMarkdownBullet("• **Tab Info Aplikasi Lengkap**: Panel komprehensif identitas paket, versi, SDK target/min, dan UID/GID sandbox.")
-                            GithubMarkdownBullet("• **Tombol Kaitan Bergantian**: Tombol dinamis tunggal bergantian (`Kaitkan Game` vs `Lepaskan Mount` aman).")
-                        }
-
-                        // ── v2.2.23 ──
-                        GithubReleaseCard(
-                            version = "v2.2.23",
-                            releaseDate = "17 Sep 2026",
-                            title = "Back Navigation Berjenjang, Konfirmasi Migrasi & Resolusi Konflik Data"
-                        ) {
-                            GithubSectionHeader("🚀 Navigasi & Mesin Salin Atomic")
-                            GithubMarkdownBullet("• **Navigasi Back Gesture Berjenjang**: Back gesture pada seluruh sub-layar mundur bertahap per level secara intuitif.")
-                            GithubMarkdownBullet("• **Dialog Konfirmasi Pra-Migrasi**: Menampilkan pratinjau arah sumber-tujuan, ukuran fisik riil, dan validasi ruang.")
-                            GithubMarkdownBullet("• **Mesin Salin Atomic**: Penyalinan aman (`cp -a`) dengan verifikasi ukuran integritas sebelum pembersihan berkas sumber.")
-                        }
-
-                        // ── v2.2.22 ──
-                        GithubReleaseCard(
-                            version = "v2.2.22",
-                            releaseDate = "16 Sep 2026",
-                            title = "Real-Time Progress Engine & Live Telemetry Stepper"
-                        ) {
-                            GithubSectionHeader("⚡ Mesin Telemetri Real-Time")
-                            GithubMarkdownBullet("• **Kecepatan & Estimasi Real-Time**: Kecepatan transfer MB/s (EMA) dan estimasi sisa waktu (ETA) real-time.")
-                            GithubMarkdownBullet("• **Visual Stepper 5 Tahap**: Checklist multi-tahap transparan untuk pemindahan dan kaitan VFS.")
-                        }
-
-                        // ── v2.2.21 ──
-                        GithubReleaseCard(
-                            version = "v2.2.21",
-                            releaseDate = "15 Sep 2026",
-                            title = "Category Inspector Modal & Safe Multi-Storage Deletion"
-                        ) {
-                            GithubSectionHeader("🔍 Inspektur Kategori Data")
-                            GithubMarkdownBullet("• **Category Inspector Modal**: Ketuk kartu kategori data game untuk melihat rincian path lengkap di setiap media.")
-                            GithubMarkdownBullet("• **Penghapusan Data Aman Bertingkat**: Opsi hapus data kategori dengan pilihan lokasi (Internal Saja, MicroSD Saja, atau Keduanya).")
-                        }
-
-                        // ── v2.2.20 & Terdahulu ──
-                        GithubReleaseCard(
-                            version = "v2.2.20",
-                            releaseDate = "14 Sep 2026",
-                            title = "Ultra-Fast Storage Engine & Absolute Size Precision"
-                        ) {
-                            GithubSectionHeader("⚡ Performa Tinggi & Pengurangan Latensi")
-                            GithubMarkdownBullet("• **Syscall stat -f Berkecepatan Tinggi**: Menggantikan perintah `df -k` dengan respon 0,09 detik (350x lebih cepat).")
-                            GithubMarkdownBullet("• **Logging Asinkron**: Menghindari antrian pemblokiran RootShell saat operasi I/O intensif.")
+                        ChangelogHistory.releases.forEach { release ->
+                            ChangelogTreeReleaseCard(release = release)
                         }
                     }
                 }
@@ -835,23 +526,25 @@ fun AboutScreen(
 }
 
 @Composable
-private fun GithubReleaseCard(
-    version: String,
-    releaseDate: String,
-    title: String,
-    isLatest: Boolean = false,
-    content: @Composable ColumnScope.() -> Unit
+private fun ChangelogTreeReleaseCard(
+    release: ChangelogRelease,
+    modifier: Modifier = Modifier
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    var isExpanded by remember { mutableStateOf(release.isLatest) }
+    val emeraldColor = adaptiveEmerald()
+
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(
             1.dp,
-            if (isLatest) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outline
+            if (release.isLatest) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outline
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
+            // Version Header & Latest Badge
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -860,28 +553,27 @@ private fun GithubReleaseCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = if (isLatest) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(1.dp, if (isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+                        color = if (release.isLatest) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(1.dp, if (release.isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
                     ) {
                         Text(
-                            text = version,
+                            text = release.version,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
-                            color = if (isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (release.isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = releaseDate,
+                        text = release.releaseDate,
                         fontSize = 10.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                if (isLatest) {
-                    val emeraldColor = adaptiveEmerald()
+                if (release.isLatest) {
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = emeraldColor.copy(alpha = 0.15f),
@@ -910,54 +602,156 @@ private fun GithubReleaseCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
+            // Release Summary
             Text(
-                text = title,
+                text = release.summary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
 
-            content()
+            // Categories
+            val categoriesToShow = if (isExpanded || release.categories.size <= 1) {
+                release.categories
+            } else {
+                release.categories.take(1)
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                categoriesToShow.forEach { catChange ->
+                    ChangelogCategoryBlock(categoryChange = catChange, isDark = isDark)
+                }
+            }
+
+            // Accordion toggle if multiple categories
+            if (release.categories.size > 1) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        onClick = { isExpanded = !isExpanded },
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = if (isExpanded) "Lebih Sedikit" else "Lihat Selengkapnya (${release.categories.size - 1}+)",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun GithubSectionHeader(title: String) {
-    Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            ),
-            color = MaterialTheme.colorScheme.primary
-        )
-        HorizontalDivider(
-            thickness = 0.8.dp,
-            color = MaterialTheme.colorScheme.outline,
-            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
-        )
-    }
-}
+private fun ChangelogCategoryBlock(
+    categoryChange: CategoryChange,
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val catColor = categoryChange.category.accentColor()
 
-@Composable
-private fun GithubMarkdownBullet(rawText: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.Top
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = catColor.copy(alpha = if (isDark) 0.08f else 0.05f),
+        border = BorderStroke(1.dp, catColor.copy(alpha = if (isDark) 0.32f else 0.22f)),
+        modifier = modifier.fillMaxWidth()
     ) {
-        Text(
-            text = buildMarkdownAnnotatedString(rawText),
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontSize = 11.sp,
-                lineHeight = 16.sp
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Column(modifier = Modifier.padding(8.dp)) {
+            // Category Pill Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 6.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = catColor.copy(alpha = if (isDark) 0.20f else 0.12f),
+                    border = BorderStroke(1.dp, catColor.copy(alpha = if (isDark) 0.50f else 0.35f))
+                ) {
+                    Text(
+                        text = "${categoryChange.category.icon} ${categoryChange.category.displayName}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = catColor,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // Features Tree
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                categoryChange.features.forEach { feature ->
+                    Column {
+                        // Feature Level: └── Feature Title
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "└── ",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = catColor,
+                                modifier = Modifier.padding(top = 1.dp)
+                            )
+                            Text(
+                                text = feature.title,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // Detail Bullets
+                        feature.details.forEachIndexed { dIdx, detail ->
+                            val isLast = dIdx == feature.details.lastIndex
+                            Row(
+                                verticalAlignment = Alignment.Top,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 16.dp, top = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (isLast) "└── " else "├── ",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.padding(top = 1.dp)
+                                )
+                                Text(
+                                    text = buildMarkdownAnnotatedString(detail),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 10.5.sp,
+                                        lineHeight = 15.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Cup Body & Handle -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,5h14c0.55,0 1,0.45 1,1v5c0,3.31 -2.69,6 -6,6H9c-3.31,0 -6,-2.69 -6,-6V6c0,-0.55 0.45,-1 1,-1z" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M18,7.5h1.5c1.38,0 2.5,1.12 2.5,2.5s-1.12,2.5 -2.5,2.5H17" />
+    <!-- Heart on Cup -->
+    <path
+        android:fillColor="#FFFF5E5B"
+        android:pathData="M10,8.8c-0.6,-0.7 -1.6,-0.8 -2.3,-0.1 -0.7,0.7 -0.7,1.8 0,2.5l2.3,2.2 2.3,-2.2c0.7,-0.7 0.7,-1.8 0,-2.5 -0.7,-0.7 -1.7,-0.6 -2.3,0.1z" />
+    <!-- Saucer line -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M2,19.5h18" />
+</vector>
