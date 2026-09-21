@@ -26,3 +26,20 @@ google-services.json
 .build-cache/
 *.apk
 
+# Internal developer docs & AI agent instructions - NEVER COMMIT
+AGENTS.md
+Agents.md
+agents.md
+
+# Design source wireframes (internal)
+Figma/
+*.fig
+
+# Local developer scripts (hardcoded paths, not for contributors)
+Buka_Studio.bat
+Jalankan_Emulator.bat
+Pasang_ke_Emulator.bat
+
+# HTML preview files
+preview.html
+
