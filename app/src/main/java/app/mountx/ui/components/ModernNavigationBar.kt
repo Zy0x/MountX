@@ -73,9 +73,9 @@ fun ModernNavigationBar(
     val barShape = RoundedCornerShape(26.dp)
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-    val dockBgColor = if (isDark) Color(0xFF131620) else MaterialTheme.colorScheme.surface
-    val dockBorderColor = if (isDark) Color(0xFF232838) else MaterialTheme.colorScheme.outline
-    val shadowSpotColor = if (isDark) HyperCyan.copy(alpha = 0.20f) else Color(0xFF0F172A).copy(alpha = 0.08f)
+    val dockBgColor = if (isDark) Color(0xFF131620) else Color(0xFFFAF8F5)
+    val dockBorderColor = if (isDark) Color(0xFF232838) else Color(0xFFD6D3CD)
+    val shadowSpotColor = if (isDark) HyperCyan.copy(alpha = 0.15f) else Color(0xFF57534E).copy(alpha = 0.08f)
 
     Box(
         modifier = modifier
@@ -134,9 +134,9 @@ private fun CyberNavItem(
     val interactionSource = remember { MutableInteractionSource() }
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-    val activeColor = if (isDark) HyperCyanBright else MaterialTheme.colorScheme.primary
-    val inactiveColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.60f) else Color(0xFF64748B)
-    val activePillBg = if (isDark) HyperCyan.copy(alpha = 0.14f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+    val activeColor = if (isDark) HyperCyanBright else Color(0xFF4F46E5)
+    val inactiveColor = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.60f) else Color(0xFF78716C)
+    val activePillBg = if (isDark) HyperCyan.copy(alpha = 0.14f) else Color(0xFFEDE9FE)
 
     val containerColor = if (selected) activePillBg else Color.Transparent
     val contentColor = if (selected) activeColor else inactiveColor

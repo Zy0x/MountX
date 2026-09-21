@@ -2,7 +2,7 @@
 <resources>
     <!-- App -->
     <string name="app_name">MountX</string>
-    <string name="app_description">Move and mount app data to external MicroSD without FUSE errors.</string>
+    <string name="app_description">Seamless storage redirection &amp; external bind engine</string>
 
     <!-- Bottom Navigation -->
     <string name="nav_dashboard">Dashboard</string>

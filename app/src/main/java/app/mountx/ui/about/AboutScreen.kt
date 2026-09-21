@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -23,6 +24,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import app.mountx.ui.theme.ElectricIndigo
+import app.mountx.ui.theme.ElectricIndigoLight
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -433,66 +438,138 @@ fun AboutScreen(
         }
     }
 
-    // Changelog Dialog (GitHub Markdown Release Notes Style)
+    // Changelog Dialog (Compact Categorized Style)
     if (showChangelogDialog) {
-        AlertDialog(
+        Dialog(
             onDismissRequest = { showChangelogDialog = false },
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            shape = RoundedCornerShape(20.dp),
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Text(
-                            text = "#",
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                        )
-                    }
-                    Text(
-                        stringResource(R.string.about_changelog),
-                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            },
-            text = {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+            var visibleCount by remember { mutableIntStateOf(1) }
+
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.82f)
+                    .padding(horizontal = 16.dp)
+            ) {
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 440.dp)
+                        .fillMaxSize()
+                        .padding(16.dp)
                 ) {
-                    Column(
+                    // Header: # Changelog + Close (X)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                            .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                            .padding(bottom = 12.dp)
                     ) {
-                        ChangelogHistory.releases.forEach { release ->
-                            ChangelogTreeReleaseCard(release = release)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "#",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = if (isDark) ElectricIndigo else ElectricIndigoLight
+                            )
+                            Text(
+                                text = stringResource(R.string.about_changelog),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // Close button (Circle X)
+                        Surface(
+                            onClick = { showChangelogDialog = false },
+                            shape = CircleShape,
+                            color = if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFE7E5E4),
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = stringResource(R.string.common_close),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Content: Releases + Pagination Button
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        val releasesToShow = ChangelogHistory.releases.take(visibleCount)
+                        releasesToShow.forEach { release ->
+                            CompactChangelogReleaseCard(
+                                release = release,
+                                isDark = isDark
+                            )
+                        }
+
+                        // Pagination Button: "Lihat versi lainnya (2 versi terdahulu) ⌵"
+                        if (visibleCount < ChangelogHistory.releases.size) {
+                            val remaining = ChangelogHistory.releases.size - visibleCount
+                            val countLabel = if (remaining > 1) "2 versi terdahulu" else "1 versi terdahulu"
+                            val outlineColor = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.45f) else Color(0xFF4F46E5).copy(alpha = 0.45f)
+                            val accentColor = if (isDark) Color(0xFF60A5FA) else Color(0xFF4F46E5)
+
+                            Surface(
+                                onClick = {
+                                    visibleCount = minOf(ChangelogHistory.releases.size, visibleCount + 2)
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.Transparent,
+                                border = BorderStroke(1.dp, outlineColor),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .height(42.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    Text(
+                                        text = "Lihat versi lainnya ($countLabel)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = accentColor
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = null,
+                                        tint = accentColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showChangelogDialog = false }) {
-                    Text(stringResource(R.string.common_close), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                }
             }
-        )
+        }
     }
 
     // License Dialog
@@ -526,268 +603,160 @@ fun AboutScreen(
 }
 
 @Composable
-private fun ChangelogTreeReleaseCard(
+private fun CompactChangelogReleaseCard(
     release: ChangelogRelease,
+    isDark: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    var isExpanded by remember { mutableStateOf(release.isLatest) }
     val emeraldColor = adaptiveEmerald()
+    val cardBg = if (isDark) Color(0xFF131620) else Color(0xFFFAF8F5)
+    val cardBorder = if (isDark) Color(0xFF232838) else Color(0xFFE5E2DC)
+    val secondaryTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF57534E)
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            1.dp,
-            if (release.isLatest) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outline
-        ),
+        shape = RoundedCornerShape(16.dp),
+        color = cardBg,
+        border = BorderStroke(1.dp, cardBorder),
         modifier = modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // Version Header & Latest Badge
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            // Version Header & Date Row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Version Pill: vX.X.X solid #4F46E5, white text 11sp bold
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = if (release.isLatest) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(1.dp, if (release.isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+                        color = Color(0xFF4F46E5)
                     ) {
                         Text(
                             text = release.version,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = if (release.isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            fontSize = 11.sp,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = release.releaseDate,
-                        fontSize = 10.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
 
-                if (release.isLatest) {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = emeraldColor.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, emeraldColor.copy(alpha = 0.4f))
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    // Latest Badge
+                    if (release.isLatest) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = emeraldColor.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, emeraldColor.copy(alpha = 0.35f))
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(emeraldColor, CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Latest",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = emeraldColor
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(5.dp)
+                                        .background(emeraldColor, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Latest",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = emeraldColor
+                                )
+                            }
                         }
                     }
                 }
+
+                // Date
+                Text(
+                    text = release.releaseDate,
+                    fontSize = 11.sp,
+                    color = secondaryTextColor
+                )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Release Summary
+            // Release Summary (13sp bold)
             Text(
                 text = release.summary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
 
-            // Categories
-            val categoriesToShow = if (isExpanded || release.categories.size <= 1) {
-                release.categories
-            } else {
-                release.categories.take(1)
-            }
-
+            // Direct Categories (UI/UX, SYSTEM, FIXED, ADDED, IMPROVED)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                categoriesToShow.forEach { catChange ->
-                    ChangelogCategoryBlock(categoryChange = catChange, isDark = isDark)
-                }
-            }
+                release.categories.forEach { catChange ->
+                    val catColor = catChange.category.accentColor()
 
-            // Accordion toggle if multiple categories
-            if (release.categories.size > 1) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Surface(
-                        onClick = { isExpanded = !isExpanded },
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                text = if (isExpanded) "Lebih Sedikit" else "Lihat Selengkapnya (${release.categories.size - 1}+)",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Icon(
-                                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Category Chip/Title: 11sp bold all-caps
+                        Text(
+                            text = catChange.category.displayName.uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = catColor,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
 
-@Composable
-private fun ChangelogCategoryBlock(
-    categoryChange: CategoryChange,
-    isDark: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val catColor = categoryChange.category.accentColor()
-
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = catColor.copy(alpha = if (isDark) 0.08f else 0.05f),
-        border = BorderStroke(1.dp, catColor.copy(alpha = if (isDark) 0.32f else 0.22f)),
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            // Category Pill Header
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 6.dp)
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = catColor.copy(alpha = if (isDark) 0.20f else 0.12f),
-                    border = BorderStroke(1.dp, catColor.copy(alpha = if (isDark) 0.50f else 0.35f))
-                ) {
-                    Text(
-                        text = "${categoryChange.category.icon} ${categoryChange.category.displayName}",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = catColor,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            // Features Tree
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                categoryChange.features.forEach { feature ->
-                    Column {
-                        // Feature Level: └── Feature Title
-                        Row(
-                            verticalAlignment = Alignment.Top,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "└── ",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = catColor,
-                                modifier = Modifier.padding(top = 1.dp)
-                            )
-                            Text(
-                                text = feature.title,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        // Detail Bullets
-                        feature.details.forEachIndexed { dIdx, detail ->
-                            val isLast = dIdx == feature.details.lastIndex
+                        // Bullet Items: • Judul: Deskripsi
+                        catChange.features.forEach { feature ->
+                            val descText = feature.details.joinToString(" ")
                             Row(
                                 verticalAlignment = Alignment.Top,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(start = 16.dp, top = 2.dp)
+                                    .padding(vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = if (isLast) "└── " else "├── ",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.padding(top = 1.dp)
+                                    text = "• ",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = secondaryTextColor,
+                                    modifier = Modifier.padding(top = 0.5.dp)
                                 )
+                                val annotated = buildAnnotatedString {
+                                    withStyle(
+                                        SpanStyle(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    ) {
+                                        append("${feature.title}: ")
+                                    }
+                                    withStyle(
+                                        SpanStyle(
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Normal,
+                                            color = secondaryTextColor
+                                        )
+                                    ) {
+                                        append(descText)
+                                    }
+                                }
                                 Text(
-                                    text = buildMarkdownAnnotatedString(detail),
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 10.5.sp,
-                                        lineHeight = 15.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = annotated,
+                                    lineHeight = 15.sp,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun buildMarkdownAnnotatedString(text: String): androidx.compose.ui.text.AnnotatedString {
-    return buildAnnotatedString {
-        var i = 0
-        while (i < text.length) {
-            if (text.startsWith("**", i)) {
-                val end = text.indexOf("**", i + 2)
-                if (end != -1) {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)) {
-                        append(text.substring(i + 2, end))
-                    }
-                    i = end + 2
-                    continue
-                }
-            } else if (text.startsWith("`", i)) {
-                val end = text.indexOf("`", i + 1)
-                if (end != -1) {
-                    withStyle(
-                        SpanStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            background = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    ) {
-                        append(" ${text.substring(i + 1, end)} ")
-                    }
-                    i = end + 1
-                    continue
-                }
-            }
-            append(text[i])
-            i++
         }
     }
 }

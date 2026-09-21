@@ -56,12 +56,67 @@ data class ChangelogRelease(
 
 object ChangelogHistory {
     val releases: List<ChangelogRelease> = listOf(
-        // ── v2.2.41 (Latest) ──
+        // ── v2.2.42 (Latest) ──
+        ChangelogRelease(
+            version = "v2.2.42",
+            releaseDate = "21 Sep 2026",
+            summary = "Pembaruan Ikon Master, Redesain Changelog Compact & Terminal Earthy Mineral",
+            isLatest = true,
+            categories = listOf(
+                CategoryChange(
+                    category = ChangeCategoryType.UI_UX,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Ikon Aplikasi Master Transparan",
+                            details = listOf(
+                                "Menghasilkan ulang seluruh aset launcher, emblem, dan mipmap dari master resolusi tinggi.",
+                                "Menghilangkan seluruh garis tepi sisa dan memberikan tampilan kristal bersih menyatu tema."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Redesain Changelog Dialog Compact",
+                            details = listOf(
+                                "Tampilan ringkas berbasis grup kategori langsung tanpa nested cards dan hierarki berlebih.",
+                                "Tombol close silang (X) di pojok kanan header dan pagination bertahap muat 2 versi per klik."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Terminal Console Earthy Mineral",
+                            details = listOf(
+                                "Kontainer Deep Stone (#1C1917) dengan penyorotan warna token semantik yang nyaman di mata.",
+                                "Subjudul header dinamis menampilkan jumlah baris entri aktif secara langsung."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Harmonisasi Warna Sandstone Navbar",
+                            details = listOf(
+                                "Warna latar dock navbar serasi dengan permukaan kartu Sandstone (#FAF8F5).",
+                                "Transisi warna navigasi lembut dan nyaman di mata untuk mode terang."
+                            )
+                        )
+                    )
+                ),
+                CategoryChange(
+                    category = ChangeCategoryType.SYSTEM,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Modernisasi Tagline & Versi",
+                            details = listOf(
+                                "Pembaruan deskripsi aplikasi menjadi 'Seamless storage redirection & external bind engine'.",
+                                "Peningkatan versi aplikasi ke v2.2.42 pada build gradle dan modul root."
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+
+        // ── v2.2.41 ──
         ChangelogRelease(
             version = "v2.2.41",
             releaseDate = "21 Sep 2026",
             summary = "Siluet Murni Ikon Emblem, Sistem Changelog Standar 5-Kategori & Tombol Donasi Brand",
-            isLatest = true,
+            isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.UI_UX,

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MountX</string>
-    <string name="app_description">Pindah dan mount data game ke MicroSD eksternal tanpa error FUSE.</string>
+    <string name="app_description">Seamless storage redirection &amp; external bind engine</string>
 
     <string name="nav_dashboard">Beranda</string>
     <string name="nav_games">Game</string>
