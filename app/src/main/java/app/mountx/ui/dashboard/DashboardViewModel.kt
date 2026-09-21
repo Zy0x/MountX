@@ -208,6 +208,15 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
             val points = if (game.mountPoints.isNotEmpty()) game.mountPoints else gameRepository.synthesizeLegacyMountPoints(game, sdBase)
+
+            // Force stop active process before migration
+            RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
+
+            // Unmount if currently mounted to prevent cyclic file locks
+            if (game.mountStatus == MountStatus.MOUNTED) {
+                gameRepository.unmountGame(game)
+            }
+
             val result = storageRepository.moveGameMountPoints(
                 packageName = game.packageName,
                 mountPoints = points,
@@ -215,7 +224,11 @@ class DashboardViewModel @Inject constructor(
                 sdBase = sdBase
             )
             if (result.isSuccess) {
-                val updated = game.copy(mountPoints = points)
+                val updatedPoints = points.map { it.copy(enabled = true) }
+                val updated = game.copy(
+                    mountPoints = updatedPoints,
+                    mountStatus = MountStatus.UNMOUNTED
+                )
                 gameRepository.updateGame(updated)
                 gameRepository.mountGame(updated, sdBase)
             }

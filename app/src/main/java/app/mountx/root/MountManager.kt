@@ -49,10 +49,10 @@ class MountManager {
         userIds.distinct()
     }
 
-    /** Dynamically detects all target runtime namespaces across all active users/profiles */
-    private suspend fun getTargetNamespaces(): List<String> = withContext(Dispatchers.IO) {
+    /** Dynamically detects all target runtime namespaces across active users/profiles or an isolated user */
+    suspend fun getTargetNamespaces(specificUserId: Int? = null): List<String> = withContext(Dispatchers.IO) {
         val list = mutableListOf<String>()
-        val userIds = getActiveUserIds()
+        val userIds = if (specificUserId != null) listOf(specificUserId) else getActiveUserIds()
         for (uid in userIds) {
             list.add("/mnt/runtime/default/emulated/$uid")
             list.add("/mnt/runtime/read/emulated/$uid")
@@ -68,6 +68,28 @@ class MountManager {
     }
 
     companion object {
+        /**
+         * Resolves the Android user ID from an absolute storage path.
+         * Defaults to 0 (primary user) if not identifiable.
+         */
+        fun resolveUserId(path: String): Int {
+            val match = Regex("^/(?:storage/emulated|data/media|mnt/user|data/user)/(\\d+)").find(path)
+            return match?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        }
+
+        /**
+         * Extracts clean relative directory path from an absolute Android path across any user profile.
+         * e.g. /data/media/0/Android/data/com.foo -> Android/data/com.foo
+         *      /storage/emulated/999/Android/obb/com.bar -> Android/obb/com.bar
+         *      /sdcard/Download/1DM -> Download/1DM
+         */
+        fun extractRelativePath(path: String): String {
+            return path
+                .replace(Regex("^/(?:storage/emulated|data/media|mnt/user|data/user)/\\d+(?:/primary)?/?"), "")
+                .removePrefix("/sdcard/")
+                .removePrefix("/")
+        }
+
         /**
          * Broadcasts media scanner trigger to update gallery and system media index immediately.
          */
@@ -118,14 +140,15 @@ class MountManager {
                 delay(200)
             }
 
-            // Dynamic UID/GID resolution directly from stat /data/data/$pkg
-            val identity = resolveAppIdentity(game.packageName)
+            // Dynamic UID/GID resolution directly from stat /data/user/$appUserId/$pkg
+            val appUserId = game.mountPoints.firstOrNull()?.let { resolveUserId(it.targetPath) } ?: 0
+            val identity = resolveAppIdentity(game.packageName, appUserId)
             val uid = identity.uid
             val gid = identity.gid
 
             // Set ownership on internal data directory
-            RootShell.exec("chown -R $uid:$gid \"/data/user/0/${game.packageName}\" 2>/dev/null")
-            RootShell.exec("chmod -R 775 \"/data/user/0/${game.packageName}\" 2>/dev/null")
+            RootShell.exec("chown -R $uid:$gid \"/data/user/$appUserId/${game.packageName}\" 2>/dev/null")
+            RootShell.exec("chmod -R 775 \"/data/user/$appUserId/${game.packageName}\" 2>/dev/null")
 
             // Step 1: Memeriksa Direktori MicroSD
             onProgress?.invoke(
@@ -180,7 +203,7 @@ class MountManager {
                 )
             }
 
-            val namespaces = getTargetNamespaces()
+            val namespaces = getTargetNamespaces(0)
 
             // Step 2: Mengaitkan VFS ke Runtime Namespaces
             onProgress?.invoke(
@@ -207,9 +230,12 @@ class MountManager {
                         continue
                     }
 
+                    val targetUserId = resolveUserId(mp.targetPath)
+                    val mpNamespaces = getTargetNamespaces(targetUserId)
+
                     val mounted = when (mp.category) {
                         MountPointCategory.EXTERNAL_DATA, MountPointCategory.OBB_STORAGE, MountPointCategory.GAME_ASSETS -> {
-                            mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
+                            mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false)
                         }
                         MountPointCategory.MEDIA_DOWNLOADS -> {
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
@@ -220,15 +246,15 @@ class MountManager {
                             } else {
                                 RootShell.exec("rm -f \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
                             }
-                            val res = mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = true)
+                            val res = mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = true)
                             if (res) triggerMediaScan(mp.targetPath)
                             res
                         }
                         MountPointCategory.CACHE_SHADERS -> {
-                            mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
+                            mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false)
                         }
                         MountPointCategory.CUSTOM -> {
-                            val res = mountDirectoryTarget(mp, uid, gid, namespaces, isMedia = false)
+                            val res = mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false)
                             if (res) triggerMediaScan(mp.targetPath)
                             res
                         }
@@ -363,13 +389,8 @@ class MountManager {
         RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
         RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
 
-        // Extract relative path from target path (e.g. /data/media/0/Android/data/... -> Android/data/...)
-        val relPath = mp.targetPath
-            .removePrefix("/sdcard/")
-            .removePrefix("/data/media/0/")
-            .removePrefix("/storage/emulated/0/")
-            .removePrefix("/mnt/user/0/primary/")
-            .removePrefix("/")
+        // Extract relative path from target path across any user profile
+        val relPath = extractRelativePath(mp.targetPath)
 
         var anyMounted = false
         for (namespace in namespaces) {
@@ -478,14 +499,15 @@ class MountManager {
                     )
                 )
 
-                val namespaces = getTargetNamespaces()
+                val allUserIds = getActiveUserIds()
 
                 if (game.mountPoints.isNotEmpty()) {
                     for (mp in game.mountPoints) {
+                        val targetUserId = resolveUserId(mp.targetPath)
                         if (mp.category == MountPointCategory.PRIVATE_INTERNAL || mp.isVirtualContainer) {
                             // Unmount virtual container with kernel sync and loop detach
                             RootShell.exec("sync")
-                            RootShell.exec("umount -f -l \"/data/user/0/${game.packageName}\" 2>/dev/null")
+                            RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
                             RootShell.exec("umount -f -l \"/data/data/${game.packageName}\" 2>/dev/null")
                             val loopDev = RootShell.execForOutput(
                                 "losetup -a 2>/dev/null | grep \"${game.packageName}_data.img\" | cut -d':' -f1 | tr -d '\\r\\n'"
@@ -495,28 +517,27 @@ class MountManager {
                                 AppLogger.info("MountManager", "Detached loop device: $loopDev")
                             }
                         } else {
-                            val relPath = mp.targetPath
-                                .removePrefix("/sdcard/")
-                                .removePrefix("/data/media/0/")
-                                .removePrefix("/storage/emulated/0/")
-                                .removePrefix("/mnt/user/0/primary/")
-                                .removePrefix("/")
-                            for (ns in namespaces) {
+                            val userNamespaces = getTargetNamespaces(targetUserId)
+                            val relPath = extractRelativePath(mp.targetPath)
+                            for (ns in userNamespaces) {
                                 RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
                             }
                         }
                     }
                 }
 
-                // Fallback unmount standard default paths
+                // Fallback unmount standard default paths across all user profiles
                 val legacyRelPaths = listOf(
                     "Android/data/${game.packageName}/files",
                     "Android/data/${game.packageName}",
                     "Android/obb/${game.packageName}"
                 )
-                for (namespace in namespaces) {
-                    for (rel in legacyRelPaths) {
-                        RootShell.exec("umount -f -l \"$namespace/$rel\" 2>/dev/null")
+                for (uid in allUserIds) {
+                    val userNamespaces = getTargetNamespaces(uid)
+                    for (namespace in userNamespaces) {
+                        for (rel in legacyRelPaths) {
+                            RootShell.exec("umount -f -l \"$namespace/$rel\" 2>/dev/null")
+                        }
                     }
                 }
 
@@ -537,7 +558,7 @@ class MountManager {
                 """.trimIndent()
                 RootShell.execScript(sweepScript)
 
-                // Step 2: Restore SELinux context
+                // Step 2: Restore SELinux context across active users
                 onProgress?.invoke(
                     OperationProgress(
                         type = opType,
@@ -549,8 +570,10 @@ class MountManager {
                         progressPercent = 0.85f
                     )
                 )
-                RootShell.exec("restorecon -FR \"/data/media/0/Android/data/${game.packageName}\" 2>/dev/null")
-                RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/${game.packageName}\" 2>/dev/null")
+                for (uid in allUserIds) {
+                    RootShell.exec("restorecon -FR \"/data/media/$uid/Android/data/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"/data/media/$uid/Android/obb/${game.packageName}\" 2>/dev/null")
+                }
                 delay(150)
 
                 // Step 3: Finished
@@ -658,13 +681,13 @@ class MountManager {
     }
 
     /**
-     * Resolves dynamic UID and GID directly from stat /data/data/$packageName
-     * to ensure full compatibility with Android 11-14+ app isolation.
+     * Resolves dynamic UID and GID directly from stat /data/user/$userId/$packageName
+     * to ensure full compatibility with Android 11-14+ app and multi-user isolation.
      */
-    suspend fun resolveAppIdentity(packageName: String): AppIdentity = withContext(Dispatchers.IO) {
+    suspend fun resolveAppIdentity(packageName: String, userId: Int = 0): AppIdentity = withContext(Dispatchers.IO) {
         val statRes = RootShell.exec(
-            "stat -c \"%u %g\" \"/data/data/$packageName\" 2>/dev/null || " +
-            "stat -c \"%u %g\" \"/data/user/0/$packageName\" 2>/dev/null"
+            "stat -c \"%u %g\" \"/data/user/$userId/$packageName\" 2>/dev/null || " +
+            "stat -c \"%u %g\" \"/data/data/$packageName\" 2>/dev/null"
         )
         if (statRes.isSuccess && statRes.output.isNotBlank()) {
             val tokens = statRes.output.trim().split("\\s+".toRegex())
@@ -675,7 +698,8 @@ class MountManager {
             }
         }
         val fallbackUid = getGameUid(packageName)
-        AppIdentity(fallbackUid, fallbackUid)
+        val calculatedUid = if (userId > 0 && fallbackUid < 100000) (userId * 100000) + fallbackUid else fallbackUid
+        AppIdentity(calculatedUid, calculatedUid)
     }
 
     /**

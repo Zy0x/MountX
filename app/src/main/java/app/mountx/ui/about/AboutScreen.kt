@@ -406,11 +406,38 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.36 (Latest) ──
+                        // ── v2.2.37 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.37",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "5 Pilar Keandalan Arsitektur, Multi-User Isolation, Pre-Flight Unmount Hard-Lock & Scoping Media Presisi"
+                        ) {
+                            GithubSectionHeader("👥 Isolasi Namespace Multi-User Universal & Ekstraksi Jalur Dinamis")
+                            GithubMarkdownBullet("• **Ekstraksi Jalur Relatif Universal**: Menggunakan pemotong regex multi-user `extractRelativePath` untuk mendukung penuh Xiaomi Dual Apps (User 999), profil kerja (User 10+), dan folder kustom tanpa merusak hierarki berkas.")
+                            GithubMarkdownBullet("• **Isolasi Namespace Per-User**: Mengarahkan kaitan bind-mount khusus ke namespace target user bersangkutan (`getTargetNamespaces(userId)`) dengan formula matematis UID/GID sandbox resmi Android.")
+
+                            GithubSectionHeader("🛡️ Pre-Flight Unmount Hard-Lock & Proteksi Zero Data Loss")
+                            GithubMarkdownBullet("• **Pemeriksaan Kaitan Fail-Fast**: Memverifikasi pelepasan kaitan nyata (`isMountpoint`) sebelum pemindahan berkas `TO_INTERNAL`. Jika direktori internal masih terikat, operasi dibatalkan seketika demi mencegah *self-copy*.")
+                            GithubMarkdownBullet("• **Kunci Pengaman Pembersihan MicroSD**: Menolak pembersihan direktori sumber MicroSD jika target internal terdeteksi masih berstatus mountpoint, menjamin data pengguna 100% aman.")
+
+                            GithubSectionHeader("🚀 Guardrail Mount All Games & Mitigasi Error Palsu")
+                            GithubMarkdownBullet("• **Pengecualian Status Need Migration**: Tombol 'Mount All Games' secara otomatis melewati aplikasi yang membutuhkan migrasi sehingga tidak memicu error palsu pada dashboard maupun daftar game.")
+                            GithubMarkdownBullet("• **Konsistensi Status Room DB**: Eksepsi `OcclusionHazardException` tetap mempertahankan status `NEED_MIGRATION` tanpa pernah menurunkannya ke `ERROR`.")
+
+                            GithubSectionHeader("🖼️ Scoping Media Presisi & Pencegahan Penyembunyian Galeri")
+                            GithubMarkdownBullet("• **Eliminasi .nomedia Root**: Menghapus berkas `.nomedia` agresif pada induk `MountX/Android/` dan membersihkan sisa peninggalan versi sebelumnya.")
+                            GithubMarkdownBullet("• **Preservasi Media & Galeri**: Folder `Android/media/` serta direktori unduhan kustom (seperti 1DM) tetap dapat dipindai oleh MediaScanner Android.")
+
+                            GithubSectionHeader("🔄 Penyelarasan Alur Migrasi Modern Dashboard")
+                            GithubMarkdownBullet("• **Pipeline Migrasi Terpadu**: Fungsi `migrateGame` pada dashboard kini menghentikan aplikasi (*force stop*), melepas mount yang masih aktif, dan menyelaraskan struktur Room DB secara atomik.")
+                        }
+
+                        // ── v2.2.36 ──
                         GithubReleaseCard(
                             version = "v2.2.36",
                             releaseDate = "21 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "Smart Migration Guardrail & Rekonsiliasi Ground Truth Mount"
                         ) {
                             GithubSectionHeader("🛡️ Anti-Occlusion Hazard Tanpa Ambang Batas Arbitrer")

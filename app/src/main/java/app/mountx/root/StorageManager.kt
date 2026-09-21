@@ -127,6 +127,7 @@ class StorageManager {
                          "$mountXBase/Custom" \
                          "$mountXBase/app" \
                          "$mountXBase/containers" 2>/dev/null
+                rm -f "$mountXBase/Android/.nomedia" 2>/dev/null
                 touch "$mountXBase/Android/data/.nomedia" 2>/dev/null
                 touch "$mountXBase/Android/obb/.nomedia" 2>/dev/null
                 chown -R media_rw:media_rw "$mountXBase" 2>/dev/null
@@ -1301,10 +1302,25 @@ class StorageManager {
                 onProgress(0.05f, "Menghentikan proses aplikasi ($packageName)...")
                 RootShell.exec("am force-stop \"$packageName\"")
 
-                // Unmount active target points
+                // Pre-Flight unmount across all runtime namespaces
                 for (point in mountPoints) {
-                    RootShell.exec("umount -l \"${point.targetPath}\" 2>/dev/null")
-                    RootShell.exec("umount -l \"${point.sourcePath}\" 2>/dev/null")
+                    val ptUserId = MountManager.resolveUserId(point.targetPath)
+                    val rel = MountManager.extractRelativePath(point.targetPath)
+                    for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                        RootShell.exec("umount -f -l \"$ns/emulated/$ptUserId/$rel\" 2>/dev/null")
+                        RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                    }
+                    RootShell.exec("umount -f -l \"/data/media/$ptUserId/$rel\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"${point.sourcePath}\" 2>/dev/null")
+
+                    if (RootShell.isMountpoint(point.targetPath)) {
+                        RootShell.exec("sync")
+                        RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
+                        if (RootShell.isMountpoint(point.targetPath)) {
+                            throw IllegalStateException("Gagal melepas mount ${point.targetPath}. Pemulihan dibatalkan demi keamanan data.")
+                        }
+                    }
                 }
 
                 val totalPoints = mountPoints.size.coerceAtLeast(1)
@@ -1339,15 +1355,18 @@ class StorageManager {
                             RootShell.exec("cp -a -f \"$src\" \"$tgt\"")
                             RootShell.exec("chmod -R 775 \"$tgt\" 2>/dev/null")
                             RootShell.exec("restorecon -FR \"$tgt\" 2>/dev/null")
-                            RootShell.exec("rm -rf \"$src\"")
+                            if (!RootShell.isMountpoint(tgt) && src.trimEnd('/') != tgt.trimEnd('/')) {
+                                RootShell.exec("rm -rf \"$src\"")
+                            }
                         }
                     }
                 }
 
                 onProgress(0.92f, "Memulihkan perizinan dan konteks keamanan SELinux...")
-                RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
-                RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
-                RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
+                val gameUserId = mountPoints.firstOrNull()?.let { MountManager.resolveUserId(it.targetPath) } ?: 0
+                RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/data/$packageName\" 2>/dev/null")
+                RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/obb/$packageName\" 2>/dev/null")
+                RootShell.exec("restorecon -FR \"/data/user/$gameUserId/$packageName\" 2>/dev/null")
                 onProgress(1.0f, "Selesai")
             } finally {
                 if (wakeLock?.isHeld == true) {
@@ -1816,18 +1835,39 @@ class StorageManager {
                 }
 
                 // Safety Guard: Ensure targetPath is NOT an active mount point across any namespaces before copy/cleanup
-                val relPath = targetPath
-                    .removePrefix("/sdcard/")
-                    .removePrefix("/data/media/0/")
-                    .removePrefix("/storage/emulated/0/")
-                    .removePrefix("/mnt/user/0/primary/")
-                    .removePrefix("/")
-                for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/mnt/user/0", "/mnt/pass_through/0", "/storage")) {
+                val pointUserId = MountManager.resolveUserId(targetPath)
+                val relPath = MountManager.extractRelativePath(targetPath)
+                for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                    RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"$ns/emulated/0/$relPath\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"$ns/primary/$relPath\" 2>/dev/null")
+                }
+                RootShell.exec("umount -f -l \"/data/media/$pointUserId/$relPath\" 2>/dev/null")
+                if (pointUserId == 0) {
+                    RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
                 }
                 RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+
+                // Pre-Flight Hard-Lock for TO_INTERNAL: fail-fast if unmount did not succeed
+                if (direction == MoveDirection.TO_INTERNAL) {
+                    var retryCount = 0
+                    while (RootShell.isMountpoint(targetPath) && retryCount < 3) {
+                        retryCount++
+                        AppLogger.warn("StorageManager", "Target $targetPath is still mounted before TO_INTERNAL! Attempting forced lazy unmount (attempt $retryCount)...")
+                        RootShell.exec("sync")
+                        RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                            RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
+                        }
+                        delay(200)
+                    }
+
+                    if (RootShell.isMountpoint(targetPath)) {
+                        val errMsg = "CRITICAL: Gagal melepas mount pada $targetPath sebelum pemindahan ke internal. Operasi dibatalkan demi mencegah kehilangan data asli di MicroSD."
+                        AppLogger.error("StorageManager", errMsg)
+                        throw IllegalStateException(errMsg)
+                    }
+                }
 
                 when (direction) {
                     MoveDirection.TO_SD -> {
@@ -1928,10 +1968,10 @@ class StorageManager {
                                 RootShell.exec("chmod -R 777 \"$sourcePath\"")
                                 RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\"")
 
-                                // Ensure MountX Android namespace has .nomedia so game assets don't leak into gallery
+                                // Purge any stale root .nomedia in MountX/Android to ensure media folders aren't hidden from Gallery
                                 val mountXAndroid = "$sdBase/MountX/Android"
                                 if (RootShell.exists(mountXAndroid)) {
-                                    RootShell.exec("touch \"$mountXAndroid/.nomedia\" 2>/dev/null")
+                                    RootShell.exec("rm -f \"$mountXAndroid/.nomedia\" 2>/dev/null")
                                 }
 
                                 // Smart .nomedia preservation for app directories:
@@ -2093,7 +2133,11 @@ class StorageManager {
                                 )
                                 val destVerifiedSize = getDirSizeBytes(targetPath)
                                 if (destVerifiedSize > 0L && sourcePath.trimEnd('/') != targetPath.trimEnd('/')) {
-                                    RootShell.exec("rm -rf \"$sourcePath\"")
+                                    if (RootShell.isMountpoint(targetPath)) {
+                                        AppLogger.error("StorageManager", "CRITICAL SAFETY: $targetPath is still a mountpoint! Skipping MicroSD cleanup to prevent data loss.")
+                                    } else {
+                                        RootShell.exec("rm -rf \"$sourcePath\"")
+                                    }
                                 }
                             }
                         }
@@ -2101,12 +2145,13 @@ class StorageManager {
                 }
             }
 
-            // Restore internal app sandbox directory permissions
-            RootShell.exec("chown -R $uid:$uid \"/data/user/0/$packageName\" 2>/dev/null")
-            RootShell.exec("chmod -R 775 \"/data/user/0/$packageName\" 2>/dev/null")
-            RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
-            RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
-            RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+            // Restore internal app sandbox directory permissions across user profile
+            val appUserId = activePoints.firstOrNull()?.let { MountManager.resolveUserId(it.targetPath) } ?: 0
+            RootShell.exec("chown -R $uid:$uid \"/data/user/$appUserId/$packageName\" 2>/dev/null")
+            RootShell.exec("chmod -R 775 \"/data/user/$appUserId/$packageName\" 2>/dev/null")
+            RootShell.exec("restorecon -FR \"/data/user/$appUserId/$packageName\" 2>/dev/null")
+            RootShell.exec("restorecon -FR \"/data/media/$appUserId/Android/data/$packageName\" 2>/dev/null")
+            RootShell.exec("restorecon -FR \"/data/media/$appUserId/Android/obb/$packageName\" 2>/dev/null")
 
             // Finished!
             onProgress?.invoke(

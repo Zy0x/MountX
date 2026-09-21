@@ -254,10 +254,17 @@ class GameRepository @Inject constructor(
                     onProgress(0.5f, "Melepaskan mount sistem...")
                     RootShell.exec("am force-stop \"$packageName\"")
                     for (point in game.mountPoints) {
-                        RootShell.exec("umount -l \"${point.targetPath}\" 2>/dev/null")
+                        val ptUserId = app.mountx.root.MountManager.resolveUserId(point.targetPath)
+                        val rel = app.mountx.root.MountManager.extractRelativePath(point.targetPath)
+                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                            RootShell.exec("umount -f -l \"$ns/emulated/$ptUserId/$rel\" 2>/dev/null")
+                            RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                        }
+                        RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
                     }
-                    RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
-                    RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+                    val gameUserId = game.mountPoints.firstOrNull()?.let { app.mountx.root.MountManager.resolveUserId(it.targetPath) } ?: 0
+                    RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/obb/$packageName\" 2>/dev/null")
                 }
             }
 
@@ -319,12 +326,22 @@ class GameRepository @Inject constructor(
                         count++
                         continue
                     }
+                    if (g.mountStatus == MountStatus.NEED_MIGRATION) {
+                        AppLogger.info("Games", "Skipping ${g.displayName} in mountAll: data requires migration to MicroSD")
+                        continue
+                    }
                     val res = mountManager.mountGame(g, sdBase)
                     if (res.isSuccess) {
                         gameDao.updateMountStatus(g.packageName, MountStatus.MOUNTED)
                         count++
                     } else {
-                        gameDao.updateMountStatus(g.packageName, MountStatus.ERROR)
+                        val ex = res.exceptionOrNull()
+                        val newStatus = if (ex is app.mountx.root.OcclusionHazardException || ex?.message?.contains("MicroSD") == true) {
+                            MountStatus.NEED_MIGRATION
+                        } else {
+                            MountStatus.ERROR
+                        }
+                        gameDao.updateMountStatus(g.packageName, newStatus)
                     }
                 }
             }

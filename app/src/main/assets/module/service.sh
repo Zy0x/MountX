@@ -417,6 +417,7 @@ main() {
              "${SD_BASE}/MountX/Android/obb" \
              "${SD_BASE}/MountX/Android/media" \
              "${SD_BASE}/MountX/containers" 2>/dev/null
+    rm -f "${SD_BASE}/MountX/Android/.nomedia" 2>/dev/null
     touch "${SD_BASE}/MountX/Android/data/.nomedia" 2>/dev/null
     touch "${SD_BASE}/MountX/Android/obb/.nomedia" 2>/dev/null
 
