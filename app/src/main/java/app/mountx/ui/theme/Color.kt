@@ -35,15 +35,26 @@ val CyberOnBgDark = Color(0xFFF1F5F9)
 val CyberOnSurfaceDark = Color(0xFFE2E8F0)
 val CyberOnVariantDark = Color(0xFF94A3B8)
 
-// ── 4. Frost Slate System (Light Theme) ──
-val FrostBgLight = Color(0xFFF6F8FC)
-val FrostSurfaceLight = Color(0xFFFFFFFF)
-val FrostSurfaceVariantLight = Color(0xFFEDF2F9)
-val FrostBorderLight = Color(0xFFE2E8F0)
-val FrostBorderHighlightLight = Color(0xFFCBD5E1)
-val FrostOnBgLight = Color(0xFF0F172A)
-val FrostOnSurfaceLight = Color(0xFF1E293B)
-val FrostOnVariantLight = Color(0xFF64748B)
+// ── 4. Soft Warm Sandstone System (Light Theme) ──
+val SandstoneBgLight = Color(0xFFF2EFE9)
+val SandstoneSurfaceLight = Color(0xFFFAF8F5)
+val SandstoneSurfaceVariantLight = Color(0xFFEBE7E0)
+val SandstoneModalLight = Color(0xFFF4F1EC)
+val SandstoneBorderLight = Color(0xFFD6D3CD)
+val SandstoneBorderHighlightLight = Color(0xFFB8B3AA)
+val SandstoneOnBgLight = Color(0xFF1C1917)
+val SandstoneOnSurfaceLight = Color(0xFF1C1917)
+val SandstoneOnVariantLight = Color(0xFF44403C)
+
+// Backward compatible aliases
+val FrostBgLight = SandstoneBgLight
+val FrostSurfaceLight = SandstoneSurfaceLight
+val FrostSurfaceVariantLight = SandstoneSurfaceVariantLight
+val FrostBorderLight = SandstoneBorderLight
+val FrostBorderHighlightLight = SandstoneBorderHighlightLight
+val FrostOnBgLight = SandstoneOnBgLight
+val FrostOnSurfaceLight = SandstoneOnSurfaceLight
+val FrostOnVariantLight = SandstoneOnVariantLight
 
 // ── 5. Reusable Gradient Brushes ──
 val AuroraGradientBrush = Brush.horizontalGradient(

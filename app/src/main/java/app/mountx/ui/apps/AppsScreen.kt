@@ -298,12 +298,14 @@ fun AppsScreen(
             restoreProgress = restoreProgress,
             restoreMessage = restoreMessage,
             onConfirmRestoreAndDelete = {
-                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = true)
-                gameToDelete = null
+                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = true) { _, _ ->
+                    gameToDelete = null
+                }
             },
             onConfirmUnmountAndDelete = {
-                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = false)
-                gameToDelete = null
+                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = false) { _, _ ->
+                    gameToDelete = null
+                }
             },
             onDismiss = { if (!isRestoring) gameToDelete = null }
         )

@@ -1323,6 +1323,29 @@ class StorageManager {
                     }
                 }
 
+                // Pre-Flight Free Space Guard (Reserve 1GB safety headroom for Android OS)
+                var totalSrcBytes = 0L
+                for (point in mountPoints) {
+                    val src = if (point.isVirtualContainer) {
+                        point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
+                    } else {
+                        point.sourcePath
+                    }
+                    val sz = getDirSizeBytes(src)
+                    totalSrcBytes += if (sz > 0L) sz else point.sizeBytes
+                }
+                val internalAvailable = try {
+                    android.os.StatFs("/data").availableBytes
+                } catch (e: Exception) {
+                    getAvailableFreeBytes("/data")
+                }
+                val safetyReserve = 1_000_000_000L // 1 GB reserve to prevent OS soft-freeze / crash
+                if (totalSrcBytes > 0L && totalSrcBytes > (internalAvailable - safetyReserve)) {
+                    val reqMb = (totalSrcBytes + safetyReserve) / (1024 * 1024)
+                    val availMb = internalAvailable / (1024 * 1024)
+                    throw IllegalStateException("Memori internal tidak mencukupi untuk pemulihan! Dibutuhkan: ${reqMb} MB (termasuk cadangan sistem 1 GB), Tersedia: ${availMb} MB.")
+                }
+
                 val totalPoints = mountPoints.size.coerceAtLeast(1)
                 mountPoints.forEachIndexed { index, point ->
                     val progressBase = 0.1f + (index.toFloat() / totalPoints.toFloat()) * 0.75f
@@ -1772,10 +1795,22 @@ class StorageManager {
                 totalMigrationBytes += if (sz > 0L) sz else pt.sizeBytes
             }
 
-            // Pre-Flight Free Space Guard
+            // Pre-Flight Free Space Guard (Reserve 1GB safety headroom for internal OS stability)
             val targetBase = if (isToSd) sdBase else "/data"
-            val freeBytes = getAvailableFreeBytes(targetBase)
-            val headroom = maxOf(500 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
+            val freeBytes = if (!isToSd) {
+                try {
+                    android.os.StatFs("/data").availableBytes
+                } catch (e: Exception) {
+                    getAvailableFreeBytes("/data")
+                }
+            } else {
+                getAvailableFreeBytes(targetBase)
+            }
+            val headroom = if (isToSd) {
+                maxOf(500 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
+            } else {
+                maxOf(1_000_000_000L, (totalMigrationBytes * 0.05).toLong())
+            }
             val requiredTotal = totalMigrationBytes + headroom
 
             if (totalMigrationBytes > 0L && freeBytes < requiredTotal) {

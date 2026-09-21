@@ -7,8 +7,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -29,8 +29,8 @@ fun ConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = androidx.compose.ui.graphics.Color(0xFF111726),
-        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(20.dp),
         title = { 
             Text(
                 text = title, 
@@ -38,7 +38,7 @@ fun ConfirmDialog(
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 ),
-                color = androidx.compose.ui.graphics.Color(0xFFF1F5F9)
+                color = MaterialTheme.colorScheme.onSurface
             ) 
         },
         text = { 
@@ -48,7 +48,7 @@ fun ConfirmDialog(
                     fontSize = 13.sp,
                     lineHeight = 18.sp
                 ),
-                color = androidx.compose.ui.graphics.Color(0xFF94A3B8)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             ) 
         },
         confirmButton = {
@@ -60,14 +60,17 @@ fun ConfirmDialog(
                 colors = if (isDestructive) {
                     ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 } else {
-                    ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF6366F1))
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 }
             ) {
                 Text(text = confirmText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(
+            TextButton(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.height(42.dp)
@@ -76,7 +79,7 @@ fun ConfirmDialog(
                     text = cancelText, 
                     fontSize = 13.sp, 
                     fontWeight = FontWeight.Normal,
-                    color = androidx.compose.ui.graphics.Color(0xFF94A3B8)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

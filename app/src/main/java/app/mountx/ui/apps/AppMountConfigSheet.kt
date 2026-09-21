@@ -479,28 +479,28 @@ fun AppMountConfigSheet(
         var customPathInput by remember { mutableStateOf("") }
         var showRootPicker by remember { mutableStateOf(false) }
         val dialogFieldColors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = Color(0xFF162035),
-            unfocusedContainerColor = Color(0xFF162035),
-            focusedBorderColor = Color(0xFF6366F1),
-            unfocusedBorderColor = Color(0xFF334366),
-            focusedTextColor = Color(0xFFF1F5F9),
-            unfocusedTextColor = Color(0xFFF1F5F9),
-            focusedLabelColor = Color(0xFF818CF8),
-            unfocusedLabelColor = Color(0xFF94A3B8),
-            focusedPlaceholderColor = Color(0xFF64748B),
-            unfocusedPlaceholderColor = Color(0xFF64748B)
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedLabelColor = MaterialTheme.colorScheme.primary,
+            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         )
 
         AlertDialog(
             onDismissRequest = { showCustomPathDialog = false },
-            containerColor = Color(0xFF111726),
-            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(20.dp),
             title = {
                 Text(
                     stringResource(R.string.dialog_add_custom_directory_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFF1F5F9)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             },
             text = {
@@ -508,7 +508,7 @@ fun AppMountConfigSheet(
                     Text(
                         stringResource(R.string.dialog_add_custom_directory_desc),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     OutlinedTextField(
                         value = customPathInput,
@@ -519,7 +519,7 @@ fun AppMountConfigSheet(
                                 Icon(
                                     imageVector = Icons.Default.Folder,
                                     contentDescription = "Pilih Folder",
-                                    tint = Color(0xFF818CF8)
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         },
@@ -548,7 +548,10 @@ fun AppMountConfigSheet(
                             showCustomPathDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(stringResource(R.string.dialog_add_custom_confirm), fontWeight = FontWeight.Bold)
@@ -559,7 +562,7 @@ fun AppMountConfigSheet(
                     onClick = { showCustomPathDialog = false },
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(stringResource(R.string.common_cancel), color = Color(0xFF94A3B8))
+                    Text(stringResource(R.string.common_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )

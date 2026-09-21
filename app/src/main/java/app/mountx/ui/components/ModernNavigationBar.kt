@@ -73,8 +73,8 @@ fun ModernNavigationBar(
     val barShape = RoundedCornerShape(26.dp)
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-    val dockBgColor = if (isDark) Color(0xFF131620) else Color(0xFFFFFFFF)
-    val dockBorderColor = if (isDark) Color(0xFF232838) else Color(0xFFE2E8F0)
+    val dockBgColor = if (isDark) Color(0xFF131620) else MaterialTheme.colorScheme.surface
+    val dockBorderColor = if (isDark) Color(0xFF232838) else MaterialTheme.colorScheme.outline
     val shadowSpotColor = if (isDark) HyperCyan.copy(alpha = 0.20f) else Color(0xFF0F172A).copy(alpha = 0.08f)
 
     Box(

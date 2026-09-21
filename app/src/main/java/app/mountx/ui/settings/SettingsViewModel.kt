@@ -272,13 +272,17 @@ class SettingsViewModel @Inject constructor(
 
                 for (i in 0 until appsArr.length()) {
                     val obj = appsArr.getJSONObject(i)
-                    val name = obj.optString("displayName", obj.optString("packageName", "App"))
+                    val pkg = obj.optString("packageName", "")
+                    if (pkg.isNotBlank() && !pkg.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+                        continue
+                    }
+                    val name = obj.optString("displayName", if (pkg.isNotBlank()) pkg else "App")
                     appNames.add(name)
                 }
 
                 _pendingImportSummary.value = SnapshotValidationSummary(
                     schemaVersion = schemaVersion,
-                    appCount = appsArr.length(),
+                    appCount = appNames.size,
                     deviceModel = deviceModel,
                     exportedAt = exportedAt,
                     appNames = appNames
@@ -342,6 +346,10 @@ class SettingsViewModel @Inject constructor(
                 for (i in 0 until appsArr.length()) {
                     val obj = appsArr.getJSONObject(i)
                     val pkg = obj.getString("packageName")
+                    if (!pkg.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+                        AppLogger.warn("Portability", "Skipping invalid package name: $pkg")
+                        continue
+                    }
                     val name = obj.optString("displayName", pkg)
                     val modeStr = obj.optString("mode", "PKG")
                     val appMode = runCatching { MountMode.valueOf(modeStr) }.getOrDefault(MountMode.PKG)
@@ -359,6 +367,14 @@ class SettingsViewModel @Inject constructor(
                             val category = runCatching { MountPointCategory.valueOf(catStr) }
                                 .getOrDefault(MountPointCategory.EXTERNAL_DATA)
                             val relSource = mpObj.optString("relativeSourcePath", "")
+                            val targetPath = mpObj.optString("targetPath", "/data/media/0/Android/data/$pkg")
+                            val containerImgPath = mpObj.optString("containerImgPath").ifBlank { null }
+
+                            if (!isSafePath(relSource) || !isSafePath(targetPath) || !isSafePath(containerImgPath)) {
+                                AppLogger.warn("Portability", "Skipping unsafe mount point path for $pkg: $targetPath")
+                                continue
+                            }
+
                             val absSource = if (relSource.startsWith("/")) {
                                 relSource
                             } else if (relSource.isNotBlank()) {
@@ -366,10 +382,8 @@ class SettingsViewModel @Inject constructor(
                             } else {
                                 "$currentSdBase/MountX/Android/data/$pkg"
                             }
-                            val targetPath = mpObj.optString("targetPath", "/data/media/0/Android/data/$pkg")
                             val enabled = mpObj.optBoolean("enabled", true)
                             val isVirtualContainer = mpObj.optBoolean("isVirtualContainer", false)
-                            val containerImgPath = mpObj.optString("containerImgPath").ifBlank { null }
                             val diskUuid = mpObj.optString("diskUuid").ifBlank { null }
                             val label = mpObj.optString("label").ifBlank { null }
                             val preserveMedia = mpObj.optBoolean("preserveMedia", false)
@@ -426,5 +440,12 @@ class SettingsViewModel @Inject constructor(
             }
             _isImporting.value = false
         }
+    }
+
+    private fun isSafePath(path: String?): Boolean {
+        if (path.isNullOrBlank()) return true
+        if (path.contains("..")) return false
+        val dangerousChars = setOf(';', '&', '|', '`', '$', '\n', '\r', '\t', '<', '>', '\\')
+        return path.none { it in dangerousChars }
     }
 }

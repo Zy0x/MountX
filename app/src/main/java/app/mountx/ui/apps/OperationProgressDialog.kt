@@ -85,8 +85,8 @@ fun OperationProgressDialog(
     ) {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 16.dp)
@@ -191,8 +191,8 @@ fun OperationProgressDialog(
 
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
@@ -259,7 +259,8 @@ fun OperationProgressDialog(
                                 // Transfer Speed Box
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline),
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Row(
@@ -274,7 +275,7 @@ fun OperationProgressDialog(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Column {
-                                            Text(
+                                             Text(
                                                 text = stringResource(R.string.op_stat_speed),
                                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -299,7 +300,8 @@ fun OperationProgressDialog(
                                 // ETA Box
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline),
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Row(

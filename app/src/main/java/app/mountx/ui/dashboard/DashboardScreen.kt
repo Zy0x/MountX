@@ -395,98 +395,95 @@ fun DashboardContent(
 private fun SleekCompactHeader(
     status: AppStatus
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
+    Surface(
+        color = MaterialTheme.colorScheme.background,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .statusBarsPadding()
         ) {
-            // Left: Modern Cyber Brand Mark & Title
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    border = BorderStroke(
-                        1.dp,
-                        Brush.horizontalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            )
-                        )
-                    ),
-                    modifier = Modifier.size(36.dp)
+                // Left: Modern Cyber Brand Mark & Title
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_mountx_emblem),
-                            contentDescription = stringResource(R.string.app_name),
-                            modifier = Modifier.size(22.dp)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_mountx_emblem),
+                                contentDescription = stringResource(R.string.app_name),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.2).sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                // Right: Modern Status Pill (Clean without redundant refresh button)
+                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
+                val activeEmeraldGlow = if (isDark) EmeraldGlow else EmeraldActive.copy(alpha = 0.12f)
+                val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
+                    RootSolution.MAGISK -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_magisk))
+                    RootSolution.KERNELSU -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_kernelsu))
+                    RootSolution.APATCH -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_apatch))
+                    RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = ledGlow,
+                    border = BorderStroke(1.dp, ledColor.copy(alpha = 0.45f)),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .background(ledColor, CircleShape)
+                        )
+                        Text(
+                            text = engineLabel,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = ledColor
                         )
                     }
                 }
-
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.2).sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
             }
 
-            // Right: Modern Status Pill (Clean without redundant refresh button)
-            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-            val activeEmerald = if (isDark) CyberEmerald else EmeraldActive
-            val activeEmeraldGlow = if (isDark) EmeraldGlow else EmeraldActive.copy(alpha = 0.12f)
-            val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
-                RootSolution.MAGISK -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_magisk))
-                RootSolution.KERNELSU -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_kernelsu))
-                RootSolution.APATCH -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_apatch))
-                RootSolution.NONE -> Triple(NeonCrimson, CrimsonGlow, stringResource(R.string.root_none))
-            }
-
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = ledGlow,
-                border = BorderStroke(1.dp, ledColor.copy(alpha = 0.45f)),
-                modifier = Modifier.height(30.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .background(ledColor, CircleShape)
-                    )
-                    Text(
-                        text = engineLabel,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
-                        fontWeight = FontWeight.Bold,
-                        color = ledColor
-                    )
-                }
-            }
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline,
+                thickness = 1.dp
+            )
         }
-
-        HorizontalDivider(
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-            thickness = 1.dp
-        )
     }
 }
 
@@ -1092,7 +1089,7 @@ private fun DashboardTelemetryCard(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
             Spacer(modifier = Modifier.height(10.dp))
 
             // Internal Storage Row
@@ -1111,7 +1108,7 @@ private fun DashboardTelemetryCard(
                 )
                 if (disks.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(10.dp))
                 }
             }
@@ -1140,7 +1137,7 @@ private fun DashboardTelemetryCard(
                 )
                 if (idx < disks.size - 1) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(10.dp))
                 }
             }
@@ -1157,7 +1154,7 @@ private fun DashboardTelemetryCard(
             // Offloaded games footer
             if (offloadedStats.first > 0) {
                 Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToGames),
@@ -1499,7 +1496,7 @@ private fun NamespaceVerificationBottomSheet(
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
@@ -1605,7 +1602,7 @@ private fun NamespaceVerificationBottomSheet(
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(

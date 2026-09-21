@@ -526,8 +526,8 @@ private fun DetailCapsuleTabRow(
 
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = modifier
             .fillMaxWidth()
             .height(36.dp)
@@ -863,22 +863,22 @@ private fun StorageTabContent(
         val (dataBytes, dataSubtitle, isDataSd) = when {
             isDataCatMounted -> {
                 val size = if (safeBreakdown.ext2DataBytes > 0L) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
-                Triple(size, "Data utama game", true)
+                Triple(size, "Data utama aplikasi", true)
             }
             safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes > 64 * 1024L -> {
                 Triple(
                     safeBreakdown.ext1DataBytes,
-                    "Data utama game • ${FormatUtils.formatExactBytes(safeBreakdown.ext2DataBytes)} di MicroSD",
+                    "Data utama aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2DataBytes)} di MicroSD",
                     false
                 )
             }
             safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2DataBytes, "Data utama game", true)
+                Triple(safeBreakdown.ext2DataBytes, "Data utama aplikasi", true)
             }
             else -> {
                 Triple(
                     if (safeBreakdown.ext1DataBytes > 0L) safeBreakdown.ext1DataBytes else safeBreakdown.ext1Bytes,
-                    "Data utama game",
+                    "Data utama aplikasi",
                     false
                 )
             }
@@ -889,20 +889,20 @@ private fun StorageTabContent(
         val (obbBytes, obbSubtitle, isObbSd) = when {
             isObbCatMounted -> {
                 val size = if (safeBreakdown.ext2ObbBytes > 0L) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
-                Triple(size, "File ekspansi game", true)
+                Triple(size, "File ekspansi aplikasi", true)
             }
             safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes > 64 * 1024L -> {
                 Triple(
                     safeBreakdown.ext1ObbBytes,
-                    "File ekspansi game • ${FormatUtils.formatExactBytes(safeBreakdown.ext2ObbBytes)} di MicroSD",
+                    "File ekspansi aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2ObbBytes)} di MicroSD",
                     false
                 )
             }
             safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2ObbBytes, "File ekspansi game", true)
+                Triple(safeBreakdown.ext2ObbBytes, "File ekspansi aplikasi", true)
             }
             else -> {
-                Triple(safeBreakdown.ext1ObbBytes, "File ekspansi game", false)
+                Triple(safeBreakdown.ext1ObbBytes, "File ekspansi aplikasi", false)
             }
         }
 
@@ -991,7 +991,7 @@ private fun StorageTabContent(
             UnifiedCategoryItem(
                 id = "apk",
                 title = "APK",
-                subtitle = "File instalasi game",
+                subtitle = "File instalasi aplikasi",
                 bytes = safeBreakdown.apkBytes,
                 icon = Icons.Default.Android,
                 iconTint = Color(0xFF00897B),
@@ -1008,7 +1008,7 @@ private fun StorageTabContent(
             UnifiedCategoryItem(
                 id = "lib",
                 title = "Lib",
-                subtitle = "Pustaka asli game",
+                subtitle = "Pustaka asli aplikasi",
                 bytes = safeBreakdown.libBytes,
                 icon = Icons.Default.Build,
                 iconTint = Color(0xFFFB8C00),
@@ -1058,10 +1058,10 @@ private fun StorageTabContent(
             ),
             UnifiedCategoryItem(
                 id = "data",
-                title = "Data Game",
+                title = "Data Aplikasi",
                 subtitle = dataSubtitle,
                 bytes = dataBytes,
-                icon = Icons.Default.SportsEsports,
+                icon = Icons.Default.Folder,
                 iconTint = Color(0xFF00ACC1),
                 isMicroSd = isDataSd,
                 isRisk = false,
@@ -1659,6 +1659,8 @@ private fun StorageTabContent(
     if (showUnmountConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showUnmountConfirmDialog = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(20.dp),
             icon = {
                 Icon(
                     Icons.Default.LinkOff,
@@ -1765,8 +1767,8 @@ private fun AddCustomDirectoryDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF111726),
-        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(20.dp),
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1774,14 +1776,14 @@ private fun AddCustomDirectoryDialog(
             ) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF6366F1).copy(alpha = 0.15f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = null,
-                            tint = Color(0xFF818CF8),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -1790,7 +1792,7 @@ private fun AddCustomDirectoryDialog(
                     text = stringResource(R.string.dialog_add_custom_directory_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFF1F5F9)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         },
@@ -1804,7 +1806,7 @@ private fun AddCustomDirectoryDialog(
                 Text(
                     text = stringResource(R.string.dialog_add_custom_directory_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFF94A3B8),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp
                 )
 
@@ -1813,7 +1815,7 @@ private fun AddCustomDirectoryDialog(
                     Text(
                         text = stringResource(R.string.dialog_add_custom_suggestions),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color(0xFF64748B)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(
                         modifier = Modifier
@@ -1824,8 +1826,8 @@ private fun AddCustomDirectoryDialog(
                         suggestions.forEach { (name, internal, sd) ->
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFF1A233A),
-                                border = BorderStroke(1.dp, Color(0xFF2E3D5C)),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                 modifier = Modifier.clickable {
                                     labelText = name
                                     internalPathText = internal
@@ -1839,7 +1841,7 @@ private fun AddCustomDirectoryDialog(
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium
                                     ),
-                                    color = Color(0xFF818CF8),
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
                             }
@@ -1848,22 +1850,22 @@ private fun AddCustomDirectoryDialog(
                 }
 
                 val customFieldColors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFF162035),
-                    unfocusedContainerColor = Color(0xFF0F1524),
-                    focusedBorderColor = Color(0xFF6366F1),
-                    unfocusedBorderColor = Color(0xFF334366),
-                    focusedLabelColor = Color(0xFF818CF8),
-                    unfocusedLabelColor = Color(0xFF94A3B8),
-                    focusedTextColor = Color(0xFFF1F5F9),
-                    unfocusedTextColor = Color(0xFFE2E8F0),
-                    cursorColor = Color(0xFF6366F1)
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    focusedLabelColor = MaterialTheme.colorScheme.primary,
+                    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    cursorColor = MaterialTheme.colorScheme.primary
                 )
 
                 OutlinedTextField(
                     value = labelText,
                     onValueChange = { labelText = it },
                     label = { Text(stringResource(R.string.dialog_add_custom_name_label)) },
-                    placeholder = { Text(stringResource(R.string.dialog_add_custom_name_hint), color = Color(0xFF64748B)) },
+                    placeholder = { Text(stringResource(R.string.dialog_add_custom_name_hint)) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = customFieldColors,
@@ -1880,13 +1882,13 @@ private fun AddCustomDirectoryDialog(
                         }
                     },
                     label = { Text(stringResource(R.string.dialog_add_custom_path_label)) },
-                    placeholder = { Text(stringResource(R.string.dialog_add_custom_directory_hint), color = Color(0xFF64748B)) },
+                    placeholder = { Text(stringResource(R.string.dialog_add_custom_directory_hint)) },
                     trailingIcon = {
                         IconButton(onClick = { showRootPickerForInternal = true }) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
                                 contentDescription = "Pilih Folder",
-                                tint = Color(0xFF818CF8)
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     },
@@ -1903,13 +1905,13 @@ private fun AddCustomDirectoryDialog(
                         isManualSdPath = true
                     },
                     label = { Text(stringResource(R.string.dialog_add_custom_sd_label)) },
-                    placeholder = { Text("$sdBase/MountX/Custom/...", color = Color(0xFF64748B)) },
+                    placeholder = { Text("$sdBase/MountX/Custom/...") },
                     trailingIcon = {
                         IconButton(onClick = { showRootPickerForSd = true }) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
                                 contentDescription = "Pilih Folder",
-                                tint = Color(0xFF818CF8)
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     },
@@ -1921,8 +1923,8 @@ private fun AddCustomDirectoryDialog(
 
                 Card(
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF162035)),
-                    border = BorderStroke(1.dp, Color(0xFF334366)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1936,12 +1938,12 @@ private fun AddCustomDirectoryDialog(
                             Text(
                                 text = stringResource(R.string.category_preserve_media_title),
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                                color = Color(0xFFF1F5F9)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = stringResource(R.string.category_preserve_media_desc),
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
-                                color = Color(0xFF94A3B8)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Switch(
@@ -1968,9 +1970,8 @@ private fun AddCustomDirectoryDialog(
                 enabled = internalPathText.isNotBlank(),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF6366F1),
-                    disabledContainerColor = Color(0xFF1E2738),
-                    disabledContentColor = Color(0xFF475569)
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ),
                 modifier = Modifier.height(44.dp)
             ) {
@@ -1989,7 +1990,7 @@ private fun AddCustomDirectoryDialog(
             ) {
                 Text(
                     text = stringResource(R.string.common_cancel),
-                    color = Color(0xFF94A3B8),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp
                 )
@@ -2661,6 +2662,8 @@ private fun CategoryDeleteConfirmDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isDeleting) onDismiss() },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(20.dp),
         icon = {
             Icon(
                 imageVector = Icons.Default.Warning,

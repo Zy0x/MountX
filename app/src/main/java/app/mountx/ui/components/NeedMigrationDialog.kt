@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.WarningAmber
@@ -44,8 +42,8 @@ fun NeedMigrationDialog(
     val amberColor = Color(0xFFFF9800)
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF111726),
-        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(20.dp),
         icon = {
             Surface(
                 shape = RoundedCornerShape(12.dp),
@@ -69,15 +67,15 @@ fun NeedMigrationDialog(
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 ),
-                color = Color(0xFFF1F5F9)
+                color = MaterialTheme.colorScheme.onSurface
             )
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF162035),
-                    border = BorderStroke(1.dp, Color(0xFF2E3D5C)),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -90,7 +88,7 @@ fun NeedMigrationDialog(
                             Text(
                                 text = game.displayName,
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFF1F5F9)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             if (game.dataSizeBytes > 0L) {
                                 Text(
@@ -107,7 +105,7 @@ fun NeedMigrationDialog(
                 Text(
                     text = stringResource(R.string.dialog_need_migration_desc, sizeText),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp, lineHeight = 18.sp),
-                    color = Color(0xFF94A3B8)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         },
@@ -137,7 +135,7 @@ fun NeedMigrationDialog(
                 Text(
                     text = stringResource(R.string.common_cancel),
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color(0xFF94A3B8)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         },

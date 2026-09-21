@@ -58,7 +58,7 @@ log_error() { log "ERROR" "$@"; }
 # ── Initialise log for this boot ──────────────────────────────────────────────
 {
     echo "============================================================"
-    echo " MountX service started (v2.2.35) — $(date)"
+    echo " MountX service started (v2.2.39) — $(date)"
     echo "============================================================"
 } >> "${LOG_FILE}"
 
@@ -110,40 +110,46 @@ wait_for_boot() {
 
 # ── Mount the SD partition ────────────────────────────────────────────────────
 mount_sd() {
-    if ! [ -b "${SD_BLOCK}" ]; then
-        log_error "Block device ${SD_BLOCK} not found; checking active mounts."
+    local attempts=0
+    while [ "${attempts}" -lt 5 ]; do
         if mountpoint -q "${SD_BASE}"; then
-            log_info "Target SD_BASE ${SD_BASE} is already mounted by system/vold."
+            log_info "SD already mounted at ${SD_BASE}."
             return 0
         fi
-        exit 1
-    fi
 
-    mkdir -p "${SD_BASE}"
+        if [ -b "${SD_BLOCK}" ]; then
+            mkdir -p "${SD_BASE}"
+            local mnt_opts="rw,noatime,nodiratime"
+            if [ "${FS_TYPE}" = "f2fs" ]; then
+                mnt_opts="${mnt_opts},inline_data,inline_dentry,flush_merge,mode=adaptive"
+            elif [ "${FS_TYPE}" = "ext4" ]; then
+                mnt_opts="${mnt_opts},commit=60,delalloc,data=writeback"
+            fi
+
+            if mount -t "${FS_TYPE}" -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}"; then
+                log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${FS_TYPE} with ${mnt_opts})"
+                return 0
+            else
+                log_warn "Optimized mount failed, attempting generic fallback mount…"
+                if mount -t "${FS_TYPE}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}"; then
+                    log_info "SD mounted with fallback options: ${SD_BLOCK} → ${SD_BASE}"
+                    return 0
+                fi
+            fi
+        fi
+
+        attempts=$((attempts + 1))
+        log_warn "Waiting for storage block device ${SD_BLOCK} (attempt ${attempts}/5)..."
+        sleep 2
+    done
 
     if mountpoint -q "${SD_BASE}"; then
-        log_info "SD already mounted at ${SD_BASE}."
+        log_info "Target SD_BASE ${SD_BASE} mounted by system/vold."
         return 0
     fi
 
-    local mnt_opts="rw,noatime,nodiratime"
-    if [ "${FS_TYPE}" = "f2fs" ]; then
-        mnt_opts="${mnt_opts},inline_data,inline_dentry,flush_merge,mode=adaptive"
-    elif [ "${FS_TYPE}" = "ext4" ]; then
-        mnt_opts="${mnt_opts},commit=60,delalloc,data=writeback"
-    fi
-
-    if mount -t "${FS_TYPE}" -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}"; then
-        log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${FS_TYPE} with ${mnt_opts})"
-    else
-        log_warn "Optimized mount failed, attempting generic fallback mount…"
-        if mount -t "${FS_TYPE}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}"; then
-            log_info "SD mounted with fallback options: ${SD_BLOCK} → ${SD_BASE}"
-        else
-            log_error "Failed to mount ${SD_BLOCK} as ${FS_TYPE} at ${SD_BASE}."
-            exit 1
-        fi
-    fi
+    log_error "Failed to mount SD after 5 attempts. Continuing without terminating service to preserve system state."
+    return 1
 }
 
 # ── Apply kernel I/O queue & latency tweaks ───────────────────────────────────

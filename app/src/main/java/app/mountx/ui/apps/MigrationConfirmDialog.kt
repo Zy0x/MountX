@@ -73,9 +73,9 @@ fun MigrationConfirmDialog(
                 .fillMaxWidth(0.92f)
                 .padding(vertical = 24.dp),
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = MaterialTheme.colorScheme.surfaceContainer,
             tonalElevation = 8.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
             Column(
                 modifier = Modifier
@@ -128,8 +128,8 @@ fun MigrationConfirmDialog(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Row(
                         modifier = Modifier
@@ -206,8 +206,8 @@ fun MigrationConfirmDialog(
                     Card(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
@@ -229,12 +229,12 @@ fun MigrationConfirmDialog(
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isSpaceLow) Color(0xFFE53935).copy(alpha = 0.1f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                            else MaterialTheme.colorScheme.surface
                         ),
                         border = BorderStroke(
                             1.dp,
                             if (isSpaceLow) Color(0xFFE53935).copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                            else MaterialTheme.colorScheme.outline
                         )
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
@@ -410,12 +410,12 @@ private fun ConflictStrategyOption(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) CyberEmerald.copy(alpha = 0.12f)
-            else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.surface
         ),
         border = BorderStroke(
             1.dp,
             if (isSelected) CyberEmerald.copy(alpha = 0.6f)
-            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            else MaterialTheme.colorScheme.outline
         )
     ) {
         Row(
@@ -425,7 +425,7 @@ private fun ConflictStrategyOption(
             Icon(
                 imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                 contentDescription = null,
-                tint = if (isSelected) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                tint = if (isSelected) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .size(18.dp)
                     .padding(top = 1.dp)

@@ -68,7 +68,7 @@ fun CompactScreenHeader(
                             Text(
                                 text = subtitle,
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -85,7 +85,7 @@ fun CompactScreenHeader(
             }
 
             HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                color = MaterialTheme.colorScheme.outline,
                 thickness = 1.dp
             )
         }

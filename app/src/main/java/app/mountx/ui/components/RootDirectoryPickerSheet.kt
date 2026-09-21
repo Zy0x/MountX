@@ -130,10 +130,10 @@ fun RootDirectoryPickerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = CyberSurfaceDark,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         dragHandle = {
             BottomSheetDefaults.DragHandle(
-                color = CyberOnVariantDark.copy(alpha = 0.4f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
             )
         },
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
@@ -609,7 +609,7 @@ private fun HighRiskDirectoryConfirmDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = CyberSurfaceDark,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(20.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -631,7 +631,7 @@ private fun HighRiskDirectoryConfirmDialog(
                 Text(
                     text = "Anda memilih direktori sistem inti:",
                     style = MaterialTheme.typography.bodySmall,
-                    color = CyberOnBgDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -651,7 +651,7 @@ private fun HighRiskDirectoryConfirmDialog(
                 Text(
                     text = "Mengaitkan bind-mount pada direktori ini dapat menyebabkan kegagalan booting (bootloop), penolakan izin konteks SELinux, atau kerusakan sistem.",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                    color = CyberOnVariantDark
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -671,7 +671,7 @@ private fun HighRiskDirectoryConfirmDialog(
                     Text(
                         text = "Saya memahami risiko kerusakan sistem",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
-                        color = CyberOnBgDark
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -693,9 +693,9 @@ private fun HighRiskDirectoryConfirmDialog(
             OutlinedButton(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, CyberBorderDark)
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
-                Text("Batal", color = CyberOnVariantDark)
+                Text("Batal", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     )

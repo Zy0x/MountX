@@ -233,13 +233,18 @@ class AppsViewModel @Inject constructor(
         }
     }
 
-    fun removeGameWithOption(context: Context, packageName: String, restoreToInternal: Boolean) {
+    fun removeGameWithOption(
+        context: Context,
+        packageName: String,
+        restoreToInternal: Boolean,
+        onComplete: ((Boolean, String?) -> Unit)? = null
+    ) {
         viewModelScope.launch {
             _isRestoring.value = restoreToInternal
             _restoreProgress.value = 0f
             _restoreMessage.value = ""
             val sdBase = appPreferences.sdBasePath.first()
-            gameRepository.removeGameWithOption(
+            val result = gameRepository.removeGameWithOption(
                 context = context,
                 packageName = packageName,
                 restoreToInternal = restoreToInternal,
@@ -251,6 +256,7 @@ class AppsViewModel @Inject constructor(
             _isRestoring.value = false
             _restoreProgress.value = 0f
             refresh()
+            onComplete?.invoke(result.isSuccess, result.exceptionOrNull()?.message)
         }
     }
 

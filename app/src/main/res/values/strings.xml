@@ -2,11 +2,11 @@
 <resources>
     <!-- App -->
     <string name="app_name">MountX</string>
-    <string name="app_description">Move and mount game data to external MicroSD without FUSE errors.</string>
+    <string name="app_description">Move and mount app data to external MicroSD without FUSE errors.</string>
 
     <!-- Bottom Navigation -->
     <string name="nav_dashboard">Dashboard</string>
-    <string name="nav_games">Games</string>
+    <string name="nav_games">Apps</string>
     <string name="nav_apps">Apps</string>
     <string name="nav_storage">Storage</string>
     <string name="nav_logs">Logs</string>
@@ -52,20 +52,20 @@
     <string name="dashboard_recent_activity">System Activity</string>
     <string name="dashboard_recent_activity_desc">Live bind-mount stream and diagnostic logs</string>
     <string name="dashboard_master_control">Master Control</string>
-    <string name="dashboard_hero_all_mounted">All Games Mounted</string>
-    <string name="dashboard_hero_all_mounted_desc">All game data directories are bound to external storage.</string>
-    <string name="dashboard_hero_unmounted_desc">%1$d of %2$d games mounted to MicroSD.</string>
-    <string name="dashboard_hero_mount_all_cta">Mount All Games</string>
+    <string name="dashboard_hero_all_mounted">All Apps Mounted</string>
+    <string name="dashboard_hero_all_mounted_desc">All app data directories are bound to external storage.</string>
+    <string name="dashboard_hero_unmounted_desc">%1$d of %2$d apps mounted to MicroSD.</string>
+    <string name="dashboard_hero_mount_all_cta">Mount All Apps</string>
     <string name="dashboard_hero_unmount_all_cta">Unmount All</string>
-    <string name="dashboard_hero_no_games_desc">No games configured yet. Add a game to begin offloading data.</string>
-    <string name="dashboard_hero_add_game_cta">Add Game</string>
+    <string name="dashboard_hero_no_games_desc">No apps configured yet. Add an app to begin offloading data.</string>
+    <string name="dashboard_hero_add_game_cta">Add App</string>
     <string name="dashboard_metric_offloaded">Offloaded Data</string>
     <string name="dashboard_metric_namespaces">Namespaces</string>
     <string name="dashboard_metric_namespaces_active">7 Active</string>
     <string name="dashboard_metric_namespaces_idle">Standby</string>
     <string name="dashboard_disk_overview">Disk Overview</string>
     <string name="dashboard_internal_storage">Internal Storage</string>
-    <string name="dashboard_games_offloaded_format">%1$d game offloaded · %2$s freed</string>
+    <string name="dashboard_games_offloaded_format">%1$d apps offloaded · %2$s freed</string>
     <string name="dashboard_free_suffix">%1$s free</string>
     <string name="dashboard_active_count_format">%1$d / %2$d Active</string>
     <string name="dashboard_mounted_count_format">%1$d / %2$d Mounted</string>
@@ -434,7 +434,7 @@
     <string name="settings_sd_block_device_hint">/dev/block/mmcblk0p3</string>
     <string name="settings_behavior">Behavior</string>
     <string name="settings_auto_mount">Auto-mount on Boot</string>
-    <string name="settings_auto_mount_desc">Automatically mount all games when device boots.</string>
+    <string name="settings_auto_mount_desc">Automatically mount all apps when device boots.</string>
     <string name="settings_advanced">Advanced</string>
     <string name="settings_clear_log">Clear Log File</string>
     <string name="settings_reset">Reset Settings</string>
@@ -625,30 +625,30 @@
 
     <!-- Emergency Rescue -->
     <string name="settings_emergency_title">Emergency Rescue</string>
-    <string name="settings_emergency_desc">Disaster recovery: force unmount all games, reset internal storage permissions, and restore SELinux.</string>
+    <string name="settings_emergency_desc">Disaster recovery: force unmount all apps, reset internal storage permissions, and restore SELinux.</string>
     <string name="settings_emergency_panic_btn">Emergency Panic Reset (Unmount &amp; Reset Permissions)</string>
     <string name="settings_emergency_panic_confirm_title">Emergency Panic Reset</string>
-    <string name="settings_emergency_panic_confirm_msg">This will force unmount all game directories, terminate related background locks, and restore default internal Android storage permissions. Continue?</string>
+    <string name="settings_emergency_panic_confirm_msg">This will force unmount all app directories, terminate related background locks, and restore default internal Android storage permissions. Continue?</string>
     <string name="settings_emergency_generate_script">Generate Rescue Script (/sdcard)</string>
     <string name="settings_emergency_script_success">Rescue script created at /sdcard/MountX_Emergency_Restore.sh</string>
 
     <!-- MicroSD Portability & Smart Discovery -->
-    <string name="portability_banner_title">Discovered %1$d Game(s) on MicroSD</string>
-    <string name="portability_banner_desc">Existing game data was detected on your MicroSD card. Tap to import and reconcile permissions.</string>
+    <string name="portability_banner_title">Discovered %1$d App(s) on MicroSD</string>
+    <string name="portability_banner_desc">Existing app data was detected on your MicroSD card. Tap to import and reconcile permissions.</string>
     <string name="portability_btn_restore">Restore &amp; Sync</string>
     <string name="portability_btn_restructure">Restructure Paths</string>
     <string name="portability_btn_dismiss">Dismiss</string>
-    <string name="portability_sheet_title">MicroSD Game Discovery</string>
+    <string name="portability_sheet_title">MicroSD App Discovery</string>
     <string name="portability_unlinked_label">Unlinked Data</string>
     <string name="portability_not_installed_label">APK Not Installed</string>
     <string name="portability_ready_label">Ready to Sync</string>
-    <string name="portability_restore_all">Restore All Games</string>
-    <string name="portability_restore_success">Restored and reconciled %1$d game(s) successfully.</string>
+    <string name="portability_restore_all">Restore All Apps</string>
+    <string name="portability_restore_success">Restored and reconciled %1$d app(s) successfully.</string>
     <!-- v2.2.11 Dashboard Active Games & Live Namespace Verification -->
-    <string name="dashboard_view_all_games_count">View All Games (%1$d)</string>
+    <string name="dashboard_view_all_games_count">View All Apps (%1$d)</string>
     <string name="dashboard_metric_namespaces_standby_ready">Standby (System Ready)</string>
-    <string name="dashboard_metric_namespaces_active_format">Active (%1$d Games)</string>
-    <string name="dashboard_active_games_preview_title">Active Managed Games</string>
+    <string name="dashboard_metric_namespaces_active_format">Active (%1$d Apps)</string>
+    <string name="dashboard_active_games_preview_title">Active Managed Apps</string>
     <string name="dashboard_live_verification_title">Live Mount Namespace Verification</string>
     <string name="dashboard_live_mounts_found">%1$d Active Kernel Mount Point(s)</string>
     <string name="dashboard_live_mounts_none">No active mount points in /proc/mounts</string>
@@ -681,21 +681,21 @@
     <string name="settings_permissions_title">Permissions &amp; System Access</string>
     <string name="settings_permissions_desc">Check Superuser, All Files Access, Notifications, and Battery status</string>
     <string name="notif_channel_name">MountX Sentinel &amp; Operations</string>
-    <string name="notif_channel_desc">Displays real-time game mount status and background sentinel alerts.</string>
+    <string name="notif_channel_desc">Displays real-time app mount status and background sentinel alerts.</string>
     <string name="notif_action_open">Open MountX</string>
     <string name="notif_action_unmount_all">Unmount All</string>
-    <string name="notif_mounting_games">Mounting Game Directories…</string>
+    <string name="notif_mounting_games">Mounting App Directories…</string>
     <string name="notif_syncing_game">Syncing %1$s to MicroSD…</string>
-    <string name="notif_unmounting_games">Safely Unmounting Game Directories…</string>
-    <string name="notif_games_mounted_active">%1$d Game(s) Active • MicroSD Protected</string>
-    <string name="notif_games_unmounted">All Games Safely Unmounted</string>
+    <string name="notif_unmounting_games">Safely Unmounting App Directories…</string>
+    <string name="notif_games_mounted_active">%1$d App(s) Active • MicroSD Protected</string>
+    <string name="notif_games_unmounted">All Apps Safely Unmounted</string>
     <string name="notif_subtext_kernel">Kernel Namespace</string>
     <string name="mount_add_custom_path">Add Custom Directory</string>
     <!-- v2.2.17 Directory Naming, Path Visibility & Novice Grouping -->
     <string name="gerbong_external_data_title">Data</string>
-    <string name="gerbong_external_data_desc">In-game data, assets, and downloaded patches (/Android/data).</string>
+    <string name="gerbong_external_data_desc">App data, assets, and downloaded files (/Android/data).</string>
     <string name="gerbong_obb_title">OBB</string>
-    <string name="gerbong_obb_desc">Main game package archive files (/Android/obb).</string>
+    <string name="gerbong_obb_desc">Main app package archive files (/Android/obb).</string>
     <string name="gerbong_media_title">Media</string>
     <string name="gerbong_media_desc">Public media and downloads with auto .nomedia.</string>
     <string name="gerbong_cache_title">Cache &amp; Shaders</string>
@@ -793,14 +793,14 @@
     <string name="manage_overview_status_internal_title">Data Tersimpan di Memori Internal</string>
     <string name="manage_overview_status_internal_desc">Semua data masih tersimpan di memori internal HP.</string>
     <string name="manage_overview_saving">Menghemat %1$s di memori internal</string>
-    <string name="manage_overview_categories_title">Kategori Data Game</string>
-    <string name="manage_cat_data_game">Data Game</string>
+    <string name="manage_overview_categories_title">Application Data Categories</string>
+    <string name="manage_cat_data_game">App Data</string>
     <string name="manage_cat_obb">OBB Resource</string>
     <string name="manage_cat_native_lib">Native Library</string>
     <string name="manage_cat_package_app">Package App</string>
     <string name="manage_cat_other_files">File Lainnya</string>
-    <string name="manage_cat_data_game_desc">Data utama game, pengaturan, dan progres.</string>
-    <string name="manage_cat_obb_desc">Paket aset utama game (file OBB).</string>
+    <string name="manage_cat_data_game_desc">Main application data, settings, and user files.</string>
+    <string name="manage_cat_obb_desc">Main application asset package (OBB files).</string>
     <string name="manage_cat_native_lib_desc">Library native bawaan app (.so). Tidak dapat dipindahkan.</string>
     <string name="manage_cat_package_app_desc">Instalasi APK sistem. Sangat tidak disarankan untuk dipindahkan.</string>
     <string name="manage_cat_other_files_desc">File media, screenshot, video, voice pack, dll.</string>
@@ -888,17 +888,17 @@
     <string name="manage_badge_performance_risk">Risiko Kinerja</string>
     <string name="manage_cat_private_data">Data Privat</string>
     <string name="manage_cat_private_data_desc">Data aplikasi (internal)</string>
-    <string name="manage_cat_apk_sub_short">File instalasi game</string>
-    <string name="manage_cat_lib_sub_short">Pustaka asli game</string>
-    <string name="manage_cat_cache_sub_short">Cache sementara</string>
-    <string name="manage_cat_data_game_sub_short">Data utama game</string>
-    <string name="manage_cat_obb_sub_short">File ekspansi game</string>
-    <string name="game_detail_section_categories">Kategori Data Game</string>
+    <string name="manage_cat_apk_sub_short">App installation files</string>
+    <string name="manage_cat_lib_sub_short">Native libraries</string>
+    <string name="manage_cat_cache_sub_short">Temporary cache</string>
+    <string name="manage_cat_data_game_sub_short">Main app data</string>
+    <string name="manage_cat_obb_sub_short">Expansion assets (OBB)</string>
+    <string name="game_detail_section_categories">Application Data Categories</string>
     <string name="game_detail_cat_apk_short">APK</string>
     <string name="game_detail_cat_lib_short">Lib</string>
     <string name="game_detail_cat_cache_short">Cache</string>
     <string name="game_detail_cat_obb_short">OBB</string>
-    <string name="game_detail_cat_data_short">Data Game</string>
+    <string name="game_detail_cat_data_short">App Data</string>
     <string name="manage_btn_continue_format">Lanjutkan (%1$d)</string>
 
     <!-- v2.2.21 Category Path & Size Inspector with Safe Deletion -->

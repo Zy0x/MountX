@@ -36,8 +36,8 @@ fun SmartRestructureDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!isRestructuring) onDismiss() },
-        containerColor = CyberSurfaceDark,
-        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(20.dp),
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -45,14 +45,14 @@ fun SmartRestructureDialog(
             ) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = ElectricIndigo.copy(alpha = 0.15f),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                     modifier = Modifier.size(38.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.AutoFixHigh,
                             contentDescription = null,
-                            tint = ElectricIndigoLight,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -62,12 +62,12 @@ fun SmartRestructureDialog(
                         text = "Restrukturisasi Data MicroSD",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = CyberOnBgDark
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "${gamesToRestructure.size} game perlu dirapikan",
+                        text = "${gamesToRestructure.size} aplikasi perlu dirapikan",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = CyberOnVariantDark
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -78,9 +78,9 @@ fun SmartRestructureDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Data game berikut berada di luar struktur standar MountX. MountX akan merapikannya secara atomik ke dalam folder MountX/Android/ agar dapat di-mount dengan sempurna dan aman saat boot.",
+                    text = "Data aplikasi berikut berada di luar struktur standar MountX. MountX akan merapikannya secara atomik ke dalam folder MountX/Android/ agar dapat di-mount dengan sempurna dan aman saat boot.",
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                    color = CyberOnVariantDark
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 LazyColumn(
@@ -92,8 +92,8 @@ fun SmartRestructureDialog(
                     items(gamesToRestructure, key = { it.packageName }) { game ->
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = CyberSurfaceVariantDark,
-                            border = BorderStroke(0.8.dp, CyberBorderDark),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
@@ -109,7 +109,7 @@ fun SmartRestructureDialog(
                                         Text(
                                             text = game.displayName,
                                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                            color = CyberOnBgDark,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -119,7 +119,7 @@ fun SmartRestructureDialog(
                                                 fontFamily = FontFamily.Monospace,
                                                 fontSize = 9.sp
                                             ),
-                                            color = CyberOnVariantDark,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -129,7 +129,8 @@ fun SmartRestructureDialog(
                                 // Migration Path Flow (From -> To)
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
-                                    color = CyberBgDark,
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -151,7 +152,7 @@ fun SmartRestructureDialog(
                                         Icon(
                                             imageVector = Icons.Default.ArrowForward,
                                             contentDescription = null,
-                                            tint = CyberOnVariantDark,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(12.dp)
                                         )
                                         Text(
@@ -161,7 +162,7 @@ fun SmartRestructureDialog(
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold
                                             ),
-                                            color = CyberEmerald,
+                                            color = EmeraldActive,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1.2f)
@@ -181,13 +182,13 @@ fun SmartRestructureDialog(
                     ) {
                         LinearProgressIndicator(
                             modifier = Modifier.fillMaxWidth(),
-                            color = ElectricIndigoLight,
-                            trackColor = CyberBorderDark
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.outline
                         )
                         Text(
                             text = progressMessage ?: "Memproses restrukturisasi...",
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = CyberOnVariantDark
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -198,7 +199,10 @@ fun SmartRestructureDialog(
                 onClick = onConfirm,
                 enabled = !isRestructuring,
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigo),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
                 modifier = Modifier.height(42.dp)
             ) {
                 Text("Rapikan Sekarang", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
@@ -211,7 +215,7 @@ fun SmartRestructureDialog(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.height(42.dp)
             ) {
-                Text("Nanti Saja", color = CyberOnVariantDark, fontSize = 12.5.sp)
+                Text("Nanti Saja", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.5.sp)
             }
         }
     )

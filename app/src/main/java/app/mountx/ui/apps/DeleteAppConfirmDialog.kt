@@ -13,15 +13,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderCopy
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,7 +58,7 @@ fun DeleteAppConfirmDialog(
     onConfirmUnmountAndDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val isStorageSufficient = internalFreeBytes >= requiredRestoreBytes || requiredRestoreBytes == 0L
+    val isStorageSufficient = internalFreeBytes >= (requiredRestoreBytes + 1_000_000_000L) || requiredRestoreBytes == 0L
 
     Dialog(
         onDismissRequest = {
@@ -71,9 +70,9 @@ fun DeleteAppConfirmDialog(
         )
     ) {
         Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = Color(0xFF111625),
-            border = BorderStroke(1.dp, Color(0xFF232B3E)),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             shadowElevation = 8.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -84,7 +83,13 @@ fun DeleteAppConfirmDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 if (isRestoring) {
-                    // ── RESTORING PROGRESS STATE ──
+                    // ── 3-STAGE VISUAL RESTORING PROGRESS STATE ──
+                    val currentStep = when {
+                        restoreProgress >= 0.95f -> 3
+                        restoreProgress >= 0.85f -> 2
+                        else -> 1
+                    }
+
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -94,22 +99,29 @@ fun DeleteAppConfirmDialog(
                             strokeWidth = 2.5.dp,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Text(
-                            text = stringResource(R.string.dialog_delete_restoring_title),
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = Color.White
-                        )
+                        Column {
+                            Text(
+                                text = stringResource(R.string.dialog_delete_restoring_title),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = when (currentStep) {
+                                    1 -> "1/3 Memindahkan berkas ke internal..."
+                                    2 -> "2/3 Menyesuaikan izin & SELinux..."
+                                    else -> "3/3 Melepas mount & database..."
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
 
-                    Text(
-                        text = stringResource(R.string.dialog_delete_restoring_msg),
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
+                    // Progress Bar & Percentage
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -118,14 +130,16 @@ fun DeleteAppConfirmDialog(
                             Text(
                                 text = restoreMessage.ifBlank { "Menyalin berkas fisik..." },
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${(restoreProgress * 100).toInt()}%",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
 
@@ -138,6 +152,34 @@ fun DeleteAppConfirmDialog(
                             trackColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                     }
+
+                    // 3-Step Milestone Checklist
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        StepItem(
+                            stepNumber = 1,
+                            title = "Pemindahan berkas fisik",
+                            isActive = currentStep == 1,
+                            isDone = currentStep > 1
+                        )
+                        StepItem(
+                            stepNumber = 2,
+                            title = "Perizinan & konteks SELinux",
+                            isActive = currentStep == 2,
+                            isDone = currentStep > 2
+                        )
+                        StepItem(
+                            stepNumber = 3,
+                            title = "Pelepasan kaitan & sinkronisasi",
+                            isActive = currentStep == 3,
+                            isDone = restoreProgress >= 1f
+                        )
+                    }
                 } else {
                     // ── NORMAL SELECTION STATE ──
                     Row(
@@ -146,7 +188,7 @@ fun DeleteAppConfirmDialog(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .background(NeonCrimson.copy(alpha = 0.14f), RoundedCornerShape(8.dp)),
                             contentAlignment = Alignment.Center
                         ) {
@@ -154,7 +196,7 @@ fun DeleteAppConfirmDialog(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = null,
                                 tint = NeonCrimson,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
@@ -165,7 +207,7 @@ fun DeleteAppConfirmDialog(
                                     fontSize = 15.5.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = Color.White
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
                                 text = stringResource(R.string.dialog_delete_app_subtitle, appName),
@@ -214,13 +256,13 @@ fun DeleteAppConfirmDialog(
                         enabled = isStorageSufficient,
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isStorageSufficient) Color(0xFF161D2F) else Color(0xFF131722),
-                            disabledContainerColor = Color(0xFF131722)
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
                         ),
                         border = BorderStroke(
                             1.dp,
                             if (isStorageSufficient) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-                            else Color(0xFF1E2536)
+                            else MaterialTheme.colorScheme.outline
                         ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -245,7 +287,7 @@ fun DeleteAppConfirmDialog(
                                         text = stringResource(R.string.dialog_delete_restore_btn),
                                         fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isStorageSufficient) Color.White else Color.Gray
+                                        color = if (isStorageSufficient) MaterialTheme.colorScheme.onSurface else Color.Gray
                                     )
                                     if (requiredRestoreBytes > 0) {
                                         Text(
@@ -260,7 +302,7 @@ fun DeleteAppConfirmDialog(
                                 Text(
                                     text = stringResource(R.string.dialog_delete_restore_desc),
                                     fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     lineHeight = 14.sp
                                 )
                             }
@@ -271,8 +313,8 @@ fun DeleteAppConfirmDialog(
                     Card(
                         onClick = onConfirmUnmountAndDelete,
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF161D2F)),
-                        border = BorderStroke(1.dp, Color(0xFF232B3E)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -291,13 +333,13 @@ fun DeleteAppConfirmDialog(
                                     text = stringResource(R.string.dialog_delete_unmount_btn),
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
                                     text = stringResource(R.string.dialog_delete_unmount_desc),
                                     fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     lineHeight = 14.sp
                                 )
                             }
@@ -311,7 +353,7 @@ fun DeleteAppConfirmDialog(
                             .fillMaxWidth()
                             .height(38.dp),
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFF2E384D)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         contentPadding = PaddingValues(0.dp)
                     ) {
                         Text(
@@ -324,5 +366,60 @@ fun DeleteAppConfirmDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StepItem(
+    stepNumber: Int,
+    title: String,
+    isActive: Boolean,
+    isDone: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .background(
+                    when {
+                        isDone -> CyberEmerald
+                        isActive -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isDone) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Color.Black,
+                    modifier = Modifier.size(12.dp)
+                )
+            } else {
+                Text(
+                    text = "$stepNumber",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Text(
+            text = title,
+            fontSize = 11.sp,
+            fontWeight = if (isActive || isDone) FontWeight.SemiBold else FontWeight.Normal,
+            color = when {
+                isDone -> CyberEmerald
+                isActive -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
     }
 }

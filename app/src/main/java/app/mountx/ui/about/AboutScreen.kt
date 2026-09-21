@@ -95,15 +95,10 @@ fun AboutScreen(
             item {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                    color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(
                         1.dp,
-                        Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            )
-                        )
+                        MaterialTheme.colorScheme.outline
                     ),
                     modifier = Modifier.size(68.dp)
                 ) {
@@ -111,7 +106,7 @@ fun AboutScreen(
                         Image(
                             painter = painterResource(id = R.drawable.ic_mountx_emblem),
                             contentDescription = stringResource(R.string.app_name),
-                            modifier = Modifier.size(42.dp)
+                            modifier = Modifier.size(46.dp)
                         )
                     }
                 }
@@ -124,13 +119,13 @@ fun AboutScreen(
                 Text(
                     text = stringResource(R.string.about_version, BuildConfig.VERSION_NAME),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = stringResource(R.string.app_description),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -362,8 +357,8 @@ fun AboutScreen(
     if (showChangelogDialog) {
         AlertDialog(
             onDismissRequest = { showChangelogDialog = false },
-            containerColor = Color(0xFF111726),
-            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(20.dp),
             title = {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -371,30 +366,30 @@ fun AboutScreen(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF1E293B),
-                        border = BorderStroke(1.dp, Color(0xFF334155))
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
                         Text(
                             text = "#",
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
-                            color = Color(0xFF818CF8),
+                            color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
                     Text(
                         stringResource(R.string.about_changelog),
                         style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
-                        color = Color(0xFFF1F5F9)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             },
             text = {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF0D1321),
-                    border = BorderStroke(1.dp, Color(0xFF222F49)),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 440.dp)
@@ -406,11 +401,33 @@ fun AboutScreen(
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // ── v2.2.38 (Latest) ──
+                        // ── v2.2.39 (Latest) ──
+                        GithubReleaseCard(
+                            version = "v2.2.39",
+                            releaseDate = "21 Sep 2026",
+                            isLatest = true,
+                            title = "Penyempurnaan Tema Sandstone Light Mode, Audit Sistem & Integrasi Modal Terpadu"
+                        ) {
+                            GithubSectionHeader("🎨 Desain Sandstone Light Mode Premium & Kontras Tinggi")
+                            GithubMarkdownBullet("• **Palet Warna Soft Warm Sandstone**: Mengganti latar belakang putih polos menjadi `#F2EFE9` dan kartu permukaan `#FAF8F5` dengan batas tegas 1.dp `#D6D3CD` demi kenyamanan mata dan estetika premium.")
+                            GithubMarkdownBullet("• **Modal & Dialog Adaptif Multi-Tema**: Seluruh dialog konfirmasi, hapus, migrasi, custom path, changelog, dan lisensi kini menggunakan wadah adaptif dengan kontras teks tajam.")
+                            GithubMarkdownBullet("• **Presisi Header & Emblem Transparan**: Seluruh header layar dan bar navigasi kini memiliki pembatas tegas 1.dp solid serta logo MountX transparan beresolusi tinggi.")
+
+                            GithubSectionHeader("🛡️ Penguatan Sistem Root & Mitigasi Race Condition")
+                            GithubMarkdownBullet("• **Multi-Point Canary Verification**: Canary verification kini memvalidasi integritas titik kait data, obb, dan custom mount points secara komprehensif.")
+                            GithubMarkdownBullet("• **Anti-Stacked Mount & Throttle Watchdog**: Menambahkan verifikasi `isMountpoint` sebelum remount otomatis dan throttle 30 detik pada event screen-on.")
+                            GithubMarkdownBullet("• **Pre-Flight Storage Reserve**: Memastikan cadangan penyimpanan internal minimal 1 GB sebelum proses migrasi balik atau restorasi dieksekusi.")
+                            GithubMarkdownBullet("• **Validasi Sanitasi Impor JSON**: Mencegah path traversal dan memfilter nama paket tidak valid secara ketat.")
+
+                            GithubSectionHeader("✨ Pembersihan Teks & Konsistensi Bahasa")
+                            GithubMarkdownBullet("• **Pembersihan Istilah Menyeluruh**: Menyempurnakan seluruh label antarmuka, hero banner, counter, dan dialog dari istilah lama 'Games' menjadi 'Apps' / 'Aplikasi'.")
+                        }
+
+                        // ── v2.2.38 ──
                         GithubReleaseCard(
                             version = "v2.2.38",
                             releaseDate = "21 Sep 2026",
-                            isLatest = true,
+                            isLatest = false,
                             title = "Sistem Teardown Penghapusan Aplikasi, Migrasi Bersih UI/Database 'Apps', Hub Portabilitas Konfigurasi Terpusat di Pengaturan & Proteksi Mutex Root"
                         ) {
                             GithubSectionHeader("🗑️ Sistem Teardown Penghapusan Aplikasi & Dialog Pilihan Aksi")
@@ -762,7 +779,7 @@ fun AboutScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showChangelogDialog = false }) {
-                    Text(stringResource(R.string.common_close), color = Color(0xFF818CF8), fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.common_close), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 }
             }
         )
@@ -772,26 +789,26 @@ fun AboutScreen(
     if (showLicenseDialog) {
         AlertDialog(
             onDismissRequest = { showLicenseDialog = false },
-            containerColor = Color(0xFF111726),
-            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(20.dp),
             title = {
                 Text(
                     "MIT License",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFF1F5F9)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             },
             text = {
                 Text(
                     text = "Copyright (c) 2026 Noir / Zy0x\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFCBD5E1)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showLicenseDialog = false }) {
-                    Text(stringResource(R.string.common_close), color = Color(0xFF818CF8))
+                    Text(stringResource(R.string.common_close), color = MaterialTheme.colorScheme.primary)
                 }
             }
         )
@@ -808,10 +825,10 @@ private fun GithubReleaseCard(
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF141C2E),
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(
             1.dp,
-            if (isLatest) Color(0xFF6366F1).copy(alpha = 0.55f) else Color(0xFF26354D)
+            if (isLatest) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outline
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -824,15 +841,15 @@ private fun GithubReleaseCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = if (isLatest) Color(0xFF6366F1).copy(alpha = 0.2f) else Color(0xFF1E293B),
-                        border = BorderStroke(1.dp, if (isLatest) Color(0xFF6366F1) else Color(0xFF334155))
+                        color = if (isLatest) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(1.dp, if (isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
                     ) {
                         Text(
                             text = version,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
-                            color = if (isLatest) Color(0xFFA5B4FC) else Color(0xFFCBD5E1),
+                            color = if (isLatest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
                     }
@@ -840,7 +857,7 @@ private fun GithubReleaseCard(
                     Text(
                         text = releaseDate,
                         fontSize = 10.5.sp,
-                        color = Color(0xFF64748B)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -877,7 +894,7 @@ private fun GithubReleaseCard(
                 text = title,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFFF1F5F9),
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
 
@@ -895,11 +912,11 @@ private fun GithubSectionHeader(title: String) {
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             ),
-            color = Color(0xFF94A3B8)
+            color = MaterialTheme.colorScheme.primary
         )
         HorizontalDivider(
             thickness = 0.8.dp,
-            color = Color(0xFF334155).copy(alpha = 0.5f),
+            color = MaterialTheme.colorScheme.outline,
             modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
         )
     }
@@ -919,11 +936,12 @@ private fun GithubMarkdownBullet(rawText: String) {
                 fontSize = 11.sp,
                 lineHeight = 16.sp
             ),
-            color = Color(0xFFCBD5E1)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
+@Composable
 private fun buildMarkdownAnnotatedString(text: String): androidx.compose.ui.text.AnnotatedString {
     return buildAnnotatedString {
         var i = 0
@@ -931,7 +949,7 @@ private fun buildMarkdownAnnotatedString(text: String): androidx.compose.ui.text
             if (text.startsWith("**", i)) {
                 val end = text.indexOf("**", i + 2)
                 if (end != -1) {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF1F5F9))) {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)) {
                         append(text.substring(i + 2, end))
                     }
                     i = end + 2
@@ -944,8 +962,8 @@ private fun buildMarkdownAnnotatedString(text: String): androidx.compose.ui.text
                         SpanStyle(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
-                            color = Color(0xFF38BDF8),
-                            background = Color(0xFF1E293B)
+                            color = MaterialTheme.colorScheme.primary,
+                            background = MaterialTheme.colorScheme.surfaceVariant
                         )
                     ) {
                         append(" ${text.substring(i + 1, end)} ")

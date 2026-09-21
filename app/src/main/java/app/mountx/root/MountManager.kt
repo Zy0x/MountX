@@ -317,6 +317,7 @@ class MountManager {
                     RootShell.exec("chown -R $uid:$gid \"$obbSrcPath\" 2>/dev/null")
                     RootShell.exec("chmod -R 775 \"$obbSrcPath\" 2>/dev/null")
                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("touch \"$obbSrcPath/.mountx_canary\" 2>/dev/null")
 
                     for (namespace in namespaces) {
                         val targetPath = "$namespace/$obbRelPath"
@@ -721,11 +722,23 @@ class MountManager {
 
     /**
      * Canary verification check: verifies if the canary file is visible in target namespace.
+     * Checks data, obb, and any configured custom mount points.
      */
-    suspend fun verifyCanary(packageName: String): Boolean = withContext(Dispatchers.IO) {
-        val primaryCanary = "/storage/emulated/0/Android/data/$packageName/.mountx_canary"
-        val dataMediaCanary = "/data/media/0/Android/data/$packageName/.mountx_canary"
-        RootShell.exists(primaryCanary) || RootShell.exists(dataMediaCanary)
+    suspend fun verifyCanary(packageName: String, appEntry: GameEntry? = null): Boolean = withContext(Dispatchers.IO) {
+        val checkPaths = mutableListOf(
+            "/storage/emulated/0/Android/data/$packageName/.mountx_canary",
+            "/data/media/0/Android/data/$packageName/.mountx_canary",
+            "/storage/emulated/0/Android/obb/$packageName/.mountx_canary",
+            "/data/media/0/Android/obb/$packageName/.mountx_canary"
+        )
+        if (appEntry != null && appEntry.mountPoints.isNotEmpty()) {
+            for (mp in appEntry.mountPoints) {
+                checkPaths.add("${mp.targetPath}/.mountx_canary")
+                val rel = extractRelativePath(mp.targetPath)
+                checkPaths.add("/data/media/0/$rel/.mountx_canary")
+            }
+        }
+        checkPaths.any { RootShell.exists(it) }
     }
 }
 

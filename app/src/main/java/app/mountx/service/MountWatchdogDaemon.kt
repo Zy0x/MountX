@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import app.mountx.data.db.GameDao
 import app.mountx.data.model.MountStatus
 import app.mountx.root.MountManager
+import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -34,14 +35,20 @@ class MountWatchdogDaemon @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var isRegistered = false
+    private var lastScreenOnCheckMillis = 0L
+    private val SCREEN_ON_THROTTLE_MS = 30_000L // 30 seconds debounce
 
     private val eventReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_ON -> {
-                    // Screen woke up: passive integrity check
-                    scope.launch {
-                        checkAndRemountCanaries()
+                    // Screen woke up: passive integrity check throttled to max once per 30s
+                    val now = System.currentTimeMillis()
+                    if (now - lastScreenOnCheckMillis >= SCREEN_ON_THROTTLE_MS) {
+                        lastScreenOnCheckMillis = now
+                        scope.launch {
+                            checkAndRemountCanaries()
+                        }
                     }
                 }
                 Intent.ACTION_MEDIA_EJECT,
@@ -114,14 +121,22 @@ class MountWatchdogDaemon @Inject constructor(
 
         for (game in games) {
             if (game.isEnabled && game.mountStatus == MountStatus.MOUNTED) {
-                val hasCanary = mountManager.verifyCanary(game.packageName)
+                val hasCanary = mountManager.verifyCanary(game.packageName, game)
                 if (!hasCanary) {
-                    AppLogger.warn("Watchdog", "Canary lost for ${game.displayName} (${game.packageName}), re-mounting...")
-                    val result = mountManager.mountGame(game, sdBase)
-                    if (result.isSuccess) {
-                        AppLogger.success("Watchdog", "Auto-remounted ${game.displayName} successfully.")
+                    val isAlreadyMounted = RootShell.isMountpoint("/storage/emulated/0/Android/data/${game.packageName}") ||
+                            RootShell.isMountpoint("/data/media/0/Android/data/${game.packageName}") ||
+                            RootShell.isMountpoint("/storage/emulated/0/Android/obb/${game.packageName}") ||
+                            RootShell.isMountpoint("/data/media/0/Android/obb/${game.packageName}")
+                    if (!isAlreadyMounted) {
+                        AppLogger.warn("Watchdog", "Canary lost for ${game.displayName} (${game.packageName}), re-mounting...")
+                        val result = mountManager.mountGame(game, sdBase)
+                        if (result.isSuccess) {
+                            AppLogger.success("Watchdog", "Auto-remounted ${game.displayName} successfully.")
+                        } else {
+                            AppLogger.error("Watchdog", "Failed auto-remount for ${game.displayName}")
+                        }
                     } else {
-                        AppLogger.error("Watchdog", "Failed auto-remount for ${game.displayName}")
+                        AppLogger.info("Watchdog", "Mountpoint still active for ${game.displayName}, skipping duplicate mount.")
                     }
                 }
             }
@@ -162,7 +177,7 @@ class MountWatchdogDaemon @Inject constructor(
         val sdBase = appPreferences.sdBasePath.first()
 
         if (game.isEnabled) {
-            val isCanaryOk = mountManager.verifyCanary(game.packageName)
+            val isCanaryOk = mountManager.verifyCanary(game.packageName, game)
             if (!isCanaryOk || game.mountStatus != MountStatus.MOUNTED) {
                 val mountRes = mountManager.mountGame(game, sdBase)
                 if (mountRes.isSuccess) {
