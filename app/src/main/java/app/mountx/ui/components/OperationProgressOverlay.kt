@@ -231,13 +231,13 @@ private fun SuccessContent(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(52.dp)
-            .background(CyberEmerald.copy(alpha = 0.15f), CircleShape)
-            .border(1.dp, CyberEmerald.copy(alpha = 0.4f), CircleShape)
+            .background(Color(0x1F15803D), CircleShape)
+            .border(1.dp, Color(0xFF15803D).copy(alpha = 0.4f), CircleShape)
     ) {
         Icon(
             imageVector = Icons.Default.Check,
             contentDescription = null,
-            tint = CyberEmerald,
+            tint = Color(0xFF15803D),
             modifier = Modifier.size(26.dp)
         )
     }
@@ -264,25 +264,24 @@ private fun SuccessContent(
     if (state.details.isNotEmpty()) {
         Spacer(modifier = Modifier.height(12.dp))
         Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF1C1917),
+            border = BorderStroke(1.dp, Color(0xFF44403C)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 state.details.forEach { (k, v) ->
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
                             text = k,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color(0xFFE7E5E4)
                         )
                         Text(
                             text = v,
@@ -291,7 +290,7 @@ private fun SuccessContent(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = CyberEmerald
+                            color = Color(0xFF86EFAC)
                         )
                     }
                 }
@@ -327,9 +326,9 @@ private fun SuccessContent(
             exit = shrinkVertically() + fadeOut()
         ) {
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color.Black.copy(alpha = 0.6f),
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFF1C1917),
+                border = BorderStroke(1.dp, Color(0xFF44403C)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp)
@@ -337,12 +336,13 @@ private fun SuccessContent(
                 Text(
                     text = state.rawLog,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    color = Color(0xFF00FF66),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    color = Color(0xFFE7E5E4),
                     modifier = Modifier
                         .heightIn(max = 160.dp)
                         .verticalScroll(rememberScrollState())
-                        .padding(8.dp)
+                        .padding(10.dp)
                 )
             }
         }
@@ -354,8 +354,8 @@ private fun SuccessContent(
         onClick = onDismiss,
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = CyberEmerald,
-            contentColor = Color.Black
+            containerColor = Color(0xFF4F46E5),
+            contentColor = Color.White
         ),
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 0.dp),
         modifier = Modifier

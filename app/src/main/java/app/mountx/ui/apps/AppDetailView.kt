@@ -97,12 +97,23 @@ import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.SdCardDiskInfo
+import androidx.compose.foundation.isSystemInDarkTheme
 import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.NeedMigrationDialog
+import app.mountx.ui.theme.BadgeMigrationBgDark
+import app.mountx.ui.theme.BadgeMigrationBgLight
+import app.mountx.ui.theme.BadgeMigrationTextDark
+import app.mountx.ui.theme.BadgeMigrationTextLight
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.NeonCrimson
 import app.mountx.ui.theme.SunsetAmber
+import app.mountx.ui.theme.WarmCrimsonBgDark
+import app.mountx.ui.theme.WarmCrimsonBgLight
+import app.mountx.ui.theme.WarmCrimsonBorderDark
+import app.mountx.ui.theme.WarmCrimsonBorderLight
+import app.mountx.ui.theme.WarmCrimsonDark
+import app.mountx.ui.theme.WarmCrimsonLight
 import app.mountx.util.FormatUtils
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -1412,63 +1423,95 @@ private fun StorageTabContent(
                     }
 
                     // Right: Alternating Mount / Unmount / Migrate button
+                    val isDark = isSystemInDarkTheme()
                     val hasInternalData = safeBreakdown.ext1Bytes > 0L || game.dataSizeBytes > 0L
                     val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION || (!isMounted && !isRealDataOnSd && hasInternalData)
-                    val actionBorderColor = when {
-                        isNeedMigration -> SunsetAmber.copy(alpha = 0.8f)
-                        isMounted -> SunsetAmber.copy(alpha = 0.7f)
-                        else -> CyberEmerald.copy(alpha = 0.7f)
-                    }
-                    val actionContentColor = when {
-                        isNeedMigration -> SunsetAmber
-                        isMounted -> SunsetAmber
-                        else -> CyberEmerald
-                    }
 
-                    OutlinedButton(
-                        onClick = {
-                            when {
-                                isNeedMigration -> showNeedMigrationDialog = true
-                                isMounted -> showUnmountConfirmDialog = true
-                                isRealDataOnSd -> onMount()
-                                else -> showNeedMigrationDialog = true
-                            }
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, actionBorderColor),
-                        colors = if (isNeedMigration) ButtonDefaults.outlinedButtonColors(
-                            containerColor = SunsetAmber.copy(alpha = 0.12f)
-                        ) else ButtonDefaults.outlinedButtonColors(),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = when {
-                                isNeedMigration -> Icons.Default.Warning
-                                isMounted -> Icons.Default.LinkOff
-                                else -> Icons.Default.PlayArrow
-                            },
-                            contentDescription = null,
-                            tint = actionContentColor,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = when {
-                                isNeedMigration -> stringResource(R.string.btn_migrate_to_sd)
-                                isMounted -> stringResource(R.string.manage_btn_unmount_game)
-                                else -> stringResource(R.string.manage_btn_mount_game)
-                            },
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold
+                    if (!isMounted && isRealDataOnSd && !isNeedMigration) {
+                        Button(
+                            onClick = onMount,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5),
+                                contentColor = Color.White
                             ),
-                            color = actionContentColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(R.string.manage_btn_mount_game),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        val actionBorderColor = if (isNeedMigration) {
+                            (if (isDark) BadgeMigrationTextDark else BadgeMigrationTextLight).copy(alpha = 0.6f)
+                        } else {
+                            if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+                        }
+                        val actionBgColor = if (isNeedMigration) {
+                            if (isDark) BadgeMigrationBgDark else BadgeMigrationBgLight
+                        } else {
+                            if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight
+                        }
+                        val actionContentColor = if (isNeedMigration) {
+                            if (isDark) BadgeMigrationTextDark else BadgeMigrationTextLight
+                        } else {
+                            if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                if (isNeedMigration) {
+                                    showNeedMigrationDialog = true
+                                } else {
+                                    showUnmountConfirmDialog = true
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, actionBorderColor),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = actionBgColor,
+                                contentColor = actionContentColor
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isNeedMigration) Icons.Default.Warning else Icons.Default.LinkOff,
+                                contentDescription = null,
+                                tint = actionContentColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isNeedMigration) stringResource(R.string.btn_migrate_to_sd) else stringResource(R.string.manage_btn_unmount_game),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = actionContentColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -2186,6 +2229,7 @@ private fun CategoryInspectorBottomSheet(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val isDark = isSystemInDarkTheme()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
@@ -2618,8 +2662,11 @@ private fun CategoryInspectorBottomSheet(
                 OutlinedButton(
                     onClick = onRequestDelete,
                     shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE53935).copy(alpha = 0.7f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                    border = BorderStroke(1.dp, if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight,
+                        contentColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(42.dp)
@@ -2627,7 +2674,8 @@ private fun CategoryInspectorBottomSheet(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(16.dp),
+                        tint = if (isDark) WarmCrimsonDark else WarmCrimsonLight
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -2635,7 +2683,8 @@ private fun CategoryInspectorBottomSheet(
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold
-                        )
+                        ),
+                        color = if (isDark) WarmCrimsonDark else WarmCrimsonLight
                     )
                 }
             }
@@ -2861,7 +2910,7 @@ private fun CategoryDeleteConfirmDialog(
                 onClick = { onConfirm(selectedLocation) },
                 enabled = !isDeleting,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFE53935),
+                    containerColor = Color(0xFFDC2626),
                     contentColor = Color.White
                 ),
                 shape = RoundedCornerShape(8.dp)

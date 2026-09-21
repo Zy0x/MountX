@@ -316,9 +316,9 @@ fun StorageScreen(
             },
             text = {
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color.Black.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF1C1917),
+                    border = BorderStroke(1.dp, Color(0xFF44403C)),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 240.dp)
@@ -326,9 +326,9 @@ fun StorageScreen(
                     Text(
                         text = fsCheckOutput ?: "",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 10.5.sp,
-                        lineHeight = 14.sp,
-                        color = adaptiveEmerald(),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        color = Color(0xFFE7E5E4),
                         modifier = Modifier
                             .padding(10.dp)
                             .verticalScroll(rememberScrollState())
@@ -2718,7 +2718,7 @@ private fun SingleFormatDialog(
             Button(
                 onClick = { onConfirmFormat(chosenFs, labelInput) },
                 enabled = !isFormatting,
-                colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson, contentColor = Color.White),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
                 shape = RoundedCornerShape(10.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                 modifier = Modifier.height(36.dp)
@@ -2978,9 +2978,9 @@ private fun FsckReportDialog(
 
                     if (isExpandedLog) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color.Black.copy(alpha = 0.6f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF1C1917),
+                            border = BorderStroke(1.dp, Color(0xFF44403C)),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = 180.dp)
@@ -2988,11 +2988,11 @@ private fun FsckReportDialog(
                             Text(
                                 text = report.rawLog,
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                lineHeight = 13.sp,
-                                color = CyberEmerald,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                color = Color(0xFFE7E5E4),
                                 modifier = Modifier
-                                    .padding(8.dp)
+                                    .padding(10.dp)
                                     .verticalScroll(rememberScrollState())
                             )
                         }
@@ -3371,7 +3371,7 @@ private fun EjectDiskConfirmDialog(
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(containerColor = NeonCrimson, contentColor = Color.White),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
                 shape = RoundedCornerShape(10.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                 modifier = Modifier.height(36.dp)
@@ -3493,6 +3493,10 @@ private fun EditPartitionLabelDialog(
                 onClick = { onConfirm(labelInput) },
                 enabled = labelInput.isNotBlank(),
                 shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4F46E5),
+                    contentColor = Color.White
+                ),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                 modifier = Modifier.height(34.dp)
             ) {

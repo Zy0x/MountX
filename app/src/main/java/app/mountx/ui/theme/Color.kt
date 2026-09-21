@@ -178,11 +178,46 @@ val FigmaNavSurface = CyberSurfaceDark
 val FigmaNavBlue = HyperCyan
 val FigmaNavInactive = CyberOnVariantDark
 val FigmaNavBorder = CyberBorderDark
-
-// Obsidian aliases remapped to high-end Cyber Modern tokens
 val ObsidianBg = CyberBgDark
 val ObsidianCard = CyberSurfaceDark
 val ObsidianBorder = CyberBorderDark
 val ElectricCyan = HyperCyan
 val ElectricCyanBright = HyperCyanBright
+
+// ── 7. Unified Design System Tokens (Soft Warm Sandstone & Earthy Mineral) ──
+val WarmStoneSlateLight = Color(0xFF57534E)
+val WarmStoneSlateDark = Color(0xFFA8A29E)
+
+val WarmCrimson = Color(0xFFDC2626)
+val WarmCrimsonLight = Color(0xFFDC2626)
+val WarmCrimsonDark = Color(0xFFEF4444)
+val WarmCrimsonBorderLight = Color(0xFFFECACA)
+val WarmCrimsonBorderDark = Color(0xFF7F1D1D)
+val WarmCrimsonBgLight = Color(0xFFFEF2F2)
+val WarmCrimsonBgDark = Color(0x26EF4444)
+
+val BadgeMountedBgLight = Color(0x1F15803D)
+val BadgeMountedTextLight = Color(0xFF15803D)
+val BadgeMountedBgDark = Color(0x1F22C55E)
+val BadgeMountedTextDark = Color(0xFF4ADE80)
+
+val BadgeMigrationBgLight = Color(0x1FD97706)
+val BadgeMigrationBgDark = Color(0x26F59E0B)
+val BadgeMigrationTextLight = Color(0xFFD97706)
+val BadgeMigrationTextDark = Color(0xFFFBBF24)
+val BadgeMigrationBg = BadgeMigrationBgLight
+val BadgeMigrationText = BadgeMigrationTextLight
+
+val TerminalDeepStoneBg = Color(0xFF1C1917)
+val TerminalDeepStoneBorder = Color(0xFF44403C)
+val SandstoneLightText = Color(0xFFE7E5E4)
+val SageGreenText = Color(0xFF86EFAC)
+
+val OutlinedNeutralBgLight = Color(0xFFFAF8F5)
+val OutlinedNeutralBorderLight = Color(0xFFD6D3CD)
+val OutlinedNeutralTextLight = Color(0xFF44403C)
+val OutlinedNeutralBgDark = Color(0xFF1C1917)
+val OutlinedNeutralBorderDark = Color(0xFF44403C)
+val OutlinedNeutralTextDark = Color(0xFFE7E5E4)
+
 

@@ -78,8 +78,21 @@ import app.mountx.data.model.DiskHardwareDetails
 import app.mountx.data.model.DiskIoConfig
 import app.mountx.data.model.IoPreset
 import app.mountx.data.model.SdCardDiskInfo
+import androidx.compose.foundation.isSystemInDarkTheme
+import app.mountx.ui.theme.BadgeMountedBgDark
+import app.mountx.ui.theme.BadgeMountedBgLight
+import app.mountx.ui.theme.BadgeMountedTextDark
+import app.mountx.ui.theme.BadgeMountedTextLight
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.ElectricCyan
+import app.mountx.ui.theme.OutlinedNeutralBgDark
+import app.mountx.ui.theme.OutlinedNeutralBgLight
+import app.mountx.ui.theme.OutlinedNeutralBorderDark
+import app.mountx.ui.theme.OutlinedNeutralBorderLight
+import app.mountx.ui.theme.OutlinedNeutralTextDark
+import app.mountx.ui.theme.OutlinedNeutralTextLight
+import app.mountx.ui.theme.WarmStoneSlateDark
+import app.mountx.ui.theme.WarmStoneSlateLight
 
 /** In-sheet navigation pages for Disk Tools */
 enum class DiskToolsPage {
@@ -354,14 +367,15 @@ private fun DiskToolsHubView(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
         Spacer(modifier = Modifier.height(4.dp))
 
+        val isDark = isSystemInDarkTheme()
         Text(
             text = stringResource(R.string.storage_hardware_info_title).uppercase(),
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp
+                letterSpacing = 0.8.sp
             ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (isDark) WarmStoneSlateDark else WarmStoneSlateLight
         )
 
         if (hardwareDetails != null) {
@@ -403,14 +417,14 @@ private fun DiskToolsHubView(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(stringResource(R.string.storage_hw_bus_speed), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(hardwareDetails.busClockMhz.ifBlank { "Standard High-Speed" }, fontSize = 10.5.sp, color = ElectricCyan)
+                        Text(hardwareDetails.busClockMhz.ifBlank { "Standard High-Speed" }, fontSize = 10.5.sp, color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5))
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(stringResource(R.string.storage_hw_speed_class), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(hardwareDetails.uhsSpeedClass.ifBlank { "Class 10 / UHS-I" }, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = CyberEmerald)
+                        Text(hardwareDetails.uhsSpeedClass.ifBlank { "Class 10 / UHS-I" }, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight)
                     }
                 }
             }
@@ -506,6 +520,7 @@ private fun DiskIoBoosterSubPage(
     onApplyCustomConfig: (DiskIoConfig) -> Unit
 ) {
     val currentConfig = ioConfig ?: DiskIoConfig()
+    val isDark = isSystemInDarkTheme()
     var selectedReadAhead by remember(ioConfig) { mutableIntStateOf(currentConfig.readAheadKb) }
     var selectedScheduler by remember(ioConfig) { mutableStateOf(currentConfig.scheduler) }
     var isPersistent by remember(ioConfig) { mutableStateOf(currentConfig.isBootPersistent) }
@@ -664,8 +679,8 @@ private fun DiskIoBoosterSubPage(
                 checked = isPersistent,
                 onCheckedChange = { isPersistent = it },
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.Black,
-                    checkedTrackColor = ElectricCyan
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5)
                 )
             )
         }
@@ -685,13 +700,16 @@ private fun DiskIoBoosterSubPage(
             },
             enabled = !isApplyingIo,
             shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ElectricCyan, contentColor = Color.Black),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5),
+                contentColor = Color.White
+            ),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(40.dp)
         ) {
             if (isApplyingIo) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
             } else {
                 Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
@@ -713,6 +731,8 @@ private fun DiskMaintenanceSubPage(
     onRunGlobalTrim: () -> Unit,
     onRunUrgentGc: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -736,7 +756,7 @@ private fun DiskMaintenanceSubPage(
                 Text(
                     text = stringResource(R.string.storage_global_trim_btn),
                     style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
-                    color = CyberEmerald
+                    color = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -749,14 +769,17 @@ private fun DiskMaintenanceSubPage(
                     onClick = onRunGlobalTrim,
                     enabled = !isTrimming,
                     shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.7f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CyberEmerald),
+                    border = BorderStroke(1.dp, (if (isDark) BadgeMountedTextDark else BadgeMountedTextLight).copy(alpha = 0.5f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight,
+                        contentColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(36.dp)
                 ) {
                     if (isTrimming) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = CyberEmerald, strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight, strokeWidth = 2.dp)
                     } else {
                         Icon(Icons.Default.CleaningServices, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(6.dp))
@@ -777,7 +800,7 @@ private fun DiskMaintenanceSubPage(
                 Text(
                     text = stringResource(R.string.storage_f2fs_gc_btn),
                     style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.5.sp, fontWeight = FontWeight.Bold),
-                    color = ElectricCyan
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -790,14 +813,17 @@ private fun DiskMaintenanceSubPage(
                     onClick = onRunUrgentGc,
                     enabled = !isUrgentGcRunning,
                     shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.7f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan),
+                    border = BorderStroke(1.dp, if (isDark) OutlinedNeutralBorderDark else OutlinedNeutralBorderLight),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (isDark) OutlinedNeutralBgDark else OutlinedNeutralBgLight,
+                        contentColor = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(36.dp)
                 ) {
                     if (isUrgentGcRunning) {
-                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = ElectricCyan, strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight, strokeWidth = 2.dp)
                     } else {
                         Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(6.dp))
@@ -816,6 +842,8 @@ private fun DiskBenchmarkSubPage(
     benchmarkResult: BenchmarkResult?,
     onRunBenchmark: () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -832,13 +860,16 @@ private fun DiskBenchmarkSubPage(
             onClick = onRunBenchmark,
             enabled = !isBenchmarking,
             shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF38BDF8), contentColor = Color.Black),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5),
+                contentColor = Color.White
+            ),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(40.dp)
         ) {
             if (isBenchmarking) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
             } else {
                 Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))

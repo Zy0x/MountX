@@ -78,12 +78,31 @@ import app.mountx.data.model.FilesystemType
 import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
+import androidx.compose.foundation.isSystemInDarkTheme
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.ConfirmDialog
 import app.mountx.ui.components.SectionHeader
+import app.mountx.ui.theme.BadgeMountedBgDark
+import app.mountx.ui.theme.BadgeMountedBgLight
+import app.mountx.ui.theme.BadgeMountedTextDark
+import app.mountx.ui.theme.BadgeMountedTextLight
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.ElectricCyan
 import app.mountx.ui.theme.NeonCrimson
+import app.mountx.ui.theme.OutlinedNeutralBgDark
+import app.mountx.ui.theme.OutlinedNeutralBgLight
+import app.mountx.ui.theme.OutlinedNeutralBorderDark
+import app.mountx.ui.theme.OutlinedNeutralBorderLight
+import app.mountx.ui.theme.OutlinedNeutralTextDark
+import app.mountx.ui.theme.OutlinedNeutralTextLight
+import app.mountx.ui.theme.WarmCrimsonBgDark
+import app.mountx.ui.theme.WarmCrimsonBgLight
+import app.mountx.ui.theme.WarmCrimsonBorderDark
+import app.mountx.ui.theme.WarmCrimsonBorderLight
+import app.mountx.ui.theme.WarmCrimsonDark
+import app.mountx.ui.theme.WarmCrimsonLight
+import app.mountx.ui.theme.WarmStoneSlateDark
+import app.mountx.ui.theme.WarmStoneSlateLight
 import app.mountx.util.FormatUtils
 
 /**
@@ -252,6 +271,7 @@ private fun DiskHardwareOverviewCard(
 ) {
     val diskTypeIcon = if (disk.diskType == DiskType.MICRO_SD) Icons.Default.SdStorage else Icons.Default.Usb
     val hasUnmounted = disk.partitions.any { !it.isMounted }
+    val isDark = isSystemInDarkTheme()
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -301,7 +321,7 @@ private fun DiskHardwareOverviewCard(
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace
                             ),
-                            color = ElectricCyan
+                            color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
                         )
                     }
                 }
@@ -399,7 +419,7 @@ private fun DiskHardwareOverviewCard(
                     Icon(
                         imageVector = Icons.Default.Tune,
                         contentDescription = null,
-                        tint = ElectricCyan,
+                        tint = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -429,9 +449,16 @@ private fun DiskHardwareOverviewCard(
                     },
                     enabled = disk.partitions.isNotEmpty() && !isMountingAll && !isUnmountingAll,
                     shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, if (hasUnmounted) CyberEmerald.copy(alpha = 0.6f) else NeonCrimson.copy(alpha = 0.6f)),
+                    border = BorderStroke(
+                        1.dp,
+                        if (hasUnmounted) (if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5))
+                        else (if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight)
+                    ),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = if (hasUnmounted) CyberEmerald else NeonCrimson
+                        containerColor = if (hasUnmounted) (if (isDark) Color(0xFF6366F1).copy(alpha = 0.12f) else Color(0xFF4F46E5).copy(alpha = 0.08f))
+                        else (if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight),
+                        contentColor = if (hasUnmounted) (if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5))
+                        else (if (isDark) WarmCrimsonDark else WarmCrimsonLight)
                     ),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     modifier = Modifier
@@ -441,7 +468,8 @@ private fun DiskHardwareOverviewCard(
                     if (isMountingAll || isUnmountingAll) {
                         CircularProgressIndicator(
                             strokeWidth = 2.dp,
-                            color = if (hasUnmounted) CyberEmerald else NeonCrimson,
+                            color = if (hasUnmounted) (if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5))
+                            else (if (isDark) WarmCrimsonDark else WarmCrimsonLight),
                             modifier = Modifier.size(14.dp)
                         )
                     } else {
@@ -465,14 +493,14 @@ private fun DiskHardwareOverviewCard(
                     )
                 }
 
-                // Disk Tools Button
+                // Disk Tools Button (Outlined Neutral)
                 OutlinedButton(
                     onClick = onOpenDiskTools,
                     shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.7f)),
+                    border = BorderStroke(1.dp, if (isDark) OutlinedNeutralBorderDark else OutlinedNeutralBorderLight),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = ElectricCyan.copy(alpha = 0.08f),
-                        contentColor = ElectricCyan
+                        containerColor = if (isDark) OutlinedNeutralBgDark else OutlinedNeutralBgLight,
+                        contentColor = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight
                     ),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                     modifier = Modifier
@@ -482,7 +510,8 @@ private fun DiskHardwareOverviewCard(
                     Icon(
                         imageVector = Icons.Default.Bolt,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(16.dp),
+                        tint = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -502,6 +531,7 @@ private fun DiskMiniVisualMapCard(
     partitions: List<PartitionInfo>,
     modifier: Modifier = Modifier
 ) {
+    val isDark = isSystemInDarkTheme()
     val totalBytes = partitions.sumOf { it.sizeBytes }.coerceAtLeast(1L)
 
     Card(
@@ -514,11 +544,11 @@ private fun DiskMiniVisualMapCard(
             Text(
                 text = stringResource(R.string.storage_disk_map_title),
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.8.sp
                 ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = if (isDark) WarmStoneSlateDark else WarmStoneSlateLight
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -631,7 +661,11 @@ private fun DiskPartitionCard(
     onOpenTools: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val partBadgeColor = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.primary
+    val isDark = isSystemInDarkTheme()
+    val mountedColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+    val mountedBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+    val borderMounted = if (isDark) BadgeMountedTextDark.copy(alpha = 0.5f) else BadgeMountedTextLight.copy(alpha = 0.4f)
+    val partBadgeColor = if (partition.isMounted) mountedColor else MaterialTheme.colorScheme.primary
 
 
     Card(
@@ -639,7 +673,7 @@ private fun DiskPartitionCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (partition.isMounted) CyberEmerald.copy(alpha = 0.5f)
+            if (partition.isMounted) borderMounted
             else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
         ),
         modifier = modifier.fillMaxWidth()
@@ -691,8 +725,8 @@ private fun DiskPartitionCard(
                 if (partition.isMounted) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = CyberEmerald.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, CyberEmerald.copy(alpha = 0.5f))
+                        color = mountedBg,
+                        border = BorderStroke(1.dp, borderMounted)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -701,7 +735,7 @@ private fun DiskPartitionCard(
                             Icon(
                                 Icons.Default.CheckCircle,
                                 contentDescription = null,
-                                tint = CyberEmerald,
+                                tint = mountedColor,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -709,7 +743,7 @@ private fun DiskPartitionCard(
                                 text = stringResource(R.string.storage_status_mounted_badge),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberEmerald
+                                color = mountedColor
                             )
                         }
                     }
@@ -747,7 +781,7 @@ private fun DiskPartitionCard(
                         text = partition.fsType.ifBlank { "RAW" }.uppercase(),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (partition.isMounted) CyberEmerald else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (partition.isMounted) mountedColor else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -777,7 +811,7 @@ private fun DiskPartitionCard(
                             fontSize = 9.5.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Normal,
-                            color = if (partition.isTargetMount) CyberEmerald else if (partition.isPortableMount) Color(0xFF0284C7) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (partition.isTargetMount) mountedColor else if (partition.isPortableMount) (if (isDark) Color(0xFF60A5FA) else Color(0xFF2563EB)) else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -844,8 +878,11 @@ private fun DiskPartitionCard(
                         onClick = onUnmount,
                         enabled = !isUnmounting && !isMounting,
                         shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, NeonCrimson.copy(alpha = 0.6f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCrimson),
+                        border = BorderStroke(1.dp, if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight,
+                            contentColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                        ),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier
                             .weight(0.65f)
@@ -854,7 +891,7 @@ private fun DiskPartitionCard(
                         if (isUnmounting) {
                             CircularProgressIndicator(
                                 strokeWidth = 2.dp,
-                                color = NeonCrimson,
+                                color = if (isDark) WarmCrimsonDark else WarmCrimsonLight,
                                 modifier = Modifier.size(13.dp)
                             )
                         } else {
@@ -877,8 +914,8 @@ private fun DiskPartitionCard(
                         enabled = !isMounting && !isUnmounting,
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = CyberEmerald,
-                            contentColor = Color.Black
+                            containerColor = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5),
+                            contentColor = Color.White
                         ),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         modifier = Modifier
@@ -888,7 +925,7 @@ private fun DiskPartitionCard(
                         if (isMounting) {
                             CircularProgressIndicator(
                                 strokeWidth = 2.dp,
-                                color = Color.Black,
+                                color = Color.White,
                                 modifier = Modifier.size(13.dp)
                             )
                         } else {
@@ -907,13 +944,16 @@ private fun DiskPartitionCard(
                     }
                 }
 
-                // 2. Partition Tools Button (35%)
+                // 2. Partition Tools Button (35%) - Outlined Neutral
                 OutlinedButton(
                     onClick = onOpenTools,
                     enabled = !isUnmounting && !isMounting,
                     shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+                    border = BorderStroke(1.dp, if (isDark) OutlinedNeutralBorderDark else OutlinedNeutralBorderLight),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = if (isDark) OutlinedNeutralBgDark else OutlinedNeutralBgLight,
+                        contentColor = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight
+                    ),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     modifier = Modifier
                         .weight(0.35f)
@@ -923,7 +963,7 @@ private fun DiskPartitionCard(
                         Icons.Default.Tune,
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
-                        tint = ElectricCyan
+                        tint = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(

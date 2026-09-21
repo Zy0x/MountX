@@ -134,6 +134,21 @@ import app.mountx.ui.theme.TerracottaRedContainerLight
 import app.mountx.ui.theme.TerracottaRedLight
 import app.mountx.ui.theme.WarmAmberContainerLight
 import app.mountx.ui.theme.WarmAmberLight
+import app.mountx.ui.theme.BadgeMigrationBg
+import app.mountx.ui.theme.BadgeMigrationText
+import app.mountx.ui.theme.BadgeMountedBgDark
+import app.mountx.ui.theme.BadgeMountedBgLight
+import app.mountx.ui.theme.BadgeMountedTextDark
+import app.mountx.ui.theme.BadgeMountedTextLight
+import app.mountx.ui.theme.OutlinedNeutralBgDark
+import app.mountx.ui.theme.OutlinedNeutralBgLight
+import app.mountx.ui.theme.WarmCrimson
+import app.mountx.ui.theme.WarmCrimsonBorderDark
+import app.mountx.ui.theme.WarmCrimsonBorderLight
+import app.mountx.ui.theme.WarmCrimsonDark
+import app.mountx.ui.theme.WarmCrimsonLight
+import app.mountx.ui.theme.WarmStoneSlateDark
+import app.mountx.ui.theme.WarmStoneSlateLight
 import app.mountx.util.FormatUtils
 
 @Composable
@@ -432,7 +447,7 @@ private fun SleekCompactHeader(
                             Image(
                                 painter = painterResource(id = R.drawable.ic_mountx_emblem),
                                 contentDescription = stringResource(R.string.app_name),
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             )
                         }
                     }
@@ -450,10 +465,10 @@ private fun SleekCompactHeader(
 
                 // Right: Modern Status Pill (Clean without redundant refresh button)
                 val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
-                val activeEmeraldGlow = if (isDark) EmeraldGlow else ForestGreenContainerLight
-                val noneCrimson = if (isDark) NeonCrimson else TerracottaRedLight
-                val noneCrimsonGlow = if (isDark) CrimsonGlow else TerracottaRedContainerLight
+                val activeEmerald = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+                val activeEmeraldGlow = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+                val noneCrimson = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                val noneCrimsonGlow = if (isDark) WarmCrimsonBorderDark.copy(alpha = 0.3f) else WarmCrimsonBorderLight
                 val (ledColor, ledGlow, engineLabel) = when (status.rootSolution) {
                     RootSolution.MAGISK -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_magisk))
                     RootSolution.KERNELSU -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_kernelsu))
@@ -655,9 +670,9 @@ private fun SmartMasterControlCard(
     val haptic = LocalHapticFeedback.current
     val allMounted = totalCount > 0 && mountedCount == totalCount
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
-    val warnAmber = if (isDark) SunsetAmber else WarmAmberLight
-    val errCrimson = if (isDark) NeonCrimson else TerracottaRedLight
+    val activeEmerald = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+    val warnAmber = BadgeMigrationText
+    val errCrimson = if (isDark) WarmCrimsonDark else WarmCrimsonLight
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -677,25 +692,27 @@ private fun SmartMasterControlCard(
             ) {
                 Text(
                     text = stringResource(R.string.dashboard_master_control).uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 0.8.sp
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    ),
+                    color = if (isDark) WarmStoneSlateDark else WarmStoneSlateLight
                 )
 
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = when {
                         totalCount == 0 -> MaterialTheme.colorScheme.surfaceVariant
-                        allMounted -> activeEmerald.copy(alpha = 0.15f)
-                        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        allMounted -> if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+                        else -> if (isDark) Color(0xFF6366F1).copy(alpha = 0.15f) else Color(0xFF4F46E5).copy(alpha = 0.12f)
                     },
                     border = BorderStroke(
                         1.dp,
                         when {
                             totalCount == 0 -> MaterialTheme.colorScheme.outlineVariant
-                            allMounted -> activeEmerald.copy(alpha = 0.4f)
-                            else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                            allMounted -> if (isDark) BadgeMountedTextDark.copy(alpha = 0.4f) else BadgeMountedTextLight.copy(alpha = 0.35f)
+                            else -> if (isDark) Color(0xFF6366F1).copy(alpha = 0.35f) else Color(0xFF4F46E5).copy(alpha = 0.3f)
                         }
                     )
                 ) {
@@ -837,15 +854,15 @@ private fun SmartMasterControlCard(
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                                 val pillBg = when {
-                                    isMounted -> activeEmerald.copy(alpha = 0.15f)
-                                    isNeedMigration -> warnAmber.copy(alpha = 0.16f)
-                                    isError -> errCrimson.copy(alpha = 0.16f)
+                                    isMounted -> if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+                                    isNeedMigration -> BadgeMigrationBg
+                                    isError -> if (isDark) WarmCrimsonBorderDark.copy(alpha = 0.3f) else WarmCrimsonBorderLight
                                     else -> MaterialTheme.colorScheme.surfaceVariant
                                 }
                                 val pillBorder = when {
-                                    isMounted -> activeEmerald.copy(alpha = 0.4f)
-                                    isNeedMigration -> warnAmber.copy(alpha = 0.5f)
-                                    isError -> errCrimson.copy(alpha = 0.5f)
+                                    isMounted -> if (isDark) BadgeMountedTextDark.copy(alpha = 0.4f) else BadgeMountedTextLight.copy(alpha = 0.35f)
+                                    isNeedMigration -> BadgeMigrationText.copy(alpha = 0.4f)
+                                    isError -> if (isDark) WarmCrimsonDark.copy(alpha = 0.4f) else WarmCrimsonBorderLight
                                     else -> MaterialTheme.colorScheme.outlineVariant
                                 }
                                 val pillText = when {
@@ -897,6 +914,7 @@ private fun SmartMasterControlCard(
             // Adaptive Master Button
             when {
                 totalCount == 0 -> {
+                    val buttonIndigo = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5)
                     Button(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -904,14 +922,10 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(38.dp)
-                            .background(
-                                brush = if (isDark) AuroraGradientBrush else AuroraGradientBrushLight,
-                                shape = RoundedCornerShape(10.dp)
-                            ),
+                            .height(38.dp),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Transparent,
+                            containerColor = buttonIndigo,
                             contentColor = Color.White
                         ),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
@@ -940,7 +954,7 @@ private fun SmartMasterControlCard(
                 }
 
                 allMounted -> {
-                    FilledTonalButton(
+                    OutlinedButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onUnmountAll()
@@ -950,17 +964,17 @@ private fun SmartMasterControlCard(
                             .height(38.dp),
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = MaterialTheme.colorScheme.onSurface
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (isDark) OutlinedNeutralBgDark else OutlinedNeutralBgLight,
+                            contentColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
                         ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        border = BorderStroke(1.5.dp, if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Stop,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = NeonCrimson
+                            tint = if (isDark) WarmCrimsonDark else WarmCrimsonLight
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -968,14 +982,14 @@ private fun SmartMasterControlCard(
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
-                            )
+                            ),
+                            color = if (isDark) WarmCrimsonDark else WarmCrimsonLight
                         )
                     }
                 }
 
                 else -> {
-                    val isDark = isSystemInDarkTheme()
-                    val gradient = if (isDark) AuroraGradientBrush else AuroraGradientBrushLight
+                    val buttonIndigo = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5)
                     Button(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -983,12 +997,11 @@ private fun SmartMasterControlCard(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(38.dp)
-                            .background(gradient, RoundedCornerShape(10.dp)),
+                            .height(38.dp),
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Transparent,
+                            containerColor = buttonIndigo,
                             contentColor = Color.White
                         )
                     ) {

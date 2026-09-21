@@ -561,23 +561,16 @@ fun GamesContent(
                     .padding(end = 16.dp, bottom = 12.dp)
                     .size(52.dp),
                 shape = CircleShape,
-                containerColor = Color.Transparent,
+                containerColor = Color(0xFF4F46E5),
                 contentColor = Color.White,
                 elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 3.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(brush = AuroraGradientBrush, shape = CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(R.string.games_add),
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(R.string.games_add),
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
             }
         },
         containerColor = MaterialTheme.colorScheme.background,

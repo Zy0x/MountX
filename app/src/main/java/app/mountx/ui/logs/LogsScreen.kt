@@ -124,7 +124,6 @@ fun LogsScreen(
     modifier: Modifier = Modifier
 ) {
     val logLines by viewModel.logLines.collectAsState()
-    val isAutoRefresh by viewModel.isAutoRefresh.collectAsState()
     val listState = rememberLazyListState()
 
     DisposableEffect(Unit) {
@@ -203,34 +202,6 @@ fun LogsScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 14.dp)
         ) {
-            // Auto Refresh Toggle Card
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.logs_auto_refresh),
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
-                    )
-                    Switch(
-                        checked = isAutoRefresh,
-                        onCheckedChange = { viewModel.toggleAutoRefresh() },
-                        modifier = Modifier.scale(0.85f)
-                    )
-                }
-            }
-
             if (logLines.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),

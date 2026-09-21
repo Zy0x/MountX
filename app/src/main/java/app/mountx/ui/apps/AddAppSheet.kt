@@ -291,23 +291,16 @@ fun AddAppPicker(
                             .padding(end = 16.dp, bottom = 16.dp)
                             .size(46.dp),
                         shape = CircleShape,
-                        containerColor = Color.Transparent,
+                        containerColor = Color(0xFF4F46E5),
                         contentColor = Color.White,
                         elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(brush = AuroraGradientBrush, shape = CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = stringResource(R.string.add_app_manual_title),
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = stringResource(R.string.add_app_manual_title),
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
@@ -539,16 +532,21 @@ private fun BrowseAppListView(
     onSearchQueryChange: (String) -> Unit,
     onAppSelected: (InstalledAppInfo) -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 14.dp)
     ) {
+        // Vertical spacing between TopAppBar and Search Bar
+        Spacer(modifier = Modifier.height(10.dp))
+
         // Standard Compact Search Bar (height 38dp)
         Surface(
             shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            color = if (isDark) Color(0xFF1C1917) else Color(0xFFFAF8F5),
+            border = BorderStroke(1.dp, if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD)),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(38.dp)
@@ -1050,14 +1048,10 @@ private fun ConfigureAppView(
             onClick = onConfirm,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
-                .background(
-                    brush = AuroraGradientBrush,
-                    shape = RoundedCornerShape(10.dp)
-                ),
+                .height(38.dp),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Transparent,
+                containerColor = Color(0xFF4F46E5),
                 contentColor = Color.White
             ),
             contentPadding = PaddingValues(0.dp)
@@ -1084,6 +1078,12 @@ private fun ManualAppView(
     onModeChange: (MountMode) -> Unit,
     onConfirm: () -> Unit
 ) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val fieldBg = if (isDark) Color(0xFF1C1917) else Color(0xFFFAF8F5)
+    val fieldBorder = if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD)
+    val fieldText = if (isDark) Color(0xFFFAF8F5) else Color(0xFF1C1917)
+    val fieldPlaceholder = Color(0xFFA8A29E)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1091,22 +1091,22 @@ private fun ManualAppView(
             .padding(14.dp)
     ) {
         val manualFieldColors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = Color(0xFF162035),
-            unfocusedContainerColor = Color(0xFF162035),
-            disabledContainerColor = Color(0xFF162035).copy(alpha = 0.5f),
-            focusedBorderColor = Color(0xFF6366F1),
-            unfocusedBorderColor = Color(0xFF334366),
-            focusedTextColor = Color(0xFFF1F5F9),
-            unfocusedTextColor = Color(0xFFF1F5F9),
-            focusedLabelColor = Color(0xFF818CF8),
-            unfocusedLabelColor = Color(0xFF94A3B8),
-            focusedPlaceholderColor = Color(0xFF64748B),
-            unfocusedPlaceholderColor = Color(0xFF64748B)
+            focusedContainerColor = fieldBg,
+            unfocusedContainerColor = fieldBg,
+            disabledContainerColor = fieldBg.copy(alpha = 0.5f),
+            focusedBorderColor = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5),
+            unfocusedBorderColor = fieldBorder,
+            focusedTextColor = fieldText,
+            unfocusedTextColor = fieldText,
+            focusedLabelColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+            unfocusedLabelColor = fieldPlaceholder,
+            focusedPlaceholderColor = fieldPlaceholder,
+            unfocusedPlaceholderColor = fieldPlaceholder
         )
 
         OutlinedTextField(
             value = manualPackage,
-            onPackageChange,
+            onValueChange = onPackageChange,
             label = { Text(stringResource(R.string.add_game_package_label), fontSize = 11.5.sp) },
             placeholder = { Text("com.example.app", fontSize = 11.5.sp) },
             modifier = Modifier.fillMaxWidth(),
@@ -1166,16 +1166,12 @@ private fun ManualAppView(
             enabled = manualPackage.isNotBlank(),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
-                .background(
-                    brush = if (manualPackage.isNotBlank()) AuroraGradientBrush else SolidColor(Color.Gray.copy(alpha = 0.3f)),
-                    shape = RoundedCornerShape(10.dp)
-                ),
+                .height(38.dp),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Transparent,
+                containerColor = Color(0xFF4F46E5),
                 contentColor = Color.White,
-                disabledContainerColor = Color.Transparent,
+                disabledContainerColor = Color(0xFF4F46E5).copy(alpha = 0.35f),
                 disabledContentColor = Color.White.copy(alpha = 0.4f)
             ),
             contentPadding = PaddingValues(0.dp)

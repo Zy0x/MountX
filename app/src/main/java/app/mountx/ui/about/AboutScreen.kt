@@ -120,7 +120,7 @@ fun AboutScreen(
                         Image(
                             painter = painterResource(id = R.drawable.ic_mountx_emblem),
                             contentDescription = stringResource(R.string.app_name),
-                            modifier = Modifier.size(46.dp)
+                            modifier = Modifier.size(54.dp)
                         )
                     }
                 }
@@ -453,12 +453,14 @@ fun AboutScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.82f)
                     .padding(horizontal = 16.dp)
+                    .heightIn(max = 680.dp)
+                    .wrapContentHeight()
             ) {
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
+                        .wrapContentHeight()
                         .padding(16.dp)
                 ) {
                     // Header: # Changelog + Close (X)
@@ -514,7 +516,8 @@ fun AboutScreen(
                     // Content: Releases + Pagination Button
                     Column(
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
+                            .heightIn(max = 580.dp)
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -529,9 +532,9 @@ fun AboutScreen(
                         // Pagination Button: "Lihat versi lainnya (2 versi terdahulu) ⌵"
                         if (visibleCount < ChangelogHistory.releases.size) {
                             val remaining = ChangelogHistory.releases.size - visibleCount
-                            val countLabel = if (remaining > 1) "2 versi terdahulu" else "1 versi terdahulu"
-                            val outlineColor = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.45f) else Color(0xFF4F46E5).copy(alpha = 0.45f)
-                            val accentColor = if (isDark) Color(0xFF60A5FA) else Color(0xFF4F46E5)
+                            val countLabel = if (remaining > 1) "2 older releases" else "1 older release"
+                            val outlineColor = if (isDark) Color(0xFF6366F1).copy(alpha = 0.45f) else Color(0xFF4F46E5).copy(alpha = 0.45f)
+                            val accentColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
 
                             Surface(
                                 onClick = {
@@ -551,7 +554,7 @@ fun AboutScreen(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
                                     Text(
-                                        text = "Lihat versi lainnya ($countLabel)",
+                                        text = "View earlier versions ($countLabel)",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = accentColor

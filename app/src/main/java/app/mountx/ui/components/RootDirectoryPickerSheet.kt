@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -242,14 +243,16 @@ fun RootDirectoryPickerSheet(
                 }
             }
 
+            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
             // Breadcrumb Navigation Bar
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = CyberSurfaceVariantDark,
-                border = BorderStroke(0.8.dp, CyberBorderDark)
+                color = if (isDark) Color(0xFF1C1917) else Color(0xFFFAF8F5),
+                border = BorderStroke(1.dp, if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD))
             ) {
                 val segments = remember(currentPath) {
                     if (currentPath == "/" || currentPath.isBlank()) listOf("") else currentPath.split("/").filter { it.isNotEmpty() }
@@ -269,7 +272,7 @@ fun RootDirectoryPickerSheet(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = if (currentPath == "/") CyberEmerald else ElectricIndigoLight,
+                        color = if (currentPath == "/") (if (isDark) Color(0xFF4ADE80) else Color(0xFF15803D)) else (if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)),
                         modifier = Modifier
                             .clickable { currentPath = "/" }
                             .padding(horizontal = 4.dp)
@@ -285,7 +288,7 @@ fun RootDirectoryPickerSheet(
                             Icon(
                                 imageVector = Icons.Default.ChevronRight,
                                 contentDescription = null,
-                                tint = CyberOnVariantDark.copy(alpha = 0.5f),
+                                tint = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C),
                                 modifier = Modifier.size(14.dp)
                             )
 
@@ -296,7 +299,11 @@ fun RootDirectoryPickerSheet(
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal
                                 ),
-                                color = if (isLast) CyberOnBgDark else ElectricIndigoLight,
+                                color = if (isLast) {
+                                    if (isDark) Color(0xFFFAF8F5) else Color(0xFF1C1917)
+                                } else {
+                                    if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+                                },
                                 maxLines = 1,
                                 modifier = Modifier
                                     .clickable { currentPath = target }
@@ -388,7 +395,7 @@ fun RootDirectoryPickerSheet(
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                             contentDescription = "Induk",
-                                            tint = CyberOnVariantDark,
+                                            tint = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C),
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Text(
@@ -397,7 +404,7 @@ fun RootDirectoryPickerSheet(
                                                 fontSize = 12.5.sp,
                                                 fontWeight = FontWeight.Medium
                                             ),
-                                            color = CyberOnVariantDark
+                                            color = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
                                         )
                                     }
                                 }
@@ -407,8 +414,8 @@ fun RootDirectoryPickerSheet(
                         items(directories, key = { it.name }) { item ->
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = CyberSurfaceVariantDark.copy(alpha = 0.5f),
-                                border = BorderStroke(0.6.dp, CyberBorderDark.copy(alpha = 0.5f)),
+                                color = if (isDark) Color(0xFF292524) else Color(0xFFF2EFE9),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD)),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
@@ -423,7 +430,7 @@ fun RootDirectoryPickerSheet(
                                     Icon(
                                         imageVector = Icons.Default.Folder,
                                         contentDescription = null,
-                                        tint = ElectricIndigoLight,
+                                        tint = Color(0xFFD97706),
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
@@ -432,7 +439,7 @@ fun RootDirectoryPickerSheet(
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Medium
                                         ),
-                                        color = CyberOnBgDark,
+                                        color = if (isDark) Color(0xFFFAF8F5) else Color(0xFF1C1917),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
@@ -440,7 +447,7 @@ fun RootDirectoryPickerSheet(
                                     Icon(
                                         imageVector = Icons.Default.ChevronRight,
                                         contentDescription = null,
-                                        tint = CyberOnVariantDark.copy(alpha = 0.4f),
+                                        tint = if (isDark) Color(0xFFA8A29E).copy(alpha = 0.5f) else Color(0xFF78716C).copy(alpha = 0.5f),
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -540,8 +547,8 @@ fun RootDirectoryPickerSheet(
                             enabled = securityLevel != PathSecurityLevel.HARD_BLOCKED_KERNEL,
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) Color(0xFFFF1744) else ElectricIndigo,
-                                disabledContainerColor = CyberSurfaceVariantDark
+                                containerColor = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) Color(0xFFDC2626) else Color(0xFF4F46E5),
+                                disabledContainerColor = if (isDark) Color(0xFF292524) else Color(0xFFE5E7EB)
                             ),
                             modifier = Modifier
                                 .weight(1.5f)
@@ -549,7 +556,7 @@ fun RootDirectoryPickerSheet(
                         ) {
                             Text(
                                 text = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) "Pilih (Risiko Tinggi)" else "Pilih Folder Ini",
-                                color = if (securityLevel == PathSecurityLevel.HARD_BLOCKED_KERNEL) CyberOnVariantDark.copy(alpha = 0.5f) else Color.White,
+                                color = if (securityLevel == PathSecurityLevel.HARD_BLOCKED_KERNEL) (if (isDark) Color(0xFFA8A29E) else Color(0xFF9CA3AF)) else Color.White,
                                 fontWeight = FontWeight.Bold
                             )
                         }

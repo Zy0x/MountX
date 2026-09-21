@@ -56,42 +56,43 @@ data class ChangelogRelease(
 
 object ChangelogHistory {
     val releases: List<ChangelogRelease> = listOf(
-        // ── v2.2.42 (Latest) ──
+        // ── v2.2.43 (Latest) ──
         ChangelogRelease(
-            version = "v2.2.42",
-            releaseDate = "21 Sep 2026",
-            summary = "Pembaruan Ikon Master, Redesain Changelog Compact & Terminal Earthy Mineral",
+            version = "v2.2.43",
+            releaseDate = "22 Sep 2026",
+            summary = "Soft Warm Sandstone & Earthy Mineral Visual Refactor, Tight Emblem Scaling, Compact Typography & Responsive Changelog Modal",
             isLatest = true,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.UI_UX,
                     features = listOf(
                         FeatureChange(
-                            title = "Ikon Aplikasi Master Transparan",
+                            title = "Soft Warm Sandstone & Earthy Mineral Refactor",
                             details = listOf(
-                                "Menghasilkan ulang seluruh aset launcher, emblem, dan mipmap dari master resolusi tinggi.",
-                                "Menghilangkan seluruh garis tepi sisa dan memberikan tampilan kristal bersih menyatu tema."
+                                "Eliminated cyan and neon gradients across Light Mode in favor of solid Electric Indigo, Forest Emerald, Warm Amber, and Warm Crimson.",
+                                "Refactored input fields and directory browser to use Sandstone card surfaces (#FAF8F5) with neutral borders (#D6D3CD).",
+                                "Standardized secondary action buttons with Outlined Neutral and destructive operations with Outlined Crimson."
                             )
                         ),
                         FeatureChange(
-                            title = "Redesain Changelog Dialog Compact",
+                            title = "Tight In-App Emblem Proportions",
                             details = listOf(
-                                "Tampilan ringkas berbasis grup kategori langsung tanpa nested cards dan hierarki berlebih.",
-                                "Tombol close silang (X) di pojok kanan header dan pagination bertahap muat 2 versi per klik."
+                                "Re-rendered master in-app emblem with tight cropping to eliminate 32% empty transparent padding.",
+                                "Enlarged emblem display across TopBar and About Screen to 28dp and 54dp for crisp visual prominence."
                             )
                         ),
                         FeatureChange(
-                            title = "Terminal Console Earthy Mineral",
+                            title = "Responsive Height Changelog Modal",
                             details = listOf(
-                                "Kontainer Deep Stone (#1C1917) dengan penyorotan warna token semantik yang nyaman di mata.",
-                                "Subjudul header dinamis menampilkan jumlah baris entri aktif secara langsung."
+                                "Replaced fixed modal height with dynamic wrap-content sizing (heightIn max 680dp) to prevent empty vertical gaps on initial releases.",
+                                "Balanced typography hierarchy with 11sp bold all-caps category chips, 12sp semi-bold titles, and 11.5sp descriptions."
                             )
                         ),
                         FeatureChange(
-                            title = "Harmonisasi Warna Sandstone Navbar",
+                            title = "Search Bar Spacing & Logs Streamlining",
                             details = listOf(
-                                "Warna latar dock navbar serasi dengan permukaan kartu Sandstone (#FAF8F5).",
-                                "Transisi warna navigasi lembut dan nyaman di mata untuk mode terang."
+                                "Added 10dp spacer between header and search bar in Add App Sheet.",
+                                "Removed redundant auto-refresh toggle card in LogsScreen, setting auto-refresh as the seamless default."
                             )
                         )
                     )
@@ -100,10 +101,65 @@ object ChangelogHistory {
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Modernisasi Tagline & Versi",
+                            title = "English Changelog Standardization",
                             details = listOf(
-                                "Pembaruan deskripsi aplikasi menjadi 'Seamless storage redirection & external bind engine'.",
-                                "Peningkatan versi aplikasi ke v2.2.42 pada build gradle dan modul root."
+                                "Fully translated the complete changelog history to English and established an English-only documentation directive in AGENTS.md.",
+                                "Bumped application version to v2.2.43 across build configuration and root module properties."
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+
+        // ── v2.2.42 ──
+        ChangelogRelease(
+            version = "v2.2.42",
+            releaseDate = "21 Sep 2026",
+            summary = "Master Icon Refresh, Compact Changelog Redesign & Earthy Mineral Terminal",
+            isLatest = false,
+            categories = listOf(
+                CategoryChange(
+                    category = ChangeCategoryType.UI_UX,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Master Transparent App Icon",
+                            details = listOf(
+                                "Regenerated all launcher assets, emblem, and mipmaps from the ultra-high-resolution master.",
+                                "Eliminated border artifacts to deliver a clean crystal silhouette matching the design theme."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Compact Changelog Dialog Redesign",
+                            details = listOf(
+                                "Streamlined layout grouped directly by category without nested cards or excessive hierarchy.",
+                                "Moved close button to top-right corner (X) and added incremental pagination loading 2 versions per click."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Earthy Mineral Terminal Console",
+                            details = listOf(
+                                "Deep Stone container (#1C1917) with eye-friendly semantic token highlighting.",
+                                "Dynamic header subtitle displaying live active entry counts."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Sandstone Navbar Color Harmonization",
+                            details = listOf(
+                                "Navbar dock background color harmonized with Sandstone card surface (#FAF8F5).",
+                                "Soft, eye-friendly navigation color transitions for light mode."
+                            )
+                        )
+                    )
+                ),
+                CategoryChange(
+                    category = ChangeCategoryType.SYSTEM,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Tagline & Version Modernization",
+                            details = listOf(
+                                "Updated application subtitle to 'Seamless storage redirection & external bind engine'.",
+                                "Bumped application version to v2.2.42 in build gradle and root module."
                             )
                         )
                     )
@@ -115,32 +171,31 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.41",
             releaseDate = "21 Sep 2026",
-            summary = "Siluet Murni Ikon Emblem, Sistem Changelog Standar 5-Kategori & Tombol Donasi Brand",
+            summary = "Pure Silhouette Emblem, Standard 5-Category Changelog & Platform Brand Support",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.UI_UX,
                     features = listOf(
                         FeatureChange(
-                            title = "Siluet Murni Ikon Emblem Transparan",
+                            title = "Pure Silhouette Transparent Emblem",
                             details = listOf(
-                                "Menghapus bingkai luar squircle, garis tepi tipis, dan halo putih di sekeliling SD card.",
-                                "Siluet SD card murni menyatu sempurna di dalam wadah Surface Light & Dark mode."
+                                "Removed outer squircle frame, hairline borders, and white halos around the SD card icon.",
+                                "Pure SD card silhouette blends seamlessly inside Light and Dark mode surfaces."
                             )
                         ),
                         FeatureChange(
-                            title = "Sistem Changelog 5-Kategori Terstruktur",
+                            title = "Structured 5-Category Changelog System",
                             details = listOf(
-                                "Format rilis standar: Added, Improved, Fixed, UI/UX, dan System.",
-                                "Hierarki pohon (tree branching) rapi dengan aksen warna kategori semantik.",
-                                "Tombol ekspansi animasi (Lihat Selengkapnya) untuk kenyamanan membaca."
+                                "Standardized release categories: Added, Improved, Fixed, UI/UX, and System.",
+                                "Clean categorized view with semantic accent colors."
                             )
                         ),
                         FeatureChange(
-                            title = "Tombol Dukungan Brand Resmi",
+                            title = "Official Brand Support Buttons",
                             details = listOf(
-                                "Pembaruan tautan: Ko-fi, Saweria, dan PayPal.",
-                                "Ikon vektor resmi dan warna identik platform bergaya Soft Tonal Buttons."
+                                "Updated support links for Ko-fi, Saweria, and PayPal.",
+                                "Official vector icons and brand colors styled as Soft Tonal Buttons."
                             )
                         )
                     )
@@ -149,10 +204,10 @@ object ChangelogHistory {
                     category = ChangeCategoryType.FIXED,
                     features = listOf(
                         FeatureChange(
-                            title = "Eliminasi Residu Garis Tepi",
+                            title = "Canvas Border Artifact Removal",
                             details = listOf(
-                                "Menghilangkan seluruh garis artefak di seluruh sisi luar kanvas logo.",
-                                "Kanvas transparan 1024x1024 terpusat simetris tanpa goresan."
+                                "Eliminated residual boundary lines across outer canvas edges.",
+                                "Symmetrically centered 1024x1024 transparent canvas without scratch lines."
                             )
                         )
                     )
@@ -161,10 +216,10 @@ object ChangelogHistory {
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Arsitektur Model Data Changelog",
+                            title = "Changelog Data Model Architecture",
                             details = listOf(
-                                "Memisahkan riwayat pembaruan ke dalam model modular ChangelogData.",
-                                "Mendukung skalabilitas riwayat rilis tanpa membebani logika UI."
+                                "Decoupled update history into modular ChangelogData model.",
+                                "Supports scalable release history without bloating UI components."
                             )
                         )
                     )
@@ -176,25 +231,25 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.40",
             releaseDate = "21 Sep 2026",
-            summary = "Kalibrasi Palet Deep Earthy Light Mode & Perbaikan Kontras Komponen",
+            summary = "Deep Earthy Light Mode Calibration & Component Contrast Fixes",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.UI_UX,
                     features = listOf(
                         FeatureChange(
-                            title = "Palet Warna Deep Earthy Anti-Silau",
+                            title = "Anti-Glare Deep Earthy Color Palette",
                             details = listOf(
-                                "Menurunkan saturasi warna neon terang menjadi Forest Green, Warm Amber, Slate Cyan, dan Terracotta Red.",
-                                "Wadah badge dan telemetry menggunakan transparansi lembut (8–12% alpha) yang sejuk di mata.",
-                                "Preservasi palet Cyber Neon futuristik saat beralih ke Dark Mode."
+                                "Desaturated bright neon tones into Forest Green, Warm Amber, Slate Cyan, and Terracotta Red.",
+                                "Badges and telemetry containers use gentle transparency (8–12% alpha) that is easy on the eyes.",
+                                "Preserved futuristic Cyber Neon palette when switching to Dark Mode."
                             )
                         ),
                         FeatureChange(
-                            title = "Penyempurnaan Switch & Badges",
+                            title = "Switch & Badge Polish",
                             details = listOf(
-                                "Track switch aktif menggunakan Forest Green lembut tanpa silau pada thumb putih.",
-                                "Batas kartu aplikasi ter-mount menggunakan nuansa hijau alami."
+                                "Active switch tracks use soft Forest Green without glaring against the white thumb.",
+                                "Mounted application card borders calibrated to natural green tones."
                             )
                         )
                     )
@@ -203,9 +258,9 @@ object ChangelogHistory {
                     category = ChangeCategoryType.FIXED,
                     features = listOf(
                         FeatureChange(
-                            title = "Perbaikan Garis Sisi Kiri Ikon",
+                            title = "Left Icon Border Artifact Fix",
                             details = listOf(
-                                "Menghapus fragmen garis 4px yang terisolasi di sisi kiri logo raster."
+                                "Removed isolated 4px border fragment on the left side of the raster icon."
                             )
                         )
                     )
@@ -217,23 +272,23 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.39",
             releaseDate = "21 Sep 2026",
-            summary = "Tema Soft Warm Sandstone Light Mode, Audit Sistem & Dialog Adaptif",
+            summary = "Soft Warm Sandstone Light Mode, System Audit & Adaptive Dialogs",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.UI_UX,
                     features = listOf(
                         FeatureChange(
-                            title = "Desain Sandstone Light Mode",
+                            title = "Sandstone Light Mode Design",
                             details = listOf(
-                                "Latar belakang Sandstone (#F2EFE9) dan kartu permukaan (#FAF8F5) dengan border 1.dp solid.",
-                                "Seluruh dialog konfirmasi, hapus, migrasi, dan lisensi menggunakan wadah adaptif kontras tinggi."
+                                "Sandstone background (#F2EFE9) and card surfaces (#FAF8F5) with solid 1.dp borders.",
+                                "All confirmation, delete, migration, and license dialogs use high-contrast adaptive containers."
                             )
                         ),
                         FeatureChange(
-                            title = "Pembersihan Istilah Aplikasi",
+                            title = "App Terminology Standardization",
                             details = listOf(
-                                "Menstandarisasi seluruh label antarmuka dari 'Games' menjadi 'Apps' / 'Aplikasi'."
+                                "Standardized all UI labels from 'Games' to 'Apps' across the entire interface."
                             )
                         )
                     )
@@ -242,11 +297,11 @@ object ChangelogHistory {
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Mitigasi Race Condition & Canary Verification",
+                            title = "Race Condition Mitigation & Canary Verification",
                             details = listOf(
-                                "Canary verification memvalidasi integritas titik kait data, obb, dan custom mountpoints.",
-                                "Watchdog screen-on dilengkapi throttle 30 detik untuk mencegah remount loop.",
-                                "Pre-flight reserve check memastikan minimal 1 GB cadangan internal sebelum pemulihan."
+                                "Canary verification validates data, obb, and custom mount point integrity.",
+                                "Screen-on watchdog equipped with 30-second throttle to prevent remount loops.",
+                                "Pre-flight reserve check guarantees at least 1 GB internal storage buffer before restoration."
                             )
                         )
                     )
@@ -258,25 +313,25 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.38",
             releaseDate = "21 Sep 2026",
-            summary = "Sistem Teardown Penghapusan Aplikasi, Migrasi Bersih Apps & Mutex Root",
+            summary = "App Deletion Teardown System, Clean Apps Migration & Root Mutex",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.ADDED,
                     features = listOf(
                         FeatureChange(
-                            title = "Teardown Penghapusan Aplikasi",
+                            title = "App Deletion Teardown",
                             details = listOf(
-                                "Tombol hapus di header detail aplikasi dan gestur tekan-lama pada daftar utama.",
-                                "Pilihan dua aksi: Pulihkan ke Internal & Hapus, atau Lepas Kaitan Saja & Hapus.",
-                                "Force-stop otomatis sebelum unmount dan regenerasi folder internal bersih."
+                                "Delete button in app detail header and long-press gesture on main app list.",
+                                "Two action options: Restore to Internal & Delete, or Unmount Only & Delete.",
+                                "Automatic force-stop before unmount and clean internal directory regeneration."
                             )
                         ),
                         FeatureChange(
-                            title = "Hub Portabilitas Konfigurasi di Pengaturan",
+                            title = "Settings Configuration Portability Hub",
                             details = listOf(
-                                "Pencadangan snapshot JSON lengkap mencakup preferensi, jalur disk, dan titik kait.",
-                                "Dialog impor cerdas dengan pilihan Gabungkan (Merge) atau Ganti Penuh (Replace All)."
+                                "Full JSON snapshot backup covering preferences, disk paths, and mount points.",
+                                "Smart import dialog with options to Merge or Replace All."
                             )
                         )
                     )
@@ -285,10 +340,10 @@ object ChangelogHistory {
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Proteksi Mutex Root & Database v4",
+                            title = "Root Mutex Protection & Database v4",
                             details = listOf(
-                                "RootExecutionMutex mencegah race condition antar-proses mount/unmount.",
-                                "Migrasi Room DB v4 (MIGRATION_3_4) menyatukan tabel games ke apps."
+                                "RootExecutionMutex prevents race conditions between concurrent mount/unmount operations.",
+                                "Room DB v4 migration (MIGRATION_3_4) unifies games table into apps."
                             )
                         )
                     )
@@ -300,24 +355,24 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.37",
             releaseDate = "21 Sep 2026",
-            summary = "Isolasi Namespace Multi-User, Pre-Flight Hard-Lock & Scoping Media Presisi",
+            summary = "Multi-User Namespace Isolation, Pre-Flight Hard-Lock & Scoped Media Handling",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Isolasi Namespace Multi-User Universal",
+                            title = "Universal Multi-User Namespace Isolation",
                             details = listOf(
-                                "Mendukung Xiaomi Dual Apps (User 999) dan profil kerja (User 10+).",
-                                "Kaitan bind-mount khusus diarahkan ke namespace target user masing-masing."
+                                "Added support for Xiaomi Dual Apps (User 999) and work profiles (User 10+).",
+                                "Dedicated bind-mount targets directed into each user's specific runtime namespace."
                             )
                         ),
                         FeatureChange(
                             title = "Pre-Flight Unmount Hard-Lock",
                             details = listOf(
-                                "Memverifikasi pelepasan kaitan nyata (isMountpoint) sebelum pemindahan TO_INTERNAL.",
-                                "Mencegah self-copy dan penolakan pembersihan direktori MicroSD jika target masih terikat."
+                                "Verifies physical unmount (isMountpoint) prior to TO_INTERNAL data transfer.",
+                                "Prevents self-copy hazards and MicroSD cleanup rejection while targets remain bound."
                             )
                         )
                     )
@@ -326,10 +381,10 @@ object ChangelogHistory {
                     category = ChangeCategoryType.IMPROVED,
                     features = listOf(
                         FeatureChange(
-                            title = "Guardrail Mount All & Scoping Media",
+                            title = "Mount All Guardrail & Media Scoping",
                             details = listOf(
-                                "Tombol Mount All otomatis melewati aplikasi berstatus Need Migration.",
-                                "Menghapus .nomedia agresif pada root MountX agar galeri sistem tetap terindeks."
+                                "Mount All button automatically bypasses apps with Need Migration status.",
+                                "Removed aggressive .nomedia at MountX root so system media gallery indexes properly."
                             )
                         )
                     )
@@ -341,24 +396,24 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.36",
             releaseDate = "21 Sep 2026",
-            summary = "Smart Migration Guardrail & Rekonsiliasi Ground Truth Mount",
+            summary = "Smart Migration Guardrail & Linux Mounts Ground Truth Reconciliation",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Anti-Occlusion Hazard Proteksi",
+                            title = "Anti-Occlusion Hazard Protection",
                             details = listOf(
-                                "Menolak bind-mount jika direktori MicroSD masih kosong berapapun ukuran data internal.",
-                                "Deteksi otomatis status NEED_MIGRATION pada aplikasi unmounted dengan data internal."
+                                "Rejects bind-mount if MicroSD directory is empty regardless of internal data size.",
+                                "Automatic NEED_MIGRATION status detection for unmounted apps with internal data."
                             )
                         ),
                         FeatureChange(
-                            title = "Rekonsiliasi Ground Truth Linux Mounts",
+                            title = "Linux Mounts Ground Truth Reconciliation",
                             details = listOf(
-                                "Sinkronisasi status mount langsung dari kernel /proc/mounts.",
-                                "Pemisahan callback onMount dan onUnmount agar transisi status stabil."
+                                "Synchronizes mount status directly from kernel /proc/mounts.",
+                                "Separated onMount and onUnmount callbacks for rock-solid status transitions."
                             )
                         )
                     )
@@ -370,24 +425,24 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.35",
             releaseDate = "21 Sep 2026",
-            summary = "Root Picker Guardrail, Pipeline Multi-Target & Space Guard",
+            summary = "Root Picker Guardrail, Multi-Target Pipeline & Space Guard",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Pipeline Multi-Target Modul Root",
+                            title = "Root Module Multi-Target Pipeline",
                             details = listOf(
-                                "Parser POSIX membaca mountpoints.conf tanpa dependensi eksternal.",
-                                "Kaitan multi-namespace Android menjamin akses berkas setelah reboot."
+                                "POSIX parser reads mountpoints.conf without external dependencies.",
+                                "Android multi-namespace binding guarantees file access following system reboot."
                             )
                         ),
                         FeatureChange(
                             title = "Pre-Flight Space Guard",
                             details = listOf(
-                                "Pemeriksaan sisa ruang dengan margin aman maxOf(500MB, 5% data).",
-                                "Penyalinan dotfiles (.config, .save) utuh tanpa kehilangan berkas."
+                                "Remaining space check with safety margin of maxOf(500MB, 5% data).",
+                                "Preserves dotfiles (.config, .save) intact during migration without file loss."
                             )
                         )
                     )
@@ -396,10 +451,10 @@ object ChangelogHistory {
                     category = ChangeCategoryType.UI_UX,
                     features = listOf(
                         FeatureChange(
-                            title = "Root Picker Guardrail",
+                            title = "Root Picker Guardrails",
                             details = listOf(
-                                "Memblokir pemilihan folder kernel virtual (/dev, /proc, /sys, /apex).",
-                                "Dialog risiko sistem kritis untuk folder root inti."
+                                "Blocks selection of virtual kernel directories (/dev, /proc, /sys, /apex).",
+                                "Critical system risk dialog warning for core root filesystem paths."
                             )
                         )
                     )
@@ -411,24 +466,24 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.34",
             releaseDate = "21 Sep 2026",
-            summary = "Sinkronisasi 2 Arah Modul Root, Restrukturisasi MicroSD & File Explorer",
+            summary = "2-Way Root Module Sync, MicroSD Restructuring & Root File Explorer",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.ADDED,
                     features = listOf(
                         FeatureChange(
-                            title = "Penjelajah Berkas Root MT-Manager Style",
+                            title = "MT-Manager Style Root File Explorer",
                             details = listOf(
-                                "Bottom sheet penjelajah direktori root dengan breadcrumb dan pintasan cepat.",
-                                "Pemilihan folder kustom presisi dengan kalkulasi ukuran nyata."
+                                "Root directory bottom sheet explorer with breadcrumbs and quick shortcuts.",
+                                "Precise custom folder selection with real-time size calculations."
                             )
                         ),
                         FeatureChange(
-                            title = "Restrukturisasi Multi-Pola MicroSD",
+                            title = "Multi-Pattern MicroSD Restructuring",
                             details = listOf(
-                                "Mendeteksi folder data di MountX/Android/, legacy Android/, dan folder non-standar.",
-                                "Restrukturisasi atomik transparan dengan penyesuaian izin dan konteks SELinux."
+                                "Detects app folders in MountX/Android/, legacy Android/, and non-standard paths.",
+                                "Transparent atomic restructuring with automatic permission and SELinux context fixes."
                             )
                         )
                     )
@@ -437,10 +492,10 @@ object ChangelogHistory {
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Sinkronisasi Senyap Modul Root",
+                            title = "Silent Root Module Sync",
                             details = listOf(
-                                "Pembaruan otomatis service.sh dan module.prop tanpa perlu reboot.",
-                                "Penanganan status DISK_DETACHED saat MicroSD dilepas."
+                                "Automatic zero-reboot updates for service.sh and module.prop.",
+                                "Graceful DISK_DETACHED state handling when MicroSD is removed."
                             )
                         )
                     )
@@ -448,21 +503,21 @@ object ChangelogHistory {
             )
         ),
 
-        // ── v2.2.30 s/d v2.2.33 ──
+        // ── v2.2.33 ──
         ChangelogRelease(
             version = "v2.2.33",
             releaseDate = "21 Sep 2026",
-            summary = "Pembersihan Multi-Jalur MicroSD & Eliminasi Opsi Internal Semu",
+            summary = "MicroSD Multi-Path Cleanup & Elimination of Phantom Internal Data",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.FIXED,
                     features = listOf(
                         FeatureChange(
-                            title = "Penghapusan Kategori Data Tuntas",
+                            title = "Thorough Category Data Deletion",
                             details = listOf(
-                                "Penghapusan menargetkan seluruh jalur fisik MicroSD modern dan kustom.",
-                                "Kategori ter-mount mengalokasikan 0 B di internal untuk mencegah hapus semu."
+                                "Targeted deletion across all modern and custom physical MicroSD paths.",
+                                "Mounted category allocates 0 B in internal storage calculation to prevent phantom deletions."
                             )
                         )
                     )
@@ -471,9 +526,9 @@ object ChangelogHistory {
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Rekonsiliasi Izin Direktori",
+                            title = "Directory Permission Reconciliation",
                             details = listOf(
-                                "Direktori internal lokal selalu diregenerasi dengan UID paket dan chmod 775."
+                                "Local internal directories are always regenerated with package UID and chmod 775."
                             )
                         )
                     )
@@ -485,17 +540,17 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.29",
             releaseDate = "20 Sep 2026",
-            summary = "Proteksi Zero-Loss, Portabilitas Konfigurasi v2 & Adaptive Launcher Icon",
+            summary = "Zero-Loss Data Protection, Config Portability v2 & Adaptive Launcher Icon",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.SYSTEM,
                     features = listOf(
                         FeatureChange(
-                            title = "Proteksi Konflik Data Zero-Loss",
+                            title = "Zero-Loss Conflict Protection",
                             details = listOf(
-                                "Menolak penimpaan destruktif jika folder sumber kosong sementara tujuan berisi data riil.",
-                                "Self-conflict guard mendeteksi data yang telah berada di MicroSD tujuan."
+                                "Rejects destructive overwrite if source folder is empty while destination holds real data.",
+                                "Self-conflict guard detects data that already resides on the target MicroSD."
                             )
                         )
                     )
@@ -504,9 +559,9 @@ object ChangelogHistory {
                     category = ChangeCategoryType.UI_UX,
                     features = listOf(
                         FeatureChange(
-                            title = "Ikon Launcher Adaptif",
+                            title = "Adaptive Launcher Icon",
                             details = listOf(
-                                "Ikon launcher mengikuti masking sistem Android (lingkaran, squircle, pebble)."
+                                "Launcher icon conforms to Android system masking (circle, squircle, pebble)."
                             )
                         )
                     )
@@ -518,17 +573,17 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.28",
             releaseDate = "20 Sep 2026",
-            summary = "Progres Transfer Kernel Real-Time & Safe Zone Ikon Launcher",
+            summary = "Real-Time Kernel Transfer Progress & Launcher Icon Safe Zone",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.IMPROVED,
                     features = listOf(
                         FeatureChange(
-                            title = "Progres Transfer Kernel Real-Time",
+                            title = "Real-Time Kernel Transfer Progress",
                             details = listOf(
-                                "Pemantauan byte I/O Linux kernel (/proc/\$PID/io) dengan interval 300ms.",
-                                "Menampilkan kecepatan transfer riil (MB/s) dan estimasi waktu sisa (ETA)."
+                                "Monitors Linux kernel I/O bytes (/proc/\$PID/io) at 300ms intervals.",
+                                "Displays real transfer speed (MB/s) and estimated time of arrival (ETA)."
                             )
                         )
                     )
@@ -540,17 +595,17 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.27",
             releaseDate = "20 Sep 2026",
-            summary = "Direktori Terpusat MountX, Indikator Akses & Changelog Markdown",
+            summary = "Centralized MountX Directory, Access Indicators & Markdown Changelog",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.ADDED,
                     features = listOf(
                         FeatureChange(
-                            title = "Migrasi Direktori Terpusat",
+                            title = "Centralized Directory Migration",
                             details = listOf(
-                                "Mengalihkan data legacy ke folder terpusat MountX/Android/ secara aman.",
-                                "Pembersihan folder legacy kosong secara otomatis setelah verifikasi."
+                                "Safely migrates legacy data into centralized MountX/Android/ storage structure.",
+                                "Automatic empty legacy folder cleanup following successful verification."
                             )
                         )
                     )
@@ -559,9 +614,9 @@ object ChangelogHistory {
                     category = ChangeCategoryType.UI_UX,
                     features = listOf(
                         FeatureChange(
-                            title = "Indikator Centang Hijau Izin",
+                            title = "Permission Green Checkmark Indicators",
                             details = listOf(
-                                "Tampilan centang hijau dan badge Aktif saat seluruh izin sistem terpenuhi."
+                                "Green checkmarks and Active badge display when all system permissions are satisfied."
                             )
                         )
                     )
@@ -569,21 +624,21 @@ object ChangelogHistory {
             )
         ),
 
-        // ── v2.2.20 s/d v2.2.26 ──
+        // ── v2.2.26 ──
         ChangelogRelease(
             version = "v2.2.26",
             releaseDate = "20 Sep 2026",
-            summary = "Poles Dialog Modern, Kotak Input Kontras Tinggi & Chip Saran",
+            summary = "Modern Dialog Polish, High-Contrast Inputs & Suggestion Chips",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.UI_UX,
                     features = listOf(
                         FeatureChange(
-                            title = "Desain Dialog & Input Kontras",
+                            title = "Modern Dialogs & High-Contrast Inputs",
                             details = listOf(
-                                "Seluruh dialog menggunakan radius sudut 24dp modern.",
-                                "Field input direktori kustom dengan border tegas dan chip rekomendasi 1-ketuk."
+                                "All dialogs styled with modern 24dp corner radius.",
+                                "Custom directory input field with bold borders and 1-tap recommendation chips."
                             )
                         )
                     )
@@ -595,17 +650,17 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.15",
             releaseDate = "18 Sep 2026",
-            summary = "Penyempurnaan Kelola Penyimpanan 8 Layar & Stepper Progres",
+            summary = "8-Screen Storage Management Revamp & Multi-Step Progress Stepper",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.ADDED,
                     features = listOf(
                         FeatureChange(
-                            title = "Arsitektur Kelola Penyimpanan 8 Layar",
+                            title = "8-Screen Storage Management Architecture",
                             details = listOf(
-                                "Alur bertahap: Overview, Detail Kategori, Pilih Data, Pilih Penyimpanan, dan Progres.",
-                                "Visual stepper 5 tahap transparan untuk kaitan dan transfer berkas."
+                                "Step-by-step workflow: Overview, Category Details, Select Data, Select Storage, and Progress.",
+                                "Transparent 5-stage visual progress stepper for bind-mount operations and file transfers."
                             )
                         )
                     )
@@ -617,17 +672,17 @@ object ChangelogHistory {
         ChangelogRelease(
             version = "v2.2.11",
             releaseDate = "16 Sep 2026",
-            summary = "Pratinjau Aplikasi Aktif Dashboard, Ikon Emblem Adaptif & Telemetri Langsung",
+            summary = "Active App Dashboard Preview, Adaptive Emblem Icon & Live Telemetry",
             isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.ADDED,
                     features = listOf(
                         FeatureChange(
-                            title = "Inisialisasi Fitur Dasar MountX",
+                            title = "MountX Core Feature Initialization",
                             details = listOf(
-                                "Pratinjau aplikasi aktif langsung dari kartu dashboard utama.",
-                                "Dukungan pengaitan bind-mount ruang penyimpanan internal ke MicroSD eksternal."
+                                "Active app previews displayed directly on the main dashboard card.",
+                                "Bind-mount redirection support linking internal application storage to external MicroSD."
                             )
                         )
                     )
