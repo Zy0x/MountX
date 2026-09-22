@@ -141,6 +141,16 @@ mount_sd() {
                     log_info "SD mounted with fallback options: ${SD_BLOCK} → ${SD_BASE}"
                     return 0
                 fi
+                # Multi-filesystem auto-fallback: ext4, f2fs, exfat, vfat, auto
+                for alt_fs in ext4 f2fs exfat vfat auto; do
+                    if [ "${alt_fs}" != "${FS_TYPE}" ]; then
+                        if mount -t "${alt_fs}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                            mount --make-rprivate "${SD_BASE}" 2>/dev/null
+                            log_info "SD mounted with alternate filesystem: ${SD_BLOCK} → ${SD_BASE} (${alt_fs})"
+                            return 0
+                        fi
+                    fi
+                done
             fi
         fi
 

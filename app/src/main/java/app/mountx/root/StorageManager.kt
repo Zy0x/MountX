@@ -904,6 +904,8 @@ class StorageManager {
             if (!RootShell.isMountpoint(mountPoint)) {
                 error("Failed to mount $blockDevice to $mountPoint: ${res.stderr.joinToString("\n")}")
             }
+            RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
+            Unit
         }
     }
 
