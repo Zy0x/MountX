@@ -76,21 +76,25 @@ Mounting moves the physical game data to the MicroSD partition and creates a bin
 
 ---
 
-## Mount Modes
+## Granular Storage Categories
 
-Each app can be configured to use one of two mount modes:
+MountX offers granular control over which storage parts of an application are offloaded:
 
-| Mode | What is mounted | Best for |
-|---|---|---|
-| **PKG** | Entire `Android/data/<package>` directory | Wuthering Waves, PUBG Mobile, COD Mobile |
-| **FILES** | Only `Android/data/<package>/files` subdirectory | Genshin Impact, Honkai: Star Rail, Zenless Zone Zero |
+| Category | Typical Path | Recommended Action | Description |
+|---|---|---|---|
+| **Data Aplikasi** | `Android/data/<package>` | **Move to External** | Main downloaded game asset bundles, textures, and audio packs (30–80 GB). |
+| **OBB** | `Android/obb/<package>` | **Move to External** | Expansion archives packaged with game installations. |
+| **APK** | `/data/app/...` | Keep on Internal | The base and split APK packages. Best kept on internal storage for faster app launch. |
+| **Lib** | `/data/app/.../lib` | Keep on Internal | Compiled native shared libraries (`.so`). Best kept internal to avoid loading lag. |
+| **Data Privat** | `/data/data/<package>` | Keep on Internal | Internal configuration, databases, and keystores. Keeping internal prevents database lockup. |
+| **Cache** | `/data/data/.../cache` | Keep on Internal | Ephemeral compile cache and temporary shader buffers. |
+| **Custom Path** | Any user-specified path | Optional | Bind-mount custom folders (e.g. emulator bios/roms, standalone download directories). |
 
-**When to use FILES mode**: Some games store their local database or save files directly inside `Android/data/<package>` (not in `files`). Moving that directory entirely can cause login failures or corrupted saves. FILES mode keeps the root of the data directory on internal storage and only moves the large `files` subfolder.
-
-To change the mode:
-1. Open App Detail.
-2. Tap the **Mount Mode** selector (PKG / FILES).
-3. If the app is currently mounted, unmount it first, change the mode, then re-mount.
+### Custom Directory Bind-Mounts
+If a game uses non-standard asset folders or you want to offload emulator data:
+1. In App Detail, tap **+ Add Custom Directory**.
+2. Enter the source directory path (or select via file picker) and target partition path.
+3. Tap **Confirm** to include the custom directory in the mount lifecycle.
 
 ---
 

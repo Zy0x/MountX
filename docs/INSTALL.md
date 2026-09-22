@@ -15,18 +15,16 @@ Your device must be rooted using one of the supported frameworks:
 - **APatch** — any stable release
 
 ### 2. Android Version
-Android **10 to 15** (API 29–35). Older versions are not supported due to bind-mount restrictions introduced in Android 10.
+Android **10 to 16** (API 29–36).
 
-### 3. MicroSD Card
-- A MicroSD card installed in the device's physical slot.
-- The card must have **at least two partitions**:
-  - Partition 1: Standard FAT32/exFAT (for regular files, optional but recommended).
-  - Partition 2: **F2FS or Ext4** — this is where game data will be stored.
+### 3. External Storage Target
+- A physical **MicroSD card**, **external USB-C SSD/HDD**, or **USB OTG drive**.
+- The storage device should have a dedicated partition:
+  - **F2FS or Ext4** (strongly recommended for native Linux file permissions, symlink support, and flash performance).
+  - **exFAT or FAT32** are also supported with standard Android file permission handling.
 
-  > If your card only has one partition, see [Partition Setup](#partition-setup) below.
-
-### 4. Sufficient Space
-Ensure your MicroSD partition has enough free space for the games you plan to move. Wuthering Waves, for example, requires ~30 GB.
+### 4. Storage Capacity
+Ensure your target partition has sufficient free space for the applications or games you plan to offload. Heavy titles (e.g. Wuthering Waves, Genshin Impact) require 30 GB to 80 GB.
 
 ---
 
@@ -141,7 +139,7 @@ If your MicroSD card doesn't have an Ext4/F2FS partition, you can create one dir
 - Unmount the game (tap **Unmount** in App Detail).
 - Verify the MicroSD partition mount is healthy: `ls /data/sdext2` should list game files.
 - Check the **Logs** tab for specific bind-mount errors.
-- Try switching mount mode (PKG ↔ FILES) in App Detail settings.
+- In App Detail → **Kelola Penyimpanan**, try offloading only **Data Aplikasi** (`Android/data`) or **OBB** while keeping internal data / database in internal storage.
 
 ### Mount fails with "No such file or directory"
 - The module's boot service may not have mounted the SD partition yet. Reboot and try again.

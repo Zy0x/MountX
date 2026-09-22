@@ -13,18 +13,17 @@ Avoid cheap, unbranded cards. Slow cards will cause longer loading times and occ
 
 ---
 
-### Which mount mode should I use — PKG or FILES?
+### Which storage categories should I offload to external media?
 
-| Mode | Mount target | Use when |
+MountX breaks app storage into discrete categories. For optimal stability and performance:
+
+| Category | Recommended Location | Rationale |
 |---|---|---|
-| **PKG** | `Android/data/<package>` (entire directory) | The game stores everything in `files/` or has no local database in the root data dir |
-| **FILES** | `Android/data/<package>/files` only | The game stores save data, login tokens, or a local DB directly in `Android/data/<package>` |
-
-**Practical guide:**
-- **Wuthering Waves, PUBG Mobile, COD Mobile** → use **PKG**
-- **Genshin Impact, Honkai: Star Rail, Zenless Zone Zero** → use **FILES**
-
-When in doubt, try FILES mode first. If the game fails to log in or loses progress, switch to PKG.
+| **Data Aplikasi (`Android/data`)** | **External Storage** | Largest bulk of game data (textures, audio, 3D assets). Moving this frees 90%+ of space. |
+| **OBB (`Android/obb`)** | **External Storage** | Game installation expansion packs. Safely stored externally. |
+| **APK / Native Libs** | **Internal Storage** | Fast app startup and code execution without external bus bottlenecks. |
+| **Private Data (`/data/data`)** | **Internal Storage** | SQLite databases, credentials, and settings. Keeping internal prevents database lockup. |
+| **Cache** | **Internal Storage** | Temporary compile and shader cache. |
 
 ---
 
@@ -51,7 +50,7 @@ Yes. MountX supports multiple physical storage devices (MicroSD, USB OTG, extern
 
 1. Go to **App Detail → Manage Storage** and tap **Restore to Internal** to unmount the game.
 2. Check the **Logs** tab for specific errors during the mount operation.
-3. Try switching mount mode (PKG ↔ FILES) and re-mount.
+3. In **App Detail → Kelola Penyimpanan**, ensure private data (`/data/data`) remains on internal storage, offloading only **Data Aplikasi** or **OBB**.
 4. Verify the MicroSD partition is healthy: check free space and run a **Benchmark** from Disk Tools.
 5. If the crash persists, the game may have anti-cheat or integrity checks that detect the modified mount namespace. Unfortunately, some games (particularly those with kernel-level anti-cheat) may not be compatible.
 
