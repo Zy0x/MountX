@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="Icon/MountX_icon_Transparent.png" alt="MountX Logo" width="108"/>
+<img src="Icon/MountX_icon_Transparent.png" alt="MountX Logo" width="100"/>
 
 # MountX
 
-**Granular Storage Offloader & Native Bind-Mount Engine for Android**
+### Move massive Android games to MicroSD or USB storage — with zero lag, zero crashes, and zero reinstallation.
 
 [![GitHub Release](https://img.shields.io/github/v/release/Zy0x/MountX?style=flat-square&color=6366F1&label=Release)](https://github.com/Zy0x/MountX/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Zy0x/MountX/build.yml?branch=main&style=flat-square&label=Build)](https://github.com/Zy0x/MountX/actions)
@@ -14,174 +14,117 @@
 
 <br/>
 
-Free up 30 GB to 80 GB of internal storage per game.<br/>
-MountX redirects heavy asset bundles and expansion packs to MicroSD cards, external SSDs, or USB OTG drives using Linux kernel VFS bind-mounts.
+Running out of space from 50 GB+ games like *Wuthering Waves*, *Genshin Impact*, or *Honkai: Star Rail*?
+
+**MountX** safely moves heavy game files to your MicroSD card, external SSD, or USB drive while keeping the phone convinced they are still on internal storage. Your games run at full speed, updates work normally, and your save data is never touched.
 
 <br/>
 
-[**Download APK & Module**](https://github.com/Zy0x/MountX/releases/latest) &nbsp;&bull;&nbsp; [**Documentation Wiki**](https://github.com/Zy0x/MountX/wiki) &nbsp;&bull;&nbsp; [**Report an Issue**](https://github.com/Zy0x/MountX/issues)
+[**Download APK & Module**](https://github.com/Zy0x/MountX/releases/latest) &nbsp;&bull;&nbsp; [**Getting Started**](#quick-start) &nbsp;&bull;&nbsp; [**Documentation Wiki**](https://github.com/Zy0x/MountX/wiki)
 
 <br/>
 
-<p align="center">
-  <img src="docs/screenshots/real/01_dashboard_dark.png" width="280" alt="Master Control Dark"/>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="docs/screenshots/real/02_dashboard_light.png" width="280" alt="Master Control Light"/>
-</p>
-
-<sub><b>AMOLED Cyber Dark</b> &bull; <b>Soft Warm Sandstone Light</b></sub>
-
-</div>
-
-<br/>
-
-<details>
-<summary><b>📸 &nbsp;Explore More Screenshots (Storage Breakdown, Disk Tools, Partition Formatter, Settings)</b></summary>
-<br/>
-
-<table align="center" width="100%">
+<table align="center">
   <tr>
     <td align="center" width="25%">
-      <a href="docs/screenshots/real/03_app_storage_breakdown.png"><img src="docs/screenshots/real/03_app_storage_breakdown.png" width="100%" alt="Storage Breakdown"/></a>
-      <br/><sub><b>Granular Storage Breakdown</b></sub>
+      <a href="docs/screenshots/real/01_dashboard_dark.png"><img src="docs/screenshots/real/01_dashboard_dark.png" alt="Master Control Dark" width="100%"/></a><br/>
+      <sub><b>Master Control</b><br/>One-tap mount & storage stats</sub>
     </td>
     <td align="center" width="25%">
-      <a href="docs/screenshots/real/04_apps_light.png"><img src="docs/screenshots/real/04_apps_light.png" width="100%" alt="Apps Manager"/></a>
-      <br/><sub><b>Apps Manager (Light)</b></sub>
+      <a href="docs/screenshots/real/03_app_storage_breakdown.png"><img src="docs/screenshots/real/03_app_storage_breakdown.png" alt="Storage Breakdown" width="100%"/></a><br/>
+      <sub><b>Granular Breakdown</b><br/>Ring chart & category selector</sub>
     </td>
     <td align="center" width="25%">
-      <a href="docs/screenshots/real/05_disk_management.png"><img src="docs/screenshots/real/05_disk_management.png" width="100%" alt="Disk Management"/></a>
-      <br/><sub><b>Visual Partition Map</b></sub>
+      <a href="docs/screenshots/real/04_apps_light.png"><img src="docs/screenshots/real/04_apps_light.png" alt="Apps Manager Light" width="100%"/></a><br/>
+      <sub><b>Apps Manager</b><br/>Per-game switches (Light mode)</sub>
     </td>
     <td align="center" width="25%">
-      <a href="docs/screenshots/real/06_partition_tools.png"><img src="docs/screenshots/real/06_partition_tools.png" width="100%" alt="Partition Formatter"/></a>
-      <br/><sub><b>Partition Tools & Formatter</b></sub>
+      <a href="docs/screenshots/real/05_disk_management.png"><img src="docs/screenshots/real/05_disk_management.png" alt="Disk Management" width="100%"/></a><br/>
+      <sub><b>Disk Management</b><br/>Visual partition map & health</sub>
     </td>
-  </tr>
-  <tr>
-    <td align="center" width="25%">
-      <a href="docs/screenshots/real/07_disk_performance.png"><img src="docs/screenshots/real/07_disk_performance.png" width="100%" alt="Disk Tools"/></a>
-      <br/><sub><b>I/O Booster & Telemetry</b></sub>
-    </td>
-    <td align="center" width="25%">
-      <a href="docs/screenshots/real/08_settings_dark.png"><img src="docs/screenshots/real/08_settings_dark.png" width="100%" alt="Settings"/></a>
-      <br/><sub><b>Settings & Portability</b></sub>
-    </td>
-    <td width="25%"></td>
-    <td width="25%"></td>
   </tr>
 </table>
 
-</details>
+</div>
 
 ---
 
-### Why MountX?
+## What You Get
 
-Modern Android titles (*Wuthering Waves*, *Genshin Impact*, *Honkai: Star Rail*) demand massive storage. Android's user-space FUSE layer blocks traditional symlinking or moving, throwing `EXDEV: Cross-device link` errors.
+* **Reclaim 30 GB to 80 GB per Game**<br/>
+  Move massive texture packs, audio files, and cutscenes to your external storage and free up your precious internal memory for photos, videos, and daily apps.
 
-MountX operates directly at the **Linux kernel VFS layer** using global namespace bind-mounts:
+* **Native Hardware Speed & Zero Lag**<br/>
+  Unlike old moving methods that caused stutter, games load assets directly through native storage channels without performance loss.
 
-```
-    Game Process (/sdcard/Android/data)
-                   │
-                   ▼ (Linux VFS Bind-Mount)
-        ┌──────────┴──────────┐
-        ▼                     ▼
- Internal Storage      External Media
-(SQLite DBs & Keys)   (50 GB+ Assets & OBB)
-```
+* **Safe by Design — Never Lose Progress**<br/>
+  Your login sessions, saved progress, and app databases stay safe on internal storage. Only the heavy, replaceable asset files are moved.
 
-| Feature | Legacy App2SD | Adoptable Storage | MountX |
-| :--- | :---: | :---: | :--- |
-| **Android 10–16 Support** | No (Broken by scoped storage) | Deprecated / locked | **Full support across all ROMs** |
-| **Database Integrity** | High risk of SQLite corruption | Slow encrypted I/O | **Databases stay safe in internal flash** |
-| **Performance** | High random read latency | Degrades entire device | **Zero overhead, native hardware speed** |
-| **Storage Media** | MicroSD only | MicroSD only | **MicroSD, External SSD, USB-C OTG, NVMe** |
-| **Filesystems** | FAT32 / Ext2 | Encrypted Ext4 | **F2FS (Optimized), Ext4, exFAT, FAT32** |
-| **Root Frameworks** | Outdated SuperSU | None | **Magisk, KernelSU, APatch (via libsu)** |
+* **Automatic Boot Restoration**<br/>
+  Reboot your phone whenever you want. MountX automatically restores all game mounts in the background before you even unlock your screen.
+
+* **Beautiful Dark & Light Themes**<br/>
+  Features a high-contrast AMOLED Cyber Dark theme and a soft Sandstone Light theme that adapts to your system setting.
 
 ---
 
-### Granular Storage Architecture
+## Technical Highlights
 
-MountX divides an application's files into discrete components. You only offload what consumes space:
+For power users and developers interested in the implementation:
 
-| Storage Component | Default Path | MountX Location | Rationale |
-| :--- | :--- | :---: | :--- |
-| **Asset Bundles** | `Android/data/<package>` | **External Media** | Frees 30–80 GB per game |
-| **Expansion Packs** | `Android/obb/<package>` | **External Media** | Offloads large expansion archives |
-| **Custom Directories** | User-defined paths | **External Media** | For emulators, standalone loaders, offline data |
-| **Binaries & Libraries** | `/data/app/...` | **Internal Flash** | Keeps instant app launch speed |
-| **Databases & Keys** | `/data/data/<package>` | **Internal Flash** | Prevents SQLite lockups and save corruption |
-| **Shader & Cache** | `/data/data/.../cache` | **Internal Flash** | Ephemeral compile cache stays fast |
+* **Kernel VFS Bind-Mounts**: Direct filesystem redirection with global namespace propagation, bypassing user-space FUSE overhead and `EXDEV` errors.
+* **Granular Category Offloading**: Selectively offload game assets (`Android/data`), expansion files (`Android/obb`), or custom folders while keeping SQLite databases in `/data/data`.
+* **Integrated Partition Formatter**: Format and manage **F2FS**, **Ext4**, **exFAT**, and **FAT32** partitions directly within the app, complete with filesystem checking (`fsck`).
+* **Kernel I/O Speed Booster**: Automatically tunes sysfs block queue parameters (read-ahead cache buffer up to 2048 KB, I/O schedulers) at boot.
+* **Universal Root Compatibility**: Powered by `libsu`, working identically across **Magisk**, **KernelSU**, and **APatch**.
 
----
-
-### Key Capabilities
-
-* **Kernel VFS Bind-Mount Engine**<br/>
-  Transparent filesystem redirection using Linux kernel bind-mounts. Games read and write as if assets are still on internal storage.
-
-* **Integrated Storage & Partition Manager**<br/>
-  Auto-detects MicroSD cards (`mmcblk*`), external SSDs (`sd*`), and NVMe devices. Built-in partition formatter supporting **F2FS**, **Ext4**, **exFAT**, and **FAT32** with safety verification and filesystem checking (`fsck`).
-
-* **Kernel I/O Queue Optimizer**<br/>
-  Tune block device read-ahead buffers (up to 2048 KB) and choose I/O schedulers (`noop`, `deadline`, `kyber`, `bfq`) applied at boot for maximum sequential asset streaming.
-
-* **Universal Root Compatibility**<br/>
-  Built on `libsu` with zero vendor lock-in. Works cleanly with **Magisk**, **KernelSU**, and **APatch**. Companion late-boot service (`service.sh`) restores all mounts before user apps launch.
-
-* **Configuration Portability & Safety**<br/>
-  Export your entire mount configuration as a single JSON snapshot. Built-in panic rescue script generator (`/sdcard/mountx_panic_reset.sh`) ensures recovery in any emergency.
+> 📖 **Curious about how it works under the hood?**<br/>
+> Read our full technical breakdown in **[Architecture & Internals](docs/ARCHITECTURE.md)**.
 
 ---
 
-### System Requirements
+## Requirements
 
-| Requirement | Specification |
-| :--- | :--- |
-| **Android Version** | Android 10 to Android 16 (API 29–36) |
-| **Root Environment** | Magisk 24.0+, KernelSU 0.9.0+, or APatch 10.0+ |
-| **Target Storage** | MicroSD card, External SSD, or USB-C OTG flash drive |
-| **Recommended Filesystem** | **F2FS** or **Ext4** (recommended for POSIX permissions and flash endurance). **exFAT** and **FAT32** are also supported. |
+* **Root Access**: Magisk 24+, KernelSU 0.9+, or APatch 10+
+* **Android OS**: Android 10 to Android 16 (API 29–36)
+* **Storage Media**: MicroSD card, External USB-C SSD, or USB OTG drive
+* **Filesystem**: **F2FS** or **Ext4** recommended for native POSIX permissions. **exFAT** and **FAT32** are also supported.
 
 ---
 
-### Quick Start
+## Quick Start
 
-1. **Flash Module**: Download `MountX-Magisk-v<version>.zip` from [Releases](https://github.com/Zy0x/MountX/releases/latest). Flash it in Magisk, KernelSU, or APatch, then reboot.
-2. **Install App**: Install `MountX-v<version>.apk` and grant Superuser access on first launch.
-3. **Offload Data**: Open the **Apps** tab, select your game, tap **Kelola Penyimpanan**, choose categories (e.g. Data Aplikasi / OBB), and tap **Pindahkan**.
-
----
-
-### Documentation
-
-Comprehensive technical documentation is available in the repository and the [MountX Wiki](https://github.com/Zy0x/MountX/wiki):
-
-* [Installation Guide](docs/INSTALL.md) &mdash; Detailed flashing, root setup, and troubleshooting.
-* [User Guide](docs/USAGE.md) &mdash; Interface overview, partition tools, and I/O parameters.
-* [FAQ & Troubleshooting](docs/FAQ.md) &mdash; Common questions, crash prevention, and card tips.
-* [Contributing Guide](docs/CONTRIBUTING.md) &mdash; Code conventions, building, and PR guidelines.
-* [Changelog](CHANGELOG.md) &mdash; Complete release history.
+1. **Flash Module**: Download `MountX-Magisk-v<version>.zip` from [GitHub Releases](https://github.com/Zy0x/MountX/releases/latest). Flash it in your root manager and reboot.
+2. **Install App**: Install `MountX-v<version>.apk` and grant Superuser permission when prompted.
+3. **Move Game Data**: Open the **Apps** tab, tap your game, tap **Kelola Penyimpanan**, select the asset categories to move, and tap **Pindahkan**.
 
 ---
 
-### Support & Donations
+## Documentation
 
-MountX is free and open-source. If it helped you save storage, consider supporting development:
+Detailed guides and manuals are available in the repository and the [MountX Wiki](https://github.com/Zy0x/MountX/wiki):
 
-| Platform | Link |
-| :--- | :--- |
-| ☕ **Ko-fi** | [Support on Ko-fi](https://ko-fi.com/Zy0x) |
-| 💳 **PayPal** | [Donate via PayPal](https://paypal.me/Zy0x) |
-| 🇮🇩 **Saweria** | [Dukung via Saweria](https://saweria.co/Zy0x) |
+* [Installation Guide](docs/INSTALL.md) &mdash; Prerequisites, root guide, and step-by-step setup.
+* [User Guide](docs/USAGE.md) &mdash; Interface overview, partition tools, and storage management.
+* [Architecture & Internals](docs/ARCHITECTURE.md) &mdash; Deep technical dive into kernel namespaces, VFS bind-mounts, and I/O tuning.
+* [FAQ & Troubleshooting](docs/FAQ.md) &mdash; Common questions, crash prevention, and error solutions.
+* [Contributing Guide](docs/CONTRIBUTING.md) &mdash; Developer guide, code style, and pull request workflow.
+* [Changelog](CHANGELOG.md) &mdash; Full release and version history.
 
 ---
 
-### License
+## Support the Project
 
-Distributed under the [MIT License](LICENSE).
+MountX is free and open-source. If it helped you save storage, consider supporting ongoing development:
+
+* ☕ **Ko-fi**: [Support on Ko-fi](https://ko-fi.com/Zy0x)
+* 💳 **PayPal**: [Donate via PayPal](https://paypal.me/Zy0x)
+* 🇮🇩 **Saweria**: [Dukung via Saweria](https://saweria.co/Zy0x)
+
+---
+
+## License
+
+MountX is licensed under the [MIT License](LICENSE).
 
 Developed and maintained by **Noir** ([@Zy0x](https://github.com/Zy0x)).
