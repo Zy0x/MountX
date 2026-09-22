@@ -4,3 +4,4 @@ version=v2.2.44
 versionCode=20244
 author=Noir
 description=Android App & Game Storage Bind-Mount Engine & Advanced I/O Optimization.
+updateJson=https://raw.githubusercontent.com/Zy0x/MountX/main/update.json
