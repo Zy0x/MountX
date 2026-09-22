@@ -704,6 +704,8 @@
     <string name="notif_games_mounted_active">%1$d App(s) Active • MicroSD Protected</string>
     <string name="notif_games_unmounted">All Apps Safely Unmounted</string>
     <string name="notif_subtext_kernel">Kernel Namespace</string>
+    <string name="notif_hotplug_title">External Storage Reconnected</string>
+    <string name="notif_hotplug_body">%1$d app(s) restored automatically. Tap to verify.</string>
     <string name="mount_add_custom_path">Add Custom Directory</string>
     <!-- v2.2.17 Directory Naming, Path Visibility & Novice Grouping -->
     <string name="gerbong_external_data_title">Data</string>

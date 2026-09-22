@@ -187,7 +187,7 @@ class MountService : Service() {
         )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_mountx_emblem)
+            .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF00E5FF.toInt())
             .setContentTitle("MountX")
             .setContentText(text)

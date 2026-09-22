@@ -686,6 +686,8 @@
     <string name="notif_games_mounted_active">%1$d Aplikasi Ter-mount Aktif • MicroSD Terjaga</string>
     <string name="notif_games_unmounted">Seluruh Aplikasi Telah Dilepas</string>
     <string name="notif_subtext_kernel">Kernel Namespace</string>
+    <string name="notif_hotplug_title">Penyimpanan Eksternal Terhubung Kembali</string>
+    <string name="notif_hotplug_body">%1$d aplikasi dipulihkan otomatis. Ketuk untuk verifikasi.</string>
     <string name="mount_add_custom_path">Tambah Direktori Kustom</string>
     <string name="game_detail_badge_offloaded">DIALIHKAN</string>
 

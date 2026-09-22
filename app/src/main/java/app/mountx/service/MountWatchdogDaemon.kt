@@ -43,12 +43,23 @@ class MountWatchdogDaemon @Inject constructor(
             when (intent?.action) {
                 Intent.ACTION_SCREEN_ON -> {
                     // Screen woke up: passive integrity check throttled to max once per 30s
+                    // Also catches post-zygote-restart scenarios where new processes
+                    // may not have inherited the bind mount namespaces.
                     val now = System.currentTimeMillis()
                     if (now - lastScreenOnCheckMillis >= SCREEN_ON_THROTTLE_MS) {
                         lastScreenOnCheckMillis = now
                         scope.launch {
                             checkAndRemountCanaries()
                         }
+                    }
+                }
+                Intent.ACTION_MEDIA_MOUNTED -> {
+                    // External storage just connected: immediate canary check to catch
+                    // hot-plug scenarios (SystemSyncMonitor handles the full remount;
+                    // we do a quick canary pass here for fast recovery of namespace mounts)
+                    scope.launch {
+                        AppLogger.info("Watchdog", "MEDIA_MOUNTED received, running immediate canary check...")
+                        checkAndRemountCanaries()
                     }
                 }
                 Intent.ACTION_MEDIA_EJECT,
@@ -79,6 +90,7 @@ class MountWatchdogDaemon @Inject constructor(
         val mediaFilter = IntentFilter().apply {
             addAction(Intent.ACTION_MEDIA_EJECT)
             addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+            addAction(Intent.ACTION_MEDIA_MOUNTED)
             addDataScheme("file")
         }
         val pkgFilter = IntentFilter().apply {

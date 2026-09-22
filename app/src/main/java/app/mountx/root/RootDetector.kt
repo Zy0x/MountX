@@ -34,31 +34,39 @@ object RootDetector {
         }
 
         val batchScript = """
+            # ── Root solution detection (Magisk / KernelSU / APatch / variants) ──
             if magisk -v >/dev/null 2>&1; then
                 echo "ROOT:MAGISK"
-            elif [ -e /data/adb/ksud ]; then
+            elif [ -e /data/adb/ksud ] || [ -e /data/adb/ksu/ksud ] || ksud -V >/dev/null 2>&1; then
                 echo "ROOT:KERNELSU"
-            elif [ -e /data/adb/apd ]; then
+            elif [ -e /data/adb/apd ] || apd -V >/dev/null 2>&1; then
                 echo "ROOT:APATCH"
-            elif ksud -V >/dev/null 2>&1; then
-                echo "ROOT:KERNELSU"
+            elif su --version 2>/dev/null | grep -qi "supersu"; then
+                echo "ROOT:MAGISK"
             else
                 echo "ROOT:NONE"
             fi
-            
-            if [ -d "/data/adb/modules/MountX" ]; then
-                MOD_DIR="/data/adb/modules/MountX"
-            else
-                MOD_DIR="/data/adb/modules/Mountify"
-            fi
-            if [ -d "${'$'}MOD_DIR" ] && [ ! -f "${'$'}MOD_DIR/disable" ] && [ ! -f "${'$'}MOD_DIR/remove" ]; then
-                echo "MODULE:1"
-                if [ -f "${'$'}MOD_DIR/module.prop" ]; then
-                    grep '^version=' "${'$'}MOD_DIR/module.prop" | head -n 1
-                else
-                    echo "version="
+
+            # ── Module directory discovery (all known root manager paths) ──
+            MODULE_FOUND=0
+            for TRY_MOD in \
+                "/data/adb/modules/MountX" \
+                "/data/adb/modules/Mountify" \
+                "/data/adb/ksu/modules/MountX" \
+                "/data/adb/ksud/modules/MountX" \
+                "/data/adb/ap/modules/MountX"; do
+                if [ -d "${'$'}TRY_MOD" ] && [ ! -f "${'$'}TRY_MOD/disable" ] && [ ! -f "${'$'}TRY_MOD/remove" ]; then
+                    echo "MODULE:1"
+                    if [ -f "${'$'}TRY_MOD/module.prop" ]; then
+                        grep '^version=' "${'$'}TRY_MOD/module.prop" | head -n 1
+                    else
+                        echo "version="
+                    fi
+                    MODULE_FOUND=1
+                    break
                 fi
-            else
+            done
+            if [ "${'$'}MODULE_FOUND" -eq 0 ]; then
                 echo "MODULE:0"
                 echo "version="
             fi

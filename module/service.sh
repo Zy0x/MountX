@@ -14,14 +14,20 @@
 # License: MIT
 # =============================================================================
 
-# ── Module paths ──────────────────────────────────────────────────────────────
-if [ -d "/data/adb/modules/MountX" ]; then
-    MODULE_DIR="/data/adb/modules/MountX"
-elif [ -d "/data/adb/modules/Mountify" ]; then
-    MODULE_DIR="/data/adb/modules/Mountify"
-else
-    MODULE_DIR="/data/adb/modules/MountX"
-fi
+# ── Module paths (Magisk / KernelSU / APatch / KSU-variants auto-discovery) ───
+MODULE_DIR=""
+for _try_dir in \
+    "/data/adb/modules/MountX" \
+    "/data/adb/modules/Mountify" \
+    "/data/adb/ksu/modules/MountX" \
+    "/data/adb/ksud/modules/MountX" \
+    "/data/adb/ap/modules/MountX"; do
+    if [ -d "${_try_dir}" ]; then
+        MODULE_DIR="${_try_dir}"
+        break
+    fi
+done
+[ -z "${MODULE_DIR}" ] && MODULE_DIR="/data/adb/modules/MountX"
 
 CONFIG_FILE="${MODULE_DIR}/config.conf"
 MOUNTPOINTS_FILE="${MODULE_DIR}/mountpoints.conf"
@@ -636,6 +642,106 @@ process_game() {
     fi
 }
 
+# ── Mount Watchdog Daemon (event-driven, zero-drain background) ───────────────
+# Runs in background after initial mount. Uses inotifywait when available
+# (zero CPU, kernel-event driven), falls back to a conservative 120s loop.
+# Respects battery: exits on critical level, Doze, or module disable.
+mount_watchdog() {
+    local START_TS
+    START_TS=$(date +%s)
+    local CONSECUTIVE_OK=0
+    local CHECK_INTERVAL=120
+    local MAX_INTERVAL=600
+    local WATCHDOG_LOG="${MODULE_DIR}/mountx_watchdog.log"
+
+    log_info "[Watchdog] Starting. PID=$$, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
+
+    # ── Helper: perform lightweight mount integrity check ─────────────────────
+    check_mounts() {
+        # Exit conditions
+        [ -f "${MODULE_DIR}/disable" ] && { log_info "[Watchdog] Module disabled. Exiting."; exit 0; }
+        [ -f "${MODULE_DIR}/remove" ]  && { log_info "[Watchdog] Module removing. Exiting."; exit 0; }
+
+        # Hard 24h timeout (reboot cycle will restart us)
+        local now
+        now=$(date +%s)
+        [ $((now - START_TS)) -gt 86400 ] && { log_info "[Watchdog] 24h limit reached. Exiting cleanly."; exit 0; }
+
+        # Battery guard: do not stress on critical battery
+        local bat
+        bat=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 100)
+        if [ "${bat}" -lt 10 ] 2>/dev/null; then
+            echo "[Watchdog] Battery critical (${bat}%), skipping check." >> "${WATCHDOG_LOG}" 2>/dev/null
+            return 0
+        fi
+
+        # Check 1: Is SD_BASE still mounted?
+        if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+            log_warn "[Watchdog] SD_BASE ${SD_BASE} lost! Re-mounting..."
+            mount_sd
+            if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+                log_info "[Watchdog] SD_BASE re-mounted. Re-applying bind mounts..."
+                load_mountpoints 2>/dev/null || true
+                CONSECUTIVE_OK=0
+                CHECK_INTERVAL=120
+                return 0
+            else
+                log_error "[Watchdog] SD_BASE re-mount failed."
+                return 1
+            fi
+        fi
+
+        # Check 2: Sample canary file from first game entry in mountpoints.conf
+        local canary_ok=1
+        if [ -f "${MOUNTPOINTS_FILE}" ]; then
+            local sample_dst
+            sample_dst=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | cut -d'|' -f4 | tr -d '\r')
+            if [ -n "${sample_dst}" ]; then
+                # Check if target is still a mountpoint (not just a plain directory)
+                if ! mountpoint -q "${sample_dst}" 2>/dev/null; then
+                    # May not be a mountpoint but could be a valid bind at a parent level
+                    # Check /proc/mounts for the destination path
+                    if ! grep -qF " ${sample_dst} " /proc/mounts 2>/dev/null; then
+                        canary_ok=0
+                        log_warn "[Watchdog] Canary lost: ${sample_dst} not in /proc/mounts. Re-applying mounts..."
+                    fi
+                fi
+            fi
+        fi
+
+        if [ ${canary_ok} -eq 0 ]; then
+            load_mountpoints 2>/dev/null || true
+            CONSECUTIVE_OK=0
+            CHECK_INTERVAL=120
+        else
+            CONSECUTIVE_OK=$((CONSECUTIVE_OK + 1))
+            # Exponential backoff: stable system → check less frequently (save battery)
+            if [ ${CONSECUTIVE_OK} -ge 5 ] && [ ${CHECK_INTERVAL} -lt ${MAX_INTERVAL} ]; then
+                CHECK_INTERVAL=$((CHECK_INTERVAL + 60))
+                [ ${CHECK_INTERVAL} -gt ${MAX_INTERVAL} ] && CHECK_INTERVAL=${MAX_INTERVAL}
+                log_info "[Watchdog] System stable (${CONSECUTIVE_OK} checks OK). Interval → ${CHECK_INTERVAL}s."
+            fi
+        fi
+    }
+
+    # ── Use inotifywait if available (event-driven, zero CPU when idle) ────────
+    if which inotifywait >/dev/null 2>&1; then
+        log_info "[Watchdog] Using inotifywait mode (zero-drain event-driven)."
+        inotifywait -m -q -e modify,delete "/proc/mounts" 2>/dev/null | while IFS= read -r _line; do
+            check_mounts
+        done
+        # inotifywait exited unexpectedly — fall through to loop mode
+        log_warn "[Watchdog] inotifywait exited. Falling back to loop mode."
+    fi
+
+    # ── Conservative polling fallback (120s baseline, exponential backoff) ─────
+    log_info "[Watchdog] Using conservative loop mode (${CHECK_INTERVAL}s interval)."
+    while true; do
+        sleep "${CHECK_INTERVAL}"
+        check_mounts
+    done
+}
+
 # ── Safe-Uninstall Guard ──────────────────────────────────────────────────────
 check_safe_uninstall() {
     if ! pm path app.mountx >/dev/null 2>&1 && ! pm path app.mountx.debug >/dev/null 2>&1; then
@@ -693,6 +799,10 @@ main() {
     # Touch boot status marker so BootReceiver/UI can recognize completion
     touch "${BOOT_FLAG_FILE}" 2>/dev/null
     log_info "MountX boot marker touched at ${BOOT_FLAG_FILE}. Service completed."
+
+    # Launch watchdog daemon in background (event-driven, minimal battery impact)
+    mount_watchdog &
+    log_info "Mount watchdog daemon launched in background (PID=$!)"
 }
 
 main

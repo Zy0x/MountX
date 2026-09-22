@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -59,6 +60,8 @@ class SystemSyncMonitor @Inject constructor(
     companion object {
         const val EMERGENCY_CHANNEL_ID = "mountx_emergency"
         const val EMERGENCY_NOTIF_ID = 9999
+        const val REMOUNT_NOTIF_ID = 9998
+        private const val REMOUNT_SETTLE_MS = 3_000L
     }
 
     private val systemReceiver = object : BroadcastReceiver() {
@@ -76,7 +79,7 @@ class SystemSyncMonitor @Inject constructor(
                 }
                 Intent.ACTION_MEDIA_MOUNTED -> {
                     scope.launch {
-                        _events.emit(SystemSyncEvent.StorageMounted)
+                        handleStorageMounted(ctx ?: context)
                     }
                 }
                 Intent.ACTION_PACKAGE_ADDED -> {
@@ -208,6 +211,81 @@ class SystemSyncMonitor @Inject constructor(
         _events.emit(SystemSyncEvent.StorageDisconnected)
     }
 
+    /**
+     * Hot-Plug Recovery Protocol: fires when external storage is mounted/re-connected.
+     * 1. Wait 3s for vold/FUSE to fully settle the new volume.
+     * 2. Re-mount SD partition if not already mounted.
+     * 3. Re-bind all games/apps that are in DISK_DETACHED state.
+     * 4. Post a success notification in the status bar.
+     * 5. Notify ViewModels of StorageMounted event.
+     */
+    private suspend fun handleStorageMounted(ctx: Context) {
+        AppLogger.info("SystemSyncMonitor", "Storage connected. Waiting ${REMOUNT_SETTLE_MS}ms for volume to settle...")
+        delay(REMOUNT_SETTLE_MS)
+
+        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+        val blockDevice = runCatching { appPreferences.sdBlockDevice.first() }.getOrDefault("")
+
+        // Re-mount SD partition if not already mounted
+        val isSdMounted = RootShell.exec("mountpoint -q \"$sdBase\" 2>/dev/null && echo YES").output.contains("YES")
+        if (!isSdMounted && blockDevice.isNotBlank()) {
+            AppLogger.info("SystemSyncMonitor", "SD not mounted, triggering MountService...")
+            MountService.startMountAll(ctx)
+            delay(5_000L) // give MountService time to work
+        }
+
+        // Re-bind all DISK_DETACHED games
+        var remountedCount = 0
+        try {
+            val games = gameDao.getAllGamesSync()
+            for (game in games) {
+                if (!game.isEnabled) continue
+                if (game.mountStatus == MountStatus.DISK_DETACHED || game.mountStatus == MountStatus.MOUNTED) {
+                    val result = mountManager.mountGame(game, sdBase)
+                    if (result.isSuccess) {
+                        gameDao.updateMountStatus(game.packageName, MountStatus.MOUNTED)
+                        remountedCount++
+                        AppLogger.success("SystemSyncMonitor", "Auto-remounted: ${game.displayName}")
+                    } else {
+                        AppLogger.warn("SystemSyncMonitor", "Failed to remount: ${game.displayName}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.error("SystemSyncMonitor", "Error during hot-plug remount: ${e.message}")
+        }
+
+        // Post status bar notification about hot-plug result
+        if (remountedCount > 0) {
+            postHotPlugSuccessNotification(ctx, remountedCount)
+        }
+
+        // Emit event to refresh UI
+        _events.emit(SystemSyncEvent.StorageMounted)
+        AppLogger.success("SystemSyncMonitor", "Hot-plug recovery complete. $remountedCount app(s) remounted.")
+    }
+
+    private fun postHotPlugSuccessNotification(ctx: Context, count: Int) {
+        val openIntent = Intent(ctx, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            ctx, 98, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notif = NotificationCompat.Builder(ctx, EMERGENCY_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFF00E5FF.toInt())
+            .setContentTitle(ctx.getString(R.string.notif_hotplug_title))
+            .setContentText(ctx.getString(R.string.notif_hotplug_body, count))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        val manager = ctx.getSystemService(NotificationManager::class.java)
+        manager.notify(REMOUNT_NOTIF_ID, notif)
+    }
+
     private fun createEmergencyNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -235,7 +313,7 @@ class SystemSyncMonitor @Inject constructor(
         )
 
         val notif = NotificationCompat.Builder(context, EMERGENCY_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_mountx_emblem)
+            .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFFFF1744.toInt())
             .setContentTitle("Penyimpanan Eksternal Terputus")
             .setContentText("Aplikasi terkait telah dihentikan demi keamanan data.")
