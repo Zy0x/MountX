@@ -183,8 +183,11 @@ class MountManager {
                         duRes.output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
                     } else 0L
 
-                    // Hazard: Target has data in internal storage, but source on MicroSD is empty (<= 128KB) or missing
-                    if (targetExists && !targetMounted && targetSizeKb > 0L && (!srcExists || srcSizeKb <= 128L)) {
+                    // Hazard: Target has substantial un-migrated data in internal storage (> 512KB),
+                    // but source on MicroSD is either missing, nearly empty (<= 128KB), or significantly smaller than target.
+                    val isSourceMissingOrEmpty = !srcExists || srcSizeKb <= 128L
+                    val isTargetSubstantiallyLarger = targetSizeKb > 512L && (targetSizeKb > srcSizeKb * 2L)
+                    if (targetExists && !targetMounted && targetSizeKb > 512L && (isSourceMissingOrEmpty || isTargetSubstantiallyLarger)) {
                         hasOcclusionRisk = true
                         occlusionInternalBytes = targetSizeKb * 1024L
                         occlusionSdBytes = srcSizeKb * 1024L

@@ -161,8 +161,9 @@ fun AppsScreen(
         GameDetailView(
             game = draftGame,
             breakdown = detailedStorage,
-            isMoving = false,
-            moveMessage = null,
+            isMoving = isMovingData,
+            moveMessage = moveMessage,
+            onClearMoveMessage = { viewModel.clearMoveMessage() },
             isDraftMode = true,
             candidateDirectories = candidateDirectories,
             isLoadingCandidates = isScanningCandidates,
@@ -173,6 +174,7 @@ fun AppsScreen(
             onQuickMountPartition = { part -> viewModel.quickMountPartition(part) },
             onRefreshDisks = { viewModel.refreshDisks() },
             onDismiss = {
+                viewModel.clearMoveMessage()
                 viewModel.clearDetailedStorage()
                 configuringApp = null
             },
@@ -183,6 +185,31 @@ fun AppsScreen(
                     mountPoints = newGame.mountPoints,
                     initialSizeBytes = newGame.dataSizeBytes
                 )
+                configuringApp = null
+            },
+            onMoveMountPoints = { dir, pts, targetDisk, targetPartition, conflictStrategy ->
+                val basePath = targetPartition?.mountPoint ?: targetDisk?.mountPath
+                viewModel.addGameWithMountPoints(
+                    packageName = draftGame.packageName,
+                    displayName = draftGame.displayName,
+                    mountPoints = pts,
+                    initialSizeBytes = draftGame.dataSizeBytes
+                )
+                viewModel.moveMountPoints(draftGame.packageName, pts, dir, basePath, conflictStrategy)
+            },
+            onMount = {
+                val game = games.firstOrNull { it.packageName == draftGame.packageName } ?: draftGame
+                viewModel.mountGame(game)
+            },
+            onUnmount = {
+                val game = games.firstOrNull { it.packageName == draftGame.packageName } ?: draftGame
+                viewModel.unmountGame(game)
+            },
+            onToggleMount = {
+                val game = games.firstOrNull { it.packageName == draftGame.packageName } ?: draftGame
+                viewModel.toggleMount(game)
+            },
+            onDelete = {
                 configuringApp = null
             },
             onDeleteCategoryData = { catId, loc, callback ->
@@ -201,7 +228,15 @@ fun AppsScreen(
             },
             onConfigureApp = { appInfo ->
                 showAddSheet = false
-                configuringApp = appInfo
+                viewModel.addGame(appInfo.packageName, appInfo.displayName, MountMode.PKG)
+                val newGame = GameEntry(
+                    packageName = appInfo.packageName,
+                    displayName = appInfo.displayName,
+                    mode = MountMode.PKG,
+                    mountStatus = MountStatus.UNMOUNTED
+                )
+                selectedGameForDetail = newGame
+                viewModel.selectGameForDetail(newGame)
             },
             modifier = modifier
         )

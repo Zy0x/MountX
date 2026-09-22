@@ -63,7 +63,7 @@ fun DeleteAppConfirmDialog(
     onConfirmUnmountAndDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val isStorageSufficient = internalFreeBytes >= (requiredRestoreBytes + 1_000_000_000L) || requiredRestoreBytes == 0L
+    val isStorageSufficient = internalFreeBytes >= (requiredRestoreBytes + 250_000_000L) || requiredRestoreBytes == 0L
 
     Dialog(
         onDismissRequest = {

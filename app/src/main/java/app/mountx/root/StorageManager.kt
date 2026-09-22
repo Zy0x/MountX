@@ -1339,11 +1339,11 @@ class StorageManager {
                 } catch (e: Exception) {
                     getAvailableFreeBytes("/data")
                 }
-                val safetyReserve = 1_000_000_000L // 1 GB reserve to prevent OS soft-freeze / crash
+                val safetyReserve = 250_000_000L // 250 MB reserve to prevent OS soft-freeze / crash
                 if (totalSrcBytes > 0L && totalSrcBytes > (internalAvailable - safetyReserve)) {
                     val reqMb = (totalSrcBytes + safetyReserve) / (1024 * 1024)
                     val availMb = internalAvailable / (1024 * 1024)
-                    throw IllegalStateException("Memori internal tidak mencukupi untuk pemulihan! Dibutuhkan: ${reqMb} MB (termasuk cadangan sistem 1 GB), Tersedia: ${availMb} MB.")
+                    throw IllegalStateException("Memori internal tidak mencukupi untuk pemulihan! Dibutuhkan: ${reqMb} MB (termasuk cadangan sistem 250 MB), Tersedia: ${availMb} MB.")
                 }
 
                 val totalPoints = mountPoints.size.coerceAtLeast(1)
@@ -1807,9 +1807,9 @@ class StorageManager {
                 getAvailableFreeBytes(targetBase)
             }
             val headroom = if (isToSd) {
-                maxOf(500 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
+                maxOf(250 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
             } else {
-                maxOf(1_000_000_000L, (totalMigrationBytes * 0.05).toLong())
+                maxOf(250_000_000L, (totalMigrationBytes * 0.05).toLong())
             }
             val requiredTotal = totalMigrationBytes + headroom
 

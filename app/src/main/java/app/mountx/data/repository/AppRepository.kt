@@ -512,20 +512,24 @@ class AppRepository @Inject constructor(
             val newStatus = when {
                 isMounted -> MountStatus.MOUNTED
                 !isSdBaseMounted -> MountStatus.DISK_DETACHED
-                g.mountStatus == MountStatus.DISK_DETACHED && !isSdBaseMounted -> MountStatus.DISK_DETACHED
-                g.mountStatus == MountStatus.NEED_MIGRATION -> MountStatus.NEED_MIGRATION
                 g.mountStatus == MountStatus.ERROR -> MountStatus.ERROR
                 else -> {
-                    val internalData = "/data/media/0/Android/data/${g.packageName}"
-                    val internalObb = "/data/media/0/Android/obb/${g.packageName}"
-                    val hasInternal = RootShell.exists(internalData) || RootShell.exists(internalObb)
                     val extData = "/data/sdext2/MountX/Android/data/${g.packageName}"
                     val extObb = "/data/sdext2/MountX/Android/obb/${g.packageName}"
                     val hasSd = RootShell.exists(extData) || RootShell.exists(extObb)
-                    if (hasInternal && !hasSd) {
+                    if (hasSd) {
+                        MountStatus.UNMOUNTED
+                    } else if (g.mountStatus == MountStatus.NEED_MIGRATION) {
                         MountStatus.NEED_MIGRATION
                     } else {
-                        MountStatus.UNMOUNTED
+                        val internalData = "/data/media/0/Android/data/${g.packageName}"
+                        val internalObb = "/data/media/0/Android/obb/${g.packageName}"
+                        val hasInternal = RootShell.exists(internalData) || RootShell.exists(internalObb)
+                        if (hasInternal) {
+                            MountStatus.NEED_MIGRATION
+                        } else {
+                            MountStatus.UNMOUNTED
+                        }
                     }
                 }
             }
@@ -687,13 +691,15 @@ class AppRepository @Inject constructor(
 
             // Auto-detect NEED_MIGRATION status for unmounted game with internal data and empty SD
             if (game != null && !isDataMountedReal && !isObbMountedReal) {
-                val hasInternal = internalDataSize > 0L || internalObbSize > 0L
+                val hasInternal = internalDataSize > 512 * 1024L || internalObbSize > 512 * 1024L
                 val sdEmpty = extDataBytesSum <= 128 * 1024L && extObbBytesSum <= 128 * 1024L
                 if (hasInternal && sdEmpty) {
                     if (game.mountStatus != MountStatus.NEED_MIGRATION) {
                         gameDao.updateMountStatus(packageName, MountStatus.NEED_MIGRATION)
                         AppLogger.info("GameRepo", "Flagged $packageName as NEED_MIGRATION (internal=${internalDataSize/1024}KB, sd=${extDataBytesSum/1024}KB)")
                     }
+                } else if (!sdEmpty && game.mountStatus == MountStatus.NEED_MIGRATION) {
+                    gameDao.updateMountStatus(packageName, MountStatus.UNMOUNTED)
                 }
             }
 
