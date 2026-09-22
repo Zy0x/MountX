@@ -150,6 +150,15 @@
     <string name="dialog_need_migration_desc">Ditemukan data internal (%1$s) yang belum dialihkan. Pindahkan data ke MicroSD terlebih dahulu agar aman dikaitkan tanpa menutupi data asli.</string>
     <string name="dialog_need_migration_action">Satukan &amp; Pindahkan ke MicroSD</string>
     <string name="btn_migrate_to_sd">Satukan &amp; Pindahkan</string>
+    <string name="migration_select_categories_title">Pilih Data yang Dipindahkan</string>
+    <string name="migration_target_partition_title">Partisi Tujuan</string>
+    <string name="migration_no_category_selected">Pilih minimal satu kategori data untuk dimigrasikan.</string>
+    <string name="migration_insufficient_space">Ruang penyimpanan tidak mencukupi pada partisi yang dipilih!</string>
+    <string name="migration_open_detail_action">Opsi Lanjutan</string>
+    <string name="migration_start_action">Mulai Migrasi</string>
+    <string name="migration_category_data">Data Game</string>
+    <string name="migration_category_obb">Resource OBB</string>
+    <string name="migration_category_media">Media &amp; Unduhan</string>
     <string name="btn_add_custom_directory">Tambah Direktori Kustom</string>
     <string name="dialog_add_custom_directory_title">Tambah Direktori Kustom</string>
     <string name="dialog_add_custom_directory_desc">Masukkan path direktori internal yang ingin dikaitkan ke MicroSD:</string>

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mountx.data.model.AppStatus
 import app.mountx.data.model.GameEntry
+import app.mountx.data.model.MountPointConfig
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.RootSolution
 import app.mountx.data.repository.GameRepository
@@ -207,7 +208,15 @@ class DashboardViewModel @Inject constructor(
     fun migrateGame(game: GameEntry) {
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
-            val points = if (game.mountPoints.isNotEmpty()) game.mountPoints else gameRepository.synthesizeLegacyMountPoints(game, sdBase)
+            val rawPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else gameRepository.synthesizeLegacyMountPoints(game, sdBase)
+            val points = if (rawPoints.none { it.enabled }) rawPoints.map { it.copy(enabled = true) } else rawPoints
+            migrateGameWithOptions(game, points, sdBase)
+        }
+    }
+
+    fun migrateGameWithOptions(game: GameEntry, selectedPoints: List<MountPointConfig>, targetBase: String) {
+        viewModelScope.launch {
+            val activePoints = selectedPoints.map { it.copy(enabled = true) }
 
             // Force stop active process before migration
             RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
@@ -219,18 +228,26 @@ class DashboardViewModel @Inject constructor(
 
             val result = storageRepository.moveGameMountPoints(
                 packageName = game.packageName,
-                mountPoints = points,
+                mountPoints = activePoints,
                 direction = app.mountx.data.model.MoveDirection.TO_SD,
-                sdBase = sdBase
+                sdBase = targetBase
             )
             if (result.isSuccess) {
-                val updatedPoints = points.map { it.copy(enabled = true) }
+                val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else activePoints
+                val existingUpdated = currentPoints.map { pt ->
+                    val moved = activePoints.firstOrNull { it.id == pt.id || it.category == pt.category }
+                    if (moved != null) moved.copy(enabled = true) else pt
+                }
+                val missing = activePoints.filter { ap ->
+                    existingUpdated.none { it.id == ap.id || it.category == ap.category }
+                }
                 val updated = game.copy(
-                    mountPoints = updatedPoints,
-                    mountStatus = MountStatus.UNMOUNTED
+                    mountPoints = existingUpdated + missing,
+                    mountStatus = MountStatus.MOUNTED,
+                    isEnabled = true
                 )
                 gameRepository.updateGame(updated)
-                gameRepository.mountGame(updated, sdBase)
+                gameRepository.mountGame(updated, targetBase)
             }
             refresh()
         }

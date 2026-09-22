@@ -104,6 +104,7 @@ fun AppsScreen(
     val isMovingData by viewModel.isMovingData.collectAsState()
     val moveMessage by viewModel.moveMessage.collectAsState()
     val availableDisks by viewModel.availableDisks.collectAsState()
+    val sdBasePath by viewModel.sdBasePath.collectAsState()
     val isScanningDisks by viewModel.isScanningDisks.collectAsState()
     val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
     val operationProgress by viewModel.operationProgress.collectAsState()
@@ -309,6 +310,16 @@ fun AppsScreen(
             },
             onToggleMount = { viewModel.toggleMount(it) },
             onMigrateGame = { viewModel.moveMountPoints(it.packageName, it.mountPoints, app.mountx.data.model.MoveDirection.TO_SD) },
+            onMigrateGameWithOptions = { game, points, targetBase ->
+                viewModel.moveMountPoints(
+                    packageName = game.packageName,
+                    mountPoints = points,
+                    direction = app.mountx.data.model.MoveDirection.TO_SD,
+                    targetDiskBase = targetBase
+                )
+            },
+            availableDisks = availableDisks,
+            sdBase = sdBasePath,
             onMountAll = { viewModel.mountAllGames() },
             onUnmountAll = { viewModel.unmountAllGames() },
             onSelectGameForDetail = { game ->
@@ -395,6 +406,9 @@ fun GamesContent(
     onAddClick: () -> Unit,
     onToggleMount: (GameEntry) -> Unit,
     onMigrateGame: (GameEntry) -> Unit = {},
+    onMigrateGameWithOptions: (GameEntry, List<app.mountx.data.model.MountPointConfig>, String) -> Unit = { _, _, _ -> },
+    availableDisks: List<app.mountx.data.model.SdCardDiskInfo> = emptyList(),
+    sdBase: String = "/data/sdext2",
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onSelectGameForDetail: (GameEntry) -> Unit,
@@ -851,9 +865,15 @@ fun GamesContent(
         val target = gameForNeedMigration!!
         NeedMigrationDialog(
             game = target,
-            onConfirmMigration = {
+            availableDisks = availableDisks,
+            defaultSdBase = sdBase,
+            onConfirmMigration = { points, targetBase ->
                 gameForNeedMigration = null
-                onMigrateGame(target)
+                onMigrateGameWithOptions(target, points, targetBase)
+            },
+            onOpenDetail = {
+                gameForNeedMigration = null
+                onSelectGameForDetail(target)
             },
             onDismiss = { gameForNeedMigration = null }
         )

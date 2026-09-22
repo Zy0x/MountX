@@ -1747,11 +1747,14 @@ private fun StorageTabContent(
     if (showNeedMigrationDialog) {
         NeedMigrationDialog(
             game = game,
-            onConfirmMigration = {
+            availableDisks = availableDisks,
+            defaultSdBase = sdBase,
+            onConfirmMigration = { points, targetBase ->
                 showNeedMigrationDialog = false
-                val targetPoints = if (mountPoints.isNotEmpty()) mountPoints else buildTargetMountPoints(setOf("data", "obb"), mountPoints, game, sdBase)
-                onMove(MoveDirection.TO_SD, targetPoints, null, null, ConflictStrategy.OVERWRITE)
+                val activePoints = points.map { it.copy(enabled = true) }
+                onMove(MoveDirection.TO_SD, activePoints, null, null, ConflictStrategy.OVERWRITE)
             },
+            onOpenDetail = null,
             onDismiss = { showNeedMigrationDialog = false }
         )
     }

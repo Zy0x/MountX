@@ -72,6 +72,9 @@ class AppsViewModel @Inject constructor(
     private val _availableDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(emptyList())
     val availableDisks: StateFlow<List<app.mountx.data.model.SdCardDiskInfo>> = _availableDisks.asStateFlow()
 
+    val sdBasePath: StateFlow<String> = appPreferences.sdBasePath
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "/data/sdext2")
+
     private val _isScanningDisks = MutableStateFlow(false)
     val isScanningDisks: StateFlow<Boolean> = _isScanningDisks.asStateFlow()
 
@@ -390,8 +393,13 @@ class AppsViewModel @Inject constructor(
             val defaultSdBase = appPreferences.sdBasePath.first()
             val sdBase = targetDiskBase ?: defaultSdBase
             val game = games.value.firstOrNull { it.packageName == packageName }
-            val effectivePoints = if (mountPoints.isNotEmpty()) mountPoints else {
+            val rawPoints = if (mountPoints.isNotEmpty()) mountPoints else {
                 game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
+            }
+            val effectivePoints = if (direction == MoveDirection.TO_SD && rawPoints.none { it.enabled }) {
+                rawPoints.map { it.copy(enabled = true) }
+            } else {
+                rawPoints
             }
 
             // Always unmount from runtime namespaces first before moving data in either direction
@@ -435,12 +443,16 @@ class AppsViewModel @Inject constructor(
                     } else {
                         // TO_SD
                         val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
-                        val updatedPoints = currentPoints.map { pt ->
+                        val existingUpdated = currentPoints.map { pt ->
                             val moved = effectivePoints.firstOrNull { it.id == pt.id || it.category == pt.category }
                             if (moved != null) moved.copy(enabled = true) else pt
                         }
+                        val missingPoints = effectivePoints.filter { ep ->
+                            existingUpdated.none { it.id == ep.id || it.category == ep.category }
+                        }.map { it.copy(enabled = true) }
+                        val finalPoints = existingUpdated + missingPoints
                         val updated = game.copy(
-                            mountPoints = if (updatedPoints.isNotEmpty()) updatedPoints else effectivePoints,
+                            mountPoints = if (finalPoints.isNotEmpty()) finalPoints else effectivePoints.map { it.copy(enabled = true) },
                             mountStatus = MountStatus.MOUNTED,
                             isEnabled = true
                         )

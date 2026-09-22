@@ -75,7 +75,13 @@ class AppRepository @Inject constructor(
     }
 
     suspend fun synthesizeLegacyMountPoints(game: GameEntry, sdBase: String = "/data/sdext2"): List<MountPointConfig> {
-        if (game.mountPoints.isNotEmpty()) return game.mountPoints
+        if (game.mountPoints.isNotEmpty()) {
+            return if (game.mountPoints.none { it.enabled }) {
+                game.mountPoints.map { it.copy(enabled = true) }
+            } else {
+                game.mountPoints
+            }
+        }
         val list = mutableListOf<MountPointConfig>()
         val pkg = game.packageName
         when (game.mode) {

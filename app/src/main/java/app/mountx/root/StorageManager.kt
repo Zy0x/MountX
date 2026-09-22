@@ -1785,7 +1785,10 @@ class StorageManager {
                 )
             }
 
-            val activePoints = mountPoints.filter { it.enabled }
+            val activePoints = mountPoints.filter { it.enabled }.ifEmpty {
+                // Resilient fallback: If all points were disabled but migration was triggered, activate them
+                mountPoints.map { it.copy(enabled = true) }
+            }
             if (activePoints.isEmpty()) {
                 error("No active mount points configured for migration.")
             }

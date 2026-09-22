@@ -158,6 +158,15 @@
     <string name="dialog_need_migration_desc">Internal data (%1$s) detected. Move data to MicroSD first to safely bind-mount without shadowing original data.</string>
     <string name="dialog_need_migration_action">Merge &amp; Move to MicroSD</string>
     <string name="btn_migrate_to_sd">Merge &amp; Move</string>
+    <string name="migration_select_categories_title">Data to Migrate</string>
+    <string name="migration_target_partition_title">Destination Partition</string>
+    <string name="migration_no_category_selected">Select at least one data category to migrate.</string>
+    <string name="migration_insufficient_space">Insufficient space on selected partition!</string>
+    <string name="migration_open_detail_action">Advanced Options</string>
+    <string name="migration_start_action">Start Migration</string>
+    <string name="migration_category_data">Game Data</string>
+    <string name="migration_category_obb">OBB Resources</string>
+    <string name="migration_category_media">Media &amp; Downloads</string>
     <string name="btn_add_custom_directory">Add Custom Directory</string>
     <string name="dialog_add_custom_directory_title">Add Custom Directory</string>
     <string name="dialog_add_custom_directory_desc">Enter internal directory path to bind-mount to MicroSD:</string>

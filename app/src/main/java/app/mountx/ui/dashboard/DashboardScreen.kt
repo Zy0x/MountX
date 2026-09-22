@@ -188,6 +188,9 @@ fun DashboardScreen(
         onUnmountAll = { viewModel.unmountAll() },
         onToggleGameMount = { viewModel.toggleMount(it) },
         onMigrateGame = { viewModel.migrateGame(it) },
+        onMigrateGameWithOptions = { game, points, targetBase ->
+            viewModel.migrateGameWithOptions(game, points, targetBase)
+        },
         onRecalculateSizes = { viewModel.recalculateAllSizes() },
         onRefreshTelemetry = { viewModel.loadLiveTelemetry() },
         modifier = modifier
@@ -215,6 +218,7 @@ fun DashboardContent(
     onUnmountAll: () -> Unit,
     onToggleGameMount: (GameEntry) -> Unit,
     onMigrateGame: (GameEntry) -> Unit = {},
+    onMigrateGameWithOptions: (GameEntry, List<app.mountx.data.model.MountPointConfig>, String) -> Unit = { _, _, _ -> },
     onRecalculateSizes: () -> Unit = {},
     onRefreshTelemetry: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -399,9 +403,14 @@ fun DashboardContent(
             val target = gameToMigrateConfirm!!
             NeedMigrationDialog(
                 game = target,
-                onConfirmMigration = {
+                availableDisks = allDisks,
+                onConfirmMigration = { points, targetBase ->
                     gameToMigrateConfirm = null
-                    onMigrateGame(target)
+                    onMigrateGameWithOptions(target, points, targetBase)
+                },
+                onOpenDetail = {
+                    gameToMigrateConfirm = null
+                    onOpenGameDetail(target)
                 },
                 onDismiss = { gameToMigrateConfirm = null }
             )
