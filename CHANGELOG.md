@@ -5,6 +5,26 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.45] - 2026-09-23
+
+### Added & Improved
+- **Intelligent Mount Watchdog Daemon (`service.sh`)**:
+  - Implemented event-driven background sentinel powered by `inotifywait` on `/proc/mounts` with conservative loop fallback (120s baseline, exponential backoff up to 600s).
+  - Integrated dynamic battery capacity threshold guard (bypasses heavy checks when battery < 10%) and 24-hour execution lifecycle.
+  - Added automated SD partition recovery and mountpoints re-binding upon lost mounts or FUSE layer crashes.
+- **Hot-Plug Storage Auto-Remount & Status Bar Notifications**:
+  - Added seamless external storage reconnect handling in `SystemSyncMonitor` (`ACTION_MEDIA_MOUNTED`).
+  - Integrated volume settle delay followed by automated re-mounting of all `DISK_DETACHED` applications.
+  - Added real-time status bar notification alerts informing users of restored applications.
+- **Module Update Engine & Manager Auto-Update (`updateJson`)**:
+  - Added direct compatibility with Magisk Manager, KernelSU Manager, and APatch Manager auto-updater via `updateJson` manifest.
+  - Synchronized update manifests in root module and in-app assets for seamless one-tap updates from root managers.
+- **Expanded KernelSU & Root Variants Discovery**:
+  - Added multi-path directory resolution supporting KSU-Next, KoWsu, SuKiSu, ReSuKiSu, and APatch (`/data/adb/ksu`, `/data/adb/ksud`, `/data/adb/ap`).
+- **Vector Silhouette Notification Icon**:
+  - Added clean monochrome vector silhouette drawable (`ic_notification.xml`) strictly adhering to Android 5+ notification guidelines, eliminating solid white block rendering bugs.
+  - Verified 100% bilingual string parity across English and Indonesian localizations.
+
 ## [2.2.44] - 2026-09-22
 
 ### Changed & Improved

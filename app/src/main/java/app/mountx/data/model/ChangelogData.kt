@@ -56,12 +56,68 @@ data class ChangelogRelease(
 
 object ChangelogHistory {
     val releases: List<ChangelogRelease> = listOf(
-        // ── v2.2.44 (Latest) ──
+        // ── v2.2.45 (Latest) ──
+        ChangelogRelease(
+            version = "v2.2.45",
+            releaseDate = "23 Sep 2026",
+            summary = "Core Reliability & Engine Overhaul: Intelligent Mount Watchdog Daemon, Hot-Plug Auto-Remount with Status Alerts, Magisk/KSU Update Engine & Vector Icon Polish",
+            isLatest = true,
+            categories = listOf(
+                CategoryChange(
+                    category = ChangeCategoryType.SYSTEM,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Intelligent Mount Watchdog Daemon (service.sh)",
+                            details = listOf(
+                                "Implemented event-driven background sentinel powered by inotifywait on /proc/mounts with conservative loop fallback (120s baseline, exponential backoff up to 600s).",
+                                "Integrated dynamic battery capacity threshold guard (bypasses heavy checks when battery < 10%) and 24-hour execution lifecycle.",
+                                "Added automated SD partition recovery and mountpoints re-binding upon lost mounts or FUSE layer crashes."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Hot-Plug Storage Auto-Remount & Status Bar Notifications",
+                            details = listOf(
+                                "Added seamless external storage reconnect handling in SystemSyncMonitor (ACTION_MEDIA_MOUNTED).",
+                                "Integrated volume settle delay followed by automated re-mounting of all DISK_DETACHED applications.",
+                                "Added real-time status bar notification alerts informing users of restored applications."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Module Update Engine & Manager Auto-Update (updateJson)",
+                            details = listOf(
+                                "Added direct compatibility with Magisk Manager, KernelSU Manager, and APatch Manager auto-updater via updateJson manifest.",
+                                "Synchronized update manifests in root module and in-app assets for seamless one-tap updates from root managers."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Expanded KernelSU & Root Variants Discovery",
+                            details = listOf(
+                                "Added multi-path directory resolution supporting KSU-Next, KoWsu, SuKiSu, ReSuKiSu, and APatch (/data/adb/ksu, /data/adb/ksud, /data/adb/ap)."
+                            )
+                        )
+                    )
+                ),
+                CategoryChange(
+                    category = ChangeCategoryType.UI_UX,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Vector Silhouette Notification Icon & Localization Parity",
+                            details = listOf(
+                                "Added clean monochrome vector silhouette drawable (ic_notification.xml) strictly adhering to Android 5+ notification guidelines, eliminating solid white block rendering bugs.",
+                                "Verified 100% bilingual string parity across English and Indonesian localizations."
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+
+        // ── v2.2.44 ──
         ChangelogRelease(
             version = "v2.2.44",
             releaseDate = "22 Sep 2026",
             summary = "Light Theme Aesthetic Overhaul: Zero Neon Glare, Elimination of Pitch-Black Containers in MT-Manager File Picker & Harmonized Storage Badges",
-            isLatest = true,
+            isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.UI_UX,
