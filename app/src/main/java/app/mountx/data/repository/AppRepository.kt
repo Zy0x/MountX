@@ -241,13 +241,15 @@ class AppRepository @Inject constructor(
         AppLogger.info("Games", "Toggled game enabled: $packageName = $enabled")
     }
 
-    suspend fun removeGame(packageName: String) = withContext(Dispatchers.IO) {
+    suspend fun removeGame(packageName: String, sdBase: String = "/data/sdext2") = withContext(Dispatchers.IO) {
         val game = gameDao.getGameByPackage(packageName)
         if (game != null && game.mountStatus == MountStatus.MOUNTED) {
             mountManager.unmountGame(game)
         }
         gameDao.deleteGame(packageName)
         syncModuleGamelist()
+        diskCatalogManager.removeGameFromCatalog(sdBase, packageName)
+        syncDiskCatalog(sdBase)
         AppLogger.info("Games", "Removed game: $packageName")
     }
 
@@ -302,6 +304,8 @@ class AppRepository @Inject constructor(
 
                 gameDao.deleteGame(packageName)
                 syncModuleGamelist()
+                diskCatalogManager.removeGameFromCatalog(sdBase, packageName)
+                syncDiskCatalog(sdBase)
                 AppLogger.info("Apps", "Removed app: $packageName (restoreToInternal=$restoreToInternal)")
             }
         }

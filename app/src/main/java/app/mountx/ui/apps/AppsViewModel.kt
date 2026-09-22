@@ -229,7 +229,9 @@ class AppsViewModel @Inject constructor(
 
     fun removeGame(packageName: String) {
         viewModelScope.launch {
-            gameRepository.removeGame(packageName)
+            val sdBase = appPreferences.sdBasePath.first()
+            gameRepository.removeGame(packageName, sdBase)
+            refresh()
         }
     }
 
@@ -450,6 +452,7 @@ class AppsViewModel @Inject constructor(
                 }
 
                 gameRepository.calculateDataSize(packageName, sdBase)
+                gameRepository.syncDiskCatalog(sdBase)
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
                 _storageBreakdownMap.update { it + (packageName to breakdown) }
                 if (_activePackageName.value == packageName) {
@@ -515,6 +518,7 @@ class AppsViewModel @Inject constructor(
                 }
 
                 gameRepository.calculateDataSize(packageName, sdBase)
+                gameRepository.syncDiskCatalog(sdBase)
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
                 _storageBreakdownMap.update { it + (packageName to breakdown) }
                 if (_activePackageName.value == packageName) {
@@ -541,7 +545,7 @@ class AppsViewModel @Inject constructor(
             }
             val installedMap = _installedApps.value.associate { it.packageName to it.displayName }
             val discovered = gameRepository.scanMicroSdGames(sdBase, installedMap)
-            _discoveredGames.value = discovered.filter { !it.isAlreadyRegistered }
+            _discoveredGames.value = discovered.filter { !it.isAlreadyRegistered && (it.hasDataOnSd || it.hasObbOnSd) }
             _isScanningDiscovered.value = false
         }
     }

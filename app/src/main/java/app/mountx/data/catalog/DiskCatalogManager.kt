@@ -213,14 +213,35 @@ class DiskCatalogManager @Inject constructor(
 
         // 1. Read catalog.json if present
         val catalog = readCatalog(sdBase)
+        var catalogNeedsPrune = false
+        val validCatalogGames = mutableListOf<DiskCatalogGameEntry>()
         if (catalog != null) {
             for (cg in catalog.games) {
                 val isInstalled = installedApps.containsKey(cg.packageName)
                 val isRegistered = registeredPackages.contains(cg.packageName)
-                val hasModernData = RootShell.exists("$sdBase/MountX/Android/data/${cg.packageName}")
-                val hasLegacyData = RootShell.exists("$sdBase/Android/data/${cg.packageName}")
-                val hasModernObb = RootShell.exists("$sdBase/MountX/Android/obb/${cg.packageName}")
-                val hasLegacyObb = RootShell.exists("$sdBase/Android/obb/${cg.packageName}")
+                val hasModernData = hasValidContent("$sdBase/MountX/Android/data/${cg.packageName}")
+                val hasLegacyData = hasValidContent("$sdBase/Android/data/${cg.packageName}")
+                val hasModernObb = hasValidContent("$sdBase/MountX/Android/obb/${cg.packageName}")
+                val hasLegacyObb = hasValidContent("$sdBase/Android/obb/${cg.packageName}")
+                val hasCustomMountPoints = cg.mountPoints.any { pt ->
+                    pt.sourcePath.isNotBlank() && hasValidContent(pt.sourcePath)
+                }
+                val hasAnyData = hasModernData || hasLegacyData || hasModernObb || hasLegacyObb || hasCustomMountPoints
+
+                if (!hasAnyData && !isRegistered) {
+                    // App has NO data on SD card and is NOT registered in MountX Room DB.
+                    // Prune stale ghost entry left over from past restore/delete.
+                    catalogNeedsPrune = true
+                    continue
+                }
+
+                validCatalogGames.add(cg)
+
+                if (!hasAnyData) {
+                    // Do not report app as discovered on SD if it has no data on SD
+                    continue
+                }
+
                 val canary = RootShell.exists("$sdBase/MountX/Android/data/${cg.packageName}/$CANARY_FILE") ||
                         RootShell.exists("$sdBase/Android/data/${cg.packageName}/$CANARY_FILE")
 
@@ -249,6 +270,11 @@ class DiskCatalogManager @Inject constructor(
                     originalPath = originalPath
                 )
             }
+
+            if (catalogNeedsPrune) {
+                saveCatalog(sdBase, catalog.copy(games = validCatalogGames, lastUpdated = System.currentTimeMillis()))
+                AppLogger.info("DiskCatalog", "Pruned stale ghost entries from catalog.json (${catalog.games.size} -> ${validCatalogGames.size})")
+            }
         }
 
         // 2. Lapisan 1: Standar MountX ($sdBase/MountX/Android/data & obb)
@@ -259,9 +285,12 @@ class DiskCatalogManager @Inject constructor(
                 if (cleanPkg.isBlank() || cleanPkg == ".mountx_canary" || cleanPkg == ".nomedia") continue
                 if (detected.containsKey(cleanPkg)) continue
 
+                val hasData = hasValidContent("$sdBase/MountX/Android/data/$cleanPkg")
+                val hasObb = hasValidContent("$sdBase/MountX/Android/obb/$cleanPkg")
+                if (!hasData && !hasObb) continue
+
                 val isInstalled = installedApps.containsKey(cleanPkg)
                 val isRegistered = registeredPackages.contains(cleanPkg)
-                val hasObb = RootShell.exists("$sdBase/MountX/Android/obb/$cleanPkg")
                 val canary = RootShell.exists("$sdBase/MountX/Android/data/$cleanPkg/$CANARY_FILE")
 
                 detected[cleanPkg] = DiscoveredGame(
@@ -271,7 +300,7 @@ class DiskCatalogManager @Inject constructor(
                     source = DiscoverySource.SHALLOW_SCAN,
                     isInstalledOnDevice = isInstalled,
                     isAlreadyRegistered = isRegistered,
-                    hasDataOnSd = true,
+                    hasDataOnSd = hasData,
                     hasObbOnSd = hasObb,
                     canaryPresent = canary,
                     needsRestructure = false
@@ -288,9 +317,12 @@ class DiskCatalogManager @Inject constructor(
 
                 val existing = detected[cleanPkg]
                 if (existing == null) {
+                    val hasData = hasValidContent("$sdBase/Android/data/$cleanPkg")
+                    val hasObb = hasValidContent("$sdBase/Android/obb/$cleanPkg")
+                    if (!hasData && !hasObb) continue
+
                     val isInstalled = installedApps.containsKey(cleanPkg)
                     val isRegistered = registeredPackages.contains(cleanPkg)
-                    val hasObb = RootShell.exists("$sdBase/Android/obb/$cleanPkg")
                     val canary = RootShell.exists("$sdBase/Android/data/$cleanPkg/$CANARY_FILE")
 
                     detected[cleanPkg] = DiscoveredGame(
@@ -300,7 +332,7 @@ class DiskCatalogManager @Inject constructor(
                         source = DiscoverySource.SHALLOW_SCAN,
                         isInstalledOnDevice = isInstalled,
                         isAlreadyRegistered = isRegistered,
-                        hasDataOnSd = true,
+                        hasDataOnSd = hasData,
                         hasObbOnSd = hasObb,
                         canaryPresent = canary,
                         needsRestructure = true,
@@ -326,8 +358,10 @@ class DiskCatalogManager @Inject constructor(
                     }
 
                     if (matchedPkg != null && !detected.containsKey(matchedPkg)) {
-                        val isRegistered = registeredPackages.contains(matchedPkg)
                         val folderPath = "$outerBase/$cleanFolder"
+                        if (!hasValidContent(folderPath)) continue
+
+                        val isRegistered = registeredPackages.contains(matchedPkg)
                         detected[matchedPkg] = DiscoveredGame(
                             packageName = matchedPkg,
                             displayName = installedApps[matchedPkg] ?: cleanFolder,
@@ -483,5 +517,35 @@ class DiskCatalogManager @Inject constructor(
             games = catalogEntries
         )
         saveCatalog(sdBase, catalog)
+    }
+
+    /**
+     * Checks whether a path contains valid game data (not just empty directories or .nomedia/.mountx_canary stubs).
+     */
+    suspend fun hasValidContent(path: String): Boolean = withContext(Dispatchers.IO) {
+        if (!RootShell.exists(path)) return@withContext false
+        if (path.endsWith(".img")) {
+            return@withContext RootShell.exec("[ -s \"$path\" ] && echo 1 || echo 0").output.trim() == "1"
+        }
+        val sizeKbRes = RootShell.execForOutput("du -sk \"$path\" 2>/dev/null").split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L
+        if (sizeKbRes <= 16L) {
+            val listNonHidden = RootShell.execForOutput("ls \"$path\" 2>/dev/null")
+            return@withContext listNonHidden.isNotBlank()
+        }
+        true
+    }
+
+    /**
+     * Removes an entry from .mountx/catalog.json atomically.
+     */
+    suspend fun removeGameFromCatalog(sdBase: String, packageName: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val catalog = readCatalog(sdBase) ?: return@runCatching
+            val updatedGames = catalog.games.filter { it.packageName != packageName }
+            if (updatedGames.size != catalog.games.size) {
+                saveCatalog(sdBase, catalog.copy(games = updatedGames, lastUpdated = System.currentTimeMillis()))
+                AppLogger.info("DiskCatalog", "Removed $packageName from catalog.json ($sdBase)")
+            }
+        }
     }
 }

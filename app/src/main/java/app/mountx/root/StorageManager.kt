@@ -1385,6 +1385,9 @@ class StorageManager {
                     }
                 }
 
+                // Clean up any remaining empty app directories on MicroSD so no orphaned stubs remain
+                RootShell.exec("rm -rf \"$sdBase/MountX/Android/data/$packageName\" \"$sdBase/MountX/Android/obb/$packageName\" \"$sdBase/MountX/Android/media/$packageName\" \"$sdBase/Android/data/$packageName\" \"$sdBase/Android/obb/$packageName\" 2>/dev/null")
+
                 onProgress(0.92f, "Memulihkan perizinan dan konteks keamanan SELinux...")
                 val gameUserId = mountPoints.firstOrNull()?.let { MountManager.resolveUserId(it.targetPath) } ?: 0
                 RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/data/$packageName\" 2>/dev/null")
