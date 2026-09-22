@@ -4,7 +4,7 @@
 
 # MountX
 
-### Move massive Android games to MicroSD or USB storage — with zero lag, zero crashes, and zero reinstallation.
+### Move massive Android games to MicroSD or USB storage with zero lag, zero crashes, and zero reinstallation.
 
 [![GitHub Release](https://img.shields.io/github/v/release/Zy0x/MountX?style=flat-square&color=6366F1&label=Release)](https://github.com/Zy0x/MountX/releases)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/Zy0x/MountX/build.yml?branch=main&style=flat-square&label=Build)](https://github.com/Zy0x/MountX/actions)
@@ -46,32 +46,10 @@ Running out of space from 50 GB+ games like *Wuthering Waves*, *Genshin Impact*,
 </table>
 
 </div>
+<br/>
 
----
-
-## What You Get
-
-* **Reclaim 30 GB to 80 GB per Game**<br/>
-  Move massive texture packs, audio files, and cutscenes to your external storage and free up your precious internal memory for photos, videos, and daily apps.
-
-* **Native Hardware Speed & Zero Lag**<br/>
-  Unlike old moving methods that caused stutter, games load assets directly through native storage channels without performance loss.
-
-* **Safe by Design — Never Lose Progress**<br/>
-  Your login sessions, saved progress, and app databases stay safe on internal storage. Only the heavy, replaceable asset files are moved.
-
-* **Automatic Boot Restoration**<br/>
-  Reboot your phone whenever you want. MountX automatically restores all game mounts in the background before you even unlock your screen.
-
-* **Beautiful Dark & Light Themes**<br/>
-  Features a high-contrast AMOLED Cyber Dark theme and a soft Sandstone Light theme that adapts to your system setting.
-
----
-
-## Technical Highlights
-
+## 🛠️ Technical Highlights
 For power users and developers interested in the implementation:
-
 * **Kernel VFS Bind-Mounts**: Direct filesystem redirection with global namespace propagation, bypassing user-space FUSE overhead and `EXDEV` errors.
 * **Granular Category Offloading**: Selectively offload game assets (`Android/data`), expansion files (`Android/obb`), or custom folders while keeping SQLite databases in `/data/data`.
 * **Integrated Partition Formatter**: Format and manage **F2FS**, **Ext4**, **exFAT**, and **FAT32** partitions directly within the app, complete with filesystem checking (`fsck`).
@@ -80,30 +58,24 @@ For power users and developers interested in the implementation:
 
 > 📖 **Curious about how it works under the hood?**<br/>
 > Read our full technical breakdown in **[Architecture & Internals](docs/ARCHITECTURE.md)**.
+<br/>
 
----
-
-## Requirements
-
+## 📋 Requirements
 * **Root Access**: Magisk 24+, KernelSU 0.9+, or APatch 10+
 * **Android OS**: Android 10 to Android 16 (API 29–36)
 * **Storage Media**: MicroSD card, External USB-C SSD, or USB OTG drive
 * **Filesystem**: **F2FS** or **Ext4** recommended for native POSIX permissions. **exFAT** and **FAT32** are also supported.
+<br/>
 
----
-
-## Quick Start
-
+## 🚀 Quick Start
 1. **Flash Module**: Download `MountX-Magisk-v<version>.zip` from [GitHub Releases](https://github.com/Zy0x/MountX/releases/latest). Flash it in your root manager and reboot.
 2. **Install App**: Install `MountX-v<version>.apk` and grant Superuser permission when prompted.
 3. **Move Game Data**: Open the **Apps** tab, tap your game, tap **Kelola Penyimpanan**, select the asset categories to move, and tap **Pindahkan**.
 
----
+<br/>
 
-## Documentation
-
+## 📚 Documentation
 Detailed guides and manuals are available in the repository and the [MountX Wiki](https://github.com/Zy0x/MountX/wiki):
-
 * [Installation Guide](docs/INSTALL.md) &mdash; Prerequisites, root guide, and step-by-step setup.
 * [User Guide](docs/USAGE.md) &mdash; Interface overview, partition tools, and storage management.
 * [Architecture & Internals](docs/ARCHITECTURE.md) &mdash; Deep technical dive into kernel namespaces, VFS bind-mounts, and I/O tuning.
@@ -111,20 +83,14 @@ Detailed guides and manuals are available in the repository and the [MountX Wiki
 * [Contributing Guide](docs/CONTRIBUTING.md) &mdash; Developer guide, code style, and pull request workflow.
 * [Changelog](CHANGELOG.md) &mdash; Full release and version history.
 
----
+<br/>
 
-## Support the Project
-
+## ❤️ Support the Project
 MountX is free and open-source. If it helped you save storage, consider supporting ongoing development:
-
 * ☕ **Ko-fi**: [Support on Ko-fi](https://ko-fi.com/Zy0x)
 * 💳 **PayPal**: [Donate via PayPal](https://paypal.me/Zy0x)
 * 🇮🇩 **Saweria**: [Dukung via Saweria](https://saweria.co/Zy0x)
 
----
-
-## License
-
+## 📄 License
 MountX is licensed under the [MIT License](LICENSE).
-
 Developed and maintained by **Noir** ([@Zy0x](https://github.com/Zy0x)).
