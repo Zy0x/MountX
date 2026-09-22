@@ -98,7 +98,7 @@ load_config() {
 wait_for_boot() {
     log_info "Waiting for sys.boot_completed…"
     local retries=0
-    until [ "$(getprop sys.boot_completed)" = "1" ]; do
+    until [ "$(getprop sys.boot_completed | tr -d '\r')" = "1" ]; do
         sleep 2
         retries=$((retries + 1))
         if [ "${retries}" -ge 60 ]; then
@@ -107,22 +107,21 @@ wait_for_boot() {
         fi
     done
 
-    log_info "Boot completed detected. Waiting for primary storage and Vold..."
+    log_info "Boot completed detected. Waiting for primary emulated storage and FUSE (/storage/emulated/0/Android/data)…"
     retries=0
-    # Wait until /data/media/0 exists AND /storage/emulated is mounted as a real filesystem (fuse/sdcardfs)
-    # This prevents creating directories on the 3.8GB /storage tmpfs before Vold mounts /dev/fuse!
-    until [ -d "/data/media/0" ] && grep -q " /storage/emulated " /proc/mounts 2>/dev/null; do
+    # Wait until /data/media/0 exists AND /storage/emulated/0/Android/data is created by FUSE
+    until [ -d "/storage/emulated/0/Android/data" ] && [ -d "/data/media/0" ]; do
         sleep 2
         retries=$((retries + 1))
         if [ "${retries}" -ge 45 ]; then
-            log_warn "Timed out waiting for /storage/emulated mount in /proc/mounts (90s); continuing."
+            log_warn "Timed out waiting for /storage/emulated/0/Android/data (90s); continuing."
             break
         fi
     done
 
-    # Give Vold and system services a few extra seconds to settle directory permissions
-    sleep 3
-    log_info "Primary storage and Vold readiness confirmed."
+    # Give Vold, FUSE daemon, and system services extra time to settle
+    sleep 4
+    log_info "Primary storage, FUSE, and Android/data readiness confirmed."
 }
 
 # ── Mount the SD partition ────────────────────────────────────────────────────
@@ -203,7 +202,7 @@ apply_io_tweaks() {
     log_info "I/O tweaks successfully applied to ${disk_name}."
 }
 
-# ── Unmount any stale bind-mounts for a target path ──────────────────────────
+# ── Unmount any stale bind-mounts for a target path or partition ──────────────
 umount_stale() {
     local target="$1"
     if mountpoint -q "${target}" 2>/dev/null; then
@@ -213,48 +212,56 @@ umount_stale() {
     fi
 }
 
-# ── Dynamic UID/GID & SELinux Context Application ────────────────────────────
+cleanup_stale_mounts() {
+    log_info "Cleaning up any stale bind-mounts pointing to ${SD_BASE}…"
+    su -mm -c '
+    SD_BASE="'"${SD_BASE}"'"
+    for m in $(grep "${SD_BASE}" /proc/mounts 2>/dev/null | awk "{print \$2}"); do
+        if [ "${m}" != "${SD_BASE}" ]; then
+            umount -f -l "${m}" 2>/dev/null
+        fi
+    done
+    '
+}
+
+# ── Dynamic UID/GID, Sandbox & SELinux Context Application ────────────────────
 apply_permissions() {
     local pkg="$1"
     local src_dir="$2"
     local user_id="$3"
     [ -z "${user_id}" ] && user_id="0"
 
-    local uid gid
+    local app_uid
     if [ "${user_id}" = "0" ]; then
-        uid=$(stat -c '%u' "/data/data/${pkg}" 2>/dev/null || stat -c '%u' "/data/user/0/${pkg}" 2>/dev/null)
-        gid=$(stat -c '%g' "/data/data/${pkg}" 2>/dev/null || stat -c '%g' "/data/user/0/${pkg}" 2>/dev/null)
+        app_uid=$(stat -c '%u' "/data/data/${pkg}" 2>/dev/null || stat -c '%u' "/data/user/0/${pkg}" 2>/dev/null)
     else
-        uid=$(stat -c '%u' "/data/user/${user_id}/${pkg}" 2>/dev/null)
-        gid=$(stat -c '%g' "/data/user/${user_id}/${pkg}" 2>/dev/null)
+        app_uid=$(stat -c '%u' "/data/user/${user_id}/${pkg}" 2>/dev/null)
     fi
 
     # Fallback via pm list packages
-    if [ -z "${uid}" ] || [ -z "${gid}" ]; then
-        local raw_uid
-        raw_uid=$(pm list packages -U --user "${user_id}" 2>/dev/null | grep -F "package:${pkg}" | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
-        if [ -n "${raw_uid}" ]; then
-            uid="${raw_uid}"
-            gid="${raw_uid}"
-        fi
+    if [ -z "${app_uid}" ] || [ "${app_uid}" = "0" ]; then
+        app_uid=$(pm list packages -U --user "${user_id}" 2>/dev/null | grep -F "package:${pkg}" | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+    fi
+    [ -z "${app_uid}" ] && app_uid=10000
+
+    local sandbox_dir="/data/user/${user_id}/${pkg}"
+    [ ! -d "${sandbox_dir}" ] && sandbox_dir="/data/data/${pkg}"
+
+    # Sandbox integrity: restore internal app ownership & database permissions
+    if [ -d "${sandbox_dir}" ]; then
+        chown -R "${app_uid}:${app_uid}" "${sandbox_dir}" 2>/dev/null
+        chmod -R 775 "${sandbox_dir}" 2>/dev/null
+        chmod 771 "${sandbox_dir}/databases" 2>/dev/null
     fi
 
-    # Fast non-recursive check & permission setting:
-    # Full recursion (-R) over tens of thousands of files across MicroSD SDIO stalls boot by 5+ minutes.
-    # MicroSD (F2FS/EXT4) already preserves POSIX file ownership and SELinux xattrs permanently.
-    if [ -n "${uid}" ] && [ -n "${gid}" ]; then
-        local cur_uid
-        cur_uid=$(stat -c '%u' "${src_dir}" 2>/dev/null)
-        if [ "${cur_uid}" != "${uid}" ]; then
-            chown "${uid}:${gid}" "${src_dir}" 2>/dev/null
-        fi
-        chmod 0775 "${src_dir}" 2>/dev/null
-        chcon u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
-        log_info "  [${pkg}] Permissions set: ${uid}:${gid} on ${src_dir}"
-    else
-        chmod 0775 "${src_dir}" 2>/dev/null
-        chcon u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
+    # MicroSD target permissions: app_uid, GID 1023 (media_rw), mode 777, SELinux media_rw_data_file
+    if [ -d "${src_dir}" ]; then
+        chown -R "${app_uid}:1023" "${src_dir}" 2>/dev/null
+        chmod -R 777 "${src_dir}" 2>/dev/null
+        chcon -R u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
     fi
+
+    log_info "  [${pkg}] Permissions verified: UID=${app_uid}, GID=1023, Mode=777 on ${src_dir}"
 }
 
 # ── Bind-mount into all active Android runtime namespaces (FUSE/Scoped Parity) ──
@@ -265,61 +272,73 @@ bind_mount_to_runtime_namespaces() {
     local user_id="$4"
     [ -z "${user_id}" ] && user_id="0"
 
-    # Extract relative path from dst
+    # Extract relative path from dst across any user profile
     local rel=""
     case "${dst}" in
         */Android/*)
             rel="Android/"$(echo "${dst}" | sed 's|.*/Android/||')
             ;;
         *)
-            rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/||')
+            rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||;s|^/||')
             ;;
     esac
 
-    local target_list=""
-    if [ -n "${rel}" ]; then
-        target_list="/data/media/${user_id}/${rel} \
-                     /mnt/runtime/default/emulated/${user_id}/${rel} \
-                     /mnt/runtime/read/emulated/${user_id}/${rel} \
-                     /mnt/runtime/write/emulated/${user_id}/${rel} \
-                     /mnt/runtime/full/emulated/${user_id}/${rel} \
-                     /mnt/user/${user_id}/emulated/${user_id}/${rel}"
-        # Only target /storage/emulated if it is actually mounted by Vold (not a raw tmpfs ramdisk)
-        if grep -q " /storage/emulated " /proc/mounts 2>/dev/null; then
-            target_list="${target_list} /storage/emulated/${user_id}/${rel}"
-        fi
-    else
-        target_list="${dst}"
-    fi
+    # Perform bind mounts inside mount master (su -mm) across all runtime namespaces
+    su -mm -c '
+        SRC="'"${src}"'"
+        DST="'"${dst}"'"
+        REL="'"${rel}"'"
+        USER_ID="'"${user_id}"'"
+        PKG="'"${pkg}"'"
 
-    local count=0
-    for t in ${target_list}; do
-        local parent_dir
-        parent_dir=$(dirname "${t}")
-        # Invariant: Only proceed if parent directory exists on an existing mounted filesystem.
-        # NEVER create directories on unmounted tmpfs!
-        if [ -d "${parent_dir}" ]; then
-            if ! mountpoint -q "${t}" 2>/dev/null; then
-                mkdir -p "${t}" 2>/dev/null
-                if mount -o bind "${src}" "${t}" 2>/dev/null; then
-                    count=$((count + 1))
+        if [ -n "${REL}" ]; then
+            for R in \
+                "/mnt/runtime/default/emulated/${USER_ID}" \
+                "/mnt/runtime/read/emulated/${USER_ID}" \
+                "/mnt/runtime/write/emulated/${USER_ID}" \
+                "/mnt/runtime/full/emulated/${USER_ID}" \
+                "/mnt/user/${USER_ID}/primary" \
+                "/mnt/user/${USER_ID}/emulated/${USER_ID}" \
+                "/storage/emulated/${USER_ID}" \
+                "/data/media/${USER_ID}"
+            do
+                if [ -d "${R}" ]; then
+                    TARGET="${R}/${REL}"
+                    if ! mountpoint -q "${TARGET}" 2>/dev/null; then
+                        mkdir -p "${TARGET}" 2>/dev/null
+                        mount -o bind "${SRC}" "${TARGET}" 2>/dev/null
+                    fi
                 fi
-            else
-                count=$((count + 1))
+            done
+        else
+            if ! mountpoint -q "${DST}" 2>/dev/null; then
+                mkdir -p "${DST}" 2>/dev/null
+                mount -o bind "${SRC}" "${DST}" 2>/dev/null
             fi
         fi
-    done
 
-    # Also enter process mount namespace if the package is already running
-    local pids
-    pids=$(pgrep -f "^${pkg}" 2>/dev/null)
-    for p in ${pids}; do
-        if [ -e "/proc/${p}/ns/mnt" ]; then
-            nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${src}" "${dst}" 2>/dev/null
+        # Pre-emptively stop any stale app process / pushservice that started before boot mount
+        if [ -n "${PKG}" ]; then
+            pids=$(pgrep -f "^${PKG}" 2>/dev/null)
+            if [ -n "${pids}" ]; then
+                for p in ${pids}; do
+                    if [ -e "/proc/${p}/ns/mnt" ]; then
+                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
+                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "${DST}" 2>/dev/null
+                    fi
+                done
+                am force-stop "${PKG}" 2>/dev/null
+            fi
         fi
-    done
+    '
 
-    log_info "  [${pkg}] Bind-mounted to ${count} runtime namespaces: ${src} → ${dst}"
+    local count=0
+    if [ -n "${rel}" ]; then
+        count=$(grep -c "${rel}" /proc/mounts 2>/dev/null || echo 0)
+    else
+        count=$(grep -c " ${dst}" /proc/mounts 2>/dev/null || echo 0)
+    fi
+    log_info "  [${pkg}] Bind-mounted to ${count} targets in /proc/mounts: ${src} → ${dst}"
 }
 
 # ── Modern Multi-Target Array (mountpoints.conf) ──────────────────────────────
@@ -463,6 +482,7 @@ main() {
     check_safe_uninstall
     load_config
     mount_sd
+    cleanup_stale_mounts
     apply_io_tweaks
 
     # Ensure localized subdirectories exist without placing .nomedia on $SD_BASE/MountX

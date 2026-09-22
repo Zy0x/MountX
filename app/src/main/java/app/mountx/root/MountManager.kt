@@ -59,6 +59,7 @@ class MountManager {
             list.add("/mnt/runtime/read/emulated/$uid")
             list.add("/mnt/runtime/write/emulated/$uid")
             list.add("/mnt/runtime/full/emulated/$uid")
+            list.add("/mnt/user/$uid/primary")
             list.add("/mnt/user/$uid/emulated/$uid")
             // Only target /storage/emulated/$uid if /storage/emulated is confirmed mounted to prevent tmpfs collisions
             if (RootShell.isMountpoint("/storage/emulated") || RootShell.exists("/storage/emulated/$uid/Android")) {
@@ -147,9 +148,10 @@ class MountManager {
             val uid = identity.uid
             val gid = identity.gid
 
-            // Set ownership on internal data directory
+            // Set ownership on internal data directory & databases
             RootShell.exec("chown -R $uid:$gid \"/data/user/$appUserId/${game.packageName}\" 2>/dev/null")
             RootShell.exec("chmod -R 775 \"/data/user/$appUserId/${game.packageName}\" 2>/dev/null")
+            RootShell.exec("chmod 771 \"/data/user/$appUserId/${game.packageName}/databases\" 2>/dev/null")
 
             // Step 1: Memeriksa Direktori MicroSD
             onProgress?.invoke(
@@ -305,12 +307,9 @@ class MountManager {
                 }
 
                 if (hasData) {
-                    val curUid = RootShell.execForOutput("stat -c '%u' \"$dataSrcPath\" 2>/dev/null").trim()
-                    if (curUid != uid.toString()) {
-                        RootShell.exec("chown $uid:$gid \"$dataSrcPath\" 2>/dev/null")
-                    }
-                    RootShell.exec("chmod 775 \"$dataSrcPath\" 2>/dev/null")
-                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
+                    RootShell.exec("chown -R $uid:1023 \"$dataSrcPath\" 2>/dev/null")
+                    RootShell.exec("chmod -R 777 \"$dataSrcPath\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
                     RootShell.exec("touch \"$dataSrcPath/.mountx_canary\" 2>/dev/null")
 
                     for (namespace in namespaces) {
@@ -325,12 +324,9 @@ class MountManager {
                 }
 
                 if (hasObb) {
-                    val curUid = RootShell.execForOutput("stat -c '%u' \"$obbSrcPath\" 2>/dev/null").trim()
-                    if (curUid != uid.toString()) {
-                        RootShell.exec("chown $uid:$gid \"$obbSrcPath\" 2>/dev/null")
-                    }
-                    RootShell.exec("chmod 775 \"$obbSrcPath\" 2>/dev/null")
-                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chown -R $uid:1023 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chmod -R 777 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
                     RootShell.exec("touch \"$obbSrcPath/.mountx_canary\" 2>/dev/null")
 
                     for (namespace in namespaces) {
@@ -403,12 +399,9 @@ class MountManager {
             return false
         }
 
-        val curUid = RootShell.execForOutput("stat -c '%u' \"${mp.sourcePath}\" 2>/dev/null").trim()
-        if (curUid != uid.toString()) {
-            RootShell.exec("chown $uid:$gid \"${mp.sourcePath}\" 2>/dev/null")
-        }
-        RootShell.exec("chmod 775 \"${mp.sourcePath}\" 2>/dev/null")
-        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+        RootShell.exec("chown -R $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
+        RootShell.exec("chmod -R 777 \"${mp.sourcePath}\" 2>/dev/null")
+        RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
         RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
 
         // Extract relative path from target path across any user profile
