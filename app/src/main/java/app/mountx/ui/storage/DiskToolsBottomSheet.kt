@@ -16,12 +16,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -44,8 +46,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -70,9 +70,11 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import app.mountx.R
 import app.mountx.data.model.BenchmarkResult
 import app.mountx.data.model.DiskHardwareDetails
@@ -517,6 +519,47 @@ private fun CyberMenuTile(
     }
 }
 
+// ── Centered Segmented Pill Helper ────────────────────────────
+@Composable
+private fun CenteredSegmentedPill(
+    selected: Boolean,
+    onClick: () -> Unit,
+    text: String,
+    modifier: Modifier = Modifier,
+    activeColor: Color,
+    isDark: Boolean,
+    fontSize: TextUnit = 11.sp,
+    fontWeight: FontWeight = FontWeight.Normal
+) {
+    val containerColor = if (selected) activeColor.copy(alpha = if (isDark) 0.22f else 0.14f) else Color.Transparent
+    val borderColor = if (selected) activeColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    val contentColor = if (selected) activeColor else MaterialTheme.colorScheme.onSurface
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                fontSize = fontSize,
+                fontWeight = if (selected) FontWeight.Bold else fontWeight,
+                color = contentColor,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+        }
+    }
+}
+
 // ── Sub-Page 1: I/O Speed Booster ───────────────────────────
 @Composable
 private fun DiskIoBoosterSubPage(
@@ -555,7 +598,8 @@ private fun DiskIoBoosterSubPage(
         ) {
             IoPreset.entries.forEach { preset ->
                 val isActive = selectedReadAhead == preset.readAheadKb
-                OutlinedButton(
+                CenteredSegmentedPill(
+                    selected = isActive,
                     onClick = {
                         // Only populate state — user still needs to press Apply button
                         selectedReadAhead = preset.readAheadKb
@@ -576,26 +620,14 @@ private fun DiskIoBoosterSubPage(
                         }
                         isPersistent = preset != IoPreset.DEFAULT_SYSTEM
                     },
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isActive) activePresetColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                    ),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (isActive) activePresetColor.copy(alpha = if (isDark) 0.2f else 0.12f) else Color.Transparent,
-                        contentColor = if (isActive) activePresetColor else MaterialTheme.colorScheme.onSurface
-                    ),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    text = preset.label,
+                    activeColor = activePresetColor,
+                    isDark = isDark,
+                    fontSize = 11.sp,
                     modifier = Modifier
                         .weight(1f)
                         .height(34.dp)
-                ) {
-                    Text(
-                        text = preset.label,
-                        fontSize = 10.5.sp,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-                    )
-                }
+                )
             }
         }
 
@@ -614,19 +646,13 @@ private fun DiskIoBoosterSubPage(
         ) {
             readAheadOptions.forEach { kb ->
                 val isSelected = selectedReadAhead == kb
-                FilterChip(
+                CenteredSegmentedPill(
                     selected = isSelected,
                     onClick = { selectedReadAhead = kb },
-                    label = { Text("${kb}K", fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = raColor.copy(alpha = if (isDark) 0.2f else 0.12f),
-                        selectedLabelColor = raColor
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isSelected) raColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                    ),
+                    text = "${kb}K",
+                    activeColor = raColor,
+                    isDark = isDark,
+                    fontSize = 11.sp,
                     modifier = Modifier
                         .weight(1f)
                         .height(32.dp)
@@ -652,20 +678,16 @@ private fun DiskIoBoosterSubPage(
         ) {
             schedulers.forEach { sched ->
                 val isSelected = selectedScheduler.equals(sched, ignoreCase = true)
-                FilterChip(
+                CenteredSegmentedPill(
                     selected = isSelected,
                     onClick = { selectedScheduler = sched },
-                    label = { Text(sched, fontSize = 10.5.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight,
-                        selectedLabelColor = schedColor
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isSelected) schedColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                    ),
-                    modifier = Modifier.height(32.dp)
+                    text = sched,
+                    activeColor = schedColor,
+                    isDark = isDark,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .height(32.dp)
+                        .widthIn(min = 68.dp)
                 )
             }
         }

@@ -126,6 +126,11 @@
     <string name="add_game_button">Add Game</string>
     <string name="add_game_error_empty">Package name cannot be empty.</string>
     <string name="add_game_error_exists">This game is already in the list.</string>
+    <string name="manual_app_status_checking">Verifying package…</string>
+    <string name="manual_app_status_detected">Application detected on device</string>
+    <string name="manual_app_status_not_found">Application is not installed on this device.</string>
+    <string name="manual_app_status_already_added">Application is already registered in MountX.</string>
+    <string name="manual_app_desc">The application will be added to MountX and you can configure storage categories granularly in App Details.</string>
 
     <!-- Full-Screen App Picker -->
     <string name="add_app_title">Select Application</string>

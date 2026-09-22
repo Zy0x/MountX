@@ -54,17 +54,18 @@ class MountManager {
         val list = mutableListOf<String>()
         val userIds = if (specificUserId != null) listOf(specificUserId) else getActiveUserIds()
         for (uid in userIds) {
+            list.add("/data/media/$uid")
             list.add("/mnt/runtime/default/emulated/$uid")
             list.add("/mnt/runtime/read/emulated/$uid")
             list.add("/mnt/runtime/write/emulated/$uid")
             list.add("/mnt/runtime/full/emulated/$uid")
-            list.add("/storage/emulated/$uid")
-            list.add("/data/media/$uid")
-            if (uid == 0) {
-                list.add("/mnt/user/0/primary")
+            list.add("/mnt/user/$uid/emulated/$uid")
+            // Only target /storage/emulated/$uid if /storage/emulated is confirmed mounted to prevent tmpfs collisions
+            if (RootShell.isMountpoint("/storage/emulated") || RootShell.exists("/storage/emulated/$uid/Android")) {
+                list.add("/storage/emulated/$uid")
             }
         }
-        list.filter { RootShell.exists(it) }
+        list.filter { RootShell.exists(it) }.distinct()
     }
 
     companion object {
@@ -304,28 +305,42 @@ class MountManager {
                 }
 
                 if (hasData) {
-                    RootShell.exec("chown -R $uid:$gid \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                    RootShell.exec("chmod -R 775 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdBase/Android/data/${game.packageName}\" 2>/dev/null")
-                    RootShell.exec("touch \"$sdBase/Android/data/${game.packageName}/.mountx_canary\" 2>/dev/null")
+                    val curUid = RootShell.execForOutput("stat -c '%u' \"$dataSrcPath\" 2>/dev/null").trim()
+                    if (curUid != uid.toString()) {
+                        RootShell.exec("chown $uid:$gid \"$dataSrcPath\" 2>/dev/null")
+                    }
+                    RootShell.exec("chmod 775 \"$dataSrcPath\" 2>/dev/null")
+                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
+                    RootShell.exec("touch \"$dataSrcPath/.mountx_canary\" 2>/dev/null")
 
                     for (namespace in namespaces) {
                         val targetPath = "$namespace/$dataRelPath"
-                        RootShell.exec("[ -d \"$namespace/Android/data\" ] && mkdir -p \"$targetPath\" 2>/dev/null")
-                        RootShell.exec("[ -d \"$namespace/Android/data\" ] && mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
+                        if (RootShell.exists("$namespace/Android/data")) {
+                            if (!RootShell.isMountpoint(targetPath)) {
+                                RootShell.exec("mkdir -p \"$targetPath\" 2>/dev/null")
+                                RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
+                            }
+                        }
                     }
                 }
 
                 if (hasObb) {
-                    RootShell.exec("chown -R $uid:$gid \"$obbSrcPath\" 2>/dev/null")
-                    RootShell.exec("chmod -R 775 \"$obbSrcPath\" 2>/dev/null")
-                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+                    val curUid = RootShell.execForOutput("stat -c '%u' \"$obbSrcPath\" 2>/dev/null").trim()
+                    if (curUid != uid.toString()) {
+                        RootShell.exec("chown $uid:$gid \"$obbSrcPath\" 2>/dev/null")
+                    }
+                    RootShell.exec("chmod 775 \"$obbSrcPath\" 2>/dev/null")
+                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
                     RootShell.exec("touch \"$obbSrcPath/.mountx_canary\" 2>/dev/null")
 
                     for (namespace in namespaces) {
                         val targetPath = "$namespace/$obbRelPath"
-                        RootShell.exec("[ -d \"$namespace/Android\" ] && mkdir -p \"$namespace/Android/obb\" \"$targetPath\" 2>/dev/null")
-                        RootShell.exec("[ -d \"$namespace/Android\" ] && mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
+                        if (RootShell.exists("$namespace/Android")) {
+                            if (!RootShell.isMountpoint(targetPath)) {
+                                RootShell.exec("mkdir -p \"$namespace/Android/obb\" \"$targetPath\" 2>/dev/null")
+                                RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
+                            }
+                        }
                     }
                 }
             }
@@ -388,9 +403,12 @@ class MountManager {
             return false
         }
 
-        RootShell.exec("chown -R $uid:$gid \"${mp.sourcePath}\" 2>/dev/null")
-        RootShell.exec("chmod -R 775 \"${mp.sourcePath}\" 2>/dev/null")
-        RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+        val curUid = RootShell.execForOutput("stat -c '%u' \"${mp.sourcePath}\" 2>/dev/null").trim()
+        if (curUid != uid.toString()) {
+            RootShell.exec("chown $uid:$gid \"${mp.sourcePath}\" 2>/dev/null")
+        }
+        RootShell.exec("chmod 775 \"${mp.sourcePath}\" 2>/dev/null")
+        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
         RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
 
         // Extract relative path from target path across any user profile
@@ -399,10 +417,16 @@ class MountManager {
         var anyMounted = false
         for (namespace in namespaces) {
             val nsTarget = "$namespace/$relPath"
-            RootShell.exec("mkdir -p \"$nsTarget\" 2>/dev/null")
-            val mountRes = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
-            if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
-                anyMounted = true
+            if (RootShell.exists(namespace)) {
+                if (RootShell.isMountpoint(nsTarget)) {
+                    anyMounted = true
+                    continue
+                }
+                RootShell.exec("mkdir -p \"$nsTarget\" 2>/dev/null")
+                val mountRes = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
+                    anyMounted = true
+                }
             }
         }
         return anyMounted

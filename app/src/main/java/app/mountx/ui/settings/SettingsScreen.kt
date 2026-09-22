@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -175,44 +176,29 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            FilterChip(
+                            SettingsSegmentedPill(
                                 selected = themeMode == ThemeMode.LIGHT,
                                 onClick = { viewModel.setThemeMode(ThemeMode.LIGHT) },
-                                label = {
-                                    Text(
-                                        text = stringResource(R.string.settings_theme_light),
-                                        fontSize = 11.sp,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
+                                text = stringResource(R.string.settings_theme_light),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             )
-                            FilterChip(
+                            SettingsSegmentedPill(
                                 selected = themeMode == ThemeMode.DARK,
                                 onClick = { viewModel.setThemeMode(ThemeMode.DARK) },
-                                label = {
-                                    Text(
-                                        text = stringResource(R.string.settings_theme_dark),
-                                        fontSize = 11.sp,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
+                                text = stringResource(R.string.settings_theme_dark),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             )
-                            FilterChip(
+                            SettingsSegmentedPill(
                                 selected = themeMode == ThemeMode.SYSTEM,
                                 onClick = { viewModel.setThemeMode(ThemeMode.SYSTEM) },
-                                label = {
-                                    Text(
-                                        text = stringResource(R.string.settings_theme_system),
-                                        fontSize = 11.sp,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
+                                text = stringResource(R.string.settings_theme_system),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             )
                         }
                     }
@@ -233,31 +219,21 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            FilterChip(
+                            SettingsSegmentedPill(
                                 selected = language == "en",
                                 onClick = { viewModel.setLanguage("en") },
-                                label = {
-                                    Text(
-                                        text = stringResource(R.string.settings_language_en),
-                                        fontSize = 11.sp,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
+                                text = stringResource(R.string.settings_language_en),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             )
-                            FilterChip(
+                            SettingsSegmentedPill(
                                 selected = language == "id",
                                 onClick = { viewModel.setLanguage("id") },
-                                label = {
-                                    Text(
-                                        text = stringResource(R.string.settings_language_id),
-                                        fontSize = 11.sp,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
+                                text = stringResource(R.string.settings_language_id),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             )
                         }
                     }
@@ -685,5 +661,43 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun SettingsSegmentedPill(
+    selected: Boolean,
+    onClick: () -> Unit,
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val activeColor = MaterialTheme.colorScheme.primary
+    val containerColor = if (selected) activeColor.copy(alpha = if (isDark) 0.22f else 0.14f) else Color.Transparent
+    val borderColor = if (selected) activeColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    val contentColor = if (selected) activeColor else MaterialTheme.colorScheme.onSurface
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                fontSize = 11.5.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = contentColor,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+        }
     }
 }

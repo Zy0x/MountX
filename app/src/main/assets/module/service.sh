@@ -48,7 +48,10 @@ log() {
     local ts
     ts=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[${ts}] [${level}] ${msg}" >> "${LOG_FILE}"
-    echo "[${ts}] [${level}] ${msg}" >> "/storage/emulated/0/mountx.log" 2>/dev/null
+    # Only mirror to /storage/emulated/0/mountx.log if storage is verified mounted to prevent tmpfs file creation
+    if [ -d "/data/media/0" ] && grep -q " /storage/emulated " /proc/mounts 2>/dev/null; then
+        echo "[${ts}] [${level}] ${msg}" >> "/storage/emulated/0/mountx.log" 2>/dev/null
+    fi
 }
 
 log_info()  { log "INFO " "$@"; }
@@ -91,21 +94,35 @@ load_config() {
     log_info "Config loaded — SD_BASE=${SD_BASE} SD_BLOCK=${SD_BLOCK} FS_TYPE=${FS_TYPE} IO_TWEAKS=${IO_TWEAKS_ENABLED}"
 }
 
-# ── Wait until Android has finished booting ───────────────────────────────────
+# ── Wait until Android and Primary Storage have finished booting ──────────────
 wait_for_boot() {
     log_info "Waiting for sys.boot_completed…"
     local retries=0
     until [ "$(getprop sys.boot_completed)" = "1" ]; do
-        sleep 5
+        sleep 2
         retries=$((retries + 1))
         if [ "${retries}" -ge 60 ]; then
-            log_error "Timed out waiting for boot_completed after 5 min; aborting."
-            exit 1
+            log_error "Timed out waiting for sys.boot_completed after 120s; continuing with caution."
+            break
         fi
     done
-    # Give system services and vold a few extra seconds to settle
-    sleep 5
-    log_info "Boot completed detected."
+
+    log_info "Boot completed detected. Waiting for primary storage and Vold..."
+    retries=0
+    # Wait until /data/media/0 exists AND /storage/emulated is mounted as a real filesystem (fuse/sdcardfs)
+    # This prevents creating directories on the 3.8GB /storage tmpfs before Vold mounts /dev/fuse!
+    until [ -d "/data/media/0" ] && grep -q " /storage/emulated " /proc/mounts 2>/dev/null; do
+        sleep 2
+        retries=$((retries + 1))
+        if [ "${retries}" -ge 45 ]; then
+            log_warn "Timed out waiting for /storage/emulated mount in /proc/mounts (90s); continuing."
+            break
+        fi
+    done
+
+    # Give Vold and system services a few extra seconds to settle directory permissions
+    sleep 3
+    log_info "Primary storage and Vold readiness confirmed."
 }
 
 # ── Mount the SD partition ────────────────────────────────────────────────────
@@ -222,14 +239,21 @@ apply_permissions() {
         fi
     fi
 
+    # Fast non-recursive check & permission setting:
+    # Full recursion (-R) over tens of thousands of files across MicroSD SDIO stalls boot by 5+ minutes.
+    # MicroSD (F2FS/EXT4) already preserves POSIX file ownership and SELinux xattrs permanently.
     if [ -n "${uid}" ] && [ -n "${gid}" ]; then
-        chown -R "${uid}:${gid}" "${src_dir}" 2>/dev/null
-        chmod -R 0775 "${src_dir}" 2>/dev/null
-        chcon -R u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
+        local cur_uid
+        cur_uid=$(stat -c '%u' "${src_dir}" 2>/dev/null)
+        if [ "${cur_uid}" != "${uid}" ]; then
+            chown "${uid}:${gid}" "${src_dir}" 2>/dev/null
+        fi
+        chmod 0775 "${src_dir}" 2>/dev/null
+        chcon u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
         log_info "  [${pkg}] Permissions set: ${uid}:${gid} on ${src_dir}"
     else
-        chmod -R 0775 "${src_dir}" 2>/dev/null
-        chcon -R u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
+        chmod 0775 "${src_dir}" 2>/dev/null
+        chcon u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
     fi
 }
 
@@ -254,14 +278,15 @@ bind_mount_to_runtime_namespaces() {
 
     local target_list=""
     if [ -n "${rel}" ]; then
-        target_list="/mnt/runtime/default/emulated/${user_id}/${rel} \
+        target_list="/data/media/${user_id}/${rel} \
+                     /mnt/runtime/default/emulated/${user_id}/${rel} \
                      /mnt/runtime/read/emulated/${user_id}/${rel} \
                      /mnt/runtime/write/emulated/${user_id}/${rel} \
                      /mnt/runtime/full/emulated/${user_id}/${rel} \
-                     /storage/emulated/${user_id}/${rel} \
-                     /data/media/${user_id}/${rel}"
-        if [ "${user_id}" = "0" ]; then
-            target_list="${target_list} /mnt/user/0/primary/${rel}"
+                     /mnt/user/${user_id}/emulated/${user_id}/${rel}"
+        # Only target /storage/emulated if it is actually mounted by Vold (not a raw tmpfs ramdisk)
+        if grep -q " /storage/emulated " /proc/mounts 2>/dev/null; then
+            target_list="${target_list} /storage/emulated/${user_id}/${rel}"
         fi
     else
         target_list="${dst}"
@@ -269,24 +294,28 @@ bind_mount_to_runtime_namespaces() {
 
     local count=0
     for t in ${target_list}; do
-        if ! mountpoint -q "${t}" 2>/dev/null; then
-            mkdir -p "${t}" 2>/dev/null
-            if mount -o bind "${src}" "${t}" 2>/dev/null; then
+        local parent_dir
+        parent_dir=$(dirname "${t}")
+        # Invariant: Only proceed if parent directory exists on an existing mounted filesystem.
+        # NEVER create directories on unmounted tmpfs!
+        if [ -d "${parent_dir}" ]; then
+            if ! mountpoint -q "${t}" 2>/dev/null; then
+                mkdir -p "${t}" 2>/dev/null
+                if mount -o bind "${src}" "${t}" 2>/dev/null; then
+                    count=$((count + 1))
+                fi
+            else
                 count=$((count + 1))
             fi
-        else
-            count=$((count + 1))
         fi
     done
 
     # Also enter process mount namespace if the package is already running
-    for pid_ns_dir in /proc/*/ns/mnt; do
-        local pid_dir
-        pid_dir=$(dirname "$(dirname "${pid_ns_dir}")")
-        local cmdline
-        cmdline=$(cat "${pid_dir}/cmdline" 2>/dev/null | tr '\0' ' ' | cut -d' ' -f1)
-        if [ "${cmdline}" = "${pkg}" ]; then
-            nsenter --mount="${pid_ns_dir}" -- mount --bind "${src}" "${dst}" 2>/dev/null
+    local pids
+    pids=$(pgrep -f "^${pkg}" 2>/dev/null)
+    for p in ${pids}; do
+        if [ -e "/proc/${p}/ns/mnt" ]; then
+            nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${src}" "${dst}" 2>/dev/null
         fi
     done
 

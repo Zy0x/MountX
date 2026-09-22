@@ -22,8 +22,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
@@ -31,6 +38,9 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import app.mountx.root.RootShell
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -245,27 +255,13 @@ fun AddAppPicker(
 
                 isManualMode -> {
                     ManualAppView(
-                        manualPackage = manualPackage,
-                        onPackageChange = {
-                            manualPackage = it
-                            if (manualName.isBlank()) manualName = it
-                        },
-                        manualName = manualName,
-                        onNameChange = { manualName = it },
-                        selectedMode = selectedMode,
-                        onModeChange = { selectedMode = it },
-                        onConfirm = {
-                            if (manualPackage.isNotBlank()) {
-                                if (onConfigureApp != null) {
-                                    val manualApp = InstalledAppInfo(
-                                        packageName = manualPackage.trim(),
-                                        displayName = manualName.trim().ifBlank { manualPackage.trim() },
-                                        isSystemApp = false
-                                    )
-                                    onConfigureApp(manualApp)
-                                } else {
-                                    onAdd(manualPackage.trim(), manualName.trim(), selectedMode)
-                                }
+                        installedApps = installedApps,
+                        addedPackageNames = addedPackageNames,
+                        onConfirm = { manualApp ->
+                            if (onConfigureApp != null) {
+                                onConfigureApp(manualApp)
+                            } else {
+                                onAdd(manualApp.packageName, manualApp.displayName, MountMode.PKG)
                             }
                         }
                     )
@@ -1085,27 +1081,128 @@ private fun ConfigureAppView(
     }
 }
 
+private sealed interface PackageValidationState {
+    object Idle : PackageValidationState
+    object Checking : PackageValidationState
+    data class Installed(val appInfo: InstalledAppInfo) : PackageValidationState
+    object AlreadyRegistered : PackageValidationState
+    object NotInstalled : PackageValidationState
+}
+
 @Composable
 private fun ManualAppView(
-    manualPackage: String,
-    onPackageChange: (String) -> Unit,
-    manualName: String,
-    onNameChange: (String) -> Unit,
-    selectedMode: MountMode,
-    onModeChange: (MountMode) -> Unit,
-    onConfirm: () -> Unit
+    installedApps: List<InstalledAppInfo>,
+    addedPackageNames: Set<String>,
+    onConfirm: (InstalledAppInfo) -> Unit
 ) {
+    val context = LocalContext.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val fieldBg = if (isDark) Color(0xFF1C1917) else Color(0xFFFAF8F5)
     val fieldBorder = if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD)
     val fieldText = if (isDark) Color(0xFFFAF8F5) else Color(0xFF1C1917)
     val fieldPlaceholder = Color(0xFFA8A29E)
 
+    var manualPackage by remember { mutableStateOf("") }
+    var manualName by remember { mutableStateOf("") }
+    var isNameManuallyEdited by remember { mutableStateOf(false) }
+    var validationState by remember { mutableStateOf<PackageValidationState>(PackageValidationState.Idle) }
+
+    LaunchedEffect(manualPackage) {
+        val pkg = manualPackage.trim()
+        if (pkg.isBlank()) {
+            validationState = PackageValidationState.Idle
+            if (!isNameManuallyEdited) manualName = ""
+            return@LaunchedEffect
+        }
+        if (addedPackageNames.any { it.equals(pkg, ignoreCase = true) }) {
+            validationState = PackageValidationState.AlreadyRegistered
+            return@LaunchedEffect
+        }
+
+        validationState = PackageValidationState.Checking
+
+        // 1. Fast cache check from already loaded installedApps
+        val cached = installedApps.firstOrNull { it.packageName.equals(pkg, ignoreCase = true) }
+        if (cached != null) {
+            validationState = PackageValidationState.Installed(cached)
+            if (!isNameManuallyEdited) {
+                manualName = cached.displayName
+            }
+            return@LaunchedEffect
+        }
+
+        // 2. Query PackageManager for uninstalled / all users
+        val resolved = withContext(Dispatchers.IO) {
+            val pm = context.packageManager
+            val app = runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getApplicationInfo(
+                        pkg,
+                        PackageManager.ApplicationInfoFlags.of(
+                            PackageManager.MATCH_UNINSTALLED_PACKAGES.toLong() or PackageManager.MATCH_ALL.toLong()
+                        )
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getApplicationInfo(pkg, PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                }
+            }.getOrNull()
+
+            if (app != null) {
+                val label = pm.getApplicationLabel(app).toString().ifBlank { pkg }
+                val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                    (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                val isGame = app.category == ApplicationInfo.CATEGORY_GAME ||
+                    SmartGamePresets.findPreset(pkg) != null
+                InstalledAppInfo(
+                    packageName = pkg,
+                    displayName = label,
+                    isGame = isGame,
+                    isSystemApp = isSystem,
+                    hasPreset = SmartGamePresets.findPreset(pkg) != null
+                )
+            } else {
+                // 3. Fallback Root Shell check for frozen, hidden, or isolated apps
+                val pmPathRes = RootShell.exec("pm path $pkg")
+                if (pmPathRes.isSuccess && pmPathRes.output.isNotBlank()) {
+                    InstalledAppInfo(
+                        packageName = pkg,
+                        displayName = manualName.ifBlank { pkg },
+                        isGame = false,
+                        isSystemApp = false
+                    )
+                } else {
+                    val existsInternal = RootShell.exists("/data/data/$pkg") || RootShell.exists("/data/user/0/$pkg")
+                    if (existsInternal) {
+                        InstalledAppInfo(
+                            packageName = pkg,
+                            displayName = manualName.ifBlank { pkg },
+                            isGame = false,
+                            isSystemApp = false
+                        )
+                    } else {
+                        null
+                    }
+                }
+            }
+        }
+
+        if (resolved != null) {
+            validationState = PackageValidationState.Installed(resolved)
+            if (!isNameManuallyEdited) {
+                manualName = resolved.displayName
+            }
+        } else {
+            validationState = PackageValidationState.NotInstalled
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(14.dp)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         val manualFieldColors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = fieldBg,
@@ -1121,22 +1218,191 @@ private fun ManualAppView(
             unfocusedPlaceholderColor = fieldPlaceholder
         )
 
+        // Package Name Input
         OutlinedTextField(
             value = manualPackage,
-            onValueChange = onPackageChange,
+            onValueChange = { manualPackage = it },
             label = { Text(stringResource(R.string.add_game_package_label), fontSize = 11.5.sp) },
             placeholder = { Text("com.example.app", fontSize = 11.5.sp) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
-            colors = manualFieldColors
+            colors = manualFieldColors,
+            trailingIcon = {
+                if (manualPackage.isNotEmpty()) {
+                    IconButton(
+                        onClick = {
+                            manualPackage = ""
+                            if (!isNameManuallyEdited) manualName = ""
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = null,
+                            tint = fieldPlaceholder,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        // Real-Time Validation Feedback Row
+        when (val state = validationState) {
+            PackageValidationState.Idle -> {
+                Text(
+                    text = stringResource(R.string.add_game_package_hint),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                    color = fieldPlaceholder
+                )
+            }
+            PackageValidationState.Checking -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+                    )
+                    Text(
+                        text = stringResource(R.string.manual_app_status_checking),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
+                    )
+                }
+            }
+            is PackageValidationState.Installed -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.manual_app_status_detected),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                        color = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+                    )
+                }
 
+                // Live Preview Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, (if (isDark) BadgeMountedTextDark else BadgeMountedTextLight).copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        AppIconImage(packageName = state.appInfo.packageName, size = 40.dp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = state.appInfo.displayName,
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = state.appInfo.packageName,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        if (state.appInfo.isSystemApp) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isDark) WarmCrimsonBgDark else WarmCrimsonBgLight,
+                                border = BorderStroke(1.dp, if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.add_app_tag_system),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                    color = if (isDark) WarmCrimsonDark else WarmCrimsonLight,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        } else if (state.appInfo.isGame) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isDark) Color(0xFF6366F1).copy(alpha = 0.15f) else Color(0xFF4F46E5).copy(alpha = 0.10f),
+                                border = BorderStroke(1.dp, if (isDark) Color(0xFF818CF8).copy(alpha = 0.4f) else Color(0xFF4F46E5).copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.add_app_tag_game),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                    color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            PackageValidationState.AlreadyRegistered -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = if (isDark) WarmCrimsonDark else WarmCrimsonLight,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.manual_app_status_already_added),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                        color = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                    )
+                }
+            }
+            PackageValidationState.NotInstalled -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cancel,
+                        contentDescription = null,
+                        tint = if (isDark) WarmCrimsonDark else WarmCrimsonLight,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.manual_app_status_not_found),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                        color = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                    )
+                }
+            }
+        }
+
+        // Display Name Input (Editable, auto-filled)
         OutlinedTextField(
             value = manualName,
-            onValueChange = onNameChange,
+            onValueChange = {
+                manualName = it
+                isNameManuallyEdited = true
+            },
             label = { Text(stringResource(R.string.add_game_name_label), fontSize = 11.5.sp) },
             placeholder = { Text("Application Name", fontSize = 11.5.sp) },
             modifier = Modifier.fillMaxWidth(),
@@ -1145,45 +1411,50 @@ private fun ManualAppView(
             colors = manualFieldColors
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        Text(
-            text = stringResource(R.string.add_game_mode_title),
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
-            ),
-            color = MaterialTheme.colorScheme.primary
-        )
+        // Informative Helper Card
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    tint = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                    modifier = Modifier.size(16.dp).padding(top = 1.dp)
+                )
+                Text(
+                    text = stringResource(R.string.manual_app_desc),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilterChip(
-                selected = selectedMode == MountMode.PKG,
-                onClick = { onModeChange(MountMode.PKG) },
-                label = { Text("PKG Mode", fontSize = 11.5.sp) },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = selectedMode == MountMode.FILES,
-                onClick = { onModeChange(MountMode.FILES) },
-                label = { Text("FILES Mode", fontSize = 11.5.sp) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
+        // Confirm Button
+        val isConfirmedEnabled = validationState is PackageValidationState.Installed && manualPackage.isNotBlank()
         Button(
-            onClick = onConfirm,
-            enabled = manualPackage.isNotBlank(),
+            onClick = {
+                val state = validationState
+                if (state is PackageValidationState.Installed) {
+                    val appToConfirm = state.appInfo.copy(
+                        displayName = manualName.trim().ifBlank { state.appInfo.displayName }
+                    )
+                    onConfirm(appToConfirm)
+                }
+            },
+            enabled = isConfirmedEnabled,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp),
+                .height(40.dp),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF4F46E5),
@@ -1199,7 +1470,7 @@ private fun ManualAppView(
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 ),
-                color = if (manualPackage.isNotBlank()) Color.White else Color.White.copy(alpha = 0.4f)
+                color = if (isConfirmedEnabled) Color.White else Color.White.copy(alpha = 0.4f)
             )
         }
     }

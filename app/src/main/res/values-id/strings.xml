@@ -120,6 +120,11 @@
     <string name="add_game_button">Tambah Game</string>
     <string name="add_game_error_empty">Nama paket tidak boleh kosong.</string>
     <string name="add_game_error_exists">Game ini sudah ada di daftar.</string>
+    <string name="manual_app_status_checking">Memverifikasi paket…</string>
+    <string name="manual_app_status_detected">Aplikasi terdeteksi di perangkat</string>
+    <string name="manual_app_status_not_found">Aplikasi belum terpasang di perangkat ini.</string>
+    <string name="manual_app_status_already_added">Aplikasi sudah terdaftar di MountX.</string>
+    <string name="manual_app_desc">Aplikasi akan ditambahkan ke MountX dan Anda dapat mengatur kategori penyimpanan secara mandiri di Detail Aplikasi.</string>
 
     <!-- Full-Screen App Picker -->
     <string name="add_app_title">Pilih Aplikasi</string>
