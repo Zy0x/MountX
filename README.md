@@ -83,8 +83,13 @@ Modern Android titles (*Wuthering Waves*, *Genshin Impact*, *Honkai: Star Rail*)
 MountX operates directly at the **Linux kernel VFS layer** using global namespace bind-mounts:
 
 ```
-Game Process  ──[ Native Path ]──►  Kernel VFS Bind-Mount  ──┬──►  Internal Storage  (SQLite DBs & Credentials)
-                                                            └──►  External Storage  (50 GB+ Textures & OBB)
+    Game Process (/sdcard/Android/data)
+                   │
+                   ▼ (Linux VFS Bind-Mount)
+        ┌──────────┴──────────┐
+        ▼                     ▼
+ Internal Storage      External Media
+(SQLite DBs & Keys)   (50 GB+ Assets & OBB)
 ```
 
 | Feature | Legacy App2SD | Adoptable Storage | MountX |
