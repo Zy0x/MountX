@@ -111,16 +111,16 @@ wait_for_boot() {
     retries=0
     # Wait until /data/media/0 exists AND /storage/emulated/0/Android/data is created by FUSE
     until [ -d "/storage/emulated/0/Android/data" ] && [ -d "/data/media/0" ]; do
-        sleep 2
+        sleep 1
         retries=$((retries + 1))
-        if [ "${retries}" -ge 45 ]; then
-            log_warn "Timed out waiting for /storage/emulated/0/Android/data (90s); continuing."
+        if [ "${retries}" -ge 40 ]; then
+            log_warn "Timed out waiting for /storage/emulated/0/Android/data (40s); continuing."
             break
         fi
     done
 
     # Give Vold, FUSE daemon, and system services extra time to settle
-    sleep 4
+    sleep 2
     log_info "Primary storage, FUSE, and Android/data readiness confirmed."
 }
 

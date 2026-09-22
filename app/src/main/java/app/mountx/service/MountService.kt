@@ -82,33 +82,53 @@ class MountService : Service() {
         when (intent?.action) {
             ACTION_MOUNT_ALL -> {
                 serviceScope.launch {
-                    val sdBase = appPreferences.sdBasePath.first()
-                    val blockDevice = appPreferences.sdBlockDevice.first()
+                    try {
+                        val sdBase = appPreferences.sdBasePath.first()
+                        val blockDevice = appPreferences.sdBlockDevice.first()
 
-                    updateNotification(getString(R.string.notif_mounting_games))
-                    storageRepository.mountSdPartition(blockDevice, sdBase)
+                        updateNotification(getString(R.string.notif_mounting_games))
+                        storageRepository.mountSdPartition(blockDevice, sdBase)
 
-                    // Module-first parity: Refresh mount statuses first so any games already mounted
-                    // by root module service.sh are recognized and not stacked
-                    gameRepository.refreshMountStatuses()
-                    val mountedCount = gameRepository.mountAll(sdBase)
+                        // Module-first parity: Refresh mount statuses first so any games already mounted
+                        // by root module service.sh are recognized and not stacked
+                        gameRepository.refreshMountStatuses()
+                        val mountedCount = gameRepository.mountAll(sdBase)
 
-                    updateNotification(
-                        getString(R.string.notif_games_mounted_active, mountedCount),
-                        isFinished = false
-                    )
-                    stopForeground(STOP_FOREGROUND_DETACH)
-                    stopSelf()
+                        val activeCount = maxOf(mountedCount, gameRepository.getMountedGamesCount())
+                        updateNotification(
+                            getString(R.string.notif_games_mounted_active, activeCount),
+                            isFinished = false
+                        )
+                    } catch (e: Exception) {
+                        try {
+                            gameRepository.refreshMountStatuses()
+                            val count = gameRepository.getMountedGamesCount()
+                            updateNotification(
+                                getString(R.string.notif_games_mounted_active, count),
+                                isFinished = count == 0
+                            )
+                        } catch (ignored: Exception) {
+                            updateNotification(getString(R.string.notif_games_mounted_active, 0), isFinished = true)
+                        }
+                    } finally {
+                        stopForeground(STOP_FOREGROUND_DETACH)
+                        stopSelf(startId)
+                    }
                 }
             }
             ACTION_UNMOUNT_ALL -> {
                 serviceScope.launch {
-                    val sdBase = appPreferences.sdBasePath.first()
-                    updateNotification(getString(R.string.notif_unmounting_games))
-                    gameRepository.unmountAll(sdBase)
-                    updateNotification(getString(R.string.notif_games_unmounted), isFinished = true)
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                    try {
+                        val sdBase = appPreferences.sdBasePath.first()
+                        updateNotification(getString(R.string.notif_unmounting_games))
+                        gameRepository.unmountAll(sdBase)
+                        updateNotification(getString(R.string.notif_games_unmounted), isFinished = true)
+                    } catch (e: Exception) {
+                        // ignore and ensure notification dismissed
+                    } finally {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf(startId)
+                    }
                 }
             }
             ACTION_BOOST_GAME -> {

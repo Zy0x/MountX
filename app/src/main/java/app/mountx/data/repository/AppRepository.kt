@@ -179,6 +179,10 @@ class AppRepository @Inject constructor(
 
     fun observeTotalCount(): Flow<Int> = gameDao.getTotalCount()
 
+    suspend fun getMountedGamesCount(): Int = withContext(Dispatchers.IO) {
+        gameDao.getMountedCount().firstOrNull() ?: 0
+    }
+
     suspend fun getGame(packageName: String): GameEntry? = withContext(Dispatchers.IO) {
         val game = gameDao.getGameByPackage(packageName) ?: return@withContext null
         if (game.mountPoints.isEmpty()) {

@@ -18,13 +18,16 @@ class BootReceiver : BroadcastReceiver() {
     lateinit var appPreferences: AppPreferences
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
-            intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED
-        ) {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
-                val autoMount = appPreferences.autoMountOnBoot.first()
-                if (autoMount) {
-                    MountService.startMountAll(context)
+                try {
+                    val autoMount = appPreferences.autoMountOnBoot.first()
+                    if (autoMount) {
+                        MountService.startMountAll(context)
+                    }
+                } finally {
+                    pendingResult.finish()
                 }
             }
         }
