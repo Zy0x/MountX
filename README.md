@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Icon/mountx_icon.png" alt="MountX Logo" width="96"/>
+<img src="Icon/MountX_icon_Transparent.png" alt="MountX Logo" width="96"/>
 
 # MountX
 
@@ -13,11 +13,10 @@
 
 </div>
 
----
 
 ## What is MountX?
 
-MountX is a native Android app + Magisk module that moves large game data (Wuthering Waves, Genshin Impact, Honkai: Star Rail, PUBG Mobile, and more) from internal storage to a dedicated MicroSD partition using kernel-level bind-mounts. Unlike FUSE-based solutions, MountX operates at the filesystem layer — no cross-device copy errors, no performance penalties. Supports Android 10–15 with Magisk, KernelSU, or APatch.
+MountX is a native Android app + Magisk module that moves large game data (Wuthering Waves, Genshin Impact, Honkai: Star Rail, PUBG Mobile, and more) from internal storage to a dedicated MicroSD or Eksternal Disk (SSD Eksternal, USB OTG, etc) partition using kernel-level bind-mounts. Unlike FUSE-based solutions, MountX operates at the filesystem layer — no cross-device copy errors, no performance penalties. Supports Android 10–16 with Magisk, KernelSU, or APatch.
 
 ---
 
@@ -83,8 +82,8 @@ MountX is a native Android app + Magisk module that moves large game data (Wuthe
 ## Requirements
 
 1. **Rooted Android device** — Magisk, KernelSU, or APatch.
-2. **Android 10–15** (API 29–35).
-3. **MicroSD card** with a dedicated second partition (the app auto-detects block devices; configurable in Settings).
+2. **Android 10–16** (API 29–36).
+3. **MicroSD card or Eksternal Disk** with a dedicated second partition (the app auto-detects block devices; configurable in Settings).
 4. **Partition filesystem** must be **F2FS** or **Ext4** (exFAT/FAT32 are not supported for bind-mounts).
 
 ---
