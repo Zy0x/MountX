@@ -374,12 +374,27 @@ class AppRepository @Inject constructor(
                 AppLogger.info("Games", "Mounting all ${games.size} registered games")
                 for (g in games) {
                     if (g.isEnabled) {
-                        if (g.mountStatus == MountStatus.MOUNTED) {
-                            count++
-                            continue
-                        }
                         if (g.mountStatus == MountStatus.NEED_MIGRATION) {
                             AppLogger.info("Games", "Skipping ${g.displayName} in mountAll: data requires migration to MicroSD")
+                            continue
+                        }
+
+                        val targetData = when (g.mode) {
+                            MountMode.FILES -> "/storage/emulated/0/Android/data/${g.packageName}/files"
+                            MountMode.PKG -> "/storage/emulated/0/Android/data/${g.packageName}"
+                        }
+                        val relData = MountManager.extractRelativePath(targetData)
+                        val isFullyMounted = (RootShell.isMountpoint(targetData) || RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$relData")) &&
+                                (g.mountPoints.isEmpty() || g.mountPoints.filter { it.enabled }.all { mp ->
+                                    val rel = MountManager.extractRelativePath(mp.targetPath)
+                                    RootShell.isMountpoint(mp.targetPath) ||
+                                    RootShell.isMountpoint("/storage/emulated/0/$rel") ||
+                                    RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel")
+                                })
+
+                        if (isFullyMounted) {
+                            gameDao.updateMountStatus(g.packageName, MountStatus.MOUNTED)
+                            count++
                             continue
                         }
                         val res = mountManager.mountGame(g, sdBase)
@@ -513,15 +528,24 @@ class AppRepository @Inject constructor(
 
         for (g in games) {
             val targetData = when (g.mode) {
-                MountMode.FILES -> "Android/data/${g.packageName}/files"
-                MountMode.PKG -> "Android/data/${g.packageName}"
+                MountMode.FILES -> "/storage/emulated/0/Android/data/${g.packageName}/files"
+                MountMode.PKG -> "/storage/emulated/0/Android/data/${g.packageName}"
             }
-            val targetObb = "Android/obb/${g.packageName}"
-            val isMounted = mountedPaths.any { mnt ->
-                mnt.contains(targetData) ||
-                mnt.contains(targetObb) ||
-                g.mountPoints.any { mp -> mp.targetPath.isNotBlank() && (mnt == mp.targetPath || mnt.contains(mp.targetPath)) }
+            val targetObb = "/storage/emulated/0/Android/obb/${g.packageName}"
+            val relData = MountManager.extractRelativePath(targetData)
+            val relObb = "Android/obb/${g.packageName}"
+
+            // A game is mounted ONLY if the user-facing path or runtime default path is actually a mountpoint
+            val isDataMounted = RootShell.isMountpoint(targetData) || RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$relData")
+            val isObbMounted = RootShell.isMountpoint(targetObb) || RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$relObb")
+            val areCustomMounted = g.mountPoints.isNotEmpty() && g.mountPoints.any { mp ->
+                mp.enabled && (
+                    RootShell.isMountpoint(mp.targetPath) ||
+                    RootShell.isMountpoint("/storage/emulated/0/${MountManager.extractRelativePath(mp.targetPath)}") ||
+                    RootShell.isMountpoint("/mnt/runtime/default/emulated/0/${MountManager.extractRelativePath(mp.targetPath)}")
+                )
             }
+            val isMounted = isDataMounted || isObbMounted || areCustomMounted
 
             val newStatus = when {
                 isMounted -> MountStatus.MOUNTED

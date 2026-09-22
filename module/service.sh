@@ -97,30 +97,18 @@ load_config() {
 # ── Wait until Android and Primary Storage have finished booting ──────────────
 wait_for_boot() {
     log_info "Waiting for sys.boot_completed…"
-    local retries=0
-    until [ "$(getprop sys.boot_completed | tr -d '\r')" = "1" ]; do
+    while [ "$(getprop sys.boot_completed | tr -d '\r')" != "1" ]; do
         sleep 2
-        retries=$((retries + 1))
-        if [ "${retries}" -ge 60 ]; then
-            log_error "Timed out waiting for sys.boot_completed after 120s; continuing with caution."
-            break
-        fi
     done
 
     log_info "Boot completed detected. Waiting for primary emulated storage and FUSE (/storage/emulated/0/Android/data)…"
-    retries=0
-    # Wait until /data/media/0 exists AND /storage/emulated/0/Android/data is created by FUSE
-    until [ -d "/storage/emulated/0/Android/data" ] && [ -d "/data/media/0" ]; do
-        sleep 1
-        retries=$((retries + 1))
-        if [ "${retries}" -ge 40 ]; then
-            log_warn "Timed out waiting for /storage/emulated/0/Android/data (40s); continuing."
-            break
-        fi
+    # Wait until user unlocks the device and FUSE creates /storage/emulated/0/Android/data
+    while [ ! -d "/storage/emulated/0/Android/data" ] || [ ! -d "/data/media/0" ]; do
+        sleep 2
     done
 
-    # Give Vold, FUSE daemon, and system services extra time to settle
-    sleep 2
+    # Give Vold, FUSE daemon, and runtime namespaces extra time to settle
+    sleep 4
     log_info "Primary storage, FUSE, and Android/data readiness confirmed."
 }
 
@@ -143,11 +131,13 @@ mount_sd() {
             fi
 
             if mount -t "${FS_TYPE}" -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}"; then
+                mount --make-rprivate "${SD_BASE}" 2>/dev/null
                 log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${FS_TYPE} with ${mnt_opts})"
                 return 0
             else
                 log_warn "Optimized mount failed, attempting generic fallback mount…"
                 if mount -t "${FS_TYPE}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}"; then
+                    mount --make-rprivate "${SD_BASE}" 2>/dev/null
                     log_info "SD mounted with fallback options: ${SD_BLOCK} → ${SD_BASE}"
                     return 0
                 fi
@@ -160,6 +150,7 @@ mount_sd() {
     done
 
     if mountpoint -q "${SD_BASE}"; then
+        mount --make-rprivate "${SD_BASE}" 2>/dev/null
         log_info "Target SD_BASE ${SD_BASE} mounted by system/vold."
         return 0
     fi
@@ -216,10 +207,22 @@ cleanup_stale_mounts() {
     log_info "Cleaning up any stale bind-mounts pointing to ${SD_BASE}…"
     su -mm -c '
     SD_BASE="'"${SD_BASE}"'"
-    for m in $(grep "${SD_BASE}" /proc/mounts 2>/dev/null | awk "{print \$2}"); do
-        if [ "${m}" != "${SD_BASE}" ]; then
-            umount -f -l "${m}" 2>/dev/null
-        fi
+    SD_BLOCK="'"${SD_BLOCK}"'"
+    for i in 1 2 3; do
+        has_stale=0
+        while read -r dev mnt rest; do
+            case "${mnt}" in
+                *Android/data/*|*Android/obb/*|*Android/media/*)
+                    if [ "${mnt}" != "${SD_BASE}" ]; then
+                        if [ -n "${SD_BLOCK}" ] && [ "${dev}" = "${SD_BLOCK}" ]; then
+                            umount -f -l "${mnt}" 2>/dev/null
+                            has_stale=1
+                        fi
+                    fi
+                    ;;
+            esac
+        done < /proc/mounts
+        [ ${has_stale} -eq 0 ] && break
     done
     '
 }

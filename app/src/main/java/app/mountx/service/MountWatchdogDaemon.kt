@@ -123,10 +123,10 @@ class MountWatchdogDaemon @Inject constructor(
             if (game.isEnabled && game.mountStatus == MountStatus.MOUNTED) {
                 val hasCanary = mountManager.verifyCanary(game.packageName, game)
                 if (!hasCanary) {
-                    val isAlreadyMounted = RootShell.isMountpoint("/storage/emulated/0/Android/data/${game.packageName}") ||
-                            RootShell.isMountpoint("/data/media/0/Android/data/${game.packageName}") ||
-                            RootShell.isMountpoint("/storage/emulated/0/Android/obb/${game.packageName}") ||
-                            RootShell.isMountpoint("/data/media/0/Android/obb/${game.packageName}")
+                    val isAlreadyMounted = (RootShell.isMountpoint("/storage/emulated/0/Android/data/${game.packageName}") ||
+                            RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${game.packageName}")) &&
+                            (RootShell.isMountpoint("/storage/emulated/0/Android/obb/${game.packageName}") ||
+                            RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/obb/${game.packageName}"))
                     if (!isAlreadyMounted) {
                         AppLogger.warn("Watchdog", "Canary lost for ${game.displayName} (${game.packageName}), re-mounting...")
                         val result = mountManager.mountGame(game, sdBase)
