@@ -27,20 +27,20 @@ Running out of space from 50 GB+ games like *Wuthering Waves*, *Genshin Impact*,
 <table align="center">
   <tr>
     <td align="center" width="25%">
-      <a href="docs/screenshots/real/01_dashboard_dark.png"><img src="docs/screenshots/real/01_dashboard_dark.png" alt="Master Control Dark" width="100%"/></a><br/>
-      <sub><b>Master Control</b><br/>One-tap mount & storage stats</sub>
+      <a href="docs/screenshots/real/01_dashboard_dark.png"><img src="docs/screenshots/real/01_dashboard_dark.png" alt="Master Control" width="100%"/></a><br/>
+      <sub><b>Master Control</b></sub>
     </td>
     <td align="center" width="25%">
-      <a href="docs/screenshots/real/03_app_storage_breakdown.png"><img src="docs/screenshots/real/03_app_storage_breakdown.png" alt="Storage Breakdown" width="100%"/></a><br/>
-      <sub><b>Granular Breakdown</b><br/>Ring chart & category selector</sub>
+      <a href="docs/screenshots/real/03_app_storage_breakdown.png"><img src="docs/screenshots/real/03_app_storage_breakdown.png" alt="Granular Storage Breakdown" width="100%"/></a><br/>
+      <sub><b>Storage Breakdown</b></sub>
     </td>
     <td align="center" width="25%">
-      <a href="docs/screenshots/real/04_apps_light.png"><img src="docs/screenshots/real/04_apps_light.png" alt="Apps Manager Light" width="100%"/></a><br/>
-      <sub><b>Apps Manager</b><br/>Per-game switches (Light mode)</sub>
+      <a href="docs/screenshots/real/04_apps_light.png"><img src="docs/screenshots/real/04_apps_light.png" alt="Apps Manager" width="100%"/></a><br/>
+      <sub><b>Apps Manager</b></sub>
     </td>
     <td align="center" width="25%">
       <a href="docs/screenshots/real/05_disk_management.png"><img src="docs/screenshots/real/05_disk_management.png" alt="Disk Management" width="100%"/></a><br/>
-      <sub><b>Disk Management</b><br/>Visual partition map & health</sub>
+      <sub><b>Partition Manager</b></sub>
     </td>
   </tr>
 </table>
