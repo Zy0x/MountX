@@ -41,38 +41,71 @@ object ModuleManager {
     }
 
     /**
+     * Recursively copies assets from an assets subfolder into a local target directory.
+     */
+    private fun copyAssetFolderRecursively(context: Context, assetPath: String, targetDir: File) {
+        val items = context.assets.list(assetPath) ?: emptyArray()
+        if (items.isEmpty()) {
+            // It's a file
+            context.assets.open(assetPath).use { input ->
+                FileOutputStream(targetDir).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } else {
+            // It's a directory
+            targetDir.mkdirs()
+            for (item in items) {
+                val subAsset = if (assetPath.isEmpty()) item else "$assetPath/$item"
+                val subTarget = File(targetDir, item)
+                copyAssetFolderRecursively(context, subAsset, subTarget)
+            }
+        }
+    }
+
+    /**
+     * Recursively writes files from an assets subfolder into a ZipOutputStream.
+     */
+    private fun zipAssetFolderRecursively(context: Context, assetPath: String, zos: ZipOutputStream, zipPrefix: String = "") {
+        val items = context.assets.list(assetPath) ?: emptyArray()
+        if (items.isEmpty()) {
+            // File
+            val entryName = if (zipPrefix.isEmpty()) assetPath.substringAfterLast("/") else zipPrefix
+            zos.putNextEntry(ZipEntry(entryName))
+            context.assets.open(assetPath).use { it.copyTo(zos) }
+            zos.closeEntry()
+        } else {
+            // Directory
+            for (item in items) {
+                val subAsset = if (assetPath.isEmpty()) item else "$assetPath/$item"
+                val subPrefix = if (zipPrefix.isEmpty()) item else "$zipPrefix/$item"
+                zipAssetFolderRecursively(context, subAsset, zos, subPrefix)
+            }
+        }
+    }
+
+    /**
      * Directly installs the module files into /data/adb/modules/MountX via Root.
      * This provides instant zero-reboot activation for active tools and persists on boot.
      */
     suspend fun installModuleDirectly(context: Context): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val cacheDir = File(context.cacheDir, "module_staging")
+            cacheDir.deleteRecursively()
             cacheDir.mkdirs()
 
-            // Copy assets to cache
-            val assetFiles = context.assets.list("module") ?: emptyArray()
-            if (assetFiles.isEmpty()) {
-                throw IllegalStateException("Module assets not found in package")
-            }
-
-            for (fileName in assetFiles) {
-                val outFile = File(cacheDir, fileName)
-                context.assets.open("module/$fileName").use { input ->
-                    FileOutputStream(outFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
+            // Copy entire module assets folder recursively
+            copyAssetFolderRecursively(context, "module", cacheDir)
 
             // Staging dir to root destination
             val stagingPath = cacheDir.absolutePath
             val installCmd = """
                 mkdir -p $MODULE_DIR
-                cp -f $stagingPath/* $MODULE_DIR/
+                cp -rf $stagingPath/* $MODULE_DIR/
                 rm -f $MODULE_DIR/disable $MODULE_DIR/remove
                 chmod -R 755 $MODULE_DIR
-                chmod 644 $MODULE_DIR/module.prop $MODULE_DIR/config.conf 2>/dev/null
-                chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh 2>/dev/null
+                chmod 644 $MODULE_DIR/module.prop $MODULE_DIR/config.conf $MODULE_DIR/banner.png 2>/dev/null || true
+                chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh $MODULE_DIR/customize.sh 2>/dev/null || true
                 chcon -R u:object_r:magisk_file:s0 $MODULE_DIR 2>/dev/null || true
             """.trimIndent()
 
@@ -141,7 +174,9 @@ object ModuleManager {
     }
 
     /**
-     * Builds a flashable Magisk/KernelSU ZIP file and saves it to external Downloads.
+     * Builds a flashable Magisk/KernelSU ZIP file containing the module files,
+     * META-INF, customize.sh, banner.png, and the running companion MountX.apk.
+     * Saves the ZIP file to the external Downloads directory.
      */
     suspend fun exportModuleZip(context: Context): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
@@ -149,55 +184,24 @@ object ModuleManager {
             if (!downloadDir.exists()) downloadDir.mkdirs()
 
             val targetZip = File(downloadDir, "MountX-Module-v${app.mountx.BuildConfig.VERSION_NAME}.zip")
-            val assetFiles = context.assets.list("module") ?: emptyArray()
-            if (assetFiles.isEmpty()) {
-                throw IllegalStateException("Module assets not found in package")
-            }
 
             FileOutputStream(targetZip).use { fos ->
                 ZipOutputStream(fos).use { zos ->
-                    // 1. Add all asset files
-                    for (fileName in assetFiles) {
-                        zos.putNextEntry(ZipEntry(fileName))
-                        context.assets.open("module/$fileName").use { it.copyTo(zos) }
-                        zos.closeEntry()
+                    // 1. Recursively add all module assets (service.sh, module.prop, customize.sh, banner.png, META-INF/...)
+                    zipAssetFolderRecursively(context, "module", zos, "")
+
+                    // 2. Add companion MountX.apk from running package so the ZIP is fully self-contained
+                    try {
+                        val appSourceApk = File(context.applicationInfo.sourceDir)
+                        if (appSourceApk.exists() && appSourceApk.canRead()) {
+                            zos.putNextEntry(ZipEntry("MountX.apk"))
+                            appSourceApk.inputStream().use { it.copyTo(zos) }
+                            zos.closeEntry()
+                            AppLogger.info(TAG, "Bundled companion MountX.apk into module ZIP (${appSourceApk.length() / 1024 / 1024} MB)")
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.warn(TAG, "Could not bundle running APK into module ZIP: ${e.message}")
                     }
-
-                    // 2. Add META-INF/com/google/android/update-binary
-                    val updateBinaryContent = """
-                        #!/sbin/sh
-                        #################
-                        # MountX Magisk Module Installer Script
-                        #################
-                        OUTFD=${'$'}2
-                        ZIPFILE=${'$'}3
-                        
-                        ui_print() { echo -e "ui_print ${'$'}1\nui_print" >> /proc/self/fd/${'$'}OUTFD; }
-                        
-                        ui_print "*******************************"
-                        ui_print "       MountX Game Engine      "
-                        ui_print "*******************************"
-                        
-                        MODPATH=/data/adb/modules/MountX
-                        mkdir -p ${'$'}MODPATH
-                        unzip -o "${'$'}ZIPFILE" -d ${'$'}MODPATH "module.prop" "service.sh" "uninstall.sh" "config.conf" "gamelist.conf" >/dev/null 2>&1
-                        chmod -R 755 ${'$'}MODPATH
-                        chmod 644 ${'$'}MODPATH/module.prop ${'$'}MODPATH/config.conf 2>/dev/null
-                        chmod 755 ${'$'}MODPATH/service.sh ${'$'}MODPATH/uninstall.sh 2>/dev/null
-                        rm -f ${'$'}MODPATH/disable ${'$'}MODPATH/remove
-                        
-                        ui_print "- Modul MountX berhasil dipasang!"
-                        exit 0
-                    """.trimIndent()
-
-                    zos.putNextEntry(ZipEntry("META-INF/com/google/android/update-binary"))
-                    zos.write(updateBinaryContent.toByteArray(Charsets.UTF_8))
-                    zos.closeEntry()
-
-                    // 3. Add META-INF/com/google/android/updater-script
-                    zos.putNextEntry(ZipEntry("META-INF/com/google/android/updater-script"))
-                    zos.write("#MAGISK\n".toByteArray(Charsets.UTF_8))
-                    zos.closeEntry()
                 }
             }
 

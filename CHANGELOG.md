@@ -40,36 +40,36 @@ and this project adheres to Semantic Versioning.
 ## [2.2.19] - 2026-09-20
 
 ### Added & Improved
-- **Seleksi Multi-Disk & Partisi Spesifik (Disk & Partition Selection)**:
-  - Mengembangkan **Langkah 2 (Pilih Disk & Partisi Penyimpanan)** menjadi selektor hierarkis bertingkat:
-    - **Tingkat Disk**: Menampilkan seluruh media fisik yang terhubung (SSD Eksternal Type-C, Flashdisk USB OTG, atau MicroSD).
-    - **Tingkat Partisi**: Di dalam disk yang dipilih, pengguna kini dapat memilih **partisi spesifik** tempat data game akan disimpan (misalnya Partisi 1 exFAT untuk data umum vs Partisi 2 ext4 khusus direktori game).
-    - Menampilkan informasi detail per partisi: Nomor partisi/label, format filesystem (`ext4`, `f2fs`, `exFAT`, `FAT32`), kapasitas total, dan sisa ruang bebas.
-    - Menampilkan badge rekomendasi hijau (`✓ Disarankan untuk Game`) untuk partisi Linux native (`ext4`/`f2fs`), serta peringatan edukatif jika memilih format `exFAT`/`FAT32`.
-    - Tombol aksi cepat `[⚡ Pasang Partisi (Mount)]` jika partisi target belum terpasang di sistem Android.
-- **Opsi Target Penyimpanan Standar MountX (`/data/sdext2`)**:
-  - Menyediakan kartu target cadangan untuk Penyimpanan Standar MountX (direktori sistem lokal / virtual container) yang dapat dipilih secara langsung.
-  - Memastikan pengguna pada perangkat tanpa slot MicroSD fisik (seperti POCO F5 saat SSD Type-C belum dicolokkan) tetap memiliki opsi target yang jelas dan tidak menemui jalan buntu.
-- **Tombol Pindai Ulang Storage (OTG/SSD) Real-Time**:
-  - Menambahkan tombol pemindaian ulang storage di header Langkah 2 dan panduan koneksi media eksternal, dilengkapi animasi loading circular saat pemindaian sysfs dan block device berlangsung.
-- **Sinkronisasi Langkah 3 & Proteksi Eksekusi**:
-  - Ringkasan di Langkah 3 bottom bar menampilkan kombinasi disk dan partisi yang dipilih secara real-time: `Pindahkan [Ukuran] ke [Nama Disk] • [Nama Partisi] (Sisa: [Ruang Bebas])`.
-  - Tombol pemindahan dinonaktifkan dengan peringatan jika partisi belum di-mount, mencegah kegagalan pemindahan ke direktori yang belum terpasang.
+- **Multi-Disk & Partition Selection**:
+  - Upgraded **Step 2 (Select Storage Disk & Partition)** into a hierarchical selector:
+    - **Disk Level**: Lists all connected physical storage media (Type-C External SSD, USB OTG Flash Drive, or MicroSD).
+    - **Partition Level**: Inside the selected disk, users can select a **specific partition** where game data will reside (e.g., Partition 1 exFAT for general files vs. Partition 2 ext4 for game directories).
+    - Displays detailed telemetry per partition: Partition number/label, filesystem format (`ext4`, `f2fs`, `exFAT`, `FAT32`), total capacity, and free space.
+    - Contextual recommendation badge (`✓ Recommended for Games`) for native Linux partitions (`ext4`/`f2fs`), alongside educational advisories for `exFAT`/`FAT32`.
+    - One-tap quick action button `[⚡ Mount Partition]` if the target partition is not yet mounted in the Android system.
+- **MountX Standard Storage Target Option (`/data/sdext2`)**:
+  - Provides a built-in fallback target card for MountX Standard Storage (local system directory / virtual container) selectable directly.
+  - Ensures devices without a physical MicroSD card slot (such as POCO F5 when a Type-C SSD is disconnected) retain a clear target option without hitting a dead end.
+- **Real-Time Storage Rescan (OTG/SSD)**:
+  - Added a dedicated storage rescan button in the Step 2 header and external media guidance card, complete with a circular loading indicator during sysfs and block device scans.
+- **Step 3 Review & Execution Synchronization**:
+  - Sticky bottom summary dynamically displays the chosen disk and partition combination in real time: `Move [Size] to [Disk Name] • [Partition Name] (Free: [Free Space])`.
+  - Action buttons are safely disabled with clear warnings if the partition is unmounted, preventing transfer attempts to unattached directories.
 
 ## [2.2.18] - 2026-09-20
 
 ### Added & Improved
-- **Alur Berjenjang 3 Langkah (3-Step Guided Migration Hub)**:
-  - Menata ulang seluruh alur tab **Kelola (Manage)** di App Detail menjadi 3 langkah berurutan yang intuitif dan terarah:
-    1. **Langkah 1: Pilih Data yang Ingin Dialihkan**: Checklist direktori bersih (Data, OBB, Media, dsb) dengan Accordion subfolder untuk melihat path internal & eksternal, Pill Status Lokasi yang jelas (`Di Memori Internal` vs `Di MicroSD`), dan tombol `+ Tambah Direktori Kustom`.
-    2. **Langkah 2: Pilih Disk Penyimpanan Tujuan**: Radio card interaktif untuk setiap media penyimpanan eksternal yang terdeteksi (MicroSD, SSD Eksternal Type-C, USB OTG), auto-select jika hanya ada 1 disk aktif, visual capacity progress bar, dan tombol inline quick-mount.
-    3. **Langkah 3: Tinjau & Eksekusi**: Pinned sticky bottom bar dengan ringkasan kapasitas mini (`Dipilih: XX • Sisa di [Disk]: YY`), tombol kontekstual `Pindahkan ke [Disk]` dan `Pulihkan ke Internal`, serta Capacity Guard yang otomatis mencegah pemindahan jika ruang disk tujuan atau memori internal tidak cukup.
+- **3-Step Guided Migration Hub**:
+  - Streamlined the entire App Detail **Manage** tab into 3 intuitive sequential steps:
+    1. **Step 1: Select Data to Offload**: Clean directory checklist (Data, OBB, Media, etc.) with expandable subfolder accordions to inspect internal & external paths, clear Location Status Pills (`In Internal Storage` vs `On MicroSD`), and a `+ Add Custom Directory` button.
+    2. **Step 2: Select Storage Disk & Partition**: Interactive radio cards for each detected external storage drive (MicroSD, External Type-C SSD, USB OTG), auto-selecting when only 1 disk is active, with visual capacity progress bars and inline quick-mount triggers.
+    3. **Step 3: Review & Execute**: Pinned sticky bottom bar with concise capacity summary (`Selected: XX • Free on [Disk]: YY`), contextual `Move to [Disk]` and `Restore to Internal` buttons, and Capacity Guard preventing transfers if storage is insufficient.
 - **Multi-Disk Selection & UUID Binding**:
-  - Menyematkan `diskUuid` pada data model dan katalog portable `.mountx/catalog.json` agar pengikatan direktori selalu menunjuk ke media penyimpanan fisik yang dipilih saat banyak storage terhubung.
-- **Penyederhanaan Visual & Lokalisasi Bersih**:
-  - Menghapus badge panah ganda `MicroSD ↔ Internal Phone` yang membingungkan.
-  - Menggantikan dengan Pill Status Lokasi yang elegan dan ringkas.
-  - Memastikan 100% Bahasa Indonesia murni yang komunikatif tanpa istilah campur aduk.
+  - Bound `diskUuid` into data models and portable catalog `.mountx/catalog.json` so directory mappings reliably follow the chosen physical media across multi-disk setups.
+- **Visual Clarification & Clean Localization**:
+  - Removed confusing double-arrow badges `MicroSD ↔ Internal Phone`.
+  - Replaced them with clean, elegant Location Status Pills.
+  - Enforced 100% professional English without hybrid terminology.
 
 ## [2.2.17] - 2026-09-20
 
@@ -115,9 +115,9 @@ and this project adheres to Semantic Versioning.
   - Replaced legacy `PKG`/`FILES` binary switch and redundant `Transfer Scope` selector chips with active multi-target directory mount points (`MountPointConfig`) as the single source of truth across all views.
   - Unified Add App flow with App Detail by reusing `GameDetailView` (Storage and Manage tabs) in an isolated **Draft / Preview Mode**.
   - **Zero-Trace on Dismiss**: Discarding or navigating back from draft preview guarantees zero database mutations, zero directory creations, and zero file footprints.
-  - **Explicit Commit**: Room DB registration and `.mountx/catalog.json` generation occur strictly upon user confirmation via `[Terapkan & Tambahkan]`.
+  - **Explicit Commit**: Room DB registration and `.mountx/catalog.json` generation occur strictly upon user confirmation via `[Apply & Add]`.
   - **Dynamic Multi-Directory Migration Engine**:
-    - Data transfers (Internal to SD / Pulihkan ke Internal) dynamically operate on each mount point's target directory, accurately restoring Media/Custom directories (`/data/media/0/<Folder>`) as well as Android application packages (`/data/media/0/Android/data|obb/<pkg>`).
+    - Data transfers (Internal to SD / Restore to Internal) dynamically operate on each mount point's target directory, accurately restoring Media/Custom directories (`/data/media/0/<Folder>`) as well as Android application packages (`/data/media/0/Android/data|obb/<pkg>`).
     - Added virtual ext4 loop container image cleanup when restoring or deleting custom loop configurations.
   - **Backward-Compatible Multi-Target Migration**:
     - Automatic on-the-fly synthesis of legacy game entries into granular `MountPointCategory.GAME_ASSETS` with stable unique identifiers (`legacy_<pkg>_files`, `legacy_<pkg>_pkg`, `legacy_<pkg>_obb`).
@@ -136,7 +136,7 @@ and this project adheres to Semantic Versioning.
     1. *Game Assets & Data* (Default: Checked [✔] - 99% stability, maps `files` and `obb`).
     2. *Media & Downloads* (Default: Checked [✔] if detected, maps `/sdcard/<App>/` or `/Android/media/<pkg>/`, with auto `.nomedia` placement in target).
     3. *Cache & Shaders* (Default: Unchecked [ ], with UI warning regarding shader compilation stutter on external storage).
-    4. *Custom Path Binding* (Manual Advanced targeting with `[+ Tambah Direktori Kustom]`).
+    4. *Custom Path Binding* (Manual Advanced targeting with `[+ Add Custom Directory]`).
   - Implemented **Virtual Ext4 Loop Container** option (`.img` sparse image in `$sdBase/.mountx/containers/` via loop device `losetup`) for large private data (`/data/data/<pkg>`) exceeding 1 GB, safeguarding against SQLite WAL database locks on exFAT/FAT32 partitions.
 - **Event-Driven Real-Time Auto-Sync Engine (`SystemSyncMonitor`)**:
   - Continuous reactive monitoring for hardware events (`ACTION_MEDIA_MOUNTED`, `ACTION_MEDIA_UNMOUNTED`, `ACTION_MEDIA_EJECT`, `ACTION_MEDIA_BAD_REMOVAL`) and package lifecycle events (`ACTION_PACKAGE_ADDED`, `ACTION_PACKAGE_REMOVED`, `ACTION_PACKAGE_REPLACED`).
@@ -160,18 +160,18 @@ and this project adheres to Semantic Versioning.
 - **Comprehensive Permissions Onboarding & Live Audit Sheet**:
   - Implemented centralized `PermissionManager` and modern `PermissionOnboardingSheet` covering Superuser Root access, All Files Access (`MANAGE_EXTERNAL_STORAGE`), System Notifications (`POST_NOTIFICATIONS`), and Unrestricted Battery Optimization exemption.
   - Automatically guides new users with live status badges and 1-tap direct intent launchers on launch if essential permissions are missing.
-  - Added dedicated "Perizinan & Hak Akses" entry in Settings for on-demand auditing and reconfiguration anytime.
+  - Added dedicated "Permissions & Access Rights" entry in Settings for on-demand auditing and reconfiguration anytime.
 - **Swipe-To-Refresh Across Core Tabs (Pull-To-Refresh Gesture)**:
   - Integrated Material3 `PullToRefreshBox` across Dashboard, Games, and Storage tabs for swift, natural pull-down reloading.
   - Streamlined Dashboard header by removing redundant top-right refresh icon button in favor of natural gesture interaction.
 - **Modernized Android System Notification Drawer & Quick Actions**:
   - Completely revamped foreground service notification (`MountService.kt`) with sleek, professional copywriting in Indonesian and English, free from AI-slop patterns.
-  - Embedded instant quick action buttons `[Buka MountX]` and `[Lepas Semua]` directly into the system drawer for rapid unmounting without entering the app.
+  - Embedded instant quick action buttons `[Open MountX]` and `[Unmount All]` directly into the system drawer for rapid unmounting without entering the app.
 - **Kernel Mounts Live Telemetry Expansion & Clipboard Export**:
-  - Introduced scrollable accordion view for live `/proc/mounts` bind entries with "Lihat Selengkapnya (N Titik Mount) ▼" / "Sembunyikan ▲" toggle.
-  - Added 1-tap "Salin Ringkasan Mount" button to copy active kernel bind configurations directly to clipboard.
+  - Introduced scrollable accordion view for live `/proc/mounts` bind entries with "View More (N Mount Points) ▼" / "Hide ▲" toggle.
+  - Added 1-tap "Copy Mount Summary" button to copy active kernel bind configurations directly to clipboard.
 - **Tactile Refresh Feedback & 360° Rotation Animations**:
-  - Added fluid 360-degree spin animations and live recalculating text feedback ("Menghitung…") across all reload buttons in the app (Namespace Verification sheet, About update check, Logs screen, and Disk Detail partition refresher).
+  - Added fluid 360-degree spin animations and live recalculating text feedback ("Calculating…") across all reload buttons in the app (Namespace Verification sheet, About update check, Logs screen, and Disk Detail partition refresher).
 
 ### Changed
 - **Total Elimination of App Picker Bottom Void Gap**:
@@ -185,7 +185,7 @@ and this project adheres to Semantic Versioning.
   - Embedded an interactive 4-game preview section directly within the Dashboard Master Control card.
   - Displays game icon, app label, real package data size, and live mount status badge.
   - Instant one-tap mount/unmount switches per game directly from the Dashboard.
-  - "Lihat Semua Game (N) →" shortcut facilitating seamless navigation straight to the full Games management library.
+  - "View All Apps (N) →" shortcut facilitating seamless navigation straight to the full Games management library.
 - **Kernel-Level Live Namespace & Telemetry Verification Sheet**:
   - Interactive tap on dashboard metrics (Active Namespaces / Offloaded Data) unveils an in-depth live diagnostics bottom sheet.
   - Inspects real `/proc/mounts` bind entries, Master Mount Namespace readiness (`Shell.FLAG_MOUNT_MASTER`), and live canary sentinel status.
@@ -237,7 +237,7 @@ and this project adheres to Semantic Versioning.
 ### Changed
 - **I/O Booster Preset Workflow Decoupling**:
   - Selecting an I/O Booster preset (Gaming Ultra, Balanced, Default System) now only dynamically populates the scheduler, buffer, and persistence controls in the sheet.
-  - Root command execution is deferred until the user intentionally clicks the "Apply Optimization" / "Terapkan Optimasi" button.
+  - Root command execution is deferred until the user intentionally clicks the "Apply Optimization" button.
 - **Settings Screen Visual & Layout Polish**:
   - Center-aligned typography and full-width touch zones across all Theme (Light, Dark, System) and Language (English, Indonesia) FilterChips.
   - Removed redundant "Storage Paths" section from Settings, consolidating storage path configuration exclusively within the Storages tab.

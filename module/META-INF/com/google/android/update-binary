@@ -1,0 +1,27 @@
+#!/sbin/sh
+#################
+# Initialization
+#################
+umask 022
+ui_print() { echo "$1"; }
+OUTFD=$2
+ZIPFILE=$3
+mount /data 2>/dev/null
+
+if [ -f /data/adb/magisk/util_functions.sh ]; then
+    . /data/adb/magisk/util_functions.sh
+elif [ -f /data/adb/ksu/util_functions.sh ]; then
+    . /data/adb/ksu/util_functions.sh
+elif [ -f /data/adb/ap/util_functions.sh ]; then
+    . /data/adb/ap/util_functions.sh
+else
+    for f in /data/adb/*/util_functions.sh; do
+        if [ -f "$f" ]; then
+            . "$f"
+            break
+        fi
+    done
+fi
+
+install_module
+exit 0

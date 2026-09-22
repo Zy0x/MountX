@@ -29,44 +29,45 @@ Ensure your target partition has sufficient free space for the applications or g
 ---
 
 ## Download
-
-1. Navigate to the [GitHub Releases page](https://github.com/Zy0x/MountX/releases/latest).
-2. Download both files:
-   - `MountX-Magisk-vX.X.X.zip` — the root module (for Magisk / KernelSU / APatch).
-   - `MountX-vX.X.X.apk` — the companion Android app.
-
+ 
+Navigate to the [GitHub Releases page](https://github.com/Zy0x/MountX/releases/latest). You can install MountX via two flexible approaches:
+- **Option A (Recommended)**: `MountX-Magisk-vX.X.X.zip` — Universal root module for Magisk, KernelSU, and APatch. Bundles `MountX.apk` inside and automatically installs the app during flash.
+- **Option B**: `MountX-vX.X.X.apk` — Standalone companion Android app. Install directly and activate the root module from within the app.
+ 
 ---
-
-## Step 1 — Flash the Root Module
-
-The module runs a boot-time service that applies bind-mounts and I/O tweaks before the game launchers start.
-
-### Magisk
+ 
+## Installation Methods
+ 
+### Method 1 — Universal Module Flash (Recommended)
+ 
+Flashing the module automatically runs `customize.sh`, sets optimal Linux permissions, installs the companion APK via `pm install -r`, and configures the boot-time bind-mount service.
+ 
+#### Magisk
 1. Open **Magisk** app → **Modules** tab.
 2. Tap **Install from storage**.
 3. Select `MountX-Magisk-vX.X.X.zip`.
-4. Wait for the flash to complete, then tap **Reboot**.
-
-### KernelSU
+4. Wait for the flash to complete (MountX app installs automatically), then tap **Reboot**.
+ 
+#### KernelSU
 1. Open **KernelSU Manager** → **Modules** tab.
 2. Tap the **+** button.
 3. Select `MountX-Magisk-vX.X.X.zip`.
 4. Tap **Reboot** when prompted.
-
-### APatch
+ 
+#### APatch
 1. Open **APatch** → **Modules**.
 2. Tap **Install** and select the `.zip` file.
 3. Reboot when prompted.
-
+ 
 ---
-
-## Step 2 — Install the App
-
-After the device boots back up:
-
-1. Open your file manager and locate `MountX-vX.X.X.apk`.
-2. Tap it to install. If prompted, allow installation from unknown sources.
-3. Open **MountX** from your app drawer.
+ 
+### Method 2 — Standalone APK & In-App Module Activation
+ 
+If you prefer installing the APK first or don't want to reboot immediately:
+ 
+1. Install `MountX-vX.X.X.apk` using your file manager or package installer.
+2. Launch **MountX** from your app drawer and grant Superuser access.
+3. On the **Dashboard**, look for the Module Status card and tap **Install & Activate Module**. The app will stage and configure the root module directly without needing a reboot.
 
 ---
 

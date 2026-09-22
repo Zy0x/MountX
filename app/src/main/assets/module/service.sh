@@ -55,7 +55,7 @@ log_info()  { log "INFO " "$@"; }
 log_warn()  { log "WARN " "$@"; }
 log_error() { log "ERROR" "$@"; }
 
-# ── Initialise log for this boot ──────────────────────────────────────
+# ── Initialise log for this boot ──────────────────────────────────────────────
 {
     echo "============================================================"
     echo " MountX service started (v2.2.39) — $(date)"
@@ -103,6 +103,7 @@ wait_for_boot() {
             exit 1
         fi
     done
+    # Give system services and vold a few extra seconds to settle
     sleep 5
     log_info "Boot completed detected."
 }
@@ -185,6 +186,16 @@ apply_io_tweaks() {
     log_info "I/O tweaks successfully applied to ${disk_name}."
 }
 
+# ── Unmount any stale bind-mounts for a target path ──────────────────────────
+umount_stale() {
+    local target="$1"
+    if mountpoint -q "${target}" 2>/dev/null; then
+        if umount -l "${target}" 2>/dev/null; then
+            log_info "  Unmounted stale bind-mount: ${target}"
+        fi
+    fi
+}
+
 # ── Dynamic UID/GID & SELinux Context Application ────────────────────────────
 apply_permissions() {
     local pkg="$1"
@@ -201,6 +212,7 @@ apply_permissions() {
         gid=$(stat -c '%g' "/data/user/${user_id}/${pkg}" 2>/dev/null)
     fi
 
+    # Fallback via pm list packages
     if [ -z "${uid}" ] || [ -z "${gid}" ]; then
         local raw_uid
         raw_uid=$(pm list packages -U --user "${user_id}" 2>/dev/null | grep -F "package:${pkg}" | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
@@ -229,6 +241,7 @@ bind_mount_to_runtime_namespaces() {
     local user_id="$4"
     [ -z "${user_id}" ] && user_id="0"
 
+    # Extract relative path from dst
     local rel=""
     case "${dst}" in
         */Android/*)
@@ -266,6 +279,7 @@ bind_mount_to_runtime_namespaces() {
         fi
     done
 
+    # Also enter process mount namespace if the package is already running
     for pid_ns_dir in /proc/*/ns/mnt; do
         local pid_dir
         pid_dir=$(dirname "$(dirname "${pid_ns_dir}")")
@@ -307,11 +321,14 @@ load_mountpoints() {
             continue
         fi
 
+        # Smart .nomedia localized scoping
         if [ "${preserve_media}" = "1" ] || [ "${cat}" = "MEDIA_DOWNLOADS" ] || [ "${cat}" = "CUSTOM" ]; then
+            # Do not hide from gallery unless original destination had .nomedia
             if [ ! -f "${dst}/.nomedia" ]; then
                 rm -f "${src}/.nomedia" 2>/dev/null
             fi
         else
+            # Ensure private game data has .nomedia
             touch "${src}/.nomedia" 2>/dev/null
         fi
 
@@ -419,6 +436,7 @@ main() {
     mount_sd
     apply_io_tweaks
 
+    # Ensure localized subdirectories exist without placing .nomedia on $SD_BASE/MountX
     mkdir -p "${SD_BASE}/MountX/Android/data" \
              "${SD_BASE}/MountX/Android/obb" \
              "${SD_BASE}/MountX/Android/media" \
@@ -446,6 +464,7 @@ main() {
         fi
     fi
 
+    # Touch boot status marker so BootReceiver/UI can recognize completion
     touch "${BOOT_FLAG_FILE}" 2>/dev/null
     log_info "MountX boot marker touched at ${BOOT_FLAG_FILE}. Service completed."
 }

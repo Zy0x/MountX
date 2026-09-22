@@ -94,9 +94,20 @@ For power users and developers interested in the implementation:
 
 ## 🚀 Quick Start
 
-1. **Flash Module**: Download `MountX-Magisk-v<version>.zip` from [GitHub Releases](https://github.com/Zy0x/MountX/releases/latest). Flash it in your root manager and reboot.
-2. **Install App**: Install `MountX-v<version>.apk` and grant Superuser permission when prompted.
-3. **Move Game Data**: Open the **Apps** tab, tap your game, tap **Kelola Penyimpanan**, select the asset categories to move, and tap **Pindahkan**.
+Choose either of the two hassle-free installation methods:
+
+* **Method 1: Universal Module Flash (Recommended)**
+  1. Download `MountX-Magisk-v<version>.zip` from [GitHub Releases](https://github.com/Zy0x/MountX/releases/latest).
+  2. Flash the ZIP in Magisk, KernelSU, or APatch. The installer automatically installs the companion `MountX` app during flash.
+  3. Reboot your device, launch MountX from your app drawer, and grant Superuser access.
+
+* **Method 2: Standalone APK with In-App Activation**
+  1. Download and install `MountX-v<version>.apk`.
+  2. Launch the app and grant Superuser permission.
+  3. On the Dashboard, tap **Install & Activate Module** to install the root backend directly without rebooting.
+
+### Managing Storage
+Open the **Apps** tab, select your application, tap **Manage Storage**, choose the data categories to offload (Data, OBB, etc.), select your target external disk and partition, and tap **Start Transfer**.
 
 <br/>
 

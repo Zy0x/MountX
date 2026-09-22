@@ -54,6 +54,11 @@ import app.mountx.ui.theme.adaptiveEmerald
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import app.mountx.data.model.CategoryChange
 import app.mountx.data.model.ChangelogHistory
 import app.mountx.data.model.ChangelogRelease
@@ -611,10 +616,12 @@ private fun CompactChangelogReleaseCard(
     isDark: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val emeraldColor = adaptiveEmerald()
     val cardBg = if (isDark) Color(0xFF131620) else Color(0xFFFAF8F5)
     val cardBorder = if (isDark) Color(0xFF232838) else Color(0xFFE5E2DC)
     val secondaryTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF57534E)
+    var isExpanded by remember { mutableStateOf(release.isLatest) }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -699,64 +706,169 @@ private fun CompactChangelogReleaseCard(
                 modifier = Modifier.padding(bottom = 6.dp)
             )
 
-            // Direct Categories (UI/UX, SYSTEM, FIXED, ADDED, IMPROVED)
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Category Chips Preview (compact badges)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+            ) {
                 release.categories.forEach { catChange ->
                     val catColor = catChange.category.accentColor()
-
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Category Chip/Title: 11sp bold all-caps
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = catColor.copy(alpha = if (isDark) 0.14f else 0.10f),
+                        border = BorderStroke(1.dp, catColor.copy(alpha = if (isDark) 0.35f else 0.25f))
+                    ) {
                         Text(
-                            text = catChange.category.displayName.uppercase(),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = catChange.category.displayName,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = catColor,
-                            modifier = Modifier.padding(bottom = 4.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
+                    }
+                }
+            }
 
-                        // Bullet Items: • Judul: Deskripsi
-                        catChange.features.forEach { feature ->
-                            val descText = feature.details.joinToString(" ")
-                            Row(
-                                verticalAlignment = Alignment.Top,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "• ",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = secondaryTextColor,
-                                    modifier = Modifier.padding(top = 0.5.dp)
-                                )
-                                val annotated = buildAnnotatedString {
-                                    withStyle(
-                                        SpanStyle(
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    ) {
-                                        append("${feature.title}: ")
+            // Accordion Body (Detailed category bullets)
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 6.dp)
+                ) {
+                    release.categories.forEach { catChange ->
+                        val catColor = catChange.category.accentColor()
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Category Chip/Title: 11sp bold all-caps
+                            Text(
+                                text = catChange.category.displayName.uppercase(),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = catColor,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+
+                            // Bullet Items: • Title: Description
+                            catChange.features.forEach { feature ->
+                                val descText = feature.details.joinToString(" ")
+                                Row(
+                                    verticalAlignment = Alignment.Top,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "• ",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = secondaryTextColor,
+                                        modifier = Modifier.padding(top = 0.5.dp)
+                                    )
+                                    val annotated = buildAnnotatedString {
+                                        withStyle(
+                                            SpanStyle(
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        ) {
+                                            append("${feature.title}: ")
+                                        }
+                                        withStyle(
+                                            SpanStyle(
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Normal,
+                                                color = secondaryTextColor
+                                            )
+                                        ) {
+                                            append(descText)
+                                        }
                                     }
-                                    withStyle(
-                                        SpanStyle(
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.Normal,
-                                            color = secondaryTextColor
-                                        )
-                                    ) {
-                                        append(descText)
-                                    }
+                                    Text(
+                                        text = annotated,
+                                        lineHeight = 15.sp,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
                                 }
-                                Text(
-                                    text = annotated,
-                                    lineHeight = 15.sp,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
                             }
                         }
+                    }
+                }
+            }
+
+            // Action Row: Toggle Accordion + GitHub Release Link
+            HorizontalDivider(
+                color = cardBorder.copy(alpha = 0.6f),
+                modifier = Modifier.padding(vertical = 6.dp)
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Accordion Toggle
+                Surface(
+                    onClick = { isExpanded = !isExpanded },
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.Transparent
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)
+                    ) {
+                        Text(
+                            text = if (isExpanded) "Hide Details" else "View Details",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDark) ElectricIndigo else ElectricIndigoLight
+                        )
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = if (isDark) ElectricIndigo else ElectricIndigoLight,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+
+                // View on GitHub Link
+                Surface(
+                    onClick = {
+                        val releaseUrl = "https://github.com/Zy0x/MountX/releases/tag/${release.version}"
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(releaseUrl))
+                        context.startActivity(intent)
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.Transparent
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)
+                    ) {
+                        Text(
+                            text = "View on GitHub",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = secondaryTextColor
+                        )
+                        Icon(
+                            imageVector = Icons.Default.OpenInBrowser,
+                            contentDescription = null,
+                            tint = secondaryTextColor,
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
             }
