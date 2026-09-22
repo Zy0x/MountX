@@ -278,7 +278,7 @@ class DiskCatalogManager @Inject constructor(
         }
 
         // 2. Lapisan 1: Standar MountX ($sdBase/MountX/Android/data & obb)
-        val modernDataOut = RootShell.execForOutput("ls -1 \"$sdBase/MountX/Android/data\" 2>/dev/null")
+        val modernDataOut = RootShell.execForOutput("ls -1 \"$sdBase/MountX/Android/data\" \"$sdBase/MountX/Android/obb\" 2>/dev/null")
         if (modernDataOut.isNotBlank()) {
             for (pkg in modernDataOut.lines()) {
                 val cleanPkg = pkg.trim()
@@ -309,7 +309,7 @@ class DiskCatalogManager @Inject constructor(
         }
 
         // 3. Lapisan 2: Legacy Android ($sdBase/Android/data & obb)
-        val legacyDataOut = RootShell.execForOutput("ls -1 \"$sdBase/Android/data\" 2>/dev/null")
+        val legacyDataOut = RootShell.execForOutput("ls -1 \"$sdBase/Android/data\" \"$sdBase/Android/obb\" 2>/dev/null")
         if (legacyDataOut.isNotBlank()) {
             for (pkg in legacyDataOut.lines()) {
                 val cleanPkg = pkg.trim()
@@ -324,6 +324,7 @@ class DiskCatalogManager @Inject constructor(
                     val isInstalled = installedApps.containsKey(cleanPkg)
                     val isRegistered = registeredPackages.contains(cleanPkg)
                     val canary = RootShell.exists("$sdBase/Android/data/$cleanPkg/$CANARY_FILE")
+                    val origPath = if (hasData) "$sdBase/Android/data/$cleanPkg" else "$sdBase/Android/obb/$cleanPkg"
 
                     detected[cleanPkg] = DiscoveredGame(
                         packageName = cleanPkg,
@@ -336,14 +337,14 @@ class DiskCatalogManager @Inject constructor(
                         hasObbOnSd = hasObb,
                         canaryPresent = canary,
                         needsRestructure = true,
-                        originalPath = "$sdBase/Android/data/$cleanPkg"
+                        originalPath = origPath
                     )
                 }
             }
         }
 
         // 4. Lapisan 3: Direktori Games / GameData non-standar
-        val outerDirs = listOf("$sdBase/Games", "$sdBase/GameData")
+        val outerDirs = listOf("$sdBase/Games", "$sdBase/Game", "$sdBase/GameData")
         for (outerBase in outerDirs) {
             val outerOut = RootShell.execForOutput("ls -1 \"$outerBase\" 2>/dev/null")
             if (outerOut.isNotBlank()) {
