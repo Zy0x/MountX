@@ -119,7 +119,7 @@ MountX is free and open-source. If it helped you save storage, consider supporti
 
 * ☕ **Ko-fi**: [Support on Ko-fi](https://ko-fi.com/Zy0x)
 * 💳 **PayPal**: [Donate via PayPal](https://paypal.me/Zy0x)
-* 🇮🇩 **Saweria**: [Dukung via Saweria](https://saweria.co/Zy0x)
+* 💰 **Saweria**: [Dukung via Saweria](https://saweria.co/Zy0x)
 
 <br/>
 
