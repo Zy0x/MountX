@@ -112,7 +112,7 @@ wait_for_boot() {
     log_info "Primary storage, FUSE, and Android/data readiness confirmed."
 }
 
-# ── Mount the SD partition ────────────────────────────────────────────────────
+# ── Mount the SD partition (Smart Multi-FS: blkid detection + NTFS support) ───
 mount_sd() {
     local attempts=0
     while [ "${attempts}" -lt 5 ]; do
@@ -123,34 +123,81 @@ mount_sd() {
 
         if [ -b "${SD_BLOCK}" ]; then
             mkdir -p "${SD_BASE}"
-            local mnt_opts="rw,noatime,nodiratime"
-            if [ "${FS_TYPE}" = "f2fs" ]; then
-                mnt_opts="${mnt_opts},inline_data,inline_dentry,flush_merge,mode=adaptive"
-            elif [ "${FS_TYPE}" = "ext4" ]; then
-                mnt_opts="${mnt_opts},commit=60,delalloc,data=writeback"
+
+            # Auto-detect filesystem via blkid if FS_TYPE is 'auto' or unset
+            local detected_fs="${FS_TYPE}"
+            if [ -z "${detected_fs}" ] || [ "${detected_fs}" = "auto" ]; then
+                detected_fs=$(blkid "${SD_BLOCK}" 2>/dev/null | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')
+                [ -z "${detected_fs}" ] && detected_fs=$(toybox blkid "${SD_BLOCK}" 2>/dev/null | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')
+                if [ -n "${detected_fs}" ]; then
+                    log_info "blkid auto-detected filesystem on ${SD_BLOCK}: ${detected_fs}"
+                else
+                    detected_fs="auto"
+                    log_warn "blkid could not detect filesystem on ${SD_BLOCK}; will use kernel auto-detect."
+                fi
             fi
 
-            if mount -t "${FS_TYPE}" -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}"; then
-                mount --make-rprivate "${SD_BASE}" 2>/dev/null
-                log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${FS_TYPE} with ${mnt_opts})"
-                return 0
-            else
-                log_warn "Optimized mount failed, attempting generic fallback mount…"
-                if mount -t "${FS_TYPE}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}"; then
-                    mount --make-rprivate "${SD_BASE}" 2>/dev/null
-                    log_info "SD mounted with fallback options: ${SD_BLOCK} → ${SD_BASE}"
-                    return 0
+            # Build optimized mount options per filesystem
+            local mnt_opts="rw,noatime,nodiratime"
+            case "${detected_fs}" in
+                f2fs)  mnt_opts="${mnt_opts},inline_data,inline_dentry,flush_merge,mode=adaptive" ;;
+                ext4)  mnt_opts="${mnt_opts},commit=60,delalloc,data=writeback" ;;
+                ntfs)  mnt_opts="rw,noatime,nodiratime" ;;
+                exfat) mnt_opts="rw,noatime,nodiratime" ;;
+                vfat|fat32) mnt_opts="${mnt_opts},fmask=0000,dmask=0000" ;;
+            esac
+
+            # Primary mount attempt (filesystem-specific)
+            local mounted=0
+            if [ "${detected_fs}" = "ntfs" ]; then
+                # NTFS: try mount.ntfs → ntfs-3g → kernel ntfs in order
+                if mount.ntfs -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                    mounted=1; log_info "SD mounted via mount.ntfs: ${SD_BLOCK} → ${SD_BASE}"
+                elif mount -t ntfs-3g -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                    mounted=1; log_info "SD mounted via ntfs-3g: ${SD_BLOCK} → ${SD_BASE}"
+                elif mount -t ntfs -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                    mounted=1; log_info "SD mounted via kernel ntfs: ${SD_BLOCK} → ${SD_BASE}"
                 fi
-                # Multi-filesystem auto-fallback: ext4, f2fs, exfat, vfat, auto
-                for alt_fs in ext4 f2fs exfat vfat auto; do
-                    if [ "${alt_fs}" != "${FS_TYPE}" ]; then
+            elif [ "${detected_fs}" != "auto" ]; then
+                if mount -t "${detected_fs}" -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                    mounted=1; log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${detected_fs})"
+                elif mount -t "${detected_fs}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                    mounted=1; log_info "SD mounted (simple opts): ${SD_BLOCK} → ${SD_BASE} (${detected_fs})"
+                fi
+            fi
+
+            # Comprehensive multi-filesystem fallback chain
+            if [ ${mounted} -eq 0 ]; then
+                log_warn "Primary mount failed for ${detected_fs}; trying multi-fs fallback chain..."
+                for alt_fs in ext4 f2fs exfat vfat; do
+                    if [ "${alt_fs}" != "${detected_fs}" ]; then
                         if mount -t "${alt_fs}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
-                            mount --make-rprivate "${SD_BASE}" 2>/dev/null
-                            log_info "SD mounted with alternate filesystem: ${SD_BLOCK} → ${SD_BASE} (${alt_fs})"
-                            return 0
+                            mounted=1
+                            log_info "SD mounted via fallback fs: ${SD_BLOCK} → ${SD_BASE} (${alt_fs})"
+                            break
                         fi
                     fi
                 done
+                # Try NTFS via mount.ntfs as part of fallback if not already tried
+                if [ ${mounted} -eq 0 ] && [ "${detected_fs}" != "ntfs" ]; then
+                    if mount.ntfs -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null || \
+                       mount -t ntfs-3g -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                        mounted=1
+                        log_info "SD mounted via NTFS fallback: ${SD_BLOCK} → ${SD_BASE}"
+                    fi
+                fi
+                # Last resort: kernel auto-detect
+                if [ ${mounted} -eq 0 ]; then
+                    if mount "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                        mounted=1
+                        log_info "SD mounted via kernel auto-detect: ${SD_BLOCK} → ${SD_BASE}"
+                    fi
+                fi
+            fi
+
+            if [ ${mounted} -eq 1 ]; then
+                mount --make-rprivate "${SD_BASE}" 2>/dev/null
+                return 0
             fi
         fi
 
@@ -354,6 +401,84 @@ bind_mount_to_runtime_namespaces() {
     log_info "  [${pkg}] Bind-mounted to ${count} targets in /proc/mounts: ${src} → ${dst}"
 }
 
+# ── Smart Multi-Disk Mounter (resolves block device by UUID and mounts it) ────
+# Usage: mount_disk_by_uuid <uuid> <mount_point>
+# Returns 0 on success, 1 on failure
+mount_disk_by_uuid() {
+    local uuid="$1"
+    local mnt_point="$2"
+
+    if [ -z "${uuid}" ] || [ -z "${mnt_point}" ]; then
+        return 1
+    fi
+
+    # Already mounted at that point?
+    if mountpoint -q "${mnt_point}" 2>/dev/null; then
+        log_info "  [UUID:${uuid}] Disk already mounted at ${mnt_point}."
+        return 0
+    fi
+
+    # Resolve block device from UUID via blkid
+    local blk_dev
+    blk_dev=$(blkid 2>/dev/null | grep -i "UUID=\"${uuid}\"" | cut -d: -f1 | head -n 1)
+    [ -z "${blk_dev}" ] && blk_dev=$(toybox blkid 2>/dev/null | grep -i "UUID=\"${uuid}\"" | cut -d: -f1 | head -n 1)
+
+    if [ -z "${blk_dev}" ]; then
+        log_warn "  [UUID:${uuid}] Cannot resolve block device; disk may not be connected."
+        return 1
+    fi
+
+    if ! [ -b "${blk_dev}" ]; then
+        log_warn "  [UUID:${uuid}] Resolved device ${blk_dev} is not a block device."
+        return 1
+    fi
+
+    # Detect filesystem on this partition
+    local fs_type
+    fs_type=$(blkid "${blk_dev}" 2>/dev/null | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')
+
+    log_info "  [UUID:${uuid}] Auto-mounting ${blk_dev} (fs=${fs_type:-unknown}) → ${mnt_point}"
+    mkdir -p "${mnt_point}"
+
+    local mounted=0
+    case "${fs_type}" in
+        ntfs)
+            mount.ntfs -o rw,noatime,nodiratime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount -t ntfs-3g -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount -t ntfs -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            ;;
+        f2fs)
+            mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            ;;
+        ext4)
+            mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            ;;
+        exfat)
+            mount -t exfat -o rw,noatime,nodiratime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            ;;
+        vfat|fat32)
+            mount -t vfat -o rw,noatime,nodiratime,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            ;;
+        *)
+            # Try common filesystems in order for unknown/empty fs_type
+            for fs in ext4 f2fs exfat vfat; do
+                mount -t "${fs}" -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1 && break
+            done
+            [ ${mounted} -eq 0 ] && mount.ntfs -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            ;;
+    esac
+
+    if [ ${mounted} -eq 1 ]; then
+        mount --make-rprivate "${mnt_point}" 2>/dev/null
+        log_info "  [UUID:${uuid}] Disk mounted successfully: ${blk_dev} → ${mnt_point} (${fs_type:-auto})"
+        return 0
+    else
+        log_error "  [UUID:${uuid}] Failed to mount ${blk_dev} at ${mnt_point}."
+        return 1
+    fi
+}
+
 # ── Modern Multi-Target Array (mountpoints.conf) ──────────────────────────────
 load_mountpoints() {
     if [ ! -f "${MOUNTPOINTS_FILE}" ]; then
@@ -377,8 +502,47 @@ load_mountpoints() {
             continue
         fi
 
+        # ── Smart Multi-Disk Auto-Mount ────────────────────────────────────────
+        # If source path doesn't exist but disk_uuid is present, try to auto-mount
+        # the target disk using its UUID so the source becomes accessible.
+        if [ ! -d "${src}" ] && [ -n "${disk_uuid}" ]; then
+            log_info "  [${pkg}] Source missing: ${src}; attempting auto-mount via UUID=${disk_uuid}"
+
+            # Derive the disk mount base from the source path
+            # sourcePath format: /data/sdext2/MountX/Android/data/... → base = /data/sdext2
+            # or /mnt/media_rw/<uuid>/MountX/... → base = /mnt/media_rw/<uuid>
+            # We try to match the UUID-resolved mount point to an ancestor directory of src
+            local disk_base
+            disk_base=$(blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
+            if [ -n "${disk_base}" ]; then
+                # Find current mount of this block device
+                local existing_mount
+                existing_mount=$(grep -F "${disk_base} " /proc/mounts 2>/dev/null | awk '{print $2}' | head -n 1)
+                if [ -z "${existing_mount}" ]; then
+                    # Disk not mounted yet — figure out the expected mount base from source path
+                    # Walk source path upward to find a plausible mount root
+                    local try_base="${SD_BASE}"
+                    # If src starts with something other than SD_BASE, extract base from path
+                    case "${src}" in
+                        "${SD_BASE}/"*) try_base="${SD_BASE}" ;;
+                        /mnt/media_rw/*) try_base=$(echo "${src}" | cut -d/ -f1-4) ;;
+                        /mnt/pass_through/*) try_base=$(echo "${src}" | cut -d/ -f1-5) ;;
+                        *) try_base="${SD_BASE}" ;;
+                    esac
+                    mount_disk_by_uuid "${disk_uuid}" "${try_base}"
+                else
+                    log_info "  [${pkg}] UUID=${disk_uuid} already mounted at ${existing_mount}."
+                fi
+            else
+                # blkid can't find block device: disk not plugged in
+                log_warn "  [${pkg}] UUID=${disk_uuid} not found by blkid (disk not connected?). Skipping."
+                continue
+            fi
+        fi
+
+        # Re-check after potential auto-mount
         if [ ! -d "${src}" ]; then
-            log_warn "  [${pkg}] Source directory missing on SD: ${src}; skipping."
+            log_warn "  [${pkg}] Source directory still missing after auto-mount attempt: ${src}; skipping."
             continue
         fi
 

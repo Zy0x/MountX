@@ -891,13 +891,14 @@ class StorageManager {
             val primaryCmd = when (fsType) {
                 FilesystemType.F2FS -> "mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry,flush_merge,mode=adaptive \"$blockDevice\" \"$mountPoint\""
                 FilesystemType.EXT4 -> "mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc,data=writeback \"$blockDevice\" \"$mountPoint\""
+                FilesystemType.NTFS -> "mount.ntfs -o rw,noatime,nodiratime \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,noatime,nodiratime \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,nodiratime \"$blockDevice\" \"$mountPoint\""
                 else -> "mount -t ${fsType.command} -o noatime,nodiratime,rw \"$blockDevice\" \"$mountPoint\""
             }
             var res = RootShell.exec(primaryCmd)
             
-            // If failed and not ext4, try fallback to ext4 or auto
+            // If failed, try comprehensive multi-filesystem fallback chain
             if (!res.isSuccess) {
-                val fallbackCmd = "mount -t ext4 -o noatime,nodiratime,rw \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount \"$blockDevice\" \"$mountPoint\""
+                val fallbackCmd = "mount -t ext4 -o noatime,nodiratime,rw \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount.ntfs -o rw,noatime \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount \"$blockDevice\" \"$mountPoint\""
                 res = RootShell.exec(fallbackCmd)
             }
 
@@ -1029,6 +1030,7 @@ class StorageManager {
                     "ext4" -> FilesystemType.EXT4
                     "vfat", "fat32" -> FilesystemType.FAT32
                     "exfat" -> FilesystemType.EXFAT
+                    "ntfs" -> FilesystemType.NTFS
                     else -> FilesystemType.F2FS
                 }
                 mountSdPartition(blockDev, targetMountPoint, fs).getOrThrow()
