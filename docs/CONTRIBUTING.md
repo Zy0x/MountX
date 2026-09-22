@@ -218,3 +218,8 @@ Feature requests are welcome. Please describe the use case clearly — "why" mat
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](../LICENSE).
+
+---
+
+**Documentation Navigation:**
+[Home](../README.md#documentation) &bull; [Installation Guide](INSTALL.md) &bull; [User Guide](USAGE.md) &bull; [Architecture & Internals](ARCHITECTURE.md) &bull; [FAQ & Troubleshooting](FAQ.md) &bull; [Contributing Guide](CONTRIBUTING.md)

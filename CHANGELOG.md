@@ -5,6 +5,38 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.44] - 2026-09-22
+
+### Changed & Improved
+- **MT-Manager Style File Picker Light Mode Harmonization**:
+  - Eliminated pitch-black container leaks in RootDirectoryPickerSheet bottom action bar, path container box, and quick access chips when Light theme is active.
+  - Switched color resolution from `isSystemInDarkTheme()` to dynamic surface luminance detection, resolving inverted theme bugs when device system night mode is active.
+  - Refactored High Risk directory warning dialog to use semantic Warm Crimson tokens.
+- **Storage Screen & Sub-sections Neon Glare Elimination**:
+  - Replaced harsh neon cyan, emerald, and crimson colors across StorageScreen with soft, high-contrast semantic tokens (`BadgeMounted`, `WarmCrimson`, `SlateCyanLight`).
+  - Refactored interactive partition slider bar and draggable handle pill to render Soft Warm Sandstone surfaces and subtle slate borders in Light mode.
+  - Updated partition cards, recommended badges, filesystem selector chips, and destructive repartition warnings to gracefully adapt to both Light and Dark themes.
+- **Universal Operation Overlay & Sheet Polishing**:
+  - Overhauled `OperationProgressOverlay` progress indicators, technical log views, and action buttons for accessible contrast and zero black container bleed.
+  - Refactored `DiskToolsBottomSheet`, `PartitionToolsBottomSheet`, `DiskDetailView`, and `BackupRestoreScreen` to eliminate harsh neon badges and ensure cohesive Sandstone aesthetics.
+
+## [2.2.43] - 2026-09-22
+
+### Changed & Improved
+- **Soft Warm Sandstone & Earthy Mineral Refactor**:
+  - Eliminated cyan and neon gradients across Light Mode in favor of solid Electric Indigo, Forest Emerald, Warm Amber, and Warm Crimson.
+  - Refactored input fields and directory browser to use Sandstone card surfaces (`#FAF8F5`) with neutral borders (`#D6D3CD`).
+  - Standardized secondary action buttons with Outlined Neutral and destructive operations with Outlined Crimson.
+- **Tight In-App Emblem Proportions**:
+  - Re-rendered master in-app emblem with tight cropping to eliminate 32% empty transparent padding.
+  - Enlarged emblem display across TopBar and About Screen to 28dp and 54dp for crisp visual prominence.
+- **Responsive Height Changelog Modal**:
+  - Replaced fixed modal height with dynamic wrap-content sizing (`heightIn max 680dp`) to prevent empty vertical gaps on initial releases.
+  - Balanced typography hierarchy with 11sp bold all-caps category chips, 12sp semi-bold titles, and 11.5sp descriptions.
+- **Search Bar Spacing & Logs Streamlining**:
+  - Added 10dp spacer between header and search bar in Add App Sheet.
+  - Removed redundant auto-refresh toggle card in LogsScreen, setting auto-refresh as the seamless default.
+
 ## [2.2.19] - 2026-09-20
 
 ### Added & Improved

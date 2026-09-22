@@ -150,4 +150,5 @@ Generally yes, but avoid running two apps that both manage bind-mounts for the s
 
 ---
 
-*For detailed configuration options, see [USAGE.md](USAGE.md). For installation help, see [INSTALL.md](INSTALL.md).*
+**Documentation Navigation:**
+[Home](../README.md#documentation) &bull; [Installation Guide](INSTALL.md) &bull; [User Guide](USAGE.md) &bull; [Architecture & Internals](ARCHITECTURE.md) &bull; [FAQ & Troubleshooting](FAQ.md) &bull; [Contributing Guide](CONTRIBUTING.md)

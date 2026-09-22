@@ -107,3 +107,8 @@ MountX provides a companion module script (`service.sh`) installed in the root m
 4. Reads the configured active mount list and executes `mount --bind` for all enabled apps.
 5. Applies I/O Booster sysfs parameters.
 6. When the user launches a game, all mount points are already transparently active.
+
+---
+
+**Documentation Navigation:**
+[Home](../README.md#documentation) &bull; [Installation Guide](INSTALL.md) &bull; [User Guide](USAGE.md) &bull; [Architecture & Internals](ARCHITECTURE.md) &bull; [FAQ & Troubleshooting](FAQ.md) &bull; [Contributing Guide](CONTRIBUTING.md)

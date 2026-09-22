@@ -126,7 +126,7 @@ If your MicroSD card doesn't have an Ext4/F2FS partition, you can create one dir
 ### MicroSD partition not detected
 - Ensure the card is properly seated.
 - Go to **Storage → Disk Tools → Rescan** to force a re-detection of block devices.
-- Check that the partition is formatted as F2FS or Ext4 (not exFAT or FAT32).
+- Check that the partition is properly recognized. F2FS or Ext4 is recommended for full POSIX permission support and performance, though exFAT and FAT32 are also supported.
 
 ### Module not listed in Magisk after reboot
 - Re-flash the module. If it fails again, check that your Magisk version is v24.0 or newer.
@@ -147,4 +147,5 @@ If your MicroSD card doesn't have an Ext4/F2FS partition, you can create one dir
 
 ---
 
-*For usage instructions after installation, see [USAGE.md](USAGE.md).*
+**Documentation Navigation:**
+[Home](../README.md#documentation) &bull; [Installation Guide](INSTALL.md) &bull; [User Guide](USAGE.md) &bull; [Architecture & Internals](ARCHITECTURE.md) &bull; [FAQ & Troubleshooting](FAQ.md) &bull; [Contributing Guide](CONTRIBUTING.md)

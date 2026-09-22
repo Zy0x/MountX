@@ -207,12 +207,13 @@ MountX stores your app list and mount configurations in a local database. You ca
 ## Tips for Best Performance
 
 1. **Use F2FS over Ext4** when formatting your MicroSD partition. F2FS is designed for flash storage and delivers lower write latency.
-2. **Enable I/O Booster** — the read-ahead buffer (`READ_AHEAD_KB=2048`) alone can significantly reduce game asset loading times.
-3. **Use a fast card** — UHS-I Speed Class 3 (U3) or higher is strongly recommended. A1/A2 Application Performance Class cards are even better for random I/O.
-4. **Mount only Data/OBB** — Avoid mounting APK or Lib directories unless you know what you're doing. APKs are re-read frequently and mounting them to a slower MicroSD can harm app startup time.
-5. **Keep 10–15% of the partition free** — Both F2FS and Ext4 benefit from free space for garbage collection.
-6. **Don't remove the MicroSD while a game is running** — This will immediately crash the game and may corrupt the mounted directory. Always close the game first.
+2. **Enable I/O Booster**: The read-ahead buffer (`READ_AHEAD_KB=2048`) alone can significantly reduce game asset loading times.
+3. **Use a fast card**: UHS-I Speed Class 3 (U3) or higher is strongly recommended. A1/A2 Application Performance Class cards are even better for random I/O.
+4. **Mount only Data/OBB**: Avoid mounting APK or Lib directories unless you know what you're doing. APKs are re-read frequently and mounting them to a slower MicroSD can harm app startup time.
+5. **Keep 10–15% of the partition free**: Both F2FS and Ext4 benefit from free space for garbage collection.
+6. **Don't remove the MicroSD while a game is running**: This will immediately crash the game and may corrupt the mounted directory. Always close the game first.
 
 ---
 
-*For common questions, see [FAQ.md](FAQ.md).*
+**Documentation Navigation:**
+[Home](../README.md#documentation) &bull; [Installation Guide](INSTALL.md) &bull; [User Guide](USAGE.md) &bull; [Architecture & Internals](ARCHITECTURE.md) &bull; [FAQ & Troubleshooting](FAQ.md) &bull; [Contributing Guide](CONTRIBUTING.md)
