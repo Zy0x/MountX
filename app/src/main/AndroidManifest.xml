@@ -75,6 +75,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Mount Action & Root Notification Sync Receiver -->
+        <receiver
+            android:name=".service.MountActionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="app.mountx.ACTION_SYNC_NOTIFICATION" />
+                <action android:name="app.mountx.ACTION_UNMOUNT_ALL" />
+                <action android:name="app.mountx.ACTION_MOUNT_ALL" />
+            </intent-filter>
+        </receiver>
+
         <!-- WorkManager initializer -->
         <provider
             android:name="androidx.startup.InitializationProvider"

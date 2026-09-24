@@ -37,11 +37,14 @@ class MountService : Service() {
     @Inject
     lateinit var watchdogDaemon: MountWatchdogDaemon
 
+    @Inject
+    lateinit var mountNotificationManager: MountNotificationManager
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
         const val CHANNEL_ID = "mountx_service"
-        const val NOTIFICATION_ID = 1001
+        const val NOTIFICATION_ID = 1000
 
         const val ACTION_MOUNT_ALL = "app.mountx.ACTION_MOUNT_ALL"
         const val ACTION_UNMOUNT_ALL = "app.mountx.ACTION_UNMOUNT_ALL"
@@ -111,7 +114,8 @@ class MountService : Service() {
                             updateNotification(getString(R.string.notif_games_mounted_active, 0), isFinished = true)
                         }
                     } finally {
-                        stopForeground(STOP_FOREGROUND_DETACH)
+                        mountNotificationManager.syncActiveMountNotification()
+                        stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf(startId)
                     }
                 }
@@ -126,6 +130,7 @@ class MountService : Service() {
                     } catch (e: Exception) {
                         // ignore and ensure notification dismissed
                     } finally {
+                        mountNotificationManager.syncActiveMountNotification()
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf(startId)
                     }
@@ -148,6 +153,8 @@ class MountService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel()
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.cancel(NOTIFICATION_ID)
     }
 
     private fun createNotificationChannel() {

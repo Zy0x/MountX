@@ -22,6 +22,16 @@ class OcclusionHazardException(
 ) : IllegalStateException(message)
 
 /**
+ * Exception thrown when attempting to mount a game that is already active from a different storage disk.
+ */
+class MultiDiskCollisionException(
+    val packageName: String,
+    val activeDevice: String,
+    val requestedDevice: String,
+    message: String
+) : IllegalStateException(message)
+
+/**
  * Handles mounting and unmounting game & application data directories using bind mounts
  * and Virtual Ext4 Loop Containers for Universal Smart Directory Classification.
  */
@@ -61,6 +71,10 @@ class MountManager {
             list.add("/mnt/runtime/full/emulated/$uid")
             list.add("/mnt/user/$uid/primary")
             list.add("/mnt/user/$uid/emulated/$uid")
+            // Android 11+ storage runtime views
+            list.add("/mnt/installer/$uid/emulated/$uid")
+            list.add("/mnt/androidwritable/$uid/emulated/$uid")
+            list.add("/mnt/pass_through/$uid/emulated/$uid")
             // Only target /storage/emulated/$uid if /storage/emulated is confirmed mounted to prevent tmpfs collisions
             if (RootShell.isMountpoint("/storage/emulated") || RootShell.exists("/storage/emulated/$uid/Android")) {
                 list.add("/storage/emulated/$uid")
@@ -98,6 +112,39 @@ class MountManager {
         suspend fun triggerMediaScan(path: String): Unit = withContext(Dispatchers.IO) {
             RootShell.exec("am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d \"file://$path\" 2>/dev/null")
         }
+
+        /**
+         * Resolves the current physical block device mounted at a specific path or namespace target.
+         * e.g. /data/media/0/Android/data/com.foo -> /dev/block/mmcblk0p3
+         */
+        suspend fun getActiveMountSourceDevice(targetPath: String): String? = withContext(Dispatchers.IO) {
+            val relPath = extractRelativePath(targetPath)
+            val targets = listOf(
+                targetPath,
+                "/storage/emulated/0/$relPath",
+                "/data/media/0/$relPath",
+                "/mnt/runtime/default/emulated/0/$relPath"
+            )
+            val grepPattern = targets.joinToString("|") { " $it " }
+            val mountRes = RootShell.exec("cat /proc/mounts 2>/dev/null | grep -E '$grepPattern' | head -n 1")
+            if (mountRes.isSuccess && mountRes.output.isNotBlank()) {
+                val parts = mountRes.output.trim().split(Regex("\\s+"))
+                return@withContext parts.getOrNull(0)
+            }
+            null
+        }
+
+        /**
+         * Resolves the partition UUID for a given physical block device via blkid.
+         */
+        suspend fun getBlockDeviceUuid(blockDevice: String): String? = withContext(Dispatchers.IO) {
+            val blkidRes = RootShell.exec("blkid \"$blockDevice\" 2>/dev/null")
+            if (blkidRes.isSuccess && blkidRes.output.isNotBlank()) {
+                val match = Regex("UUID=\"([^\"]+)\"").find(blkidRes.output)
+                return@withContext match?.groupValues?.get(1)
+            }
+            null
+        }
     }
 
     /**
@@ -133,6 +180,9 @@ class MountManager {
                     progressPercent = 0.2f
                 )
             )
+
+            // Clear user-unmounted flag since an intentional mount is taking place
+            RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
 
             // Pre-Mount Process Guard: stop active app if running to prevent file locks or stale namespace
             val pgrepRes = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
@@ -207,6 +257,26 @@ class MountManager {
                     sdBytes = occlusionSdBytes,
                     message = "Data game masih berada di Memori Internal. Pindahkan data ke MicroSD terlebih dahulu agar aman untuk di-mount."
                 )
+            }
+
+            // ── MULTI-DISK COLLISION & ANTI-STACKING GUARD ──
+            for (mp in game.mountPoints.filter { it.enabled }) {
+                val activeDev = getActiveMountSourceDevice(mp.targetPath)
+                if (activeDev != null) {
+                    val requestedDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null | awk 'NR==2 {print \$1}'").trim()
+                    val activeUuid = getBlockDeviceUuid(activeDev)
+                    val requestedUuid = if (requestedDev.isNotBlank()) getBlockDeviceUuid(requestedDev) else null
+
+                    if (requestedDev.isNotBlank() && activeDev != requestedDev && activeUuid != null && requestedUuid != null && activeUuid != requestedUuid) {
+                        AppLogger.error("MountManager", "MULTI-DISK COLLISION: ${game.packageName} target ${mp.targetPath} is already mounted from $activeDev (UUID: $activeUuid), but requested $requestedDev (UUID: $requestedUuid). Aborting to prevent file shadowing.")
+                        throw MultiDiskCollisionException(
+                            packageName = game.packageName,
+                            activeDevice = activeDev,
+                            requestedDevice = requestedDev,
+                            message = "Aplikasi ${game.displayName} sudah aktif ter-mount dari penyimpanan lain ($activeDev). Lepaskan kaitan terlebih dahulu untuk beralih disk."
+                        )
+                    }
+                }
             }
 
             val namespaces = getTargetNamespaces(0)
@@ -650,20 +720,43 @@ class MountManager {
                 """.trimIndent()
                 RootShell.execScript(containersScript)
 
-                // Unmount bind mounts cleanly with multi-pass sweep
+                // Unmount bind mounts cleanly with multi-pass sweep across all external partitions
                 val script = """
+                    SD_BLOCK=${'$'}(mount | grep " $sdBase " | awk '{print ${'$'}1}' | head -n 1)
                     for i in 1 2 3; do
                       has_mount=0
-                      while read dev mnt rest; do
-                        if [ "${'$'}mnt" != "$sdBase" ] && echo "${'$'}mnt" | grep -q "$sdBase"; then
-                          umount -f -l "${'$'}mnt" 2>/dev/null
-                          has_mount=1
-                        fi
+                      while read -r dev mnt rest; do
+                        case "${'$'}mnt" in
+                          *Android/data/*|*Android/obb/*|*Android/media/*)
+                            if [ "${'$'}mnt" != "$sdBase" ]; then
+                              if [ -n "${'$'}SD_BLOCK" ] && [ "${'$'}dev" = "${'$'}SD_BLOCK" ]; then
+                                umount -f -l "${'$'}mnt" 2>/dev/null
+                                has_mount=1
+                              else
+                                case "${'$'}dev" in
+                                  /dev/block/mmcblk*|/dev/block/sd*|/dev/block/nvme*|/dev/block/dm-*)
+                                    if [ "${'$'}mnt" != "/data" ] && [ "${'$'}mnt" != "$sdBase" ]; then
+                                      umount -f -l "${'$'}mnt" 2>/dev/null
+                                      has_mount=1
+                                    fi
+                                    ;;
+                                esac
+                              fi
+                            fi
+                            ;;
+                          *.mountx*|*MountX*)
+                            if [ "${'$'}mnt" != "$sdBase" ]; then
+                              umount -f -l "${'$'}mnt" 2>/dev/null
+                              has_mount=1
+                            fi
+                            ;;
+                        esac
                       done < /proc/mounts
                       if [ ${'$'}has_mount -eq 0 ]; then break; fi
                     done
                 """.trimIndent()
                 RootShell.execScript(script)
+                RootShell.exec("touch /dev/.mountx_unmounted")
                 Unit
             }
         }

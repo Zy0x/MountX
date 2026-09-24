@@ -103,8 +103,8 @@ object RootShell {
      */
     suspend fun execScript(script: String, timeoutMillis: Long = 30000L): ShellResult = withContext(Dispatchers.IO) {
         val timedResult = withTimeoutOrNull(timeoutMillis) {
-            val lines = script.trim().lines().filter { it.isNotBlank() }
-            val result = Shell.cmd(*lines.toTypedArray()).exec()
+            val encoded = android.util.Base64.encodeToString(script.trim().toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+            val result = Shell.cmd("echo $encoded | base64 -d | sh").exec()
             ShellResult(
                 stdout = result.out,
                 stderr = result.err,

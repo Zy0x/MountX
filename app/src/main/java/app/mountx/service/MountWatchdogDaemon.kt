@@ -128,6 +128,10 @@ class MountWatchdogDaemon @Inject constructor(
      * Re-mounts if Android system_server / vold dropped the mount during deep sleep.
      */
     suspend fun checkAndRemountCanaries() {
+        if (RootShell.exists("/dev/.mountx_unmounted")) {
+            AppLogger.info("Watchdog", "User intentional unmount active (/dev/.mountx_unmounted exists), skipping auto-remount.")
+            return
+        }
         val games = gameDao.getAllGames().firstOrNull() ?: return
         val sdBase = appPreferences.sdBasePath.first()
 

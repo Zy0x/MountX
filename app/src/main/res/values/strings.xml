@@ -1044,6 +1044,21 @@
     <string name="user_profile_dual_apps">Dual Apps (User 999)</string>
     <string name="user_profile_work">Work Profile (User %1$d)</string>
     <string name="user_profile_custom">User Profile %1$d</string>
+
+    <!-- Notification Panel Status & Multi-Disk Sync -->
+    <string name="notif_channel_active_name">Active Mount Status</string>
+    <string name="notif_channel_active_desc">Persistent indicator showing active mounted apps and offloaded data size.</string>
+    <string name="notif_channel_emergency_name">Storage Safety Alerts</string>
+    <string name="notif_channel_emergency_desc">High-priority alerts for abrupt external storage disconnection.</string>
+    <string name="notif_active_status_title">MountX · %1$d App(s) Active</string>
+    <string name="notif_active_status_body">%1$s · %2$s offloaded</string>
+    <string name="notif_emergency_eject_title">External Storage Disconnected</string>
+    <string name="notif_emergency_eject_body">Active apps were safely terminated to protect data integrity.</string>
+    <string name="collision_multi_disk_detected_title">Multiple Storage Copies Detected</string>
+    <string name="collision_multi_disk_detected_desc">Data for %1$s exists on multiple connected drives (%2$s). Active storage: %3$s.</string>
+    <string name="collision_switch_storage_btn">Switch Storage</string>
+    <string name="collision_active_storage_label">Active Storage: %1$s</string>
+    <string name="collision_mount_blocked_active">Cannot mount: this app is already actively mounted from %1$s. Unmount it first to switch drives.</string>
 </resources>
 
 

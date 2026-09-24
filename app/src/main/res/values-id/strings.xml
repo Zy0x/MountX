@@ -1028,6 +1028,21 @@
     <string name="user_profile_dual_apps">Dual Apps (User 999)</string>
     <string name="user_profile_work">Profil Kerja (User %1$d)</string>
     <string name="user_profile_custom">Profil Pengguna %1$d</string>
+
+    <!-- Notification Panel Status & Multi-Disk Sync -->
+    <string name="notif_channel_active_name">Status Kaitan Aktif</string>
+    <string name="notif_channel_active_desc">Indikator persisten yang menampilkan aplikasi aktif ter-mount dan ukuran data dialihkan.</string>
+    <string name="notif_channel_emergency_name">Peringatan Keamanan Penyimpanan</string>
+    <string name="notif_channel_emergency_desc">Peringatan prioritas tinggi saat media penyimpanan eksternal terputus mendadak.</string>
+    <string name="notif_active_status_title">MountX · %1$d Aplikasi Aktif</string>
+    <string name="notif_active_status_body">%1$s · %2$s dialihkan</string>
+    <string name="notif_emergency_eject_title">Penyimpanan Eksternal Terputus</string>
+    <string name="notif_emergency_eject_body">Aplikasi aktif telah dihentikan secara aman demi keamanan data.</string>
+    <string name="collision_multi_disk_detected_title">Data Terdeteksi di Beberapa Disk</string>
+    <string name="collision_multi_disk_detected_desc">Data untuk %1$s ditemukan di beberapa penyimpanan (%2$s). Penyimpanan aktif: %3$s.</string>
+    <string name="collision_switch_storage_btn">Ganti Penyimpanan</string>
+    <string name="collision_active_storage_label">Penyimpanan Aktif: %1$s</string>
+    <string name="collision_mount_blocked_active">Gagal mengaitkan: aplikasi ini sudah aktif ter-mount dari %1$s. Lepaskan terlebih dahulu untuk beralih disk.</string>
 </resources>
 
 

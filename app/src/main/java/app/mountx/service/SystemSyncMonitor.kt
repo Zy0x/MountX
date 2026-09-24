@@ -48,7 +48,8 @@ class SystemSyncMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gameDao: GameDao,
     private val mountManager: MountManager,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val mountNotificationManager: MountNotificationManager
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -108,7 +109,7 @@ class SystemSyncMonitor @Inject constructor(
     fun startMonitoring() {
         if (isRegistered) return
 
-        createEmergencyNotificationChannel()
+        mountNotificationManager.createNotificationChannels()
 
         val mediaFilter = IntentFilter().apply {
             addAction(Intent.ACTION_MEDIA_MOUNTED)
@@ -204,8 +205,8 @@ class SystemSyncMonitor @Inject constructor(
             AppLogger.error("SystemSyncMonitor", "Failed lazy unmount: ${e.message}")
         }
 
-        // 3. Post Heads-Up notification
-        postEmergencyNotification()
+        // 3. Post Heads-Up notification and sync status bar
+        mountNotificationManager.postEmergencyDisconnectedNotification()
 
         // 4. Emit event to UI ViewModels
         _events.emit(SystemSyncEvent.StorageDisconnected)
@@ -255,74 +256,15 @@ class SystemSyncMonitor @Inject constructor(
             AppLogger.error("SystemSyncMonitor", "Error during hot-plug remount: ${e.message}")
         }
 
-        // Post status bar notification about hot-plug result
+        // Post status bar notification about hot-plug result & sync active status
         if (remountedCount > 0) {
-            postHotPlugSuccessNotification(ctx, remountedCount)
+            mountNotificationManager.postHotPlugConnectedNotification(remountedCount)
+        } else {
+            mountNotificationManager.syncActiveMountNotification()
         }
 
         // Emit event to refresh UI
         _events.emit(SystemSyncEvent.StorageMounted)
         AppLogger.success("SystemSyncMonitor", "Hot-plug recovery complete. $remountedCount app(s) remounted.")
-    }
-
-    private fun postHotPlugSuccessNotification(ctx: Context, count: Int) {
-        val openIntent = Intent(ctx, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            ctx, 98, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val notif = NotificationCompat.Builder(ctx, EMERGENCY_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setColor(0xFF00E5FF.toInt())
-            .setContentTitle(ctx.getString(R.string.notif_hotplug_title))
-            .setContentText(ctx.getString(R.string.notif_hotplug_body, count))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
-        val manager = ctx.getSystemService(NotificationManager::class.java)
-        manager.notify(REMOUNT_NOTIF_ID, notif)
-    }
-
-    private fun createEmergencyNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                EMERGENCY_CHANNEL_ID,
-                "MountX Alerts",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "High-priority alerts for storage ejection and safety"
-                enableVibration(true)
-            }
-            val manager = context.getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-    }
-
-    private fun postEmergencyNotification() {
-        val openAppIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            99,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notif = NotificationCompat.Builder(context, EMERGENCY_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setColor(0xFFFF1744.toInt())
-            .setContentTitle("Penyimpanan Eksternal Terputus")
-            .setContentText("Aplikasi terkait telah dihentikan demi keamanan data.")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
-
-        val manager = context.getSystemService(NotificationManager::class.java)
-        manager.notify(EMERGENCY_NOTIF_ID, notif)
     }
 }

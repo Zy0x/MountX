@@ -271,6 +271,7 @@ cleanup_stale_mounts() {
     su -mm -c '
     SD_BASE="'"${SD_BASE}"'"
     SD_BLOCK="'"${SD_BLOCK}"'"
+    [ -z "${SD_BLOCK}" ] && SD_BLOCK=$(mount | grep " ${SD_BASE} " | awk "{print \$1}" | head -n 1)
     for i in 1 2 3; do
         has_stale=0
         while read -r dev mnt rest; do
@@ -280,6 +281,15 @@ cleanup_stale_mounts() {
                         if [ -n "${SD_BLOCK}" ] && [ "${dev}" = "${SD_BLOCK}" ]; then
                             umount -f -l "${mnt}" 2>/dev/null
                             has_stale=1
+                        else
+                            case "${dev}" in
+                                /dev/block/mmcblk*|/dev/block/sd*|/dev/block/nvme*|/dev/block/dm-*)
+                                    if [ "${mnt}" != "/data" ] && [ "${mnt}" != "${SD_BASE}" ]; then
+                                        umount -f -l "${mnt}" 2>/dev/null
+                                        has_stale=1
+                                    fi
+                                    ;;
+                            esac
                         fi
                     fi
                     ;;
@@ -511,6 +521,24 @@ load_mountpoints() {
             continue
         fi
 
+        # ── Multi-Disk Collision & Anti-Stacking Check ─────────────────────────
+        if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
+            local cur_dev
+            cur_dev=$(grep -F " ${dst} " /proc/mounts 2>/dev/null | awk '{print $1}' | head -n 1)
+            if [ -n "${disk_uuid}" ]; then
+                local exp_dev
+                exp_dev=$(blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
+                [ -z "${exp_dev}" ] && exp_dev=$(toybox blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
+                if [ -n "${exp_dev}" ] && [ -n "${cur_dev}" ] && [ "${cur_dev}" != "${exp_dev}" ]; then
+                    log_warn "  [${pkg}] Target ${dst} already mounted from ${cur_dev}, expected ${exp_dev} (UUID:${disk_uuid}). Skipping to prevent collision."
+                    continue
+                fi
+            fi
+            log_info "  [${pkg}] Target ${dst} is already mounted. Skipping duplicate bind."
+            entries=$((entries + 1))
+            continue
+        fi
+
         # ── Smart Multi-Disk Auto-Mount ────────────────────────────────────────
         # If source path doesn't exist but disk_uuid is present, try to auto-mount
         # the target disk using its UUID so the source becomes accessible.
@@ -665,17 +693,24 @@ mount_watchdog() {
         [ -f "${MODULE_DIR}/disable" ] && { log_info "[Watchdog] Module disabled. Exiting."; exit 0; }
         [ -f "${MODULE_DIR}/remove" ]  && { log_info "[Watchdog] Module removing. Exiting."; exit 0; }
 
+        # Intentional unmount guard: if user unmounted via MountX UI or notification, do not re-mount
+        [ -f "/dev/.mountx_unmounted" ] && return 0
+
         # Hard 24h timeout (reboot cycle will restart us)
         local now
         now=$(date +%s)
         [ $((now - START_TS)) -gt 86400 ] && { log_info "[Watchdog] 24h limit reached. Exiting cleanly."; exit 0; }
 
-        # Battery guard: do not stress on critical battery
+        # Battery guard: do not stress on critical battery unless charging
+        local bat_status
+        bat_status=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo "Discharging")
         local bat
         bat=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 100)
-        if [ "${bat}" -lt 10 ] 2>/dev/null; then
-            echo "[Watchdog] Battery critical (${bat}%), skipping check." >> "${WATCHDOG_LOG}" 2>/dev/null
-            return 0
+        if [ "${bat_status}" != "Charging" ] && [ "${bat_status}" != "Full" ]; then
+            if [ "${bat}" -lt 10 ] 2>/dev/null; then
+                echo "[Watchdog] Battery critical (${bat}%), skipping check." >> "${WATCHDOG_LOG}" 2>/dev/null
+                return 0
+            fi
         fi
 
         # Check 1: Is SD_BASE still mounted?
@@ -764,6 +799,7 @@ check_safe_uninstall() {
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
+    rm -f /dev/.mountx_unmounted 2>/dev/null
     wait_for_boot
     check_safe_uninstall
     load_config
@@ -802,6 +838,10 @@ main() {
     # Touch boot status marker so BootReceiver/UI can recognize completion
     touch "${BOOT_FLAG_FILE}" 2>/dev/null
     log_info "MountX boot marker touched at ${BOOT_FLAG_FILE}. Service completed."
+
+    # Trigger active status notification sync in MountX app
+    am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+    log_info "Sent ACTION_SYNC_NOTIFICATION broadcast to app.mountx"
 
     # Launch watchdog daemon in background (event-driven, minimal battery impact)
     mount_watchdog &

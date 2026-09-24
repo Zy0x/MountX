@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import app.mountx.data.db.AppDao
 import app.mountx.data.model.AppEntry
+import app.mountx.service.MountNotificationManager
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,7 +39,8 @@ class AppRepository @Inject constructor(
     private val appDao: AppDao,
     private val mountManager: MountManager,
     private val diskCatalogManager: DiskCatalogManager,
-    private val storageManager: app.mountx.root.StorageManager
+    private val storageManager: app.mountx.root.StorageManager,
+    private val mountNotificationManager: MountNotificationManager
 ) {
     private val gameDao get() = appDao
 
@@ -260,6 +262,7 @@ class AppRepository @Inject constructor(
         syncModuleGamelist()
         diskCatalogManager.removeGameFromCatalog(sdBase, packageName)
         syncDiskCatalog(sdBase)
+        mountNotificationManager.syncActiveMountNotification()
         AppLogger.info("Games", "Removed game: $packageName")
     }
 
@@ -316,6 +319,7 @@ class AppRepository @Inject constructor(
                 syncModuleGamelist()
                 diskCatalogManager.removeGameFromCatalog(sdBase, packageName)
                 syncDiskCatalog(sdBase)
+                mountNotificationManager.syncActiveMountNotification()
                 AppLogger.info("Apps", "Removed app: $packageName (restoreToInternal=$restoreToInternal)")
             }
         }
@@ -337,12 +341,15 @@ class AppRepository @Inject constructor(
                     val ex = result.exceptionOrNull()
                     val newStatus = if (ex is app.mountx.root.OcclusionHazardException || ex?.message?.contains("MicroSD") == true) {
                         MountStatus.NEED_MIGRATION
+                    } else if (ex is app.mountx.root.MultiDiskCollisionException) {
+                        MountStatus.UNMOUNTED
                     } else {
                         MountStatus.ERROR
                     }
                     gameDao.updateMountStatus(game.packageName, newStatus)
                     AppLogger.error("Games", "Failed to mount ${game.displayName} [Status: $newStatus]: ${ex?.message}")
                 }
+                mountNotificationManager.syncActiveMountNotification()
                 result
             }
         }
@@ -362,6 +369,7 @@ class AppRepository @Inject constructor(
                     gameDao.updateMountStatus(game.packageName, MountStatus.ERROR)
                     AppLogger.error("Games", "Failed to unmount ${game.displayName}: ${result.exceptionOrNull()?.message}")
                 }
+                mountNotificationManager.syncActiveMountNotification()
                 result
             }
         }
@@ -369,7 +377,8 @@ class AppRepository @Inject constructor(
     suspend fun mountAll(sdBase: String = "/data/sdext2"): Int =
         withContext(Dispatchers.IO) {
             RootShell.rootExecutionMutex.withLock {
-                val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+                RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
+                val games = gameDao.getAllGamesSync()
                 var count = 0
                 AppLogger.info("Games", "Mounting all ${games.size} registered games")
                 for (g in games) {
@@ -405,6 +414,8 @@ class AppRepository @Inject constructor(
                             val ex = res.exceptionOrNull()
                             val newStatus = if (ex is app.mountx.root.OcclusionHazardException || ex?.message?.contains("MicroSD") == true) {
                                 MountStatus.NEED_MIGRATION
+                            } else if (ex is app.mountx.root.MultiDiskCollisionException) {
+                                MountStatus.UNMOUNTED
                             } else {
                                 MountStatus.ERROR
                             }
@@ -412,6 +423,7 @@ class AppRepository @Inject constructor(
                         }
                     }
                 }
+                mountNotificationManager.syncActiveMountNotification()
                 AppLogger.success("Games", "Mounted $count/${games.size} games")
                 count
             }
@@ -420,7 +432,7 @@ class AppRepository @Inject constructor(
     suspend fun unmountAll(sdBase: String = "/data/sdext2"): Int =
         withContext(Dispatchers.IO) {
             RootShell.rootExecutionMutex.withLock {
-                val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+                val games = gameDao.getAllGamesSync()
                 var count = 0
                 AppLogger.info("Games", "Unmounting all registered games")
                 for (g in games) {
@@ -431,6 +443,7 @@ class AppRepository @Inject constructor(
                     }
                 }
                 mountManager.unmountAll(sdBase)
+                mountNotificationManager.syncActiveMountNotification()
                 AppLogger.success("Games", "Unmounted $count games")
                 count
             }
@@ -438,7 +451,7 @@ class AppRepository @Inject constructor(
 
     suspend fun syncModuleGamelist() = withContext(Dispatchers.IO) {
         val targetDirs = listOf("/data/adb/modules/MountX", "/data/adb/modules/Mountify")
-        val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+        val games = gameDao.getAllGamesSync()
 
         // 1. Legacy gamelist.conf
         val gamelistContent = games.filter { it.isEnabled }.joinToString("\n") { g ->
@@ -455,14 +468,42 @@ class AppRepository @Inject constructor(
         mountpointsLines.add("# Format: pkg|category|sourcePath|targetPath|preserveMedia|diskUuid|userId")
 
         for (g in games.filter { it.isEnabled }) {
-            val points = if (g.mountPoints.isNotEmpty()) g.mountPoints else synthesizeLegacyMountPoints(g)
-            for (mp in points.filter { it.enabled }) {
+            var updatedG = g
+            var gameModified = false
+            val rawPoints = if (g.mountPoints.isNotEmpty()) g.mountPoints else synthesizeLegacyMountPoints(g)
+            val updatedPoints = rawPoints.map { mp ->
+                var effectiveUuid = mp.diskUuid ?: updatedG.preferredDiskUuid ?: ""
+                if (effectiveUuid.isBlank() && RootShell.exists(mp.sourcePath)) {
+                    val dev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null | awk 'NR==2 {print \$1}'").trim()
+                    if (dev.isNotBlank()) {
+                        val resolvedUuid = MountManager.getBlockDeviceUuid(dev)
+                        if (!resolvedUuid.isNullOrBlank()) {
+                            effectiveUuid = resolvedUuid
+                        }
+                    }
+                }
+                if (effectiveUuid.isNotBlank() && (mp.diskUuid != effectiveUuid || updatedG.preferredDiskUuid != effectiveUuid)) {
+                    gameModified = true
+                    if (updatedG.preferredDiskUuid.isNullOrBlank()) {
+                        updatedG = updatedG.copy(preferredDiskUuid = effectiveUuid)
+                    }
+                    mp.copy(diskUuid = effectiveUuid)
+                } else {
+                    mp
+                }
+            }
+            if (gameModified) {
+                updatedG = updatedG.copy(mountPoints = updatedPoints)
+                gameDao.updateGame(updatedG)
+            }
+
+            for (mp in updatedPoints.filter { it.enabled }) {
                 val pkg = g.packageName
                 val category = mp.category.name
                 val sourcePath = mp.sourcePath
                 val targetPath = mp.targetPath
                 val preserveMedia = if (mp.preserveMedia || mp.category == MountPointCategory.MEDIA_DOWNLOADS) "1" else "0"
-                val diskUuid = mp.diskUuid ?: g.preferredDiskUuid ?: ""
+                val diskUuid = mp.diskUuid ?: updatedG.preferredDiskUuid ?: ""
                 val userId = when {
                     targetPath.contains("/emulated/999/") || targetPath.contains("/user/999/") || targetPath.contains("/media/999/") -> "999"
                     targetPath.contains("/emulated/10/") || targetPath.contains("/user/10/") || targetPath.contains("/media/10/") -> "10"
@@ -482,13 +523,13 @@ class AppRepository @Inject constructor(
     }
 
     suspend fun syncDiskCatalog(sdBase: String = "/data/sdext2") = withContext(Dispatchers.IO) {
-        val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+        val games = gameDao.getAllGamesSync()
         diskCatalogManager.syncCatalogFromRegisteredGames(sdBase, games)
     }
 
     suspend fun scanMicroSdGames(sdBase: String, installedApps: Map<String, String>): List<DiscoveredGame> =
         withContext(Dispatchers.IO) {
-            val registered = (gameDao.getAllGames().firstOrNull() ?: emptyList()).map { it.packageName }.toSet()
+            val registered = gameDao.getAllGamesSync().map { it.packageName }.toSet()
             diskCatalogManager.scanSdCardForGames(sdBase, registered, installedApps)
         }
 
@@ -522,7 +563,7 @@ class AppRepository @Inject constructor(
     }
 
     suspend fun refreshMountStatuses() = withContext(Dispatchers.IO) {
-        val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+        val games = gameDao.getAllGamesSync()
         val mountedPaths = mountManager.getMountedPaths()
         val isSdBaseMounted = mountManager.isMounted("/data/sdext2") || RootShell.exists("/data/sdext2/MountX")
 
@@ -547,14 +588,24 @@ class AppRepository @Inject constructor(
             }
             val isMounted = isDataMounted || isObbMounted || areCustomMounted
 
+            // Multi-disk storage check: verify if the specific backing storage is attached
+            val isStorageAttached = if (g.mountPoints.isNotEmpty()) {
+                g.mountPoints.any { mp ->
+                    RootShell.exists(mp.sourcePath) || (mp.diskUuid != null && RootShell.execForOutput("blkid | grep -i \"${mp.diskUuid}\"").isNotBlank())
+                } || isSdBaseMounted
+            } else {
+                isSdBaseMounted
+            }
+
             val newStatus = when {
                 isMounted -> MountStatus.MOUNTED
-                !isSdBaseMounted -> MountStatus.DISK_DETACHED
+                !isStorageAttached -> MountStatus.DISK_DETACHED
                 g.mountStatus == MountStatus.ERROR -> MountStatus.ERROR
                 else -> {
                     val extData = "/data/sdext2/MountX/Android/data/${g.packageName}"
                     val extObb = "/data/sdext2/MountX/Android/obb/${g.packageName}"
-                    val hasSd = RootShell.exists(extData) || RootShell.exists(extObb)
+                    val hasCustomSd = g.mountPoints.any { RootShell.exists(it.sourcePath) }
+                    val hasSd = hasCustomSd || RootShell.exists(extData) || RootShell.exists(extObb)
                     if (hasSd) {
                         MountStatus.UNMOUNTED
                     } else if (g.mountStatus == MountStatus.NEED_MIGRATION) {
@@ -575,6 +626,7 @@ class AppRepository @Inject constructor(
                 gameDao.updateMountStatus(g.packageName, newStatus)
             }
         }
+        mountNotificationManager.syncActiveMountNotification()
     }
 
     private suspend fun getExternalStorageBases(defaultSdBase: String, game: GameEntry?): List<String> {

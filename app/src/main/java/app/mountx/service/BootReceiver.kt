@@ -17,15 +17,20 @@ class BootReceiver : BroadcastReceiver() {
     @Inject
     lateinit var appPreferences: AppPreferences
 
+    @Inject
+    lateinit var mountNotificationManager: MountNotificationManager
+
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
+                    mountNotificationManager.createNotificationChannels()
                     val autoMount = appPreferences.autoMountOnBoot.first()
                     if (autoMount) {
                         MountService.startMountAll(context)
                     }
+                    mountNotificationManager.syncActiveMountNotification()
                 } finally {
                     pendingResult.finish()
                 }

@@ -2,6 +2,7 @@ package app.mountx
 
 import android.app.Application
 import app.mountx.root.ModuleManager
+import app.mountx.service.MountNotificationManager
 import app.mountx.service.MountWatchdogDaemon
 import com.topjohnwu.superuser.Shell
 import dagger.hilt.android.HiltAndroidApp
@@ -20,6 +21,9 @@ class MountXApp : Application() {
     @Inject
     lateinit var watchdogDaemon: MountWatchdogDaemon
 
+    @Inject
+    lateinit var mountNotificationManager: MountNotificationManager
+
     override fun onCreate() {
         super.onCreate()
         // Configure libsu for root shell access
@@ -30,6 +34,9 @@ class MountXApp : Application() {
                 .setTimeout(30)
         )
 
+        // Initialize notification channels & sync status bar notification
+        mountNotificationManager.createNotificationChannels()
+
         // Start passive event-driven watchdog daemon
         watchdogDaemon.start()
 
@@ -37,6 +44,7 @@ class MountXApp : Application() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 ModuleManager.checkAndSyncModuleSilently(this@MountXApp)
+                mountNotificationManager.syncActiveMountNotification()
             } catch (_: Exception) {}
         }
     }
