@@ -148,9 +148,9 @@ mount_sd() {
             case "${detected_fs}" in
                 f2fs)  mnt_opts="${mnt_opts},inline_data,inline_dentry,flush_merge,mode=adaptive" ;;
                 ext4)  mnt_opts="${mnt_opts},commit=60,delalloc,data=writeback" ;;
-                ntfs)  mnt_opts="rw,noatime,nodiratime" ;;
-                exfat) mnt_opts="rw,noatime,nodiratime" ;;
-                vfat|fat32) mnt_opts="${mnt_opts},fmask=0000,dmask=0000" ;;
+                ntfs)  mnt_opts="rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000" ;;
+                exfat) mnt_opts="rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8" ;;
+                vfat|fat32) mnt_opts="rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000" ;;
             esac
 
             # Primary mount attempt (filesystem-specific)
@@ -449,9 +449,9 @@ mount_disk_by_uuid() {
     local mounted=0
     case "${fs_type}" in
         ntfs)
-            mount.ntfs -o rw,noatime,nodiratime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
-            [ ${mounted} -eq 0 ] && mount -t ntfs-3g -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
-            [ ${mounted} -eq 0 ] && mount -t ntfs -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            mount.ntfs -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount -t ntfs-3g -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         f2fs)
             mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
@@ -460,17 +460,20 @@ mount_disk_by_uuid() {
             mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         exfat)
-            mount -t exfat -o rw,noatime,nodiratime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount -t exfat -o rw,noatime,nodiratime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         vfat|fat32)
-            mount -t vfat -o rw,noatime,nodiratime,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            mount -t vfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         *)
             # Try common filesystems in order for unknown/empty fs_type
-            for fs in ext4 f2fs exfat vfat; do
+            for fs in ext4 f2fs; do
                 mount -t "${fs}" -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1 && break
             done
-            [ ${mounted} -eq 0 ] && mount.ntfs -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount.ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            [ ${mounted} -eq 0 ] && mount -t vfat -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             [ ${mounted} -eq 0 ] && mount "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
     esac
