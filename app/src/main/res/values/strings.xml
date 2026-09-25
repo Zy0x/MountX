@@ -1050,8 +1050,15 @@
     <string name="notif_channel_active_desc">Persistent indicator showing active mounted apps and offloaded data size.</string>
     <string name="notif_channel_emergency_name">Storage Safety Alerts</string>
     <string name="notif_channel_emergency_desc">High-priority alerts for abrupt external storage disconnection.</string>
-    <string name="notif_active_status_title">MountX · %1$d App(s) Active</string>
+    <string name="notif_active_status_title">%1$d Apps Active</string>
+    <string name="notif_active_status_title_single">%1$s Active</string>
     <string name="notif_active_status_body">%1$s · %2$s offloaded</string>
+    <string name="notif_saved_bytes">Saved %1$s</string>
+    <string name="notif_multi_drives_count">%1$d Drives</string>
+    <string name="disk_type_microsd">MicroSD</string>
+    <string name="disk_type_usb_ssd">USB SSD</string>
+    <string name="disk_type_nvme">NVMe SSD</string>
+    <string name="disk_type_external">External Drive</string>
     <string name="notif_emergency_eject_title">External Storage Disconnected</string>
     <string name="notif_emergency_eject_body">Active apps were safely terminated to protect data integrity.</string>
     <string name="collision_multi_disk_detected_title">Multiple Storage Copies Detected</string>

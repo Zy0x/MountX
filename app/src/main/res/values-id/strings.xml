@@ -1034,8 +1034,15 @@
     <string name="notif_channel_active_desc">Indikator persisten yang menampilkan aplikasi aktif ter-mount dan ukuran data dialihkan.</string>
     <string name="notif_channel_emergency_name">Peringatan Keamanan Penyimpanan</string>
     <string name="notif_channel_emergency_desc">Peringatan prioritas tinggi saat media penyimpanan eksternal terputus mendadak.</string>
-    <string name="notif_active_status_title">MountX · %1$d Aplikasi Aktif</string>
+    <string name="notif_active_status_title">%1$d Aplikasi Aktif</string>
+    <string name="notif_active_status_title_single">%1$s Aktif</string>
     <string name="notif_active_status_body">%1$s · %2$s dialihkan</string>
+    <string name="notif_saved_bytes">Hemat %1$s</string>
+    <string name="notif_multi_drives_count">%1$d Penyimpanan</string>
+    <string name="disk_type_microsd">MicroSD</string>
+    <string name="disk_type_usb_ssd">USB SSD</string>
+    <string name="disk_type_nvme">NVMe SSD</string>
+    <string name="disk_type_external">Drive Eksternal</string>
     <string name="notif_emergency_eject_title">Penyimpanan Eksternal Terputus</string>
     <string name="notif_emergency_eject_body">Aplikasi aktif telah dihentikan secara aman demi keamanan data.</string>
     <string name="collision_multi_disk_detected_title">Data Terdeteksi di Beberapa Disk</string>

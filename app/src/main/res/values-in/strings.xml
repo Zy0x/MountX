@@ -686,6 +686,8 @@
     <string name="notif_games_mounted_active">%1$d Aplikasi Ter-mount Aktif • MicroSD Terjaga</string>
     <string name="notif_games_unmounted">Seluruh Aplikasi Telah Dilepas</string>
     <string name="notif_subtext_kernel">Kernel Namespace</string>
+    <string name="notif_hotplug_title">Penyimpanan Eksternal Terhubung Kembali</string>
+    <string name="notif_hotplug_body">%1$d aplikasi dipulihkan otomatis. Ketuk untuk verifikasi.</string>
     <string name="mount_add_custom_path">Tambah Direktori Kustom</string>
     <string name="game_detail_badge_offloaded">DIALIHKAN</string>
 
@@ -1026,6 +1028,28 @@
     <string name="user_profile_dual_apps">Dual Apps (User 999)</string>
     <string name="user_profile_work">Profil Kerja (User %1$d)</string>
     <string name="user_profile_custom">Profil Pengguna %1$d</string>
+
+    <!-- Notification Panel Status & Multi-Disk Sync -->
+    <string name="notif_channel_active_name">Status Kaitan Aktif</string>
+    <string name="notif_channel_active_desc">Indikator persisten yang menampilkan aplikasi aktif ter-mount dan ukuran data dialihkan.</string>
+    <string name="notif_channel_emergency_name">Peringatan Keamanan Penyimpanan</string>
+    <string name="notif_channel_emergency_desc">Peringatan prioritas tinggi saat media penyimpanan eksternal terputus mendadak.</string>
+    <string name="notif_active_status_title">%1$d Aplikasi Aktif</string>
+    <string name="notif_active_status_title_single">%1$s Aktif</string>
+    <string name="notif_active_status_body">%1$s · %2$s dialihkan</string>
+    <string name="notif_saved_bytes">Hemat %1$s</string>
+    <string name="notif_multi_drives_count">%1$d Penyimpanan</string>
+    <string name="disk_type_microsd">MicroSD</string>
+    <string name="disk_type_usb_ssd">USB SSD</string>
+    <string name="disk_type_nvme">NVMe SSD</string>
+    <string name="disk_type_external">Drive Eksternal</string>
+    <string name="notif_emergency_eject_title">Penyimpanan Eksternal Terputus</string>
+    <string name="notif_emergency_eject_body">Aplikasi aktif telah dihentikan secara aman demi keamanan data.</string>
+    <string name="collision_multi_disk_detected_title">Data Terdeteksi di Beberapa Disk</string>
+    <string name="collision_multi_disk_detected_desc">Data untuk %1$s ditemukan di beberapa penyimpanan (%2$s). Penyimpanan aktif: %3$s.</string>
+    <string name="collision_switch_storage_btn">Ganti Penyimpanan</string>
+    <string name="collision_active_storage_label">Penyimpanan Aktif: %1$s</string>
+    <string name="collision_mount_blocked_active">Gagal mengaitkan: aplikasi ini sudah aktif ter-mount dari %1$s. Lepaskan terlebih dahulu untuk beralih disk.</string>
 </resources>
 
 

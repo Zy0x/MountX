@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import app.mountx.MainActivity
 import app.mountx.R
 import app.mountx.data.db.GameDao
+import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountStatus
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
@@ -99,17 +100,9 @@ class MountNotificationManager @Inject constructor(
                     return@launch
                 }
 
-                // Resolve primary disk label from /proc/mounts or first game mount
-                var diskLabel = "MicroSD"
-                val mountOut = RootShell.execForOutput("cat /proc/mounts 2>/dev/null | grep -E '(/data/sdext2|/mnt/media_rw)' | head -n 1")
-                if (mountOut.isNotBlank()) {
-                    val spec = mountOut.trim().split(Regex("\\s+")).getOrNull(0) ?: ""
-                    if (spec.contains("mmcblk")) {
-                        diskLabel = "MicroSD"
-                    } else if (spec.contains("sd")) {
-                        diskLabel = "External Storage"
-                    }
-                }
+                // Dynamic Multi-Disk Resolution
+                val gameDisks = resolveMountedGamesDisks(mountedGames)
+                val uniqueDisks = gameDisks.values.distinct()
 
                 val totalBytes = mountedGames.sumOf { it.dataSizeBytes }
                 val formattedSize = if (totalBytes > 0) FormatUtils.formatBytes(totalBytes) else ""
@@ -131,39 +124,61 @@ class MountNotificationManager @Inject constructor(
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
-                val title = context.getString(R.string.notif_active_status_title, count)
-                val body = if (formattedSize.isNotBlank()) {
-                    context.getString(R.string.notif_active_status_body, diskLabel, formattedSize)
-                } else {
-                    diskLabel
+                // 1. Dynamic Storage Subtext / Summary (e.g. "MicroSD · Hemat 47.3 GB" or "MicroSD + USB SSD · Hemat 62.5 GB")
+                val diskSummary = when {
+                    uniqueDisks.isEmpty() -> context.getString(R.string.disk_type_microsd)
+                    uniqueDisks.size == 1 -> uniqueDisks.first()
+                    uniqueDisks.size == 2 -> "${uniqueDisks[0]} + ${uniqueDisks[1]}"
+                    else -> context.getString(R.string.notif_multi_drives_count, uniqueDisks.size)
                 }
 
+                val headerSummary = if (formattedSize.isNotBlank()) {
+                    val savedStr = context.getString(R.string.notif_saved_bytes, formattedSize)
+                    "$diskSummary · $savedStr"
+                } else {
+                    diskSummary
+                }
+
+                // 2. Notification Title (Minimalist, zero brand redundancy)
+                val title = if (count == 1) {
+                    context.getString(R.string.notif_active_status_title_single, mountedGames.first().displayName)
+                } else {
+                    context.getString(R.string.notif_active_status_title, count)
+                }
+
+                // 3. Collapsed Content Text (Concise list of games or summary)
+                val collapsedContent = if (count == 1) {
+                    headerSummary
+                } else {
+                    val names = mountedGames.take(3).joinToString(", ") { it.displayName }
+                    if (mountedGames.size > 3) "$names +${mountedGames.size - 3}" else names
+                }
+
+                // 4. Expanded Content (InboxStyle with elegant bullets • and optional disk tag on multi-disk)
                 val bigStyle = NotificationCompat.InboxStyle()
                     .setBigContentTitle(title)
-                    .setSummaryText(body)
+                    .setSummaryText(headerSummary)
 
                 for (g in mountedGames.take(6)) {
                     val gSize = if (g.dataSizeBytes > 0) " (${FormatUtils.formatBytes(g.dataSizeBytes)})" else ""
-                    bigStyle.addLine("✓ ${g.displayName}$gSize")
+                    val diskTag = if (uniqueDisks.size > 1) " [${gameDisks[g.packageName]}]" else ""
+                    bigStyle.addLine("• ${g.displayName}$gSize$diskTag")
                 }
                 if (mountedGames.size > 6) {
                     bigStyle.addLine("+${mountedGames.size - 6} more")
                 }
 
+                // 5. Notification Builder (Clean, single high-value Unmount action, tap opens app)
                 val builder = NotificationCompat.Builder(context, CHANNEL_ACTIVE_STATUS)
                     .setSmallIcon(R.drawable.ic_notification)
                     .setColor(0xFF00E5FF.toInt())
                     .setContentTitle(title)
-                    .setContentText(body)
+                    .setContentText(collapsedContent)
+                    .setSubText(headerSummary)
                     .setStyle(bigStyle)
                     .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     .setOngoing(true)
                     .setContentIntent(openPendingIntent)
-                    .addAction(
-                        0,
-                        context.getString(R.string.notif_action_open),
-                        openPendingIntent
-                    )
                     .addAction(
                         0,
                         context.getString(R.string.notif_action_unmount_all),
@@ -171,11 +186,81 @@ class MountNotificationManager @Inject constructor(
                     )
 
                 notificationManager.notify(ACTIVE_NOTIF_ID, builder.build())
-                AppLogger.info("Notification", "Active mount notification synced: $count games active.")
+                AppLogger.info("Notification", "Active mount notification synced: $count games active on $diskSummary.")
             } catch (e: Exception) {
                 AppLogger.error("Notification", "Failed to sync notification: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Resolves user-facing label for a block device (e.g. /dev/block/mmcblk0p3 -> "MicroSD" or volume label).
+     */
+    private suspend fun resolveBlockDeviceLabel(blockDevice: String): String {
+        // 1. Try volume label via blkid
+        val labelOut = RootShell.execForOutput("blkid -s LABEL -o value \"$blockDevice\" 2>/dev/null").trim()
+        if (labelOut.isNotBlank()) {
+            return labelOut
+        }
+
+        // 2. Try sysfs device model or name
+        val devName = blockDevice.substringAfterLast("/")
+        val parentDisk = devName.replace(Regex("p?[0-9]+$"), "")
+        if (parentDisk.isNotBlank()) {
+            val model = RootShell.execForOutput("cat /sys/block/$parentDisk/device/model 2>/dev/null").trim()
+            if (model.isNotBlank()) {
+                return model
+            }
+            val name = RootShell.execForOutput("cat /sys/block/$parentDisk/device/name 2>/dev/null").trim()
+            if (name.isNotBlank() && !name.equals("mmc", ignoreCase = true)) {
+                return name
+            }
+        }
+
+        // 3. Fallback to physical hardware category (localized)
+        return when {
+            devName.startsWith("mmcblk") -> context.getString(R.string.disk_type_microsd)
+            devName.startsWith("nvme") -> context.getString(R.string.disk_type_nvme)
+            devName.startsWith("sd") -> context.getString(R.string.disk_type_usb_ssd)
+            else -> context.getString(R.string.disk_type_external)
+        }
+    }
+
+    /**
+     * Maps each mounted game to its active physical disk label.
+     * Inspects /proc/mounts once in a single batched query to ensure zero UI delay.
+     */
+    private suspend fun resolveMountedGamesDisks(mountedGames: List<GameEntry>): Map<String, String> {
+        val gameToLabel = mutableMapOf<String, String>()
+        val deviceToLabelCache = mutableMapOf<String, String>()
+
+        val procMounts = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
+        val mountEntries = procMounts.mapNotNull { line ->
+            val parts = line.trim().split(Regex("\\s+"))
+            if (parts.size >= 2 && parts[0].startsWith("/dev/block/")) {
+                parts[0] to parts[1]
+            } else null
+        }
+
+        for (g in mountedGames) {
+            val matchedDev = mountEntries.firstOrNull { (_, mnt) ->
+                mnt.contains("/Android/data/${g.packageName}") ||
+                mnt.contains("/Android/obb/${g.packageName}") ||
+                g.mountPoints.any { mp -> mp.targetPath.isNotBlank() && mnt.contains(mp.targetPath) }
+            }?.first ?: run {
+                mountEntries.firstOrNull { (_, mnt) -> mnt == "/data/sdext2" }?.first
+            }
+
+            if (matchedDev != null) {
+                val label = deviceToLabelCache.getOrPut(matchedDev) {
+                    resolveBlockDeviceLabel(matchedDev)
+                }
+                gameToLabel[g.packageName] = label
+            } else {
+                gameToLabel[g.packageName] = context.getString(R.string.disk_type_microsd)
+            }
+        }
+        return gameToLabel
     }
 
     /**
