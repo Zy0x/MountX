@@ -75,8 +75,8 @@ class MountManager {
             list.add("/mnt/installer/$uid/emulated/$uid")
             list.add("/mnt/androidwritable/$uid/emulated/$uid")
             list.add("/mnt/pass_through/$uid/emulated/$uid")
-            // Only target /storage/emulated/$uid if /storage/emulated is confirmed mounted to prevent tmpfs collisions
-            if (RootShell.isMountpoint("/storage/emulated") || RootShell.exists("/storage/emulated/$uid/Android")) {
+            // Only target /storage/emulated/$uid if /storage/emulated is confirmed a real mounted filesystem to prevent tmpfs collisions
+            if (RootShell.isMountpoint("/storage/emulated")) {
                 list.add("/storage/emulated/$uid")
             }
         }
@@ -734,7 +734,7 @@ class MountManager {
                                 has_mount=1
                               else
                                 case "${'$'}dev" in
-                                  /dev/block/mmcblk*|/dev/block/sd*|/dev/block/nvme*|/dev/block/dm-*)
+                                  /dev/block/mmcblk*|/dev/block/sd*|/dev/block/nvme*)
                                     if [ "${'$'}mnt" != "/data" ] && [ "${'$'}mnt" != "$sdBase" ]; then
                                       umount -f -l "${'$'}mnt" 2>/dev/null
                                       has_mount=1

@@ -107,15 +107,26 @@ wait_for_boot() {
         sleep 2
     done
 
-    log_info "Boot completed detected. Waiting for primary emulated storage and FUSE (/storage/emulated/0/Android/data)…"
-    # Wait until user unlocks the device and FUSE creates /storage/emulated/0/Android/data
-    while [ ! -d "/storage/emulated/0/Android/data" ] || [ ! -d "/data/media/0" ]; do
+    log_info "Boot completed detected. Waiting for primary emulated storage and FUSE readiness…"
+    local retries=0
+    while true; do
+        if [ -d "/data/media/0" ] && \
+           mountpoint -q "/storage/emulated" 2>/dev/null && \
+           grep -q " /storage/emulated " /proc/mounts 2>/dev/null && \
+           [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" != "tmpfs" ] && \
+           [ -d "/storage/emulated/0" ]; then
+            break
+        fi
         sleep 2
+        retries=$((retries + 1))
+        if [ $((retries % 15)) -eq 0 ]; then
+            log_info "Waiting for primary storage FUSE decryption/unlock (${retries}s)..."
+        fi
     done
 
     # Give Vold, FUSE daemon, and runtime namespaces extra time to settle
-    sleep 4
-    log_info "Primary storage, FUSE, and Android/data readiness confirmed."
+    sleep 3
+    log_info "Primary storage, FUSE, and user directory readiness confirmed."
 }
 
 # ── Mount the SD partition (Smart Multi-FS: blkid detection + NTFS support) ───
@@ -283,7 +294,7 @@ cleanup_stale_mounts() {
                             has_stale=1
                         else
                             case "${dev}" in
-                                /dev/block/mmcblk*|/dev/block/sd*|/dev/block/nvme*|/dev/block/dm-*)
+                                /dev/block/mmcblk*|/dev/block/sd*|/dev/block/nvme*)
                                     if [ "${mnt}" != "/data" ] && [ "${mnt}" != "${SD_BASE}" ]; then
                                         umount -f -l "${mnt}" 2>/dev/null
                                         has_stale=1
@@ -323,18 +334,28 @@ apply_permissions() {
     local sandbox_dir="/data/user/${user_id}/${pkg}"
     [ ! -d "${sandbox_dir}" ] && sandbox_dir="/data/data/${pkg}"
 
-    # Sandbox integrity: restore internal app ownership & database permissions
+    # Sandbox integrity: fast non-recursive check (avoids boot freeze)
     if [ -d "${sandbox_dir}" ]; then
-        chown -R "${app_uid}:${app_uid}" "${sandbox_dir}" 2>/dev/null
-        chmod -R 775 "${sandbox_dir}" 2>/dev/null
-        chmod 771 "${sandbox_dir}/databases" 2>/dev/null
+        local cur_sb_u
+        cur_sb_u=$(stat -c '%u' "${sandbox_dir}" 2>/dev/null)
+        if [ "${cur_sb_u}" != "${app_uid}" ]; then
+            chown "${app_uid}:${app_uid}" "${sandbox_dir}" 2>/dev/null
+        fi
+        chmod 775 "${sandbox_dir}" 2>/dev/null
+        [ -d "${sandbox_dir}/databases" ] && chmod 771 "${sandbox_dir}/databases" 2>/dev/null
     fi
 
     # MicroSD target permissions: app_uid, GID 1023 (media_rw), mode 777, SELinux media_rw_data_file
+    # Fast non-recursive check: avoids 5+ minute I/O stall over tens of thousands of game asset files
     if [ -d "${src_dir}" ]; then
-        chown -R "${app_uid}:1023" "${src_dir}" 2>/dev/null
-        chmod -R 777 "${src_dir}" 2>/dev/null
-        chcon -R u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
+        local cur_u cur_g
+        cur_u=$(stat -c '%u' "${src_dir}" 2>/dev/null)
+        cur_g=$(stat -c '%g' "${src_dir}" 2>/dev/null)
+        if [ "${cur_u}" != "${app_uid}" ] || [ "${cur_g}" != "1023" ]; then
+            chown "${app_uid}:1023" "${src_dir}" 2>/dev/null
+        fi
+        chmod 777 "${src_dir}" 2>/dev/null
+        chcon u:object_r:media_rw_data_file:s0 "${src_dir}" 2>/dev/null
     fi
 
     log_info "  [${pkg}] Permissions verified: UID=${app_uid}, GID=1023, Mode=777 on ${src_dir}"
@@ -373,12 +394,26 @@ bind_mount_to_runtime_namespaces() {
                 "/mnt/runtime/read/emulated/${USER_ID}" \
                 "/mnt/runtime/write/emulated/${USER_ID}" \
                 "/mnt/runtime/full/emulated/${USER_ID}" \
+                "/mnt/installer/${USER_ID}/emulated/${USER_ID}" \
+                "/mnt/androidwritable/${USER_ID}/emulated/${USER_ID}" \
+                "/mnt/pass_through/${USER_ID}/emulated/${USER_ID}" \
                 "/mnt/user/${USER_ID}/primary" \
                 "/mnt/user/${USER_ID}/emulated/${USER_ID}" \
                 "/storage/emulated/${USER_ID}" \
                 "/data/media/${USER_ID}"
             do
                 if [ -d "${R}" ]; then
+                    case "${R}" in
+                        /storage/emulated/*)
+                            # NEVER touch or mount inside /storage/emulated unless it is a verified FUSE mountpoint (NOT raw tmpfs)
+                            if ! mountpoint -q "/storage/emulated" 2>/dev/null || ! grep -q " /storage/emulated " /proc/mounts 2>/dev/null; then
+                                continue
+                            fi
+                            if [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" = "tmpfs" ]; then
+                                continue
+                            fi
+                            ;;
+                    esac
                     TARGET="${R}/${REL}"
                     if ! mountpoint -q "${TARGET}" 2>/dev/null; then
                         mkdir -p "${TARGET}" 2>/dev/null
