@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -73,6 +74,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mountx.R
+import app.mountx.data.model.DiskHealthStatus
 import app.mountx.data.model.DiskType
 import app.mountx.data.model.FilesystemType
 import app.mountx.data.model.PartitionInfo
@@ -81,6 +83,7 @@ import app.mountx.data.model.StorageInfo
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.ConfirmDialog
 import app.mountx.ui.components.SectionHeader
+import app.mountx.ui.theme.adaptiveEmerald
 import app.mountx.ui.theme.BadgeMountedBgDark
 import app.mountx.ui.theme.BadgeMountedBgLight
 import app.mountx.ui.theme.BadgeMountedTextDark
@@ -322,19 +325,109 @@ private fun DiskHardwareOverviewCard(
                     }
                 }
 
-                // Partition Count Badge
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                // Badges: Health Status & Partition Count
+                val isDiskError = disk.effectiveHealth == DiskHealthStatus.ERROR_IO || disk.effectiveHealth == DiskHealthStatus.UNRESPONSIVE
+                val healthBadgeColor = if (isDiskError) WarmCrimsonDark else adaptiveEmerald()
+                val healthBadgeText = if (isDiskError) {
+                    stringResource(R.string.disk_health_badge_error)
+                } else {
+                    stringResource(R.string.disk_health_badge_healthy)
+                }
+                val healthBadgeIcon = if (isDiskError) Icons.Default.Warning else Icons.Default.CheckCircle
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.storage_disk_partitions_badge, disk.partitions.size),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = healthBadgeColor.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, healthBadgeColor.copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = healthBadgeIcon,
+                                contentDescription = null,
+                                tint = healthBadgeColor,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = healthBadgeText,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = healthBadgeColor
+                            )
+                        }
+                    }
+
+                    // Partition Count Badge
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = stringResource(R.string.storage_disk_partitions_badge, disk.partitions.size),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            // Error notice & troubleshooting card if disk has hardware I/O error
+            if (disk.effectiveHealth == DiskHealthStatus.ERROR_IO || disk.effectiveHealth == DiskHealthStatus.UNRESPONSIVE) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = WarmCrimsonDark.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, WarmCrimsonDark.copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = WarmCrimsonDark,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.notif_disk_error_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.disk_health_troubleshoot_title),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                            color = WarmCrimsonDark
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.disk_health_troubleshoot_step1),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(R.string.disk_health_troubleshoot_step2),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = stringResource(R.string.disk_health_troubleshoot_step3),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -717,8 +810,33 @@ private fun DiskPartitionCard(
                     }
                 }
 
-                // Standard Technical Status Badge (Mounted / Unmounted)
-                if (partition.isMounted) {
+                // Standard Technical Status Badge (Error / Mounted / Unmounted)
+                if (partition.healthStatus == DiskHealthStatus.ERROR_IO) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = WarmCrimsonBgDark,
+                        border = BorderStroke(1.dp, WarmCrimsonBorderDark)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = WarmCrimsonDark,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(R.string.disk_health_badge_error),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = WarmCrimsonDark
+                            )
+                        }
+                    }
+                } else if (partition.isMounted) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = mountedBg,

@@ -60,6 +60,15 @@ enum class DiskType {
     USB_OTG
 }
 
+/** Health status of physical disk or partition */
+enum class DiskHealthStatus {
+    HEALTHY,
+    WARNING,
+    ERROR_IO,
+    UNRESPONSIVE,
+    DISCONNECTED
+}
+
 /** Detailed partition metadata from /proc/partitions, blkid, and /proc/mounts */
 data class PartitionInfo(
     val path: String,
@@ -76,7 +85,9 @@ data class PartitionInfo(
     val isMounted: Boolean = false,
     val isTargetMount: Boolean = false,
     val isPortableMount: Boolean = false,
-    val isMountTargetReady: Boolean = false
+    val isMountTargetReady: Boolean = false,
+    val healthStatus: DiskHealthStatus = DiskHealthStatus.HEALTHY,
+    val healthErrorDetails: String? = null
 ) {
     val usedPercent: Float
         get() = if (sizeBytes > 0L && usedBytes > 0L) (usedBytes.toFloat() / sizeBytes.toFloat()).coerceIn(0f, 1f) else 0f
@@ -104,8 +115,17 @@ data class SdCardDiskInfo(
     val totalUsedBytes: Long = 0L,
     val totalFreeBytes: Long = 0L,
     val diskType: DiskType = DiskType.MICRO_SD,
-    val partitions: List<PartitionInfo> = emptyList()
+    val partitions: List<PartitionInfo> = emptyList(),
+    val healthStatus: DiskHealthStatus = DiskHealthStatus.HEALTHY,
+    val healthErrorDetails: String? = null
 ) {
+    val effectiveHealth: DiskHealthStatus
+        get() = if (healthStatus != DiskHealthStatus.HEALTHY) {
+            healthStatus
+        } else {
+            partitions.firstOrNull { it.healthStatus != DiskHealthStatus.HEALTHY }?.healthStatus ?: DiskHealthStatus.HEALTHY
+        }
+
     val hardwareTitle: String get() {
         val modelPart = if (modelName.isNotBlank()) " $modelName" else ""
         return "$vendorName$modelPart".trim()

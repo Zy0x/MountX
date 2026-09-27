@@ -778,6 +778,34 @@ mount_watchdog() {
             fi
         fi
 
+        # Check 0: Physical disk I/O & controller health probe
+        local io_error=0
+        if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+            # Fast test read of mount root (1 block)
+            if ! dd if="${SD_BASE}" of=/dev/null bs=512 count=1 2>/dev/null; then
+                io_error=1
+            fi
+            # Check kernel dmesg for recent hardware I/O or CRC or controller power off errors
+            if dmesg 2>/dev/null | tail -n 30 | grep -qiE "I/O error|DATCRCERR|power off|autok error"; then
+                io_error=1
+            fi
+        fi
+
+        if [ ${io_error} -eq 1 ]; then
+            log_error "[Watchdog] CRITICAL: MicroSD hardware I/O error or controller power cutoff detected!"
+            echo "io_error" > "/dev/.mountx_disk_error"
+            # Emergency unmount of bound directories to prevent games from freezing on black screens
+            for _bnd in $(grep -E "(/data/media/0/Android|/mnt/runtime/default/emulated/0/Android)" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
+                umount -l "${_bnd}" 2>/dev/null
+            done
+            # Broadcast error event to MountX app
+            am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
+            CHECK_INTERVAL=60
+            return 1
+        else
+            rm -f "/dev/.mountx_disk_error" 2>/dev/null
+        fi
+
         # Check 1: Is SD_BASE still mounted?
         if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
             log_warn "[Watchdog] SD_BASE ${SD_BASE} lost! Re-mounting..."

@@ -1050,6 +1050,28 @@
     <string name="collision_switch_storage_btn">Ganti Penyimpanan</string>
     <string name="collision_active_storage_label">Penyimpanan Aktif: %1$s</string>
     <string name="collision_mount_blocked_active">Gagal mengaitkan: aplikasi ini sudah aktif ter-mount dari %1$s. Lepaskan terlebih dahulu untuk beralih disk.</string>
+
+    <!-- Peringatan Kesehatan & Hardware I/O Error MicroSD -->
+    <string name="notif_disk_error_title">Gangguan Hardware MicroSD Terdeteksi</string>
+    <string name="notif_disk_error_desc">MicroSD mengalami error I/O atau pemutusan daya. Kaitan dinonaktifkan demi mencegah game macet.</string>
+    <string name="notif_active_status_title_error">⚠️ Error Disk: MicroSD Tidak Merespons</string>
+    <string name="notif_active_status_error_summary">Error I/O hardware terdeteksi · Kaitan dinonaktifkan</string>
+    <string name="dashboard_disk_error_title">Masalah Kartu MicroSD (Hardware I/O Error)</string>
+    <string name="dashboard_disk_error_desc">Sistem mendeteksi error baca/tulis kritis pada kartu MicroSD (msdc power-off / CRC timeout). Game berisiko blank screen atau hang jika dibuka.</string>
+    <string name="dashboard_disk_error_action_unmount">Lepas Darurat</string>
+    <string name="dashboard_disk_error_action_diagnose">Diagnostik &amp; Cek Disk</string>
+    <string name="dashboard_disk_error_unmounted_msg">Seluruh kaitan aktif telah dilepaskan secara aman.</string>
+    <string name="disk_health_healthy">Sehat</string>
+    <string name="disk_health_warning">Peringatan</string>
+    <string name="disk_health_io_error">Error I/O Hardware</string>
+    <string name="disk_health_unresponsive">Tidak Merespons</string>
+    <string name="disk_health_disconnected">Terputus</string>
+    <string name="disk_health_badge_healthy">Normal</string>
+    <string name="disk_health_badge_error">I/O Error</string>
+    <string name="disk_health_troubleshoot_title">Panduan Pemulihan MicroSD</string>
+    <string name="disk_health_troubleshoot_step1">1. Lepas-pasang kembali tray kartu MicroSD, atau restart HP untuk me-reset daya controller.</string>
+    <string name="disk_health_troubleshoot_step2">2. Pastikan konektor kuningan MicroSD bersih dan rapat.</string>
+    <string name="disk_health_troubleshoot_step3">3. Jalankan Periksa Integritas Filesystem (FSCK) di menu Alat Partisi.</string>
 </resources>
 
 

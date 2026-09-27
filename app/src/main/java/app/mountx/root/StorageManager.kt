@@ -2,6 +2,7 @@ package app.mountx.root
 
 import app.mountx.data.model.BenchmarkResult
 import app.mountx.data.model.DiskHardwareDetails
+import app.mountx.data.model.DiskHealthStatus
 import app.mountx.data.model.DiskIoConfig
 import app.mountx.data.model.DiskType
 import app.mountx.data.model.FilesystemType
@@ -524,6 +525,14 @@ class StorageManager {
                     }
                 }
 
+                // Check partition readability if mounted but usedBytes/freeBytes are 0
+                val partHealth: Pair<DiskHealthStatus, String?> = if (isMounted && canonicalMountPoint != null && sizeBytes <= 0L && usedBytes <= 0L && freeBytes <= 0L) {
+                    val testRes = RootShell.exec("dd if=\"$path\" of=/dev/null bs=512 count=1 2>&1")
+                    if (testRes.output.contains("I/O error", ignoreCase = true)) {
+                        Pair(DiskHealthStatus.ERROR_IO, "Partition I/O error (EIO)")
+                    } else Pair(DiskHealthStatus.HEALTHY, null)
+                } else Pair(DiskHealthStatus.HEALTHY, null)
+
                 partitionItems.add(
                     PartitionInfo(
                         path = path,
@@ -540,7 +549,9 @@ class StorageManager {
                         isMounted = isMounted,
                         isTargetMount = isTargetMount,
                         isPortableMount = isPortableMount,
-                        isMountTargetReady = isSuitable
+                        isMountTargetReady = isSuitable,
+                        healthStatus = partHealth.first,
+                        healthErrorDetails = partHealth.second
                     )
                 )
             }
@@ -1258,6 +1269,23 @@ class StorageManager {
 
             val cleanModel = if (model.isNotBlank()) model else if (!isMmc) "Storage" else ""
 
+            val hasDiskErrorFile = RootShell.exists("/dev/.mountx_disk_error")
+            val (diskHealth: DiskHealthStatus, diskErrorDetails: String?) = when {
+                hasDiskErrorFile -> Pair(DiskHealthStatus.ERROR_IO, "Hardware I/O error or controller power cutoff")
+                diskPartitions.any { it.healthStatus == DiskHealthStatus.ERROR_IO } -> Pair(DiskHealthStatus.ERROR_IO, "Partition I/O error")
+                else -> {
+                    // Quick test read of first block of physical disk
+                    val readTest = RootShell.exec("dd if=\"$diskPath\" of=/dev/null bs=512 count=1 2>&1")
+                    if (readTest.output.contains("I/O error", ignoreCase = true)) {
+                        Pair(DiskHealthStatus.ERROR_IO, "Block device I/O error (EIO)")
+                    } else if (!readTest.isSuccess && readTest.output.contains("No such device", ignoreCase = true)) {
+                        Pair(DiskHealthStatus.DISCONNECTED, "Device disconnected")
+                    } else {
+                        Pair(DiskHealthStatus.HEALTHY, null)
+                    }
+                }
+            }
+
             disks.add(
                 SdCardDiskInfo(
                     devicePath = diskPath,
@@ -1268,7 +1296,9 @@ class StorageManager {
                     totalUsedBytes = totalUsedBytes,
                     totalFreeBytes = totalFreeBytes,
                     diskType = diskType,
-                    partitions = diskPartitions
+                    partitions = diskPartitions,
+                    healthStatus = diskHealth,
+                    healthErrorDetails = diskErrorDetails
                 )
             )
         }

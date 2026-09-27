@@ -33,6 +33,8 @@ import javax.inject.Singleton
 sealed class SystemSyncEvent {
     object StorageMounted : SystemSyncEvent()
     object StorageDisconnected : SystemSyncEvent()
+    data class DiskError(val diskName: String, val details: String) : SystemSyncEvent()
+    object DiskHealthRestored : SystemSyncEvent()
     data class PackageInstalled(val packageName: String) : SystemSyncEvent()
     data class PackageRemoved(val packageName: String) : SystemSyncEvent()
     object RefreshAll : SystemSyncEvent()
@@ -41,7 +43,7 @@ sealed class SystemSyncEvent {
 /**
  * Real-Time System Event Bus & Watchdog for MountX.
  * Dynamically monitors Storage connections/disconnections and Package installs/uninstalls.
- * Executes emergency safeguards (process kill + lazy unmount) upon sudden MicroSD ejection.
+ * Executes emergency safeguards (process kill + lazy unmount) upon sudden MicroSD ejection or hardware I/O error.
  */
 @Singleton
 class SystemSyncMonitor @Inject constructor(
@@ -57,11 +59,14 @@ class SystemSyncMonitor @Inject constructor(
     val events: SharedFlow<SystemSyncEvent> = _events.asSharedFlow()
 
     private var isRegistered = false
+    private var healthMonitorJob: kotlinx.coroutines.Job? = null
 
     companion object {
         const val EMERGENCY_CHANNEL_ID = "mountx_emergency"
         const val EMERGENCY_NOTIF_ID = 9999
         const val REMOUNT_NOTIF_ID = 9998
+        const val DISK_ERROR_NOTIF_ID = 9997
+        const val ACTION_DISK_ERROR = "app.mountx.ACTION_DISK_ERROR"
         private const val REMOUNT_SETTLE_MS = 3_000L
     }
 
@@ -81,6 +86,12 @@ class SystemSyncMonitor @Inject constructor(
                 Intent.ACTION_MEDIA_MOUNTED -> {
                     scope.launch {
                         handleStorageMounted(ctx ?: context)
+                    }
+                }
+                ACTION_DISK_ERROR -> {
+                    val err = intent.getStringExtra("error") ?: "Hardware I/O error"
+                    scope.launch {
+                        handleDiskError("MicroSD", err)
                     }
                 }
                 Intent.ACTION_PACKAGE_ADDED -> {
@@ -119,6 +130,7 @@ class SystemSyncMonitor @Inject constructor(
             addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
             addDataScheme("file")
         }
+        val diskErrorFilter = IntentFilter(ACTION_DISK_ERROR)
         val pkgFilter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REMOVED)
@@ -128,17 +140,57 @@ class SystemSyncMonitor @Inject constructor(
 
         try {
             context.registerReceiver(systemReceiver, mediaFilter)
+            context.registerReceiver(systemReceiver, diskErrorFilter)
             context.registerReceiver(systemReceiver, pkgFilter)
             isRegistered = true
             AppLogger.info("SystemSyncMonitor", "System broadcast listeners registered.")
         } catch (e: Exception) {
             AppLogger.error("SystemSyncMonitor", "Failed to register receivers: ${e.message}")
         }
+
+        // Active background disk health sentinel (probes every 30s when apps are mounted)
+        healthMonitorJob?.cancel()
+        healthMonitorJob = scope.launch {
+            var previousErrorState = false
+            while (true) {
+                delay(30_000L)
+                try {
+                    val games = gameDao.getAllGamesSync()
+                    val hasMountedGames = games.any { it.mountStatus == MountStatus.MOUNTED }
+                    if (hasMountedGames) {
+                        val hasFlag = RootShell.exists("/dev/.mountx_disk_error")
+                        val isDmesgError = if (!hasFlag) {
+                            val dmesgRes = RootShell.exec("dmesg 2>/dev/null | tail -n 25 | grep -iE 'I/O error|DATCRCERR|power off|autok error'")
+                            dmesgRes.isSuccess && dmesgRes.output.isNotBlank()
+                        } else false
+
+                        if (hasFlag || isDmesgError) {
+                            if (!previousErrorState) {
+                                previousErrorState = true
+                                handleDiskError("MicroSD", "Hardware I/O error or controller power cutoff")
+                            }
+                        } else {
+                            if (previousErrorState) {
+                                previousErrorState = false
+                                _events.emit(SystemSyncEvent.DiskHealthRestored)
+                                mountNotificationManager.syncActiveMountNotification()
+                            }
+                        }
+                    } else {
+                        previousErrorState = false
+                    }
+                } catch (e: Exception) {
+                    AppLogger.error("SystemSyncMonitor", "Health loop error: ${e.message}")
+                }
+            }
+        }
     }
 
     fun stopMonitoring() {
         if (!isRegistered) return
         try {
+            healthMonitorJob?.cancel()
+            healthMonitorJob = null
             context.unregisterReceiver(systemReceiver)
             isRegistered = false
         } catch (_: Exception) {}
@@ -210,6 +262,59 @@ class SystemSyncMonitor @Inject constructor(
 
         // 4. Emit event to UI ViewModels
         _events.emit(SystemSyncEvent.StorageDisconnected)
+    }
+
+    /**
+     * Emergency Protocol when MicroSD suffers hardware I/O errors or kernel power cutoff.
+     * 1. Force-stop active game processes to prevent crash loops / freezing on blank screens.
+     * 2. Lazy unmount broken bind mounts.
+     * 3. Show Heads-Up Emergency Notification & update ongoing notification.
+     * 4. Notify all ViewModels of DiskError event.
+     */
+    private suspend fun handleDiskError(diskName: String, details: String) {
+        AppLogger.error("SystemSyncMonitor", "CRITICAL DISK ERROR: $diskName - $details")
+
+        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+
+        // 1. Force-stop active game processes to prevent crash loops / freezing
+        try {
+            val games = gameDao.getAllGamesSync()
+            for (game in games) {
+                val pgrep = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
+                if (pgrep.isSuccess && pgrep.output.isNotBlank()) {
+                    RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
+                    AppLogger.warn("SystemSyncMonitor", "Force-stopped active process: ${game.packageName}")
+                }
+                if (game.mountStatus == MountStatus.MOUNTED) {
+                    gameDao.updateMountStatus(game.packageName, MountStatus.DISK_DETACHED)
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.error("SystemSyncMonitor", "Failed to check/kill processes on disk error: ${e.message}")
+        }
+
+        // 2. Instant lazy unmount of bind points across namespaces to unblock Android system
+        try {
+            mountManager.unmountAll(sdBase)
+            val mountsOutput = RootShell.execForOutput("cat /proc/mounts 2>/dev/null")
+            mountsOutput.lines().forEach { line ->
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size >= 2) {
+                    val target = parts[1]
+                    if (target.contains("/Android/data/") || target.contains("/Android/obb/") || target.contains("/MountX/")) {
+                        RootShell.exec("umount -f -l \"$target\" 2>/dev/null")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.error("SystemSyncMonitor", "Failed lazy unmount on disk error: ${e.message}")
+        }
+
+        // 3. Post Heads-Up notification and sync status bar
+        mountNotificationManager.postDiskErrorNotification(diskName, details)
+
+        // 4. Emit event to UI ViewModels
+        _events.emit(SystemSyncEvent.DiskError(diskName, details))
     }
 
     /**

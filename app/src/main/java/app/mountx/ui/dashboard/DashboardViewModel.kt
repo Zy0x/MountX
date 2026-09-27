@@ -71,6 +71,12 @@ class DashboardViewModel @Inject constructor(
     private val _allDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(emptyList())
     val allDisks: StateFlow<List<app.mountx.data.model.SdCardDiskInfo>> = _allDisks.asStateFlow()
 
+    private val _diskHealthStatus = MutableStateFlow(app.mountx.data.model.DiskHealthStatus.HEALTHY)
+    val diskHealthStatus: StateFlow<app.mountx.data.model.DiskHealthStatus> = _diskHealthStatus.asStateFlow()
+
+    private val _diskErrorDetails = MutableStateFlow<String?>(null)
+    val diskErrorDetails: StateFlow<String?> = _diskErrorDetails.asStateFlow()
+
     val internalStorageInfo: StateFlow<app.mountx.data.model.InternalStorageInfo?> = storageRepository.observeInternalStorage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
@@ -105,7 +111,18 @@ class DashboardViewModel @Inject constructor(
     init {
         refresh()
         viewModelScope.launch {
-            systemSyncMonitor.events.collect {
+            systemSyncMonitor.events.collect { event ->
+                when (event) {
+                    is app.mountx.service.SystemSyncEvent.DiskError -> {
+                        _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.ERROR_IO
+                        _diskErrorDetails.value = event.details
+                    }
+                    is app.mountx.service.SystemSyncEvent.DiskHealthRestored -> {
+                        _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.HEALTHY
+                        _diskErrorDetails.value = null
+                    }
+                    else -> {}
+                }
                 refresh()
             }
         }
@@ -120,7 +137,21 @@ class DashboardViewModel @Inject constructor(
                 _isModuleInstalled.value = info.isModuleInstalled
                 _moduleVersion.value = info.moduleVersion
                 val sdBase = appPreferences.sdBasePath.first()
-                _allDisks.value = storageRepository.getAllDisks(sdBase)
+                val disks = storageRepository.getAllDisks(sdBase)
+                _allDisks.value = disks
+
+                val worstHealth = disks.map { it.effectiveHealth }.firstOrNull { it != app.mountx.data.model.DiskHealthStatus.HEALTHY }
+                val hasDiskErrorFile = RootShell.exists("/dev/.mountx_disk_error")
+                if (hasDiskErrorFile || worstHealth == app.mountx.data.model.DiskHealthStatus.ERROR_IO) {
+                    _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.ERROR_IO
+                    _diskErrorDetails.value = disks.firstOrNull { it.healthErrorDetails != null }?.healthErrorDetails ?: "Hardware I/O error"
+                } else if (worstHealth != null) {
+                    _diskHealthStatus.value = worstHealth
+                } else {
+                    _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.HEALTHY
+                    _diskErrorDetails.value = null
+                }
+
                 gameRepository.refreshMountStatuses()
 
                 // Background calculate game sizes so real storage is displayed accurately

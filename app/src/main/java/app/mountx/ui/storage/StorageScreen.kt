@@ -83,6 +83,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.mountx.R
 import androidx.compose.material.icons.automirrored.filled.Label
+import app.mountx.data.model.DiskHealthStatus
 import app.mountx.data.model.DiskType
 import app.mountx.data.model.FilesystemType
 import app.mountx.data.model.FsckReport
@@ -1458,6 +1459,71 @@ private fun DiskVisualMapOverviewCard(
                         ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+
+                // Health status badge
+                val isDiskError = disk.effectiveHealth == DiskHealthStatus.ERROR_IO || disk.effectiveHealth == DiskHealthStatus.UNRESPONSIVE
+                val healthBadgeColor = if (isDiskError) WarmCrimsonDark else adaptiveEmerald()
+                val healthBadgeText = if (isDiskError) {
+                    stringResource(R.string.disk_health_badge_error)
+                } else {
+                    stringResource(R.string.disk_health_badge_healthy)
+                }
+                val healthBadgeIcon = if (isDiskError) Icons.Default.Warning else Icons.Default.CheckCircle
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = healthBadgeColor.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, healthBadgeColor.copy(alpha = 0.45f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = healthBadgeIcon,
+                            contentDescription = null,
+                            tint = healthBadgeColor,
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Text(
+                            text = healthBadgeText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            fontWeight = FontWeight.Bold,
+                            color = healthBadgeColor
+                        )
+                    }
+                }
+            }
+
+            // Error notice banner if disk has hardware I/O error
+            if (disk.effectiveHealth == DiskHealthStatus.ERROR_IO || disk.effectiveHealth == DiskHealthStatus.UNRESPONSIVE) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = WarmCrimsonDark.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, WarmCrimsonDark.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = WarmCrimsonDark,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.notif_disk_error_desc),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 15.sp
+                        )
+                    }
                 }
             }
 

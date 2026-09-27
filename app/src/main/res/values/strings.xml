@@ -1066,6 +1066,28 @@
     <string name="collision_switch_storage_btn">Switch Storage</string>
     <string name="collision_active_storage_label">Active Storage: %1$s</string>
     <string name="collision_mount_blocked_active">Cannot mount: this app is already actively mounted from %1$s. Unmount it first to switch drives.</string>
+
+    <!-- MicroSD Health & Hardware I/O Error Alerts -->
+    <string name="notif_disk_error_title">MicroSD Hardware Failure Detected</string>
+    <string name="notif_disk_error_desc">MicroSD experienced hardware I/O errors or power cutoff. Mounts detached to prevent game freezing.</string>
+    <string name="notif_active_status_title_error">⚠️ Disk Error: MicroSD Unresponsive</string>
+    <string name="notif_active_status_error_summary">Hardware I/O error detected · Mounts suspended</string>
+    <string name="dashboard_disk_error_title">MicroSD Card Issue (Hardware I/O Error)</string>
+    <string name="dashboard_disk_error_desc">The system detected critical read/write errors on your MicroSD card (msdc power-off / CRC timeout). Games may freeze or show black screens if launched.</string>
+    <string name="dashboard_disk_error_action_unmount">Emergency Unmount</string>
+    <string name="dashboard_disk_error_action_diagnose">Diagnose &amp; Check Disk</string>
+    <string name="dashboard_disk_error_unmounted_msg">All active mounts have been safely detached.</string>
+    <string name="disk_health_healthy">Healthy</string>
+    <string name="disk_health_warning">Warning</string>
+    <string name="disk_health_io_error">Hardware I/O Error</string>
+    <string name="disk_health_unresponsive">Not Responding</string>
+    <string name="disk_health_disconnected">Disconnected</string>
+    <string name="disk_health_badge_healthy">Normal</string>
+    <string name="disk_health_badge_error">I/O Error</string>
+    <string name="disk_health_troubleshoot_title">MicroSD Troubleshooting Steps</string>
+    <string name="disk_health_troubleshoot_step1">1. Eject and re-insert the MicroSD card tray, or reboot device to reset controller power.</string>
+    <string name="disk_health_troubleshoot_step2">2. Ensure card copper contacts are clean and dry.</string>
+    <string name="disk_health_troubleshoot_step3">3. Run Filesystem Integrity Check (FSCK) in Partition Tools.</string>
 </resources>
 
 

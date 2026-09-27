@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.ErrorOutline
 import app.mountx.ui.components.ModuleInstallDialog
 import app.mountx.ui.components.ConfirmDialog
 import app.mountx.ui.components.NeedMigrationDialog
@@ -165,6 +166,8 @@ fun DashboardScreen(
     val isRefreshingTelemetry by viewModel.isRefreshingTelemetry.collectAsState()
     val games by viewModel.games.collectAsState()
     val allDisks by viewModel.allDisks.collectAsState()
+    val diskHealthStatus by viewModel.diskHealthStatus.collectAsState()
+    val diskErrorDetails by viewModel.diskErrorDetails.collectAsState()
     val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
     val offloadedStats by viewModel.offloadedStats.collectAsState()
     val liveTelemetry by viewModel.liveTelemetry.collectAsState()
@@ -176,6 +179,8 @@ fun DashboardScreen(
         isRefreshingTelemetry = isRefreshingTelemetry,
         games = games,
         allDisks = allDisks,
+        diskHealthStatus = diskHealthStatus,
+        diskErrorDetails = diskErrorDetails,
         internalStorageInfo = internalStorageInfo,
         offloadedStats = offloadedStats,
         liveTelemetry = liveTelemetry,
@@ -186,6 +191,7 @@ fun DashboardScreen(
         onOpenGameDetail = onOpenGameDetail,
         onMountAll = { viewModel.mountAll() },
         onUnmountAll = { viewModel.unmountAll() },
+        onEmergencyUnmountClick = { viewModel.unmountAll() },
         onToggleGameMount = { viewModel.toggleMount(it) },
         onMigrateGame = { viewModel.migrateGame(it) },
         onMigrateGameWithOptions = { game, points, targetBase ->
@@ -206,6 +212,8 @@ fun DashboardContent(
     isRefreshingTelemetry: Boolean = false,
     games: List<GameEntry>,
     allDisks: List<SdCardDiskInfo> = emptyList(),
+    diskHealthStatus: app.mountx.data.model.DiskHealthStatus = app.mountx.data.model.DiskHealthStatus.HEALTHY,
+    diskErrorDetails: String? = null,
     internalStorageInfo: InternalStorageInfo? = null,
     offloadedStats: Pair<Int, Long> = Pair(0, 0L),
     liveTelemetry: LiveNamespaceTelemetry = LiveNamespaceTelemetry(),
@@ -216,6 +224,7 @@ fun DashboardContent(
     onOpenGameDetail: (GameEntry) -> Unit = {},
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
+    onEmergencyUnmountClick: () -> Unit = {},
     onToggleGameMount: (GameEntry) -> Unit,
     onMigrateGame: (GameEntry) -> Unit = {},
     onMigrateGameWithOptions: (GameEntry, List<app.mountx.data.model.MountPointConfig>, String) -> Unit = { _, _, _ -> },
@@ -263,7 +272,11 @@ fun DashboardContent(
                     item {
                         ContextualAlertBanner(
                             status = status,
-                            onInstallModuleClick = { showModuleInstallDialog = true }
+                            diskHealthStatus = diskHealthStatus,
+                            diskErrorDetails = diskErrorDetails,
+                            onInstallModuleClick = { showModuleInstallDialog = true },
+                            onEmergencyUnmountClick = onEmergencyUnmountClick,
+                            onDiagnoseClick = onNavigateToStorage
                         )
                     }
                     item {
@@ -322,7 +335,11 @@ fun DashboardContent(
                 item {
                     ContextualAlertBanner(
                         status = status,
-                        onInstallModuleClick = { showModuleInstallDialog = true }
+                        diskHealthStatus = diskHealthStatus,
+                        diskErrorDetails = diskErrorDetails,
+                        onInstallModuleClick = { showModuleInstallDialog = true },
+                        onEmergencyUnmountClick = onEmergencyUnmountClick,
+                        onDiagnoseClick = onNavigateToStorage
                     )
                 }
                 item {
@@ -523,7 +540,11 @@ private fun SleekCompactHeader(
 @Composable
 private fun ContextualAlertBanner(
     status: AppStatus,
-    onInstallModuleClick: () -> Unit = {}
+    diskHealthStatus: app.mountx.data.model.DiskHealthStatus = app.mountx.data.model.DiskHealthStatus.HEALTHY,
+    diskErrorDetails: String? = null,
+    onInstallModuleClick: () -> Unit = {},
+    onEmergencyUnmountClick: () -> Unit = {},
+    onDiagnoseClick: () -> Unit = {}
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val errColor = if (isDark) NeonCrimson else TerracottaRedLight
@@ -532,6 +553,85 @@ private fun ContextualAlertBanner(
     val warnContainer = if (isDark) AmberGlow else WarmAmberContainerLight
 
     when {
+        diskHealthStatus == app.mountx.data.model.DiskHealthStatus.ERROR_IO -> {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = errContainer),
+                border = BorderStroke(1.dp, errColor.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = errColor.copy(alpha = 0.2f),
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = errColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.dashboard_disk_error_title),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = errColor
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = diskErrorDetails ?: stringResource(R.string.dashboard_disk_error_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onEmergencyUnmountClick,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, errColor.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = errColor),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.dashboard_disk_error_action_unmount),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                        }
+                        FilledTonalButton(
+                            onClick = onDiagnoseClick,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.dashboard_disk_error_action_diagnose),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         status.rootSolution == RootSolution.NONE -> {
             Card(
                 shape = RoundedCornerShape(16.dp),

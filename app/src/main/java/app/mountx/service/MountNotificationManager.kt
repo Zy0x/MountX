@@ -43,6 +43,7 @@ class MountNotificationManager @Inject constructor(
         const val ACTIVE_NOTIF_ID = 1001
         const val EMERGENCY_NOTIF_ID = 9999
         const val HOTPLUG_NOTIF_ID = 9998
+        const val DISK_ERROR_NOTIF_ID = 9997
     }
 
     /**
@@ -139,25 +140,41 @@ class MountNotificationManager @Inject constructor(
                     diskSummary
                 }
 
-                // 2. Notification Title (Minimalist, zero brand redundancy)
-                val title = if (count == 1) {
+                // 2. Check physical disk error state
+                val isDiskError = RootShell.exists("/dev/.mountx_disk_error")
+
+                // 3. Notification Title & Colors
+                val notifColor = if (isDiskError) 0xFFFF1744.toInt() else 0xFF00E5FF.toInt()
+                val finalTitle = if (isDiskError) {
+                    context.getString(R.string.notif_active_status_title_error)
+                } else if (count == 1) {
                     context.getString(R.string.notif_active_status_title_single, mountedGames.first().displayName)
                 } else {
                     context.getString(R.string.notif_active_status_title, count)
                 }
 
-                // 3. Collapsed Content Text (Concise list of games or summary)
-                val collapsedContent = if (count == 1) {
+                // 4. Collapsed Content Text
+                val finalHeaderSummary = if (isDiskError) {
+                    context.getString(R.string.notif_active_status_error_summary)
+                } else headerSummary
+
+                val collapsedContent = if (isDiskError) {
+                    context.getString(R.string.notif_active_status_error_summary)
+                } else if (count == 1) {
                     headerSummary
                 } else {
                     val names = mountedGames.take(3).joinToString(", ") { it.displayName }
                     if (mountedGames.size > 3) "$names +${mountedGames.size - 3}" else names
                 }
 
-                // 4. Expanded Content (InboxStyle with elegant bullets • and optional disk tag on multi-disk)
+                // 5. Expanded Content (InboxStyle with elegant bullets • and optional disk tag on multi-disk)
                 val bigStyle = NotificationCompat.InboxStyle()
-                    .setBigContentTitle(title)
-                    .setSummaryText(headerSummary)
+                    .setBigContentTitle(finalTitle)
+                    .setSummaryText(finalHeaderSummary)
+
+                if (isDiskError) {
+                    bigStyle.addLine("• ⚠️ ${context.getString(R.string.notif_active_status_error_summary)}")
+                }
 
                 for (g in mountedGames.take(6)) {
                     val gSize = if (g.dataSizeBytes > 0) " (${FormatUtils.formatBytes(g.dataSizeBytes)})" else ""
@@ -168,15 +185,15 @@ class MountNotificationManager @Inject constructor(
                     bigStyle.addLine("+${mountedGames.size - 6} more")
                 }
 
-                // 5. Notification Builder (Clean, single high-value Unmount action, tap opens app)
+                // 6. Notification Builder (Clean, single high-value Unmount action, tap opens app)
                 val builder = NotificationCompat.Builder(context, CHANNEL_ACTIVE_STATUS)
                     .setSmallIcon(R.drawable.ic_notification)
-                    .setColor(0xFF00E5FF.toInt())
-                    .setContentTitle(title)
+                    .setColor(notifColor)
+                    .setContentTitle(finalTitle)
                     .setContentText(collapsedContent)
-                    .setSubText(headerSummary)
+                    .setSubText(finalHeaderSummary)
                     .setStyle(bigStyle)
-                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setPriority(if (isDiskError) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
                     .setOngoing(true)
                     .setContentIntent(openPendingIntent)
                     .addAction(
@@ -186,9 +203,59 @@ class MountNotificationManager @Inject constructor(
                     )
 
                 notificationManager.notify(ACTIVE_NOTIF_ID, builder.build())
-                AppLogger.info("Notification", "Active mount notification synced: $count games active on $diskSummary.")
+                AppLogger.info("Notification", "Active mount notification synced: $count games active on $diskSummary (isDiskError=$isDiskError).")
             } catch (e: Exception) {
                 AppLogger.error("Notification", "Failed to sync notification: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Posts high-importance heads-up alert when storage suffers hardware I/O or controller error.
+     */
+    fun postDiskErrorNotification(diskName: String = "MicroSD", reason: String = "") {
+        scope.launch {
+            try {
+                createNotificationChannels()
+
+                val openIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context, 97, openIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val unmountAllIntent = Intent(context, MountActionReceiver::class.java).apply {
+                    action = MountActionReceiver.ACTION_UNMOUNT_ALL
+                }
+                val unmountAllPendingIntent = PendingIntent.getBroadcast(
+                    context, 2, unmountAllIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val builder = NotificationCompat.Builder(context, CHANNEL_EMERGENCY_ALERTS)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setColor(0xFFFF1744.toInt())
+                    .setContentTitle(context.getString(R.string.notif_disk_error_title))
+                    .setContentText(context.getString(R.string.notif_disk_error_desc))
+                    .setStyle(
+                        NotificationCompat.BigTextStyle()
+                            .bigText("${context.getString(R.string.notif_disk_error_desc)}\n\n${context.getString(R.string.disk_health_troubleshoot_step1)}")
+                    )
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent)
+                    .addAction(
+                        0,
+                        context.getString(R.string.notif_action_unmount_all),
+                        unmountAllPendingIntent
+                    )
+
+                notificationManager.notify(DISK_ERROR_NOTIF_ID, builder.build())
+                syncActiveMountNotification()
+            } catch (e: Exception) {
+                AppLogger.error("Notification", "Failed to post disk error notification: ${e.message}")
             }
         }
     }

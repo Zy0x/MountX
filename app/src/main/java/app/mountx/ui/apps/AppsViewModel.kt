@@ -107,6 +107,8 @@ class AppsViewModel @Inject constructor(
                 when (event) {
                     is app.mountx.service.SystemSyncEvent.StorageMounted,
                     is app.mountx.service.SystemSyncEvent.StorageDisconnected,
+                    is app.mountx.service.SystemSyncEvent.DiskError,
+                    is app.mountx.service.SystemSyncEvent.DiskHealthRestored,
                     is app.mountx.service.SystemSyncEvent.RefreshAll -> {
                         refresh()
                     }
