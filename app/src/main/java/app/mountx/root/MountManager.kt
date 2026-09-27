@@ -263,7 +263,8 @@ class MountManager {
             for (mp in game.mountPoints.filter { it.enabled }) {
                 val activeDev = getActiveMountSourceDevice(mp.targetPath)
                 if (activeDev != null) {
-                    val requestedDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null | awk 'NR==2 {print \$1}'").trim()
+                    val dfOut = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").trim()
+                    val requestedDev = dfOut.lines().getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
                     val activeUuid = getBlockDeviceUuid(activeDev)
                     val requestedUuid = if (requestedDev.isNotBlank()) getBlockDeviceUuid(requestedDev) else null
 
@@ -712,7 +713,7 @@ class MountManager {
                           ;;
                       esac
                     done < /proc/mounts
-                    for loop_dev in $(losetup -a 2>/dev/null | grep "\.mountx/containers" | awk -F':' '{print $1}'); do
+                    for loop_dev in $(losetup -a 2>/dev/null | grep "\.mountx/containers" | cut -d':' -f1); do
                       if [ -n "${'$'}loop_dev" ]; then
                         losetup -d "${'$'}loop_dev" 2>/dev/null
                       fi
@@ -722,7 +723,7 @@ class MountManager {
 
                 // Unmount bind mounts cleanly with multi-pass sweep across all external partitions
                 val script = """
-                    SD_BLOCK=${'$'}(mount | grep " $sdBase " | awk '{print ${'$'}1}' | head -n 1)
+                    SD_BLOCK=${'$'}(mount | grep " $sdBase " | cut -d' ' -f1 | head -n 1)
                     for i in 1 2 3; do
                       has_mount=0
                       while read -r dev mnt rest; do

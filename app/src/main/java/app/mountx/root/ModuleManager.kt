@@ -106,6 +106,18 @@ object ModuleManager {
                 chmod -R 755 $MODULE_DIR
                 chmod 644 $MODULE_DIR/module.prop $MODULE_DIR/config.conf $MODULE_DIR/banner.png 2>/dev/null || true
                 chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh $MODULE_DIR/customize.sh 2>/dev/null || true
+                if [ -d "$MODULE_DIR/bin" ]; then
+                    chmod -R 755 "$MODULE_DIR/bin" 2>/dev/null || true
+                    if [ -f "$MODULE_DIR/bin/busybox" ]; then
+                        chmod 755 "$MODULE_DIR/bin/busybox" 2>/dev/null || true
+                        for tool in fstrim awk flock blkid losetup fdisk; do
+                            [ ! -e "$MODULE_DIR/bin/${'$'}tool" ] && ln -sf "$MODULE_DIR/bin/busybox" "$MODULE_DIR/bin/${'$'}tool" 2>/dev/null || true
+                        done
+                    fi
+                    if [ -x "/system/bin/make_f2fs" ] && [ ! -e "$MODULE_DIR/bin/mkfs.f2fs" ]; then
+                        ln -sf "/system/bin/make_f2fs" "$MODULE_DIR/bin/mkfs.f2fs" 2>/dev/null || true
+                    fi
+                fi
                 chcon -R u:object_r:magisk_file:s0 $MODULE_DIR 2>/dev/null || true
             """.trimIndent()
 
@@ -163,8 +175,9 @@ object ModuleManager {
                 ?.toIntOrNull() ?: 0
 
             val currentVersionCode = app.mountx.BuildConfig.VERSION_CODE
-            if (installedVersionCode < currentVersionCode) {
-                AppLogger.info(TAG, "Syncing outdated module: installed=$installedVersionCode, current=$currentVersionCode")
+            val binExists = RootShell.exists("$MODULE_DIR/bin/busybox")
+            if (installedVersionCode < currentVersionCode || !binExists) {
+                AppLogger.info(TAG, "Syncing outdated or incomplete module: installed=$installedVersionCode, current=$currentVersionCode, binExists=$binExists")
                 installModuleDirectly(context)
                 true
             } else {

@@ -52,6 +52,23 @@ set_perm "$MODPATH/service.sh" 0 0 0755
 set_perm "$MODPATH/uninstall.sh" 0 0 0755
 [ -f "$MODPATH/banner.png" ] && set_perm "$MODPATH/banner.png" 0 0 0644
 
+# Setup standalone binaries and applets
+if [ -d "$MODPATH/bin" ]; then
+    ui_print "- Setting up standalone binary toolchain..."
+    set_perm_recursive "$MODPATH/bin" 0 0 0755 0755
+    if [ -f "$MODPATH/bin/busybox" ]; then
+        set_perm "$MODPATH/bin/busybox" 0 0 0755
+        for _tool in fstrim awk flock blkid losetup fdisk; do
+            if [ ! -e "$MODPATH/bin/${_tool}" ] && ! command -v "${_tool}" >/dev/null 2>&1; then
+                ln -sf "$MODPATH/bin/busybox" "$MODPATH/bin/${_tool}" 2>/dev/null || true
+            fi
+        done
+    fi
+    if [ -x "/system/bin/make_f2fs" ] && [ ! -e "$MODPATH/bin/mkfs.f2fs" ] && ! command -v mkfs.f2fs >/dev/null 2>&1; then
+        ln -sf "/system/bin/make_f2fs" "$MODPATH/bin/mkfs.f2fs" 2>/dev/null || true
+    fi
+fi
+
 # 4. Prepare MountX Data Directories
 mkdir -p /data/sdext2
 chmod 777 /data/sdext2 2>/dev/null

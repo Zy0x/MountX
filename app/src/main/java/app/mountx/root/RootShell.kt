@@ -31,6 +31,8 @@ object RootShell {
             }
         }
 
+    private const val ENV_SETUP = "export PATH=/data/adb/modules/MountX/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH; "
+
     /**
      * Execute a shell command with root and return the result.
      * Enforces a hard timeout (default 15 seconds) to prevent kernel/daemon deadlocks.
@@ -39,7 +41,7 @@ object RootShell {
      */
     suspend fun exec(cmd: String, timeoutMillis: Long = 15000L): ShellResult = withContext(Dispatchers.IO) {
         val timedResult = withTimeoutOrNull(timeoutMillis) {
-            val result = Shell.cmd(cmd).exec()
+            val result = Shell.cmd("$ENV_SETUP$cmd").exec()
             ShellResult(
                 stdout = result.out,
                 stderr = result.err,
@@ -76,7 +78,7 @@ object RootShell {
                 }
             }
             val errList = ArrayList<String>()
-            val result = Shell.cmd(cmd).to(outList, errList).exec()
+            val result = Shell.cmd("$ENV_SETUP$cmd").to(outList, errList).exec()
             ShellResult(
                 stdout = outList,
                 stderr = errList,
@@ -104,7 +106,7 @@ object RootShell {
     suspend fun execScript(script: String, timeoutMillis: Long = 30000L): ShellResult = withContext(Dispatchers.IO) {
         val timedResult = withTimeoutOrNull(timeoutMillis) {
             val encoded = android.util.Base64.encodeToString(script.trim().toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-            val result = Shell.cmd("echo $encoded | base64 -d | sh").exec()
+            val result = Shell.cmd("$ENV_SETUP echo $encoded | base64 -d | sh").exec()
             ShellResult(
                 stdout = result.out,
                 stderr = result.err,

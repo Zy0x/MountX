@@ -29,6 +29,36 @@ for _try_dir in \
 done
 [ -z "${MODULE_DIR}" ] && MODULE_DIR="/data/adb/modules/MountX"
 
+# ── Standalone Binary & Environment Setup ─────────────────────────────────────
+# Prepend MountX standalone binaries and all known root binary paths to PATH
+for _bin_candidate in \
+    "${MODULE_DIR}/bin" \
+    "/data/adb/modules/MountX/bin" \
+    "/data/adb/ap/bin" \
+    "/data/adb/magisk" \
+    "/data/adb/ksu/bin"; do
+    if [ -d "${_bin_candidate}" ]; then
+        case ":${PATH}:" in
+            *:"${_bin_candidate}":*) ;;
+            *) PATH="${_bin_candidate}:${PATH}" ;;
+        esac
+    fi
+done
+export PATH
+
+# Ensure standalone busybox applets and filesystem links exist
+if [ -f "${MODULE_DIR}/bin/busybox" ]; then
+    chmod 755 "${MODULE_DIR}/bin/busybox" 2>/dev/null
+    for _applet in fstrim awk flock blkid losetup fdisk; do
+        if [ ! -e "${MODULE_DIR}/bin/${_applet}" ] && ! command -v "${_applet}" >/dev/null 2>&1; then
+            ln -sf "${MODULE_DIR}/bin/busybox" "${MODULE_DIR}/bin/${_applet}" 2>/dev/null || true
+        fi
+    done
+fi
+if [ -x "/system/bin/make_f2fs" ] && [ ! -e "${MODULE_DIR}/bin/mkfs.f2fs" ] && ! command -v mkfs.f2fs >/dev/null 2>&1; then
+    ln -sf "/system/bin/make_f2fs" "${MODULE_DIR}/bin/mkfs.f2fs" 2>/dev/null || true
+fi
+
 CONFIG_FILE="${MODULE_DIR}/config.conf"
 MOUNTPOINTS_FILE="${MODULE_DIR}/mountpoints.conf"
 GAMELIST_FILE="${MODULE_DIR}/gamelist.conf"
@@ -282,7 +312,7 @@ cleanup_stale_mounts() {
     su -mm -c '
     SD_BASE="'"${SD_BASE}"'"
     SD_BLOCK="'"${SD_BLOCK}"'"
-    [ -z "${SD_BLOCK}" ] && SD_BLOCK=$(mount | grep " ${SD_BASE} " | awk "{print \$1}" | head -n 1)
+    [ -z "${SD_BLOCK}" ] && SD_BLOCK=$(mount | grep " ${SD_BASE} " | cut -d' ' -f1 | head -n 1)
     for i in 1 2 3; do
         has_stale=0
         while read -r dev mnt rest; do
@@ -559,7 +589,7 @@ load_mountpoints() {
         # ── Multi-Disk Collision & Anti-Stacking Check ─────────────────────────
         if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
             local cur_dev
-            cur_dev=$(grep -F " ${dst} " /proc/mounts 2>/dev/null | awk '{print $1}' | head -n 1)
+            cur_dev=$(grep -F " ${dst} " /proc/mounts 2>/dev/null | cut -d' ' -f1 | head -n 1)
             if [ -n "${disk_uuid}" ]; then
                 local exp_dev
                 exp_dev=$(blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
@@ -589,7 +619,7 @@ load_mountpoints() {
             if [ -n "${disk_base}" ]; then
                 # Find current mount of this block device
                 local existing_mount
-                existing_mount=$(grep -F "${disk_base} " /proc/mounts 2>/dev/null | awk '{print $2}' | head -n 1)
+                existing_mount=$(grep -F "${disk_base} " /proc/mounts 2>/dev/null | cut -d' ' -f2 | head -n 1)
                 if [ -z "${existing_mount}" ]; then
                     # Disk not mounted yet — figure out the expected mount base from source path
                     # Walk source path upward to find a plausible mount root

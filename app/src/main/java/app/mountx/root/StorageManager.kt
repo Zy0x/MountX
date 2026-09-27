@@ -1430,7 +1430,7 @@ class StorageManager {
             RootShell.exec("umount -f \"$blockDevice\" 2>/dev/null")
 
             val cmd = when (fsType) {
-                FilesystemType.F2FS -> "mkfs.f2fs -l \"$label\" -f \"$blockDevice\" 2>&1"
+                FilesystemType.F2FS -> "(make_f2fs -l \"$label\" -f \"$blockDevice\" 2>&1 || mkfs.f2fs -l \"$label\" -f \"$blockDevice\" 2>&1)"
                 FilesystemType.EXT4 -> "mke2fs -t ext4 -b 4096 -L \"$label\" -F \"$blockDevice\" 2>&1 || mkfs.ext4 -L \"$label\" -F \"$blockDevice\" 2>&1"
                 FilesystemType.FAT32 -> "newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1 || mkfs.vfat -F 32 -n \"$label\" \"$blockDevice\" 2>&1"
                 FilesystemType.EXFAT -> "mkfs.exfat -n \"$label\" \"$blockDevice\" 2>&1 || newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1"
@@ -1545,8 +1545,8 @@ class StorageManager {
 
     private suspend fun getDirSizeBytes(path: String): Long {
         if (!RootShell.exists(path)) return 0L
-        val res = RootShell.exec("du -s -k \"$path\" 2>/dev/null | awk '{print \$1}'")
-        val kb = res.output.trim().toLongOrNull() ?: 0L
+        val res = RootShell.exec("du -s -k \"$path\" 2>/dev/null")
+        val kb = res.output.trim().split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L
         return kb * 1024L
     }
 
@@ -1671,12 +1671,12 @@ class StorageManager {
             while kill -0 ${'$'}CP_PID 2>/dev/null; do
                 if [ "${'$'}HAS_PROC_IO" = "1" ] || [ -f "/proc/${'$'}CP_PID/io" ]; then
                     HAS_PROC_IO=1
-                    W_BYTES=${'$'}(grep wchar /proc/${'$'}CP_PID/io 2>/dev/null | awk '{print ${'$'}2}')
+                    W_BYTES=${'$'}(grep wchar /proc/${'$'}CP_PID/io 2>/dev/null | cut -d' ' -f2)
                     if [ -n "${'$'}W_BYTES" ]; then
                         echo "PROGRESS_BYTES:${'$'}W_BYTES"
                     fi
                 else
-                    SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | awk '{print ${'$'}1}')
+                    SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
                     if [ -n "${'$'}SZ_KB" ]; then
                         echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
                     fi
@@ -2591,7 +2591,7 @@ class StorageManager {
                 if (!rawMnt.isNullOrBlank()) {
                     // Resolve direct Linux underlying mount point if rawMnt is FUSE /storage/<UUID>
                     val targetMnt = resolveDirectMountPoint(rawMnt)
-                    val res = RootShell.exec("fstrim -v \"$targetMnt\" 2>&1")
+                    val res = RootShell.exec("(fstrim -v \"$targetMnt\" 2>&1 || busybox fstrim -v \"$targetMnt\" 2>&1)")
                     val msg = res.output.ifBlank { res.stderr.joinToString("\n") }
                     rawLogs.add("${part.cleanShortName} ($targetMnt): $msg")
 
@@ -2763,7 +2763,7 @@ class StorageManager {
         runCatching {
             if (mountPoint.isBlank()) error("Mount point cannot be empty")
             val targetMnt = resolveDirectMountPoint(mountPoint)
-            val res = RootShell.exec("fstrim -v \"$targetMnt\" 2>&1")
+            val res = RootShell.exec("(fstrim -v \"$targetMnt\" 2>&1 || busybox fstrim -v \"$targetMnt\" 2>&1)")
             val out = res.output.ifBlank { res.stderr.joinToString("\n") }
             if (out.isBlank()) "TRIM completed successfully on $targetMnt." else out
         }
