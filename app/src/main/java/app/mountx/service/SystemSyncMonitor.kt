@@ -160,7 +160,7 @@ class SystemSyncMonitor @Inject constructor(
                     if (hasMountedGames) {
                         val hasFlag = RootShell.exists("/dev/.mountx_disk_error")
                         val isDmesgError = if (!hasFlag) {
-                            val dmesgRes = RootShell.exec("dmesg 2>/dev/null | tail -n 25 | grep -iE 'I/O error|DATCRCERR|power off|autok error'")
+                            val dmesgRes = RootShell.exec("dmesg 2>/dev/null | tail -n 25 | grep -iE 'Buffer I/O error|DATCRCERR|CMDCRCERR|autok fail|autok error'")
                             dmesgRes.isSuccess && dmesgRes.output.isNotBlank()
                         } else false
 

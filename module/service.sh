@@ -781,12 +781,21 @@ mount_watchdog() {
         # Check 0: Physical disk I/O & controller health probe
         local io_error=0
         if mountpoint -q "${SD_BASE}" 2>/dev/null; then
-            # Fast test read of mount root (1 block)
-            if ! dd if="${SD_BASE}" of=/dev/null bs=512 count=1 2>/dev/null; then
+            # Probe 1: Directory access test (verifies filesystem inode tree is accessible)
+            if ! ls "${SD_BASE}" >/dev/null 2>&1; then
                 io_error=1
             fi
-            # Check kernel dmesg for recent hardware I/O or CRC or controller power off errors
-            if dmesg 2>/dev/null | tail -n 30 | grep -qiE "I/O error|DATCRCERR|power off|autok error"; then
+            # Probe 2: Block device raw read (verifies underlying flash block responds without EIO)
+            local blk_dev="${SD_BLOCK}"
+            [ -z "${blk_dev}" ] && blk_dev="/dev/block/mmcblk0"
+            if [ -b "${blk_dev}" ]; then
+                if ! dd if="${blk_dev}" of=/dev/null bs=512 count=1 2>/dev/null; then
+                    io_error=1
+                fi
+            fi
+            # Probe 3: Check kernel dmesg for real hardware failures (DATCRCERR, CMDCRCERR, autok fail, buffer I/O error)
+            # NOTE: DO NOT check for "power off" as MediaTek msdc runtime PM logs "[msdc]msdc1 power off" normally when idle!
+            if dmesg 2>/dev/null | tail -n 30 | grep -qiE "Buffer I/O error|DATCRCERR|CMDCRCERR|autok fail|autok error|card remove|card eject"; then
                 io_error=1
             fi
         fi
