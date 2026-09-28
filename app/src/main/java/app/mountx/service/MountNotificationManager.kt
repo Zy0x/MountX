@@ -264,23 +264,27 @@ class MountNotificationManager @Inject constructor(
      * Resolves user-facing label for a block device (e.g. /dev/block/mmcblk0p3 -> "MicroSD" or volume label).
      */
     private suspend fun resolveBlockDeviceLabel(blockDevice: String): String {
-        // 1. Try volume label via blkid
-        val labelOut = RootShell.execForOutput("blkid -s LABEL -o value \"$blockDevice\" 2>/dev/null").trim()
-        if (labelOut.isNotBlank()) {
-            return labelOut
-        }
-
-        // 2. Try sysfs device model or name
         val devName = blockDevice.substringAfterLast("/")
         val parentDisk = devName.replace(Regex("p?[0-9]+$"), "")
+
+        // 1. Try sysfs device name/model — most reliable on Android (no blkid flag dependencies)
         if (parentDisk.isNotBlank()) {
+            val name = RootShell.execForOutput("cat /sys/block/$parentDisk/device/name 2>/dev/null").trim()
+            if (name.isNotBlank() && !name.equals("mmc", ignoreCase = true)) {
+                return name
+            }
             val model = RootShell.execForOutput("cat /sys/block/$parentDisk/device/model 2>/dev/null").trim()
             if (model.isNotBlank()) {
                 return model
             }
-            val name = RootShell.execForOutput("cat /sys/block/$parentDisk/device/name 2>/dev/null").trim()
-            if (name.isNotBlank() && !name.equals("mmc", ignoreCase = true)) {
-                return name
+        }
+
+        // 2. Try blkid with safe Kotlin regex parsing (avoids -o value / -s LABEL flags unsupported on some Android blkid)
+        val blkidOut = RootShell.execForOutput("blkid \"$blockDevice\" 2>/dev/null").trim()
+        if (blkidOut.isNotBlank()) {
+            val labelMatch = Regex("""LABEL="([^"]+)"""").find(blkidOut)
+            if (labelMatch != null) {
+                return labelMatch.groupValues[1]
             }
         }
 
