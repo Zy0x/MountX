@@ -750,7 +750,18 @@ mount_watchdog() {
     local MAX_INTERVAL=600
     local WATCHDOG_LOG="${MODULE_DIR}/mountx_watchdog.log"
 
-    log_info "[Watchdog] Starting. PID=$$, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
+    # ── Capture Zygote PID at start for soft-restart detection ───────────────
+    # A soft restart (SystemServer / Zygote restart without kernel reboot) changes
+    # the zygote64 PID but does NOT trigger service.sh re-execution. We detect
+    # this by comparing the current zygote64 PID against the one recorded at boot.
+    # NOTE: Use ps-based grep instead of pgrep -x because -x (exact match) is
+    # not supported on all Android variants (e.g. MediaTek Infinix, Realme, etc.)
+    _get_zygote_pid() {
+        ps -ef 2>/dev/null | grep -w zygote64 | grep -v grep | awk '{print $2}' | head -n 1
+    }
+    ZYGOTE_PID_LAST=$(_get_zygote_pid)
+    [ -z "${ZYGOTE_PID_LAST}" ] && ZYGOTE_PID_LAST=$(ps -ef 2>/dev/null | grep -w zygote | grep -v grep | awk '{print $2}' | head -n 1)
+    log_info "[Watchdog] Starting. PID=$$, Zygote64=${ZYGOTE_PID_LAST}, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
 
     # ── Helper: perform lightweight mount integrity check ─────────────────────
     check_mounts() {
@@ -831,16 +842,17 @@ mount_watchdog() {
             fi
         fi
 
-        # Check 2: Sample canary file from first game entry in mountpoints.conf
+        # Check 2: Sample canary — base mount at /data/media/0/Android/...
         local canary_ok=1
+        local sample_dst=""
+        local sample_pkg=""
         if [ -f "${MOUNTPOINTS_FILE}" ]; then
-            local sample_dst
-            sample_dst=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | cut -d'|' -f4 | tr -d '\r')
+            local sample_line
+            sample_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
+            sample_dst=$(echo "${sample_line}" | cut -d'|' -f4)
+            sample_pkg=$(echo "${sample_line}" | cut -d'|' -f1)
             if [ -n "${sample_dst}" ]; then
-                # Check if target is still a mountpoint (not just a plain directory)
                 if ! mountpoint -q "${sample_dst}" 2>/dev/null; then
-                    # May not be a mountpoint but could be a valid bind at a parent level
-                    # Check /proc/mounts for the destination path
                     if ! grep -qF " ${sample_dst} " /proc/mounts 2>/dev/null; then
                         canary_ok=0
                         log_warn "[Watchdog] Canary lost: ${sample_dst} not in /proc/mounts. Re-applying mounts..."
@@ -849,6 +861,57 @@ mount_watchdog() {
             fi
         fi
 
+        # ── Check 3: Zygote soft restart detection ────────────────────────────
+        # When Zygote/SystemServer restarts WITHOUT a kernel reboot, the PID changes
+        # and all per-app mount namespaces (/mnt/runtime/*/emulated/0/Android/...)
+        # are torn down. The base mount at /data/media/0/ survives but games
+        # launched after the soft restart get empty internal namespaces.
+        # We detect this via two independent signals:
+        #   A) Zygote64 PID changed from the value recorded at watchdog start
+        #   B) /mnt/runtime namespace mount count for first game dropped to 0
+        local soft_restart=0
+
+        # Signal A: Zygote PID change
+        local zygote_pid_now
+        zygote_pid_now=$(ps -ef 2>/dev/null | grep -w zygote64 | grep -v grep | awk '{print $2}' | head -n 1)
+        [ -z "${zygote_pid_now}" ] && zygote_pid_now=$(ps -ef 2>/dev/null | grep -w zygote | grep -v grep | awk '{print $2}' | head -n 1)
+        if [ -n "${zygote_pid_now}" ] && [ -n "${ZYGOTE_PID_LAST}" ] && \
+           [ "${zygote_pid_now}" != "${ZYGOTE_PID_LAST}" ]; then
+            log_warn "[Watchdog] Zygote PID changed: ${ZYGOTE_PID_LAST} → ${zygote_pid_now}. Soft restart detected!"
+            ZYGOTE_PID_LAST="${zygote_pid_now}"
+            soft_restart=1
+        fi
+
+        # Signal B: Namespace mount count dropped (check /mnt/runtime for first game)
+        if [ ${soft_restart} -eq 0 ] && [ -n "${sample_pkg}" ]; then
+            local ns_count
+            ns_count=$(grep -c "/mnt/runtime.*${sample_pkg}" /proc/mounts 2>/dev/null || echo 0)
+            if [ "${ns_count}" -eq 0 ] && grep -qF " ${sample_dst} " /proc/mounts 2>/dev/null; then
+                # Base mount exists but namespace mounts are gone → soft restart symptom
+                log_warn "[Watchdog] Namespace mounts for ${sample_pkg} lost (count=0) while base mount exists. Soft restart suspected."
+                soft_restart=1
+            fi
+        fi
+
+        if [ ${soft_restart} -eq 1 ]; then
+            log_info "[Watchdog] Soft restart recovery: waiting 5s for Zygote to stabilize, then re-applying all mounts..."
+            sleep 5
+            # Wait for sys.boot_completed to be 1 again (Zygote restores it after recovery)
+            local wait_tries=0
+            while [ "$(getprop sys.boot_completed | tr -d '\r')" != "1" ] && [ ${wait_tries} -lt 15 ]; do
+                sleep 2
+                wait_tries=$((wait_tries + 1))
+            done
+            load_mountpoints 2>/dev/null || true
+            # Notify the app to re-sync its mount status UI
+            am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+            log_info "[Watchdog] Soft restart recovery complete. Mounts re-applied."
+            CONSECUTIVE_OK=0
+            CHECK_INTERVAL=120
+            return 0
+        fi
+
+        # Finalize canary result (Check 2)
         if [ ${canary_ok} -eq 0 ]; then
             load_mountpoints 2>/dev/null || true
             CONSECUTIVE_OK=0
