@@ -56,12 +56,67 @@ data class ChangelogRelease(
 
 object ChangelogHistory {
     val releases: List<ChangelogRelease> = listOf(
-        // ── v2.2.45 (Latest) ──
+        // ── v2.2.46 (Latest) ──
+        ChangelogRelease(
+            version = "v2.2.46",
+            releaseDate = "06 Oct 2026",
+            summary = "Storage Disconnect Sentinel & Zygote Subsystem Recovery: Proactive Hardware Ejection Detection, Zombie Mount Purging, Zygote Soft-Restart Mount Re-binding & Notification Formatting",
+            isLatest = true,
+            categories = listOf(
+                CategoryChange(
+                    category = ChangeCategoryType.SYSTEM,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Proactive Physical Storage Disconnect Sentinel",
+                            details = listOf(
+                                "Implemented continuous physical backing block device validation across watchdog daemon (service.sh) and background sentinel (SystemSyncMonitor), immediately detecting hardware ejections even when Linux VFS retains stale mount points.",
+                                "Added automated emergency lazy unmount (umount -l) across all runtime namespaces when backing storage is detached, preventing applications from freezing or encountering kernel I/O stalls.",
+                                "Added dedicated contextual alert banner for disconnected external storage with one-tap Emergency Unmount and Storage Rescan actions."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Zygote Soft Restart Detection & Namespace Recovery",
+                            details = listOf(
+                                "Implemented Zygote64 PID tracking in the watchdog daemon to detect system server / Zygote soft restarts occurring without a full kernel reboot.",
+                                "Automated re-application of per-app runtime bind-mount namespaces upon Zygote restart, preventing newly launched games from reading empty internal storage."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Storage Status Integrity & False Mounted State Elimination",
+                            details = listOf(
+                                "Refactored AppRepository mount state resolution to strictly require physical block device existence before declaring an app MOUNTED, cleanly transitioning applications to DISK_DETACHED when storage is absent.",
+                                "Overhauled Dashboard Master Control card to display a prominent Red Storage Disconnected badge and alert headline rather than misleading green All Apps Mounted indicators when storage is detached.",
+                                "Improved DashboardViewModel health evaluation to transition cleanly to DISCONNECTED when configured external drives are missing."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "MediaTek Runtime Power Management Filter",
+                            details = listOf(
+                                "Refined watchdog kernel dmesg probe to filter out benign MediaTek msdc idle power-saving logs ([msdc]msdc1 power off), preventing false-positive hardware I/O error alarms."
+                            )
+                        )
+                    )
+                ),
+                CategoryChange(
+                    category = ChangeCategoryType.UI_UX,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Notification Block Device Label Formatting",
+                            details = listOf(
+                                "Enhanced notification drawer disk label resolver to prioritize sysfs hardware device names (e.g. YD4QD) and models over raw block device paths (/dev/block/mmcblk*)."
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+
+        // ── v2.2.45 ──
         ChangelogRelease(
             version = "v2.2.45",
             releaseDate = "23 Sep 2026",
             summary = "Core Reliability & Engine Overhaul: Intelligent Mount Watchdog Daemon, Hot-Plug Auto-Remount with Status Alerts, Magisk/KSU Update Engine & Vector Icon Polish",
-            isLatest = true,
+            isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.SYSTEM,

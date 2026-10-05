@@ -5,6 +5,27 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.46] - 2026-10-06
+
+### Added
+- **Proactive Physical Storage Disconnect Sentinel**:
+  - Implemented continuous physical backing block device validation across watchdog daemon (`service.sh`) and background sentinel (`SystemSyncMonitor`), immediately detecting hardware ejections even when Linux VFS retains stale mount points.
+  - Added automated emergency lazy unmount (`umount -l`) across all runtime namespaces when backing storage is detached, preventing applications from freezing or encountering kernel I/O stalls.
+  - Added dedicated contextual alert banner for disconnected external storage with one-tap Emergency Unmount and Storage Rescan actions.
+- **Zygote Soft Restart Detection & Namespace Recovery**:
+  - Implemented Zygote64 PID tracking in the watchdog daemon to detect system server / Zygote soft restarts occurring without a full kernel reboot.
+  - Automated re-application of per-app runtime bind-mount namespaces upon Zygote restart, preventing newly launched games from reading empty internal storage.
+
+### Changed & Improved
+- **Storage Status Integrity & False Mounted State Elimination**:
+  - Refactored `AppRepository` mount state resolution to strictly require physical block device existence before declaring an app `MOUNTED`, cleanly transitioning applications to `DISK_DETACHED` when storage is absent.
+  - Overhauled Dashboard Master Control card to display a prominent Red `Storage Disconnected` badge and alert headline rather than misleading green `All Apps Mounted` indicators when storage is detached.
+  - Improved `DashboardViewModel` health evaluation to transition cleanly to `DISCONNECTED` when configured external drives are missing.
+- **Notification Block Device Label Formatting**:
+  - Enhanced notification drawer disk label resolver to prioritize sysfs hardware device names (e.g., `YD4QD`) and models over raw block device paths (`/dev/block/mmcblk*`).
+- **MediaTek Runtime Power Management Filter**:
+  - Refined watchdog kernel dmesg probe to filter out benign MediaTek msdc idle power-saving logs (`[msdc]msdc1 power off`), preventing false-positive hardware I/O error alarms.
+
 ## [2.2.45] - 2026-09-23
 
 ### Added & Improved
