@@ -1088,6 +1088,12 @@
     <string name="disk_health_troubleshoot_step1">1. Eject and re-insert the MicroSD card tray, or reboot device to reset controller power.</string>
     <string name="disk_health_troubleshoot_step2">2. Ensure card copper contacts are clean and dry.</string>
     <string name="disk_health_troubleshoot_step3">3. Run Filesystem Integrity Check (FSCK) in Partition Tools.</string>
+    <string name="dashboard_disk_detached_title">MicroSD Not Detected</string>
+    <string name="dashboard_disk_detached_desc">External storage is not detected by system hardware. Please re-insert your SIM/SD card tray to restore connection.</string>
+    <string name="dashboard_disk_detached_hero">Storage Disconnected</string>
+    <string name="dashboard_disk_detached_hero_desc">MicroSD card is missing or not detected. Apps cannot safely access bound data.</string>
+    <string name="dashboard_disk_detached_badge">Storage Disconnected</string>
+    <string name="dashboard_disk_detached_action_rescan">Rescan Storage</string>
 </resources>
 
 

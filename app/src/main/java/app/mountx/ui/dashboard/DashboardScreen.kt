@@ -284,6 +284,7 @@ fun DashboardContent(
                             games = games,
                             mountedCount = status.mountedGamesCount,
                             totalCount = status.totalGamesCount,
+                            diskHealthStatus = diskHealthStatus,
                             onMountAll = onMountAll,
                             onUnmountAll = onUnmountAll,
                             onNavigateToGames = onNavigateToGames,
@@ -347,6 +348,7 @@ fun DashboardContent(
                         games = games,
                         mountedCount = status.mountedGamesCount,
                         totalCount = status.totalGamesCount,
+                        diskHealthStatus = diskHealthStatus,
                         onMountAll = onMountAll,
                         onUnmountAll = onUnmountAll,
                         onNavigateToGames = onNavigateToGames,
@@ -632,6 +634,85 @@ private fun ContextualAlertBanner(
             }
         }
 
+        diskHealthStatus == app.mountx.data.model.DiskHealthStatus.DISCONNECTED -> {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = warnContainer),
+                border = BorderStroke(1.dp, warnColor.copy(alpha = 0.6f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = warnColor.copy(alpha = 0.2f),
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = warnColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.dashboard_disk_detached_title),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = warnColor
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = diskErrorDetails ?: stringResource(R.string.dashboard_disk_detached_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onEmergencyUnmountClick,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, warnColor.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = warnColor),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.dashboard_disk_error_action_unmount),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                        }
+                        FilledTonalButton(
+                            onClick = onDiagnoseClick,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.dashboard_disk_detached_action_rescan),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         status.rootSolution == RootSolution.NONE -> {
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -769,6 +850,7 @@ private fun SmartMasterControlCard(
     games: List<GameEntry>,
     mountedCount: Int,
     totalCount: Int,
+    diskHealthStatus: app.mountx.data.model.DiskHealthStatus = app.mountx.data.model.DiskHealthStatus.HEALTHY,
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onNavigateToGames: () -> Unit,
@@ -776,7 +858,8 @@ private fun SmartMasterControlCard(
     onToggleGameMount: (GameEntry) -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
-    val allMounted = totalCount > 0 && mountedCount == totalCount
+    val hasDetached = diskHealthStatus == app.mountx.data.model.DiskHealthStatus.DISCONNECTED || games.any { it.mountStatus == MountStatus.DISK_DETACHED }
+    val allMounted = !hasDetached && totalCount > 0 && mountedCount == totalCount
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val activeEmerald = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
     val warnAmber = BadgeMigrationText
@@ -787,7 +870,11 @@ private fun SmartMasterControlCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (allMounted) activeEmerald.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outline
+            when {
+                hasDetached -> errCrimson.copy(alpha = 0.5f)
+                allMounted -> activeEmerald.copy(alpha = 0.45f)
+                else -> MaterialTheme.colorScheme.outline
+            }
         ),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -811,6 +898,7 @@ private fun SmartMasterControlCard(
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = when {
+                        hasDetached -> if (isDark) WarmCrimsonBorderDark.copy(alpha = 0.25f) else WarmCrimsonBorderLight.copy(alpha = 0.2f)
                         totalCount == 0 -> MaterialTheme.colorScheme.surfaceVariant
                         allMounted -> if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
                         else -> if (isDark) Color(0xFF6366F1).copy(alpha = 0.15f) else Color(0xFF4F46E5).copy(alpha = 0.12f)
@@ -818,6 +906,7 @@ private fun SmartMasterControlCard(
                     border = BorderStroke(
                         1.dp,
                         when {
+                            hasDetached -> if (isDark) WarmCrimsonDark.copy(alpha = 0.5f) else WarmCrimsonLight.copy(alpha = 0.45f)
                             totalCount == 0 -> MaterialTheme.colorScheme.outlineVariant
                             allMounted -> if (isDark) BadgeMountedTextDark.copy(alpha = 0.4f) else BadgeMountedTextLight.copy(alpha = 0.35f)
                             else -> if (isDark) Color(0xFF6366F1).copy(alpha = 0.35f) else Color(0xFF4F46E5).copy(alpha = 0.3f)
@@ -835,9 +924,16 @@ private fun SmartMasterControlCard(
                                     .size(6.dp)
                                     .background(activeEmerald, CircleShape)
                             )
+                        } else if (hasDetached) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .background(errCrimson, CircleShape)
+                            )
                         }
                         Text(
                             text = when {
+                                hasDetached -> stringResource(R.string.dashboard_disk_detached_badge)
                                 totalCount == 0 -> "0 / 0"
                                 allMounted -> stringResource(R.string.dashboard_active_count_format, mountedCount, totalCount)
                                 else -> stringResource(R.string.dashboard_mounted_count_format, mountedCount, totalCount)
@@ -845,6 +941,7 @@ private fun SmartMasterControlCard(
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             fontWeight = FontWeight.Bold,
                             color = when {
+                                hasDetached -> errCrimson
                                 totalCount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
                                 allMounted -> activeEmerald
                                 else -> MaterialTheme.colorScheme.primary
@@ -859,6 +956,7 @@ private fun SmartMasterControlCard(
             // Headline & Description
             Text(
                 text = when {
+                    hasDetached -> stringResource(R.string.dashboard_disk_detached_hero)
                     totalCount == 0 -> stringResource(R.string.games_empty_title)
                     allMounted -> stringResource(R.string.dashboard_hero_all_mounted)
                     else -> stringResource(R.string.dashboard_mounted_games)
@@ -867,13 +965,14 @@ private fun SmartMasterControlCard(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 ),
-                color = MaterialTheme.colorScheme.onSurface
+                color = if (hasDetached) errCrimson else MaterialTheme.colorScheme.onSurface
             )
 
             Spacer(modifier = Modifier.height(3.dp))
 
             Text(
                 text = when {
+                    hasDetached -> stringResource(R.string.dashboard_disk_detached_hero_desc)
                     totalCount == 0 -> stringResource(R.string.dashboard_hero_no_games_desc)
                     allMounted -> stringResource(R.string.dashboard_hero_all_mounted_desc)
                     else -> stringResource(R.string.dashboard_hero_unmounted_desc, mountedCount, totalCount)
@@ -895,13 +994,17 @@ private fun SmartMasterControlCard(
                 ) {
                     for (game in previewGames) {
                         val isMounted = game.mountStatus == MountStatus.MOUNTED
+                        val isDetached = game.mountStatus == MountStatus.DISK_DETACHED || (hasDetached && isMounted)
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                             border = BorderStroke(
                                 1.dp,
-                                if (isMounted) activeEmerald.copy(alpha = 0.35f)
-                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                when {
+                                    isDetached -> errCrimson.copy(alpha = 0.35f)
+                                    isMounted -> activeEmerald.copy(alpha = 0.35f)
+                                    else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                }
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -943,6 +1046,7 @@ private fun SmartMasterControlCard(
                                             fontSize = 10.sp
                                         ),
                                         color = when {
+                                            isDetached -> errCrimson
                                             isMounted -> activeEmerald
                                             game.mountStatus == MountStatus.NEED_MIGRATION -> warnAmber
                                             game.mountStatus == MountStatus.ERROR -> errCrimson
@@ -956,24 +1060,28 @@ private fun SmartMasterControlCard(
                                 val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION
                                 val isError = game.mountStatus == MountStatus.ERROR
                                 val pillColor = when {
+                                    isDetached -> errCrimson
                                     isMounted -> activeEmerald
                                     isNeedMigration -> warnAmber
                                     isError -> errCrimson
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                                 val pillBg = when {
+                                    isDetached -> if (isDark) WarmCrimsonBorderDark.copy(alpha = 0.25f) else WarmCrimsonBorderLight.copy(alpha = 0.2f)
                                     isMounted -> if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
                                     isNeedMigration -> BadgeMigrationBg
                                     isError -> if (isDark) WarmCrimsonBorderDark.copy(alpha = 0.3f) else WarmCrimsonBorderLight
                                     else -> MaterialTheme.colorScheme.surfaceVariant
                                 }
                                 val pillBorder = when {
+                                    isDetached -> if (isDark) WarmCrimsonDark.copy(alpha = 0.4f) else WarmCrimsonLight.copy(alpha = 0.35f)
                                     isMounted -> if (isDark) BadgeMountedTextDark.copy(alpha = 0.4f) else BadgeMountedTextLight.copy(alpha = 0.35f)
                                     isNeedMigration -> BadgeMigrationText.copy(alpha = 0.4f)
                                     isError -> if (isDark) WarmCrimsonDark.copy(alpha = 0.4f) else WarmCrimsonBorderLight
                                     else -> MaterialTheme.colorScheme.outlineVariant
                                 }
                                 val pillText = when {
+                                    isDetached -> stringResource(R.string.status_disk_detached)
                                     isMounted -> stringResource(R.string.status_mounted)
                                     isNeedMigration -> stringResource(R.string.status_need_migration)
                                     isError -> stringResource(R.string.status_error)

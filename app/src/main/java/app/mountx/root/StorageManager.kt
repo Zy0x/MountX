@@ -1081,6 +1081,22 @@ class StorageManager {
             val blockDevice = mountParts.getOrNull(0) ?: ""
             val filesystem = mountParts.getOrNull(2) ?: ""
 
+            val isBlockAlive = if (blockDevice.startsWith("/dev/block/")) {
+                RootShell.exists(blockDevice) || RootShell.exists("/sys/class/block/${blockDevice.substringAfterLast('/')}")
+            } else true
+
+            if (!isBlockAlive) {
+                return@withContext StorageInfo(
+                    blockDevice = blockDevice,
+                    mountPoint = mountPoint,
+                    filesystem = filesystem,
+                    totalBytes = 0L,
+                    usedBytes = 0L,
+                    freeBytes = 0L,
+                    isMounted = false
+                )
+            }
+
             var totalBytes = 0L
             var usedBytes = 0L
             var freeBytes = 0L

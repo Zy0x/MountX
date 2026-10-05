@@ -117,6 +117,10 @@ class DashboardViewModel @Inject constructor(
                         _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.ERROR_IO
                         _diskErrorDetails.value = event.details
                     }
+                    is app.mountx.service.SystemSyncEvent.StorageDisconnected -> {
+                        _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.DISCONNECTED
+                        _diskErrorDetails.value = context.getString(app.mountx.R.string.dashboard_disk_detached_desc)
+                    }
                     is app.mountx.service.SystemSyncEvent.DiskHealthRestored -> {
                         _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.HEALTHY
                         _diskErrorDetails.value = null
@@ -136,23 +140,33 @@ class DashboardViewModel @Inject constructor(
                 _rootSolution.value = info.rootSolution
                 _isModuleInstalled.value = info.isModuleInstalled
                 _moduleVersion.value = info.moduleVersion
+
+                // Refresh game mount statuses first to detect detached storage
+                gameRepository.refreshMountStatuses()
+
                 val sdBase = appPreferences.sdBasePath.first()
                 val disks = storageRepository.getAllDisks(sdBase)
                 _allDisks.value = disks
 
                 val worstHealth = disks.map { it.effectiveHealth }.firstOrNull { it != app.mountx.data.model.DiskHealthStatus.HEALTHY }
                 val hasDiskErrorFile = RootShell.exists("/dev/.mountx_disk_error")
+                val currentGames = games.value
+                val hasDetachedGames = currentGames.any { it.mountStatus == MountStatus.DISK_DETACHED }
+                val hasConfiguredStorage = currentGames.isNotEmpty() || RootShell.isMountpoint(sdBase)
+
                 if (hasDiskErrorFile || worstHealth == app.mountx.data.model.DiskHealthStatus.ERROR_IO) {
                     _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.ERROR_IO
                     _diskErrorDetails.value = disks.firstOrNull { it.healthErrorDetails != null }?.healthErrorDetails ?: "Hardware I/O error"
+                } else if (disks.isEmpty() && (hasDetachedGames || hasConfiguredStorage)) {
+                    _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.DISCONNECTED
+                    _diskErrorDetails.value = context.getString(app.mountx.R.string.dashboard_disk_detached_desc)
                 } else if (worstHealth != null) {
                     _diskHealthStatus.value = worstHealth
+                    _diskErrorDetails.value = disks.firstOrNull { it.healthErrorDetails != null }?.healthErrorDetails
                 } else {
                     _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.HEALTHY
                     _diskErrorDetails.value = null
                 }
-
-                gameRepository.refreshMountStatuses()
 
                 // Background calculate game sizes so real storage is displayed accurately
                 launch(Dispatchers.IO) {

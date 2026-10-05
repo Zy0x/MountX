@@ -565,7 +565,19 @@ class AppRepository @Inject constructor(
     suspend fun refreshMountStatuses() = withContext(Dispatchers.IO) {
         val games = gameDao.getAllGamesSync()
         val mountedPaths = mountManager.getMountedPaths()
-        val isSdBaseMounted = mountManager.isMounted("/data/sdext2") || RootShell.exists("/data/sdext2/MountX")
+
+        // Verify if backing block device for /data/sdext2 is physically present in kernel
+        val sdBaseMountLine = RootShell.execForOutput("grep ' /data/sdext2 ' /proc/mounts | head -n 1").trim()
+        val sdBlockDev = if (sdBaseMountLine.isNotBlank()) {
+            sdBaseMountLine.split(Regex("\\s+")).firstOrNull() ?: ""
+        } else ""
+        val isSdBlockAlive = if (sdBlockDev.startsWith("/dev/block/")) {
+            RootShell.exists(sdBlockDev) || RootShell.exists("/sys/class/block/${sdBlockDev.substringAfterLast('/')}")
+        } else {
+            RootShell.exists("/sys/block/mmcblk0") || RootShell.exists("/dev/block/mmcblk0")
+        }
+
+        val isSdBaseMounted = (mountManager.isMounted("/data/sdext2") || RootShell.exists("/data/sdext2/MountX")) && isSdBlockAlive
 
         for (g in games) {
             val targetData = when (g.mode) {
@@ -591,15 +603,24 @@ class AppRepository @Inject constructor(
             // Multi-disk storage check: verify if the specific backing storage is attached
             val isStorageAttached = if (g.mountPoints.isNotEmpty()) {
                 g.mountPoints.any { mp ->
-                    RootShell.exists(mp.sourcePath) || (mp.diskUuid != null && RootShell.execForOutput("blkid | grep -i \"${mp.diskUuid}\"").isNotBlank())
+                    (mp.diskUuid != null && RootShell.execForOutput("blkid | grep -i \"${mp.diskUuid}\"").isNotBlank()) ||
+                    (RootShell.exists(mp.sourcePath) && isSdBlockAlive)
                 } || isSdBaseMounted
             } else {
                 isSdBaseMounted
             }
 
+            if (!isStorageAttached && isMounted) {
+                // Ghost mounts detected with missing backing disk! Clean up zombie mountpoints to prevent app crashes.
+                RootShell.exec("umount -f -l \"$targetData\" 2>/dev/null")
+                RootShell.exec("umount -f -l \"$targetObb\" 2>/dev/null")
+                RootShell.exec("umount -f -l \"/mnt/runtime/default/emulated/0/$relData\" 2>/dev/null")
+                RootShell.exec("umount -f -l \"/mnt/runtime/default/emulated/0/$relObb\" 2>/dev/null")
+            }
+
             val newStatus = when {
-                isMounted -> MountStatus.MOUNTED
                 !isStorageAttached -> MountStatus.DISK_DETACHED
+                isMounted -> MountStatus.MOUNTED
                 g.mountStatus == MountStatus.ERROR -> MountStatus.ERROR
                 else -> {
                     val extData = "/data/sdext2/MountX/Android/data/${g.packageName}"

@@ -1072,6 +1072,12 @@
     <string name="disk_health_troubleshoot_step1">1. Lepas-pasang kembali tray kartu MicroSD, atau restart HP untuk me-reset daya controller.</string>
     <string name="disk_health_troubleshoot_step2">2. Pastikan konektor kuningan MicroSD bersih dan rapat.</string>
     <string name="disk_health_troubleshoot_step3">3. Jalankan Periksa Integritas Filesystem (FSCK) di menu Alat Partisi.</string>
+    <string name="dashboard_disk_detached_title">MicroSD Tidak Terdeteksi</string>
+    <string name="dashboard_disk_detached_desc">Penyimpanan eksternal tidak terdeteksi oleh sistem hardware. Silakan lepas-pasang kembali (re-plugin) tray kartu MicroSD Anda.</string>
+    <string name="dashboard_disk_detached_hero">Penyimpanan Terputus</string>
+    <string name="dashboard_disk_detached_hero_desc">Kartu MicroSD tidak terdeteksi. Aplikasi tidak dapat mengakses data yang dialihkan secara aman.</string>
+    <string name="dashboard_disk_detached_badge">Penyimpanan Terputus</string>
+    <string name="dashboard_disk_detached_action_rescan">Pindai Ulang</string>
 </resources>
 
 

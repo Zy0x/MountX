@@ -164,7 +164,30 @@ class SystemSyncMonitor @Inject constructor(
                             dmesgRes.isSuccess && dmesgRes.output.isNotBlank()
                         } else false
 
-                        if (hasFlag || isDmesgError) {
+                        // Check physical device presence: verify backing block device actually exists
+                        val isDiskPhysicallyMissing = if (!hasFlag && !isDmesgError) {
+                            val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+                            val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+                            if (isSdBaseMounted) {
+                                val backingBlock = RootShell.execForOutput("grep ' $sdBase ' /proc/mounts | cut -d' ' -f1").trim()
+                                if (backingBlock.startsWith("/dev/block/")) {
+                                    !RootShell.exists(backingBlock) && !RootShell.exists("/sys/class/block/${backingBlock.substringAfterLast('/')}")
+                                } else false
+                            } else {
+                                val hasAnyMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
+                                val hasCustomDiskAlive = games.filter { it.mountStatus == MountStatus.MOUNTED }
+                                    .flatMap { it.mountPoints }
+                                    .any { mp -> mp.diskUuid != null && RootShell.execForOutput("blkid | grep -i \"${mp.diskUuid}\"").isNotBlank() }
+                                !hasAnyMmc && !hasCustomDiskAlive
+                            }
+                        } else false
+
+                        if (isDiskPhysicallyMissing) {
+                            if (!previousErrorState) {
+                                previousErrorState = true
+                                handleEmergencyMediaEject()
+                            }
+                        } else if (hasFlag || isDmesgError) {
                             if (!previousErrorState) {
                                 previousErrorState = true
                                 handleDiskError("MicroSD", "Hardware I/O error or controller power cutoff")

@@ -791,33 +791,39 @@ mount_watchdog() {
 
         # Check 0: Physical disk I/O & controller health probe
         local io_error=0
+        local blk_dev="${SD_BLOCK}"
+        [ -z "${blk_dev}" ] && blk_dev="/dev/block/mmcblk0"
+
         if mountpoint -q "${SD_BASE}" 2>/dev/null; then
-            # Probe 1: Directory access test (verifies filesystem inode tree is accessible)
-            if ! ls "${SD_BASE}" >/dev/null 2>&1; then
+            # Probe 1: Device existence test — if block device vanished from /dev/block/, it's physically detached!
+            if [ ! -b "${blk_dev}" ]; then
+                log_error "[Watchdog] CRITICAL: Backing block device ${blk_dev} has vanished from kernel while mounted!"
                 io_error=1
-            fi
-            # Probe 2: Block device raw read (verifies underlying flash block responds without EIO)
-            local blk_dev="${SD_BLOCK}"
-            [ -z "${blk_dev}" ] && blk_dev="/dev/block/mmcblk0"
-            if [ -b "${blk_dev}" ]; then
+            else
+                # Probe 2: Block device raw read (verifies underlying flash block responds without EIO)
                 if ! dd if="${blk_dev}" of=/dev/null bs=512 count=1 2>/dev/null; then
+                    log_error "[Watchdog] CRITICAL: Raw block read test failed on ${blk_dev} (I/O error)!"
                     io_error=1
                 fi
             fi
+
             # Probe 3: Check kernel dmesg for real hardware failures (DATCRCERR, CMDCRCERR, autok fail, buffer I/O error)
             # NOTE: DO NOT check for "power off" as MediaTek msdc runtime PM logs "[msdc]msdc1 power off" normally when idle!
-            if dmesg 2>/dev/null | tail -n 30 | grep -qiE "Buffer I/O error|DATCRCERR|CMDCRCERR|autok fail|autok error|card remove|card eject"; then
-                io_error=1
+            if [ ${io_error} -eq 0 ]; then
+                if dmesg 2>/dev/null | tail -n 30 | grep -qiE "Buffer I/O error|DATCRCERR|CMDCRCERR|autok fail|autok error|card remove|card eject"; then
+                    io_error=1
+                fi
             fi
         fi
 
         if [ ${io_error} -eq 1 ]; then
-            log_error "[Watchdog] CRITICAL: MicroSD hardware I/O error or controller power cutoff detected!"
+            log_error "[Watchdog] CRITICAL: MicroSD hardware I/O error, device disconnected, or controller power cutoff detected!"
             echo "io_error" > "/dev/.mountx_disk_error"
             # Emergency unmount of bound directories to prevent games from freezing on black screens
-            for _bnd in $(grep -E "(/data/media/0/Android|/mnt/runtime/default/emulated/0/Android)" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
+            for _bnd in $(grep -E "(/data/media/0/Android|/mnt/runtime/default/emulated/0/Android|/mnt/runtime/read/emulated/0/Android|/mnt/runtime/write/emulated/0/Android|/mnt/runtime/full/emulated/0/Android)" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
                 umount -l "${_bnd}" 2>/dev/null
             done
+            umount -l "${SD_BASE}" 2>/dev/null
             # Broadcast error event to MountX app
             am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
             CHECK_INTERVAL=60
@@ -828,6 +834,12 @@ mount_watchdog() {
 
         # Check 1: Is SD_BASE still mounted?
         if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+            if [ ! -b "${blk_dev}" ]; then
+                log_warn "[Watchdog] SD_BASE ${SD_BASE} unmounted and block device ${blk_dev} not found. Disk detached."
+                echo "io_error" > "/dev/.mountx_disk_error"
+                am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
+                return 1
+            fi
             log_warn "[Watchdog] SD_BASE ${SD_BASE} lost! Re-mounting..."
             mount_sd
             if mountpoint -q "${SD_BASE}" 2>/dev/null; then
