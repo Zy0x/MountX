@@ -210,6 +210,7 @@
     <string name="game_detail_legend_internal_sys">Sistem</string>
     <string name="game_detail_legend_internal_shared">Bersama</string>
     <string name="game_detail_legend_microsd">Kartu MicroSD</string>
+    <string name="game_detail_legend_usb">USB Eksternal</string>
     <string name="game_detail_legend_total">Total</string>
     <string name="game_detail_chart_all_internal">100% Memori HP</string>
     <string name="game_detail_chart_all_microsd">100% MicroSD</string>
@@ -908,7 +909,9 @@
     <string name="category_inspector_mount_inactive">Tidak Ter-mount (Data Standar)</string>
     <string name="category_inspector_internal_title">Penyimpanan Internal</string>
     <string name="category_inspector_microsd_title">Penyimpanan MicroSD</string>
+    <string name="category_inspector_usb_title">USB OTG / Penyimpanan Eksternal</string>
     <string name="category_inspector_not_migrated">Belum dialihkan ke MicroSD</string>
+    <string name="category_inspector_not_migrated_usb">Belum dialihkan ke USB OTG</string>
     <string name="category_inspector_copy_path">Salin</string>
     <string name="category_inspector_path_copied">Path direktori disalin ke clipboard</string>
     <string name="category_inspector_delete_btn">Hapus Data Kategori</string>
@@ -924,6 +927,7 @@
     <string name="category_inspector_delete_success">Data kategori berhasil dihapus</string>
     <string name="category_inspector_delete_failed">Gagal menghapus data: %1$s</string>
     <string name="category_inspector_internal_mounted_note">Dialihkan ke MicroSD</string>
+    <string name="category_inspector_internal_mounted_note_usb">Dialihkan ke Penyimpanan USB</string>
     <string name="category_inspector_delete_loc_sd_mounted_hint">Data kategori ini ter-mount ke MicroSD (%1$s). Menghapus data akan melepas kaitan mount dan menghapus berkas fisik di kartu memori.</string>
     <string name="category_inspector_delete_loc_internal_hint">Data kategori ini tersimpan di memori internal (%1$s). Menghapus data akan menghapus berkas di penyimpanan lokal perangkat.</string>
 

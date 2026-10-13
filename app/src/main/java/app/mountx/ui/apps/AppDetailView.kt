@@ -597,7 +597,9 @@ private data class UnifiedCategoryItem(
     val sdBytes: Long = 0L,
     val isCategoryMounted: Boolean = false,
     val preserveMedia: Boolean = false,
-    val userId: Int = 0
+    val userId: Int = 0,
+    val isUsbOtg: Boolean = false,
+    val storageTitle: String? = null
 )
 
 private fun resolveUserIdFromPath(path: String): Int {
@@ -628,24 +630,49 @@ private fun buildTargetMountPoints(
     val pkg = game.packageName
 
     for (catId in selectedCategoryIds) {
-        val existing = currentMountPoints.firstOrNull { pt ->
-            when (catId) {
-                "data" -> pt.resolveCategory() == MountPointCategory.EXTERNAL_DATA
-                "obb" -> pt.resolveCategory() == MountPointCategory.OBB_STORAGE
-                "media" -> pt.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS
-                "apk" -> pt.resolveCategory() == MountPointCategory.APP_PACKAGE
-                "lib" -> pt.targetPath.contains("/lib", ignoreCase = true)
-                "private" -> pt.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
-                "cache" -> pt.resolveCategory() == MountPointCategory.CACHE_SHADERS
-                else -> pt.id == catId
+        val existing = currentMountPoints
+            .sortedWith(
+                compareByDescending<MountPointConfig> { it.enabled }
+                    .thenByDescending { !it.id.startsWith("legacy_") || it.diskUuid != null }
+                    .thenByDescending { it.category == MountPointCategory.CUSTOM }
+                    .thenByDescending { it.sizeBytes }
+            )
+            .firstOrNull { pt ->
+                when (catId) {
+                    "data" -> pt.resolveCategory() == MountPointCategory.EXTERNAL_DATA
+                    "obb" -> pt.resolveCategory() == MountPointCategory.OBB_STORAGE
+                    "media" -> pt.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS
+                    "apk" -> pt.resolveCategory() == MountPointCategory.APP_PACKAGE
+                    "lib" -> pt.targetPath.contains("/lib", ignoreCase = true)
+                    "private" -> pt.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+                    "cache" -> pt.resolveCategory() == MountPointCategory.CACHE_SHADERS
+                    else -> pt.id == catId
+                }
             }
-        }
 
         if (existing != null) {
             val updatedSource = when (existing.resolveCategory()) {
-                MountPointCategory.EXTERNAL_DATA -> resolveSdPath(sdBase, "MountX/Android/data/$pkg")
-                MountPointCategory.OBB_STORAGE -> resolveSdPath(sdBase, "MountX/Android/obb/$pkg")
-                MountPointCategory.MEDIA_DOWNLOADS -> resolveSdPath(sdBase, "MountX/Android/media/$pkg")
+                MountPointCategory.EXTERNAL_DATA -> {
+                    if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
+                        existing.sourcePath
+                    } else {
+                        resolveSdPath(sdBase, "MountX/Android/data/$pkg")
+                    }
+                }
+                MountPointCategory.OBB_STORAGE -> {
+                    if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
+                        existing.sourcePath
+                    } else {
+                        resolveSdPath(sdBase, "MountX/Android/obb/$pkg")
+                    }
+                }
+                MountPointCategory.MEDIA_DOWNLOADS -> {
+                    if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
+                        existing.sourcePath
+                    } else {
+                        resolveSdPath(sdBase, "MountX/Android/media/$pkg")
+                    }
+                }
                 MountPointCategory.APP_PACKAGE -> "$sdBase/MountX/app/$pkg"
                 MountPointCategory.GAME_ASSETS -> resolveSdPath(sdBase, "MountX/Android/data/$pkg/files")
                 else -> existing.sourcePath
@@ -869,8 +896,26 @@ private fun StorageTabContent(
     val isRealDataOnSd = safeBreakdown.ext2Bytes > 0L
     val isMounted = safeBreakdown.isExt1Mounted || (game.mountStatus == MountStatus.MOUNTED && isRealDataOnSd)
 
-    val categories = remember(safeBreakdown, isMounted, mountPoints, packageInfo, sdBase) {
-        val existingDataPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
+    val categories = remember(safeBreakdown, isMounted, mountPoints, packageInfo, sdBase, availableDisks) {
+        val prioritizedPoints = mountPoints.sortedWith(
+            compareByDescending<MountPointConfig> { it.enabled }
+                .thenByDescending { !it.id.startsWith("legacy_") || it.diskUuid != null }
+                .thenByDescending { it.category == MountPointCategory.CUSTOM }
+                .thenByDescending { it.sizeBytes }
+        )
+
+        fun getDiskDetails(path: String, diskUuid: String?): Pair<Boolean, String?> {
+            val disk = availableDisks.firstOrNull { d ->
+                (diskUuid != null && (d.partitions.any { it.uuid.equals(diskUuid, ignoreCase = true) } || d.devicePath.contains(diskUuid))) ||
+                (path.isNotBlank() && d.partitions.any { it.mountPoint != null && path.startsWith(it.mountPoint) })
+            }
+            val isUsb = disk?.diskType == DiskType.USB_OTG || path.startsWith("/mnt/media_rw/")
+            val label = disk?.hardwareTitle ?: if (isUsb) "USB OTG" else null
+            return Pair(isUsb, label)
+        }
+
+        val existingDataPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
+        val (isDataUsb, dataDiskLabel) = getDiskDetails(existingDataPoint?.sourcePath ?: "", existingDataPoint?.diskUuid)
         val isDataCatMounted = safeBreakdown.isDataMounted || (isMounted && existingDataPoint?.enabled == true)
         val (dataBytes, dataSubtitle, isDataSd) = when {
             isDataCatMounted -> {
@@ -878,9 +923,10 @@ private fun StorageTabContent(
                 Triple(size, "Data utama aplikasi", true)
             }
             safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes > 64 * 1024L -> {
+                val targetName = if (isDataUsb) (dataDiskLabel ?: "USB OTG") else "MicroSD"
                 Triple(
                     safeBreakdown.ext1DataBytes,
-                    "Data utama aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2DataBytes)} di MicroSD",
+                    "Data utama aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2DataBytes)} di $targetName",
                     false
                 )
             }
@@ -896,7 +942,8 @@ private fun StorageTabContent(
             }
         }
 
-        val existingObbPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
+        val existingObbPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
+        val (isObbUsb, obbDiskLabel) = getDiskDetails(existingObbPoint?.sourcePath ?: "", existingObbPoint?.diskUuid)
         val isObbCatMounted = safeBreakdown.isObbMounted || (isMounted && existingObbPoint?.enabled == true)
         val (obbBytes, obbSubtitle, isObbSd) = when {
             isObbCatMounted -> {
@@ -904,9 +951,10 @@ private fun StorageTabContent(
                 Triple(size, "File ekspansi aplikasi", true)
             }
             safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes > 64 * 1024L -> {
+                val targetName = if (isObbUsb) (obbDiskLabel ?: "USB OTG") else "MicroSD"
                 Triple(
                     safeBreakdown.ext1ObbBytes,
-                    "File ekspansi aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2ObbBytes)} di MicroSD",
+                    "File ekspansi aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2ObbBytes)} di $targetName",
                     false
                 )
             }
@@ -923,7 +971,8 @@ private fun StorageTabContent(
         val apkInternalDir = if (apkSrc.endsWith(".apk")) java.io.File(apkSrc).parent ?: apkSrc else apkSrc
         val libSrc = packageInfo?.applicationInfo?.nativeLibraryDir ?: "/data/app/$pkg/lib"
 
-        val existingMediaPoint = mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS }
+        val existingMediaPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS }
+        val (isMediaUsb, mediaDiskLabel) = getDiskDetails(existingMediaPoint?.sourcePath ?: "", existingMediaPoint?.diskUuid)
         val hasMedia = safeBreakdown.ext1MediaBytes > 0L || safeBreakdown.ext2MediaBytes > 0L || existingMediaPoint != null
         val isMediaCatMounted = safeBreakdown.isMediaMounted || (isMounted && existingMediaPoint?.enabled == true)
         val (mediaBytes, mediaSubtitle, isMediaSd) = when {
@@ -932,9 +981,10 @@ private fun StorageTabContent(
                 Triple(size, "Berkas media & unduhan", true)
             }
             safeBreakdown.ext2MediaBytes > 0L && safeBreakdown.ext1MediaBytes > 64 * 1024L -> {
+                val targetName = if (isMediaUsb) (mediaDiskLabel ?: "USB OTG") else "MicroSD"
                 Triple(
                     safeBreakdown.ext1MediaBytes,
-                    "Berkas media & unduhan • ${FormatUtils.formatExactBytes(safeBreakdown.ext2MediaBytes)} di MicroSD",
+                    "Berkas media & unduhan • ${FormatUtils.formatExactBytes(safeBreakdown.ext2MediaBytes)} di $targetName",
                     false
                 )
             }
@@ -969,13 +1019,21 @@ private fun StorageTabContent(
                 },
                 isCategoryMounted = isMediaCatMounted,
                 preserveMedia = existingMediaPoint?.preserveMedia ?: true,
-                userId = resolveUserIdFromPath(mediaInternal)
+                userId = resolveUserIdFromPath(mediaInternal),
+                isUsbOtg = isMediaUsb,
+                storageTitle = mediaDiskLabel
             )
         } else null
 
-        val customItems = mountPoints.filter { it.resolveCategory() == MountPointCategory.CUSTOM }.map { pt ->
+        val customItems = mountPoints.filter { pt ->
+            pt.id != existingDataPoint?.id &&
+            pt.id != existingObbPoint?.id &&
+            pt.id != existingMediaPoint?.id &&
+            (pt.resolveCategory() == MountPointCategory.CUSTOM || pt.id.startsWith("custom_"))
+        }.map { pt ->
             val isCustomMounted = isMounted && pt.enabled
             val resolvedCustomBytes = if (pt.sizeBytes > 0L) pt.sizeBytes else safeBreakdown.customBytes
+            val (isCustomUsb, customDiskLabel) = getDiskDetails(pt.sourcePath, pt.diskUuid)
             UnifiedCategoryItem(
                 id = pt.id,
                 title = pt.label ?: "Kustom (${pt.targetPath.substringAfterLast('/').ifEmpty { pt.targetPath }})",
@@ -992,7 +1050,9 @@ private fun StorageTabContent(
                 sdBytes = resolvedCustomBytes,
                 isCategoryMounted = isCustomMounted,
                 preserveMedia = pt.preserveMedia,
-                userId = resolveUserIdFromPath(pt.targetPath)
+                userId = resolveUserIdFromPath(pt.targetPath),
+                isUsbOtg = isCustomUsb,
+                storageTitle = customDiskLabel
             )
         }
 
@@ -1087,7 +1147,9 @@ private fun StorageTabContent(
                     safeBreakdown.ext2DataBytes
                 },
                 isCategoryMounted = isDataCatMounted,
-                userId = resolveUserIdFromPath(dataInternal)
+                userId = resolveUserIdFromPath(dataInternal),
+                isUsbOtg = isDataUsb,
+                storageTitle = dataDiskLabel
             ),
             UnifiedCategoryItem(
                 id = "obb",
@@ -1108,7 +1170,9 @@ private fun StorageTabContent(
                     safeBreakdown.ext2ObbBytes
                 },
                 isCategoryMounted = isObbCatMounted,
-                userId = resolveUserIdFromPath(obbInternal)
+                userId = resolveUserIdFromPath(obbInternal),
+                isUsbOtg = isObbUsb,
+                storageTitle = obbDiskLabel
             ),
             mediaItem
         ) + customItems
@@ -1188,20 +1252,25 @@ private fun StorageTabContent(
                         )
                     }
 
-                    // 2. MicroSD Card
+                    // 2. MicroSD Card / External Storage
+                    val hasUsbCategory = categories.any { it.isMicroSd && it.isUsbOtg }
+                    val extIcon = if (hasUsbCategory) Icons.Default.Usb else Icons.Default.SdCard
+                    val extColor = if (hasUsbCategory) Color(0xFF00ACC1) else Color(0xFF3BA71A)
+                    val extLabel = if (hasUsbCategory) stringResource(R.string.game_detail_legend_usb) else stringResource(R.string.game_detail_legend_microsd)
+
                     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.SdCard,
+                                imageVector = extIcon,
                                 contentDescription = null,
-                                tint = Color(0xFF3BA71A),
+                                tint = extColor,
                                 modifier = Modifier.size(13.dp)
                             )
                             Text(
-                                text = stringResource(R.string.game_detail_legend_microsd),
+                                text = extLabel,
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -1215,7 +1284,7 @@ private fun StorageTabContent(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = Color(0xFF3BA71A),
+                            color = extColor,
                             modifier = Modifier.padding(start = 18.dp)
                         )
                     }
@@ -1562,7 +1631,14 @@ private fun StorageTabContent(
             internalFreeBytes = internalFreeBytes,
             selectedCategoryIds = selectedCategoryIds,
             categories = categories,
-            currentSdBase = mountPoints.firstOrNull { it.sourcePath.isNotBlank() }?.let { pt ->
+            currentSdBase = mountPoints
+                .sortedWith(
+                    compareByDescending<MountPointConfig> { it.enabled }
+                        .thenByDescending { !it.id.startsWith("legacy_") || it.diskUuid != null }
+                        .thenByDescending { it.category == MountPointCategory.CUSTOM }
+                        .thenByDescending { it.sizeBytes }
+                )
+                .firstOrNull { it.sourcePath.isNotBlank() }?.let { pt ->
                 availableDisks.flatMap { it.partitions }.firstOrNull { part ->
                     part.mountPoint != null && pt.sourcePath.startsWith(part.mountPoint)
                 }?.mountPoint
@@ -2214,20 +2290,26 @@ private fun CategoryCardItem(
 
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = if (item.isMicroSd) Color(0x1A3BA71A) else MaterialTheme.colorScheme.surfaceVariant,
+                        color = if (item.isMicroSd) (if (item.isUsbOtg) Color(0x1A00ACC1) else Color(0x1A3BA71A)) else MaterialTheme.colorScheme.surfaceVariant,
                         border = BorderStroke(
                             0.5.dp,
-                            if (item.isMicroSd) Color(0xFF3BA71A).copy(alpha = 0.5f)
+                            if (item.isMicroSd) (if (item.isUsbOtg) Color(0xFF00ACC1).copy(alpha = 0.5f) else Color(0xFF3BA71A).copy(alpha = 0.5f))
                             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                         )
                     ) {
+                        val badgeText = when {
+                            !item.isMicroSd -> "[Internal]"
+                            item.isUsbOtg -> "[USB OTG]"
+                            !item.storageTitle.isNullOrBlank() -> "[${item.storageTitle}]"
+                            else -> "[MicroSD]"
+                        }
                         Text(
-                            text = if (item.isMicroSd) "[MicroSD]" else "[Internal]",
+                            text = badgeText,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = if (item.isMicroSd) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (item.isMicroSd) (if (item.isUsbOtg) Color(0xFF00ACC1) else Color(0xFF3BA71A)) else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
@@ -2329,22 +2411,40 @@ private fun CategoryInspectorBottomSheet(
                         ),
                         color = MaterialTheme.colorScheme.primary
                     )
+                    val isUsb = item.isUsbOtg || item.sdPath.startsWith("/mnt/media_rw/")
+                    val badgeColor = when {
+                        !item.isMicroSd -> MaterialTheme.colorScheme.onSurfaceVariant
+                        isUsb -> Color(0xFF00ACC1)
+                        else -> Color(0xFF3BA71A)
+                    }
+                    val badgeBg = when {
+                        !item.isMicroSd -> MaterialTheme.colorScheme.surfaceVariant
+                        isUsb -> Color(0x1A00ACC1)
+                        else -> Color(0x1A3BA71A)
+                    }
+                    val badgeBorder = when {
+                        !item.isMicroSd -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        isUsb -> Color(0xFF00ACC1).copy(alpha = 0.5f)
+                        else -> Color(0xFF3BA71A).copy(alpha = 0.5f)
+                    }
+                    val badgeText = when {
+                        !item.isMicroSd -> "[Internal]"
+                        isUsb -> if (!item.storageTitle.isNullOrBlank()) "[${item.storageTitle}]" else "[USB OTG]"
+                        !item.storageTitle.isNullOrBlank() -> "[${item.storageTitle}]"
+                        else -> "[MicroSD]"
+                    }
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = if (item.isMicroSd) Color(0x1A3BA71A) else MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(
-                            0.5.dp,
-                            if (item.isMicroSd) Color(0xFF3BA71A).copy(alpha = 0.5f)
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
+                        color = badgeBg,
+                        border = BorderStroke(0.5.dp, badgeBorder)
                     ) {
                         Text(
-                            text = if (item.isMicroSd) "[MicroSD]" else "[Internal]",
+                            text = badgeText,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = if (item.isMicroSd) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = badgeColor,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
                     }
@@ -2526,14 +2626,22 @@ private fun CategoryInspectorBottomSheet(
                             )
                         }
 
+                        val isUsb = item.isUsbOtg || item.sdPath.startsWith("/mnt/media_rw/")
+                        val internalMountedNote = if (isUsb) {
+                            stringResource(R.string.category_inspector_internal_mounted_note_usb)
+                        } else {
+                            stringResource(R.string.category_inspector_internal_mounted_note)
+                        }
+                        val internalMountedNoteColor = if (isUsb) Color(0xFF00ACC1) else Color(0xFF3BA71A)
+
                         Text(
-                            text = if (item.isCategoryMounted) stringResource(R.string.category_inspector_internal_mounted_note)
+                            text = if (item.isCategoryMounted) internalMountedNote
                                    else FormatUtils.formatExactBytes(item.internalBytes),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            color = if (item.isCategoryMounted) Color(0xFF3BA71A) else MaterialTheme.colorScheme.onSurface
+                            color = if (item.isCategoryMounted) internalMountedNoteColor else MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -2598,6 +2706,18 @@ private fun CategoryInspectorBottomSheet(
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    val isUsb = item.isUsbOtg || item.sdPath.startsWith("/mnt/media_rw/")
+                    val storageCardColor = if (isUsb) Color(0xFF00ACC1) else Color(0xFF3BA71A)
+                    val storageCardTitle = if (isUsb) {
+                        item.storageTitle ?: stringResource(R.string.category_inspector_usb_title)
+                    } else {
+                        item.storageTitle ?: stringResource(R.string.category_inspector_microsd_title)
+                    }
+                    val storageNotMigrated = if (isUsb) {
+                        stringResource(R.string.category_inspector_not_migrated_usb)
+                    } else {
+                        stringResource(R.string.category_inspector_not_migrated)
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -2608,24 +2728,24 @@ private fun CategoryInspectorBottomSheet(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.SdCard,
+                                imageVector = if (isUsb) Icons.Default.Usb else Icons.Default.SdCard,
                                 contentDescription = null,
-                                tint = Color(0xFF3BA71A),
+                                tint = storageCardColor,
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = stringResource(R.string.category_inspector_microsd_title),
+                                text = storageCardTitle,
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = Color(0xFF3BA71A)
+                                color = storageCardColor
                             )
                         }
 
                         Text(
                             text = if (item.sdBytes > 0L) FormatUtils.formatExactBytes(item.sdBytes)
-                                   else stringResource(R.string.category_inspector_not_migrated),
+                                   else storageNotMigrated,
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontSize = 11.5.sp,
                                 fontWeight = if (item.sdBytes > 0L) FontWeight.Bold else FontWeight.Normal

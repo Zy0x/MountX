@@ -217,12 +217,22 @@ class MountManager {
             )
 
             // Guard against accidental data occlusion:
+            // ── MULTI-DISK COLLISION & ANTI-STACKING GUARD ──
+            val activeMountPoints = game.mountPoints
+                .filter { it.enabled }
+                .sortedWith(
+                    compareByDescending<MountPointConfig> { !it.id.startsWith("legacy_") || it.diskUuid != null }
+                        .thenByDescending { it.category == MountPointCategory.CUSTOM }
+                        .thenByDescending { it.sizeBytes }
+                )
+                .distinctBy { it.targetPath.trimEnd('/') }
+
             // Do not bind-mount an empty/missing MicroSD directory over a populated internal directory.
             var hasOcclusionRisk = false
             var occlusionInternalBytes = 0L
             var occlusionSdBytes = 0L
-            for (mp in game.mountPoints) {
-                if (mp.enabled && (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.OBB_STORAGE || mp.category == MountPointCategory.GAME_ASSETS || mp.category == MountPointCategory.CUSTOM)) {
+            for (mp in activeMountPoints) {
+                if (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.OBB_STORAGE || mp.category == MountPointCategory.GAME_ASSETS || mp.category == MountPointCategory.CUSTOM) {
                     val srcExists = RootShell.exists(mp.sourcePath)
                     val srcSizeKb = if (srcExists) {
                         val duRes = RootShell.exec("du -sk \"${mp.sourcePath}\" 2>/dev/null")
@@ -258,10 +268,6 @@ class MountManager {
                     message = "Data game masih berada di Memori Internal. Pindahkan data ke MicroSD terlebih dahulu agar aman untuk di-mount."
                 )
             }
-
-            // ── MULTI-DISK COLLISION & ANTI-STACKING GUARD ──
-            val activeMountPoints = game.mountPoints.filter { it.enabled }
-                .distinctBy { it.targetPath.trimEnd('/') }
 
             for (mp in activeMountPoints) {
                 val activeDev = getActiveMountSourceDevice(mp.targetPath)
@@ -481,6 +487,9 @@ class MountManager {
         // Extract relative path from target path across any user profile
         val relPath = extractRelativePath(mp.targetPath)
 
+        val fsType = RootShell.execForOutput("stat -f -c %T \"${mp.sourcePath}\" 2>/dev/null").trim().lowercase()
+        val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || mp.sourcePath.startsWith("/mnt/media_rw")
+
         var anyMounted = false
         for (namespace in namespaces) {
             val nsTarget = "$namespace/$relPath"
@@ -491,16 +500,26 @@ class MountManager {
                         ?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
                     val reqDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").lines()
                         .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
-                    if (curDev.isNotBlank() && reqDev.isNotBlank() && curDev != reqDev) {
+                    val isCurrentMountSame = curDev == mp.sourcePath || (curDev.isNotBlank() && reqDev.isNotBlank() && curDev == reqDev)
+                    if (curDev.isNotBlank() && reqDev.isNotBlank() && !isCurrentMountSame) {
                         AppLogger.info("MountManager", "Unmounting stale mount on $nsTarget ($curDev -> $reqDev)")
                         RootShell.exec("umount -f -l \"$nsTarget\" 2>/dev/null")
-                    } else {
+                    } else if (isCurrentMountSame) {
                         anyMounted = true
                         continue
                     }
                 }
                 RootShell.exec("mkdir -p \"$nsTarget\" 2>/dev/null")
-                val mountRes = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                val mountRes = if (isNonPosix) {
+                    val sdRes = RootShell.exec("toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid=$uid,mask=0 \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                    if (sdRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
+                        sdRes
+                    } else {
+                        RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                    }
+                } else {
+                    RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                }
                 if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
                     anyMounted = true
                 }

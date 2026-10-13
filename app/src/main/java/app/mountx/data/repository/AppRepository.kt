@@ -500,6 +500,11 @@ class AppRepository @Inject constructor(
 
             // Deduplicate enabled mount points by targetPath (prevent multi-disk collisions & double bind)
             val distinctEnabledPoints = updatedPoints.filter { it.enabled }
+                .sortedWith(
+                    compareByDescending<MountPointConfig> { !it.id.startsWith("legacy_") || it.diskUuid != null }
+                        .thenByDescending { it.category == MountPointCategory.CUSTOM }
+                        .thenByDescending { it.sizeBytes }
+                )
                 .distinctBy { it.targetPath.trimEnd('/') }
 
             for (mp in distinctEnabledPoints) {

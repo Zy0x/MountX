@@ -399,6 +399,15 @@ bind_mount_to_runtime_namespaces() {
     local user_id="$4"
     [ -z "${user_id}" ] && user_id="0"
 
+    local app_uid=""
+    if [ -n "${pkg}" ]; then
+        app_uid=$(dumpsys package "${pkg}" 2>/dev/null | grep -F "userId=" | head -n 1 | sed -n 's/.*userId=\([0-9]*\).*/\1/p')
+        if [ -z "${app_uid}" ]; then
+            app_uid=$(pm list packages -U --user "${user_id}" 2>/dev/null | grep -F "package:${pkg}" | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+        fi
+    fi
+    [ -z "${app_uid}" ] && app_uid=10000
+
     # Extract relative path from dst across any user profile
     local rel=""
     case "${dst}" in
@@ -417,6 +426,26 @@ bind_mount_to_runtime_namespaces() {
         REL="'"${rel}"'"
         USER_ID="'"${user_id}"'"
         PKG="'"${pkg}"'"
+        APP_UID="'"${app_uid}"'"
+
+        is_non_posix=0
+        fs_t=$(stat -f -c %T "${SRC}" 2>/dev/null)
+        case "${fs_t}" in
+            exfat|vfat|msdos|ntfs) is_non_posix=1 ;;
+        esac
+        case "${SRC}" in
+            /mnt/media_rw/*) is_non_posix=1 ;;
+        esac
+
+        do_mount() {
+            local _s="$1"
+            local _t="$2"
+            if [ "${is_non_posix}" -eq 1 ]; then
+                toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid="${APP_UID}",mask=0 "${_s}" "${_t}" 2>/dev/null || mount -o bind "${_s}" "${_t}" 2>/dev/null
+            else
+                mount -o bind "${_s}" "${_t}" 2>/dev/null
+            fi
+        }
 
         if [ -n "${REL}" ]; then
             for R in \
@@ -447,14 +476,14 @@ bind_mount_to_runtime_namespaces() {
                     TARGET="${R}/${REL}"
                     if ! mountpoint -q "${TARGET}" 2>/dev/null; then
                         mkdir -p "${TARGET}" 2>/dev/null
-                        mount -o bind "${SRC}" "${TARGET}" 2>/dev/null
+                        do_mount "${SRC}" "${TARGET}"
                     fi
                 fi
             done
         else
             if ! mountpoint -q "${DST}" 2>/dev/null; then
                 mkdir -p "${DST}" 2>/dev/null
-                mount -o bind "${SRC}" "${DST}" 2>/dev/null
+                do_mount "${SRC}" "${DST}"
             fi
         fi
 
@@ -464,8 +493,13 @@ bind_mount_to_runtime_namespaces() {
             if [ -n "${pids}" ]; then
                 for p in ${pids}; do
                     if [ -e "/proc/${p}/ns/mnt" ]; then
-                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
-                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "${DST}" 2>/dev/null
+                        if [ "${is_non_posix}" -eq 1 ]; then
+                            nsenter --mount="/proc/${p}/ns/mnt" -- toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid="${APP_UID}",mask=0 "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
+                            nsenter --mount="/proc/${p}/ns/mnt" -- toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid="${APP_UID}",mask=0 "${SRC}" "${DST}" 2>/dev/null
+                        else
+                            nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
+                            nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "${DST}" 2>/dev/null
+                        fi
                     fi
                 done
                 am force-stop "${PKG}" 2>/dev/null

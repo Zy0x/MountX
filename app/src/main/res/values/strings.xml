@@ -218,6 +218,7 @@
     <string name="game_detail_legend_internal_sys">System</string>
     <string name="game_detail_legend_internal_shared">Shared</string>
     <string name="game_detail_legend_microsd">MicroSD Card</string>
+    <string name="game_detail_legend_usb">External USB</string>
     <string name="game_detail_legend_total">Total</string>
     <string name="game_detail_chart_all_internal">100% Phone</string>
     <string name="game_detail_chart_all_microsd">100% MicroSD</string>
@@ -924,7 +925,9 @@
     <string name="category_inspector_mount_inactive">Unmounted (Standard Data)</string>
     <string name="category_inspector_internal_title">Internal Storage</string>
     <string name="category_inspector_microsd_title">MicroSD Storage</string>
+    <string name="category_inspector_usb_title">USB OTG / External Storage</string>
     <string name="category_inspector_not_migrated">Not migrated to MicroSD</string>
+    <string name="category_inspector_not_migrated_usb">Not migrated to USB OTG</string>
     <string name="category_inspector_copy_path">Copy</string>
     <string name="category_inspector_path_copied">Directory path copied to clipboard</string>
     <string name="category_inspector_delete_btn">Delete Category Data</string>
@@ -940,6 +943,7 @@
     <string name="category_inspector_delete_success">Category data deleted successfully</string>
     <string name="category_inspector_delete_failed">Failed to delete data: %1$s</string>
     <string name="category_inspector_internal_mounted_note">Redirected to MicroSD</string>
+    <string name="category_inspector_internal_mounted_note_usb">Redirected to USB Storage</string>
     <string name="category_inspector_delete_loc_sd_mounted_hint">This category data is mounted to MicroSD (%1$s). Deleting will detach the mount and delete physical files on the memory card.</string>
     <string name="category_inspector_delete_loc_internal_hint">This category data is stored in internal memory (%1$s). Deleting will delete files from device local storage.</string>
 
