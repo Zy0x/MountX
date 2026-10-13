@@ -260,7 +260,10 @@ class MountManager {
             }
 
             // ── MULTI-DISK COLLISION & ANTI-STACKING GUARD ──
-            for (mp in game.mountPoints.filter { it.enabled }) {
+            val activeMountPoints = game.mountPoints.filter { it.enabled }
+                .distinctBy { it.targetPath.trimEnd('/') }
+
+            for (mp in activeMountPoints) {
                 val activeDev = getActiveMountSourceDevice(mp.targetPath)
                 if (activeDev != null) {
                     val dfOut = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").trim()
@@ -269,13 +272,13 @@ class MountManager {
                     val requestedUuid = if (requestedDev.isNotBlank()) getBlockDeviceUuid(requestedDev) else null
 
                     if (requestedDev.isNotBlank() && activeDev != requestedDev && activeUuid != null && requestedUuid != null && activeUuid != requestedUuid) {
-                        AppLogger.error("MountManager", "MULTI-DISK COLLISION: ${game.packageName} target ${mp.targetPath} is already mounted from $activeDev (UUID: $activeUuid), but requested $requestedDev (UUID: $requestedUuid). Aborting to prevent file shadowing.")
-                        throw MultiDiskCollisionException(
-                            packageName = game.packageName,
-                            activeDevice = activeDev,
-                            requestedDevice = requestedDev,
-                            message = "Aplikasi ${game.displayName} sudah aktif ter-mount dari penyimpanan lain ($activeDev). Lepaskan kaitan terlebih dahulu untuk beralih disk."
-                        )
+                        AppLogger.warn("MountManager", "SWITCHING DISK MOUNT: ${game.packageName} target ${mp.targetPath} is mounted from $activeDev ($activeUuid), switching to $requestedDev ($requestedUuid). Unmounting previous device mount cleanly...")
+                        val relPath = extractRelativePath(mp.targetPath)
+                        val targetUserId = resolveUserId(mp.targetPath)
+                        val userNamespaces = getTargetNamespaces(targetUserId)
+                        for (ns in userNamespaces) {
+                            RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                        }
                     }
                 }
             }
@@ -296,9 +299,9 @@ class MountManager {
             )
 
             var totalMountedTargets = 0
-            if (game.mountPoints.isNotEmpty()) {
+            if (activeMountPoints.isNotEmpty()) {
                 // ── UNIVERSAL SMART MULTI-TARGET ARRAY ──
-                for (mp in game.mountPoints) {
+                for (mp in activeMountPoints) {
                     if (!mp.enabled) continue
 
                     // Security Hard-Lock: reject /data/app unless explicitly marked as APP_PACKAGE
@@ -483,8 +486,18 @@ class MountManager {
             val nsTarget = "$namespace/$relPath"
             if (RootShell.exists(namespace)) {
                 if (RootShell.isMountpoint(nsTarget)) {
-                    anyMounted = true
-                    continue
+                    val curDev = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
+                        .firstOrNull { it.contains(" $nsTarget ") }
+                        ?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
+                    val reqDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").lines()
+                        .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
+                    if (curDev.isNotBlank() && reqDev.isNotBlank() && curDev != reqDev) {
+                        AppLogger.info("MountManager", "Unmounting stale mount on $nsTarget ($curDev -> $reqDev)")
+                        RootShell.exec("umount -f -l \"$nsTarget\" 2>/dev/null")
+                    } else {
+                        anyMounted = true
+                        continue
+                    }
                 }
                 RootShell.exec("mkdir -p \"$nsTarget\" 2>/dev/null")
                 val mountRes = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")

@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import app.mountx.MainActivity
 import app.mountx.R
 import app.mountx.data.db.GameDao
@@ -80,7 +81,7 @@ class SystemSyncMonitor @Inject constructor(
                 Intent.ACTION_MEDIA_REMOVED,
                 Intent.ACTION_MEDIA_BAD_REMOVAL -> {
                     scope.launch {
-                        handleEmergencyMediaEject()
+                        handleMediaUnmountOrEject(intent)
                     }
                 }
                 Intent.ACTION_MEDIA_MOUNTED -> {
@@ -139,9 +140,24 @@ class SystemSyncMonitor @Inject constructor(
         }
 
         try {
-            context.registerReceiver(systemReceiver, mediaFilter)
-            context.registerReceiver(systemReceiver, diskErrorFilter)
-            context.registerReceiver(systemReceiver, pkgFilter)
+            ContextCompat.registerReceiver(
+                context,
+                systemReceiver,
+                mediaFilter,
+                ContextCompat.RECEIVER_EXPORTED
+            )
+            ContextCompat.registerReceiver(
+                context,
+                systemReceiver,
+                diskErrorFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            ContextCompat.registerReceiver(
+                context,
+                systemReceiver,
+                pkgFilter,
+                ContextCompat.RECEIVER_EXPORTED
+            )
             isRegistered = true
             AppLogger.info("SystemSyncMonitor", "System broadcast listeners registered.")
         } catch (e: Exception) {
@@ -169,7 +185,9 @@ class SystemSyncMonitor @Inject constructor(
                             val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
                             val isSdBaseMounted = RootShell.isMountpoint(sdBase)
                             if (isSdBaseMounted) {
-                                val backingBlock = RootShell.execForOutput("grep ' $sdBase ' /proc/mounts | cut -d' ' -f1").trim()
+                                val backingBlock = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
+                                    .firstOrNull { it.contains(" $sdBase ") }
+                                    ?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
                                 if (backingBlock.startsWith("/dev/block/")) {
                                     !RootShell.exists(backingBlock) && !RootShell.exists("/sys/class/block/${backingBlock.substringAfterLast('/')}")
                                 } else false
@@ -226,6 +244,58 @@ class SystemSyncMonitor @Inject constructor(
         scope.launch {
             _events.emit(SystemSyncEvent.RefreshAll)
         }
+    }
+
+    /**
+     * Differentiates between true MicroSD physical removal and transient USB OTG media unmounts.
+     * Prevents false ejections of MicroSD mounts when USB OTG is plugged in or unplugged.
+     */
+    private suspend fun handleMediaUnmountOrEject(intent: Intent?) {
+        val ejectedPath = intent?.data?.path?.trimEnd('/') ?: ""
+        AppLogger.info("SystemSyncMonitor", "Storage unmount/eject broadcast received for path: '$ejectedPath'")
+
+        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+        val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+        val isMmcStillAlive = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
+
+        // 1. If primary MicroSD is actually physically detached or unmounted, trigger emergency protocol
+        if (!isSdBaseMounted && !isMmcStillAlive) {
+            AppLogger.warn("SystemSyncMonitor", "Primary MicroSD ($sdBase) is missing. Executing emergency eject.")
+            handleEmergencyMediaEject()
+            return
+        }
+
+        // 2. Primary MicroSD is still alive and mounted! Do NOT unmount /data/sdext2 or panic.
+        if (ejectedPath.isNotBlank() && ejectedPath != sdBase) {
+            try {
+                val games = gameDao.getAllGamesSync()
+                var anyDetached = false
+                for (game in games) {
+                    if (game.mountStatus != MountStatus.MOUNTED) continue
+                    val hasMountOnEjected = game.mountPoints.any { mp ->
+                        mp.enabled && (
+                            mp.sourcePath.startsWith(ejectedPath) ||
+                            (mp.diskUuid != null && ejectedPath.contains(mp.diskUuid, ignoreCase = true)) ||
+                            (!RootShell.exists(mp.sourcePath) && mp.sourcePath.startsWith("/mnt/media_rw/"))
+                        )
+                    }
+                    if (hasMountOnEjected) {
+                        AppLogger.warn("SystemSyncMonitor", "Game ${game.displayName} depends on detached storage $ejectedPath. Safely unmounting...")
+                        mountManager.unmountGame(game)
+                        gameDao.updateMountStatus(game.packageName, MountStatus.DISK_DETACHED)
+                        anyDetached = true
+                    }
+                }
+                if (anyDetached) {
+                    mountNotificationManager.syncActiveMountNotification()
+                }
+            } catch (e: Exception) {
+                AppLogger.error("SystemSyncMonitor", "Error inspecting games on media eject: ${e.message}")
+            }
+        }
+
+        // Refresh UI state so disk/game lists update cleanly without emergency disconnect banner
+        _events.emit(SystemSyncEvent.RefreshAll)
     }
 
     /**

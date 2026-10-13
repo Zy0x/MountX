@@ -472,9 +472,10 @@ class AppRepository @Inject constructor(
             var gameModified = false
             val rawPoints = if (g.mountPoints.isNotEmpty()) g.mountPoints else synthesizeLegacyMountPoints(g)
             val updatedPoints = rawPoints.map { mp ->
-                var effectiveUuid = mp.diskUuid ?: updatedG.preferredDiskUuid ?: ""
-                if (effectiveUuid.isBlank() && RootShell.exists(mp.sourcePath)) {
-                    val dev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null | awk 'NR==2 {print \$1}'").trim()
+                var effectiveUuid = mp.diskUuid ?: ""
+                if (RootShell.exists(mp.sourcePath)) {
+                    val dev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").lines()
+                        .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
                     if (dev.isNotBlank()) {
                         val resolvedUuid = MountManager.getBlockDeviceUuid(dev)
                         if (!resolvedUuid.isNullOrBlank()) {
@@ -482,11 +483,11 @@ class AppRepository @Inject constructor(
                         }
                     }
                 }
-                if (effectiveUuid.isNotBlank() && (mp.diskUuid != effectiveUuid || updatedG.preferredDiskUuid != effectiveUuid)) {
+                if (effectiveUuid.isBlank()) {
+                    effectiveUuid = updatedG.preferredDiskUuid ?: ""
+                }
+                if (effectiveUuid.isNotBlank() && mp.diskUuid != effectiveUuid) {
                     gameModified = true
-                    if (updatedG.preferredDiskUuid.isNullOrBlank()) {
-                        updatedG = updatedG.copy(preferredDiskUuid = effectiveUuid)
-                    }
                     mp.copy(diskUuid = effectiveUuid)
                 } else {
                     mp
@@ -497,7 +498,11 @@ class AppRepository @Inject constructor(
                 gameDao.updateGame(updatedG)
             }
 
-            for (mp in updatedPoints.filter { it.enabled }) {
+            // Deduplicate enabled mount points by targetPath (prevent multi-disk collisions & double bind)
+            val distinctEnabledPoints = updatedPoints.filter { it.enabled }
+                .distinctBy { it.targetPath.trimEnd('/') }
+
+            for (mp in distinctEnabledPoints) {
                 val pkg = g.packageName
                 val category = mp.category.name
                 val sourcePath = mp.sourcePath
@@ -530,27 +535,50 @@ class AppRepository @Inject constructor(
     suspend fun scanMicroSdGames(sdBase: String, installedApps: Map<String, String>): List<DiscoveredGame> =
         withContext(Dispatchers.IO) {
             val registered = gameDao.getAllGamesSync().map { it.packageName }.toSet()
-            diskCatalogManager.scanSdCardForGames(sdBase, registered, installedApps)
+            diskCatalogManager.scanAllStorageForGames(sdBase, registered, installedApps)
         }
 
     suspend fun importDiscoveredGame(game: DiscoveredGame, sdBase: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val realSize = if (game.sizeBytes > 0L) game.sizeBytes else calculateDataSize(game.packageName, sdBase)
+                val initialMountPoints = if (game.mountPoints.isNotEmpty()) {
+                    game.mountPoints
+                } else if (!game.originalPath.isNullOrBlank()) {
+                    val resolvedDev = RootShell.execForOutput("df \"${game.originalPath}\" 2>/dev/null").lines()
+                        .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
+                    val resolvedUuid = if (resolvedDev.isNotBlank()) MountManager.getBlockDeviceUuid(resolvedDev) else null
+                    listOf(
+                        MountPointConfig(
+                            id = "imported_${game.packageName}_data",
+                            category = MountPointCategory.EXTERNAL_DATA,
+                            sourcePath = game.originalPath,
+                            targetPath = "/data/media/0/Android/data/${game.packageName}",
+                            enabled = true,
+                            diskUuid = resolvedUuid,
+                            preserveMedia = true
+                        )
+                    )
+                } else {
+                    synthesizeLegacyMountPoints(GameEntry(packageName = game.packageName, displayName = game.displayName, mode = game.mode))
+                }
+                val preferredUuid = initialMountPoints.firstNotNullOfOrNull { it.diskUuid }
                 val entry = GameEntry(
                     packageName = game.packageName,
                     displayName = game.displayName,
                     mode = game.mode,
                     mountStatus = MountStatus.UNMOUNTED,
                     dataSizeBytes = realSize,
-                    isEnabled = true
+                    isEnabled = true,
+                    mountPoints = initialMountPoints,
+                    preferredDiskUuid = preferredUuid
                 )
                 gameDao.insertGame(entry)
                 // Reconcile dynamic UID/GID and SELinux
                 diskCatalogManager.reconcileGame(sdBase, entry)
                 syncModuleGamelist()
                 syncDiskCatalog(sdBase)
-                AppLogger.success("Games", "Imported & reconciled portable game: ${game.displayName} (${game.packageName}), size: $realSize bytes")
+                AppLogger.success("Games", "Imported & reconciled portable game: ${game.displayName} (${game.packageName}), size: $realSize bytes, uuid: $preferredUuid")
             }
         }
 

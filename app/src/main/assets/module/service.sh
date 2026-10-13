@@ -595,13 +595,18 @@ load_mountpoints() {
                 exp_dev=$(blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
                 [ -z "${exp_dev}" ] && exp_dev=$(toybox blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
                 if [ -n "${exp_dev}" ] && [ -n "${cur_dev}" ] && [ "${cur_dev}" != "${exp_dev}" ]; then
-                    log_warn "  [${pkg}] Target ${dst} already mounted from ${cur_dev}, expected ${exp_dev} (UUID:${disk_uuid}). Skipping to prevent collision."
+                    log_warn "  [${pkg}] Target ${dst} mounted from ${cur_dev}, but configured UUID=${disk_uuid} expects ${exp_dev}. Unmounting stale device mount..."
+                    umount -f -l "${dst}" 2>/dev/null
+                else
+                    log_info "  [${pkg}] Target ${dst} is already mounted correctly from ${cur_dev}. Skipping duplicate bind."
+                    entries=$((entries + 1))
                     continue
                 fi
+            else
+                log_info "  [${pkg}] Target ${dst} is already mounted. Skipping duplicate bind."
+                entries=$((entries + 1))
+                continue
             fi
-            log_info "  [${pkg}] Target ${dst} is already mounted. Skipping duplicate bind."
-            entries=$((entries + 1))
-            continue
         fi
 
         # ── Smart Multi-Disk Auto-Mount ────────────────────────────────────────
@@ -854,8 +859,7 @@ mount_watchdog() {
             fi
         fi
 
-        # Check 2: Sample canary — base mount at /data/media/0/Android/...
-        local canary_ok=1
+        # Sample canary paths for Zygote namespace check
         local sample_dst=""
         local sample_pkg=""
         if [ -f "${MOUNTPOINTS_FILE}" ]; then
@@ -863,14 +867,6 @@ mount_watchdog() {
             sample_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
             sample_dst=$(echo "${sample_line}" | cut -d'|' -f4)
             sample_pkg=$(echo "${sample_line}" | cut -d'|' -f1)
-            if [ -n "${sample_dst}" ]; then
-                if ! mountpoint -q "${sample_dst}" 2>/dev/null; then
-                    if ! grep -qF " ${sample_dst} " /proc/mounts 2>/dev/null; then
-                        canary_ok=0
-                        log_warn "[Watchdog] Canary lost: ${sample_dst} not in /proc/mounts. Re-applying mounts..."
-                    fi
-                fi
-            fi
         fi
 
         # ── Check 3: Zygote soft restart detection ────────────────────────────
@@ -923,34 +919,19 @@ mount_watchdog() {
             return 0
         fi
 
-        # Finalize canary result (Check 2)
-        if [ ${canary_ok} -eq 0 ]; then
-            load_mountpoints 2>/dev/null || true
-            CONSECUTIVE_OK=0
-            CHECK_INTERVAL=120
-        else
-            CONSECUTIVE_OK=$((CONSECUTIVE_OK + 1))
-            # Exponential backoff: stable system → check less frequently (save battery)
-            if [ ${CONSECUTIVE_OK} -ge 5 ] && [ ${CHECK_INTERVAL} -lt ${MAX_INTERVAL} ]; then
-                CHECK_INTERVAL=$((CHECK_INTERVAL + 60))
-                [ ${CHECK_INTERVAL} -gt ${MAX_INTERVAL} ] && CHECK_INTERVAL=${MAX_INTERVAL}
-                log_info "[Watchdog] System stable (${CONSECUTIVE_OK} checks OK). Interval → ${CHECK_INTERVAL}s."
-            fi
+        CONSECUTIVE_OK=$((CONSECUTIVE_OK + 1))
+        # Exponential backoff: stable system → check less frequently (save battery)
+        if [ ${CONSECUTIVE_OK} -ge 5 ] && [ ${CHECK_INTERVAL} -lt ${MAX_INTERVAL} ]; then
+            CHECK_INTERVAL=$((CHECK_INTERVAL + 60))
+            [ ${CHECK_INTERVAL} -gt ${MAX_INTERVAL} ] && CHECK_INTERVAL=${MAX_INTERVAL}
+            log_info "[Watchdog] System stable (${CONSECUTIVE_OK} checks OK). Interval → ${CHECK_INTERVAL}s."
         fi
     }
 
-    # ── Use inotifywait if available (event-driven, zero CPU when idle) ────────
-    if which inotifywait >/dev/null 2>&1; then
-        log_info "[Watchdog] Using inotifywait mode (zero-drain event-driven)."
-        inotifywait -m -q -e modify,delete "/proc/mounts" 2>/dev/null | while IFS= read -r _line; do
-            check_mounts
-        done
-        # inotifywait exited unexpectedly — fall through to loop mode
-        log_warn "[Watchdog] inotifywait exited. Falling back to loop mode."
-    fi
-
-    # ── Conservative polling fallback (120s baseline, exponential backoff) ─────
-    log_info "[Watchdog] Using conservative loop mode (${CHECK_INTERVAL}s interval)."
+    # ── Conservative polling loop (120s baseline, exponential backoff) ────────
+    # NOTE: Never use inotifywait on /proc/mounts as procfs events cause recursive
+    # mount cascades that can freeze the Linux VFS layer and reboot the device.
+    log_info "[Watchdog] Using conservative timer loop (${CHECK_INTERVAL}s interval)."
     while true; do
         sleep "${CHECK_INTERVAL}"
         check_mounts

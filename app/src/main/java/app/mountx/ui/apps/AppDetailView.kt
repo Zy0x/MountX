@@ -98,6 +98,7 @@ import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.SdCardDiskInfo
 import androidx.compose.ui.graphics.luminance
+import kotlinx.coroutines.withContext
 import app.mountx.ui.components.AppIconImage
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.NeedMigrationDialog
@@ -1767,18 +1768,41 @@ private fun StorageTabContent(
             onDismiss = { showAddCustomDialog = false },
             onAdd = { label, targetInternalPath, sourceSdPath, preserveMedia ->
                 showAddCustomDialog = false
-                val newPoint = MountPointConfig(
-                    id = "custom_${System.currentTimeMillis()}",
-                    category = MountPointCategory.CUSTOM,
-                    sourcePath = sourceSdPath,
-                    targetPath = targetInternalPath,
-                    label = label,
-                    enabled = true,
-                    preserveMedia = preserveMedia
-                )
-                onMountPointsChanged(mountPoints + newPoint)
-                if (preserveMedia) {
-                    coroutineScope.launch(Dispatchers.IO) {
+                coroutineScope.launch(Dispatchers.IO) {
+                    val resolvedDev = RootShell.execForOutput("df \"$sourceSdPath\" 2>/dev/null").lines()
+                        .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
+                    val resolvedUuid = if (resolvedDev.isNotBlank()) MountManager.getBlockDeviceUuid(resolvedDev) else null
+
+                    val cat = when {
+                        targetInternalPath.endsWith("/Android/data/${game.packageName}") -> MountPointCategory.EXTERNAL_DATA
+                        targetInternalPath.endsWith("/Android/obb/${game.packageName}") -> MountPointCategory.OBB_STORAGE
+                        else -> MountPointCategory.CUSTOM
+                    }
+
+                    val newPoint = MountPointConfig(
+                        id = "custom_${System.currentTimeMillis()}",
+                        category = cat,
+                        sourcePath = sourceSdPath,
+                        targetPath = targetInternalPath,
+                        label = label,
+                        enabled = true,
+                        diskUuid = resolvedUuid,
+                        preserveMedia = preserveMedia
+                    )
+
+                    // Disable existing mount point with matching target path to prevent collisions
+                    val normalizedTarget = targetInternalPath.trimEnd('/')
+                    val updatedPoints = mountPoints.map { pt ->
+                        if (pt.targetPath.trimEnd('/') == normalizedTarget) {
+                            pt.copy(enabled = false)
+                        } else pt
+                    } + newPoint
+
+                    withContext(Dispatchers.Main) {
+                        onMountPointsChanged(updatedPoints)
+                    }
+
+                    if (preserveMedia) {
                         RootShell.exec("rm -f '$sourceSdPath/.nomedia' 2>/dev/null")
                         MountManager.triggerMediaScan(sourceSdPath)
                     }

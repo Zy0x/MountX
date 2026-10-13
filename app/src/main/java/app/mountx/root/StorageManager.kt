@@ -233,12 +233,36 @@ class StorageManager {
         data class RawMount(val spec: String, val file: String, val vfstype: String)
         val allMounts = mutableListOf<RawMount>()
 
-        val mountsRes = RootShell.exec("grep -E '(/dev/block/|/mnt/media_rw|/data/sdext|/storage/|public:)' /proc/mounts 2>/dev/null | grep -v -E '/mnt/runtime/|/mnt/installer/|/mnt/androidwritable/|/mnt/pass_through/|/mnt/user/|/emulated/0/Android|/Android/data|/Android/obb'")
+        val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
         if (mountsRes.isSuccess && mountsRes.stdout.isNotEmpty()) {
+            val excludedKeywords = listOf(
+                "/mnt/runtime/",
+                "/mnt/installer/",
+                "/mnt/androidwritable/",
+                "/mnt/pass_through/",
+                "/mnt/user/",
+                "/emulated/0/Android",
+                "/Android/data",
+                "/Android/obb"
+            )
+            val includedPatterns = listOf(
+                "/dev/block/",
+                "/mnt/media_rw",
+                "/data/sdext",
+                "/storage/",
+                "public:"
+            )
             mountsRes.stdout.forEach { line ->
                 val parts = line.trim().split(Regex("\\s+"))
                 if (parts.size >= 3) {
-                    allMounts.add(RawMount(parts[0], parts[1], parts[2]))
+                    val spec = parts[0]
+                    val file = parts[1]
+                    val vfstype = parts[2]
+                    val matchesInclude = includedPatterns.any { spec.contains(it) || file.contains(it) }
+                    val matchesExclude = excludedKeywords.any { file.contains(it) || spec.contains(it) }
+                    if (matchesInclude && !matchesExclude) {
+                        allMounts.add(RawMount(spec, file, vfstype))
+                    }
                 }
             }
         }
@@ -493,7 +517,7 @@ class StorageManager {
                 }
 
                 val isLinuxFs = fsType.equals("f2fs", ignoreCase = true) || fsType.equals("ext4", ignoreCase = true)
-                val isSuitable = isTargetMount || (isRemovable && (isLinuxFs || (partNum >= 2 && !isMounted)))
+                val isSuitable = isTargetMount || (isRemovable && (isLinuxFs || isPortableMount || (partNum >= 2 && !isMounted)))
 
                 // Accurately compute used & free bytes via canonical mount point and dfMap / StatFs
                 var usedBytes = 0L
@@ -1174,14 +1198,13 @@ class StorageManager {
             }
         }
 
-        if (candidateDiskNames.isEmpty()) {
-            val checkMmc = RootShell.exec("ls -d /sys/block/mmcblk* 2>/dev/null")
-            if (checkMmc.isSuccess) {
-                checkMmc.stdout.forEach { line ->
-                    val name = line.trim().substringAfterLast("/")
-                    if (name.startsWith("mmcblk") && !name.contains("boot") && !name.contains("rpmb")) {
-                        candidateDiskNames.add(name)
-                    }
+        // Always inspect MMC physical devices (mmcblk0, mmcblk1, etc.)
+        val checkMmc = RootShell.exec("ls -d /sys/block/mmcblk* 2>/dev/null")
+        if (checkMmc.isSuccess) {
+            checkMmc.stdout.forEach { line ->
+                val name = line.trim().substringAfterLast("/")
+                if (name.startsWith("mmcblk") && !name.contains("boot") && !name.contains("rpmb")) {
+                    candidateDiskNames.add(name)
                 }
             }
         }
@@ -1279,7 +1302,7 @@ class StorageManager {
                     if (mVendor == "MicroSD") "MicroSD Card" else "$mVendor MicroSD"
                 }
                 else -> {
-                    if (vendor.isNotBlank()) "$vendor USB" else "USB OTG"
+                    if (vendor.isNotBlank()) "$vendor USB" else if (model.isNotBlank()) "$model USB" else "USB OTG"
                 }
             }
 

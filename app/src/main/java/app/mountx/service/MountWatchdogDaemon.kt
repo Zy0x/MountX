@@ -64,9 +64,16 @@ class MountWatchdogDaemon @Inject constructor(
                 }
                 Intent.ACTION_MEDIA_EJECT,
                 Intent.ACTION_MEDIA_UNMOUNTED -> {
-                    // Storage disconnected: emergency lazy unmount to prevent kernel panic
                     scope.launch {
-                        emergencyLazyUnmount()
+                        val sdBase = appPreferences.sdBasePath.first()
+                        val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+                        val isMmcStillAlive = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
+                        if (!isSdBaseMounted && !isMmcStillAlive) {
+                            AppLogger.warn("Watchdog", "MicroSD physically detached. Executing emergency lazy unmount.")
+                            emergencyLazyUnmount()
+                        } else {
+                            AppLogger.info("Watchdog", "Media unmount event received, but MicroSD ($sdBase) is still mounted & active. Preserving mounts.")
+                        }
                     }
                 }
                 Intent.ACTION_PACKAGE_REMOVED -> {

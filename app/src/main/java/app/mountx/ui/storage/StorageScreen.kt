@@ -187,7 +187,7 @@ fun StorageScreen(
     var showRepartitionFinalConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        viewModel.detectPartitions(force = false)
+        viewModel.detectPartitions(force = true)
         viewModel.loadSupportedFilesystems()
     }
 

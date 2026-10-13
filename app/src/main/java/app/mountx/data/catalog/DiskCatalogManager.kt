@@ -381,7 +381,121 @@ class DiskCatalogManager @Inject constructor(
             }
         }
 
+        // 5. Lapisan 4: Folder Top-Level Package (<sdBase>/<packageName>)
+        val topDirsOut = RootShell.execForOutput("ls -1 \"$sdBase\" 2>/dev/null")
+        if (topDirsOut.isNotBlank()) {
+            for (entryName in topDirsOut.lines()) {
+                val cleanEntry = entryName.trim()
+                if (cleanEntry.isBlank() || cleanEntry.startsWith(".") || cleanEntry.startsWith("$") ||
+                    cleanEntry == "System Volume Information" || cleanEntry == "lost+found" ||
+                    cleanEntry == "Android" || cleanEntry == "MountX" || cleanEntry == "Games" ||
+                    cleanEntry == "Game" || cleanEntry == "GameData") continue
+
+                val matchedPkg = installedApps.keys.firstOrNull { pkg ->
+                    pkg.equals(cleanEntry, ignoreCase = true)
+                } ?: if (cleanEntry.contains(".") && (cleanEntry.startsWith("com.") || cleanEntry.startsWith("org.") ||
+                    cleanEntry.startsWith("net.") || cleanEntry.startsWith("io.") || cleanEntry.startsWith("jp.") || cleanEntry.startsWith("kr."))) cleanEntry else null
+
+                if (matchedPkg != null && !detected.containsKey(matchedPkg)) {
+                    val folderPath = "$sdBase/$cleanEntry"
+                    if (!hasValidContent(folderPath)) continue
+
+                    val isInstalled = installedApps.containsKey(matchedPkg)
+                    val isRegistered = registeredPackages.contains(matchedPkg)
+                    val canary = RootShell.exists("$folderPath/$CANARY_FILE")
+                    val sizeKbRes = RootShell.execForOutput("du -sk \"$folderPath\" 2>/dev/null").split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L
+
+                    detected[matchedPkg] = DiscoveredGame(
+                        packageName = matchedPkg,
+                        displayName = installedApps[matchedPkg] ?: cleanEntry,
+                        mode = MountMode.PKG,
+                        source = DiscoverySource.SHALLOW_SCAN,
+                        isInstalledOnDevice = isInstalled,
+                        isAlreadyRegistered = isRegistered,
+                        hasDataOnSd = true,
+                        hasObbOnSd = false,
+                        sizeBytes = sizeKbRes * 1024L,
+                        canaryPresent = canary,
+                        needsRestructure = false,
+                        originalPath = folderPath
+                    )
+                }
+            }
+        }
+
         detected.values.toList()
+    }
+
+    /**
+     * Scans ALL connected storage devices (MicroSD partition, USB OTG drives, and external volumes)
+     * for game directories across standard MountX, legacy Android, and top-level root package folders.
+     */
+    suspend fun scanAllStorageForGames(
+        primarySdBase: String,
+        registeredPackages: Set<String>,
+        installedApps: Map<String, String>
+    ): List<DiscoveredGame> = withContext(Dispatchers.IO) {
+        val storageRoots = linkedSetOf<String>()
+        if (primarySdBase.isNotBlank() && RootShell.exists(primarySdBase)) {
+            storageRoots.add(primarySdBase)
+        }
+
+        // 1. Discover all active mounts under /mnt/media_rw/*
+        val mediaRwOut = RootShell.execForOutput("ls -d /mnt/media_rw/* 2>/dev/null")
+        mediaRwOut.lines().forEach { line ->
+            val p = line.trim()
+            if (p.isNotBlank() && !p.endsWith("/usbotg") && RootShell.exists(p)) {
+                storageRoots.add(p)
+            }
+        }
+
+        // 2. Discover external volumes under /storage/* (excluding emulated, self, primary)
+        val storageOut = RootShell.execForOutput("ls -d /storage/* 2>/dev/null")
+        storageOut.lines().forEach { line ->
+            val p = line.trim()
+            val name = p.substringAfterLast('/')
+            if (p.isNotBlank() && name != "emulated" && name != "self" && name != "primary" && name != "sdcard0" && RootShell.exists(p)) {
+                storageRoots.add(p)
+            }
+        }
+
+        val allDiscovered = mutableMapOf<String, DiscoveredGame>()
+
+        for (basePath in storageRoots) {
+            val devOut = RootShell.execForOutput("df \"$basePath\" 2>/dev/null").lines()
+                .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
+            val diskUuid = if (devOut.isNotBlank()) MountManager.getBlockDeviceUuid(devOut) else null
+
+            val discoveredOnBase = scanSdCardForGames(basePath, registeredPackages, installedApps)
+            for (game in discoveredOnBase) {
+                val existing = allDiscovered[game.packageName]
+                if (existing == null || (!existing.hasDataOnSd && game.hasDataOnSd)) {
+                    val customPoints = if (game.mountPoints.isNotEmpty()) {
+                        game.mountPoints.map { mp -> if (mp.diskUuid == null && diskUuid != null) mp.copy(diskUuid = diskUuid) else mp }
+                    } else if (game.originalPath != null) {
+                        listOf(
+                            MountPointConfig(
+                                id = "ext_${game.packageName}_${System.currentTimeMillis() % 1000}",
+                                category = MountPointCategory.EXTERNAL_DATA,
+                                sourcePath = game.originalPath,
+                                targetPath = "/data/media/0/Android/data/${game.packageName}",
+                                enabled = true,
+                                diskUuid = diskUuid,
+                                preserveMedia = true
+                            )
+                        )
+                    } else {
+                        emptyList()
+                    }
+                    allDiscovered[game.packageName] = game.copy(
+                        mountPoints = customPoints,
+                        originalPath = game.originalPath ?: basePath
+                    )
+                }
+            }
+        }
+
+        allDiscovered.values.toList()
     }
 
     /**

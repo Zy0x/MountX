@@ -248,10 +248,7 @@ class StorageViewModel @Inject constructor(
                         detectPartitionsInternal(force = true)
                     }
                     is app.mountx.service.SystemSyncEvent.StorageDisconnected -> {
-                        _diskInfo.value = null
-                        _allDisks.value = emptyList()
-                        _selectedDiskForDetail.value = null
-                        _partitions.value = emptyList()
+                        detectPartitionsInternal(force = true)
                     }
                     else -> {}
                 }

@@ -187,8 +187,19 @@ class DashboardViewModel @Inject constructor(
             _isRefreshingTelemetry.value = true
             try {
                 val sdBase = appPreferences.sdBasePath.first()
-                val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null | grep -E '(/data/media/0/Android|/data/sdext2|${sdBase})' | cut -d' ' -f1,2,3")
-                val mountLines = if (mountsRes.isSuccess) mountsRes.stdout.filter { it.isNotBlank() } else emptyList()
+                val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
+                val mountLines = if (mountsRes.isSuccess) {
+                    mountsRes.stdout.filter { line ->
+                        line.isNotBlank() && (
+                            line.contains("/data/media/0/Android") ||
+                            line.contains("/data/sdext2") ||
+                            (sdBase.isNotBlank() && line.contains(sdBase))
+                        )
+                    }.map { line ->
+                        val parts = line.trim().split(Regex("\\s+"))
+                        parts.take(3).joinToString(" ")
+                    }
+                } else emptyList()
 
                 val currentGames = games.value
                 val mountedGames = currentGames.filter { it.mountStatus == MountStatus.MOUNTED }
