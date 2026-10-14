@@ -156,6 +156,12 @@ class AppsViewModel @Inject constructor(
         _operationProgress.value = null
     }
 
+    fun cancelOperation() {
+        viewModelScope.launch {
+            storageRepository.cancelCurrentOperation()
+        }
+    }
+
     fun clearDetailedStorage() {
         _activePackageName.value = null
         _detailedStorage.value = null

@@ -30,17 +30,23 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,9 +71,11 @@ import kotlinx.coroutines.delay
 @Composable
 fun OperationProgressDialog(
     progress: OperationProgress,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onCancel: (() -> Unit)? = null
 ) {
     val canDismiss = progress.isFinished
+    var showCancelConfirmation by remember { mutableStateOf(false) }
 
     LaunchedEffect(progress.isFinished, progress.isSuccess, progress.type) {
         if (progress.isFinished && progress.isSuccess && (progress.type == OperationType.MOUNT || progress.type == OperationType.UNMOUNT)) {
@@ -334,6 +342,27 @@ fun OperationProgressDialog(
                                     }
                                 }
                             }
+
+                            if (!progress.engineName.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.op_engine_label, progress.engineName),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 5.dp, horizontal = 8.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -454,6 +483,29 @@ fun OperationProgressDialog(
                         )
                     }
                 } else {
+                    if (progress.canCancel && onCancel != null) {
+                        OutlinedButton(
+                            onClick = { showCancelConfirmation = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.op_btn_cancel),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
                     Text(
                         text = stringResource(R.string.manage_moving_subtitle),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
@@ -463,6 +515,44 @@ fun OperationProgressDialog(
                 }
             }
         }
+    }
+
+    if (showCancelConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirmation = false },
+            title = {
+                Text(
+                    text = stringResource(R.string.op_cancel_dialog_title),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.op_cancel_dialog_desc),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCancelConfirmation = false
+                        onCancel?.invoke()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.op_btn_confirm_cancel))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showCancelConfirmation = false }
+                ) {
+                    Text(stringResource(R.string.op_btn_continue))
+                }
+            }
+        )
     }
 }
 

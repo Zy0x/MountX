@@ -961,6 +961,16 @@
     <string name="op_status_success">Operasi Berhasil Diselesaikan</string>
     <string name="op_copying_item">Menyalin: %1$s</string>
     <string name="op_restoring_item">Memulihkan: %1$s</string>
+    <string name="op_engine_tar">Streaming Tar Pipeline</string>
+    <string name="op_engine_cp">Direct Large-Block I/O</string>
+    <string name="op_engine_label">Mesin: %1$s</string>
+    <string name="op_btn_cancel">Batalkan</string>
+    <string name="op_cancel_dialog_title">Batalkan Operasi?</string>
+    <string name="op_cancel_dialog_desc">Apakah Anda yakin ingin menghentikan pemindahan data ini? Berkas yang telah tersalin akan tetap aman dan berkas asal tidak akan dihapus.</string>
+    <string name="op_btn_confirm_cancel">Ya, Batalkan</string>
+    <string name="op_btn_continue">Lanjutkan</string>
+    <string name="err_fat32_4gb_limit">Sistem file tujuan (FAT32) tidak mendukung file di atas 4 GB. Silakan format partisi penyimpanan ke F2FS atau ExFAT terlebih dahulu.</string>
+    <string name="err_insufficient_space_slack">Kapasitas ruang penyimpanan tujuan tidak mencukupi! Dibutuhkan: %1$s (termasuk kompensasi cluster slack), Tersedia: %2$s.</string>
 
     <!-- v2.2.23 Migration Confirmation & Conflict Resolution -->
     <string name="migration_confirm_title_to_sd">Konfirmasi Pemindahan Data</string>

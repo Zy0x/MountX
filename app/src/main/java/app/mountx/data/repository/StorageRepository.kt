@@ -230,6 +230,10 @@ class StorageRepository @Inject constructor(
         }
     }
 
+    suspend fun cancelCurrentOperation() {
+        storageManager.cancelCurrentTransfer()
+    }
+
     suspend fun moveGameData(
         packageName: String,
         direction: MoveDirection,

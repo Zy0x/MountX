@@ -27,8 +27,10 @@ data class OperationProgress(
     val etaSeconds: Long = 0L,
     val progressPercent: Float = 0f, // 0.0f to 1.0f
     val currentItemName: String? = null,
+    val engineName: String? = null,
     val isIndeterminate: Boolean = false,
     val isFinished: Boolean = false,
     val isSuccess: Boolean = true,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val canCancel: Boolean = false
 )

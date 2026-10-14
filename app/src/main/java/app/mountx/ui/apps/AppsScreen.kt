@@ -370,6 +370,9 @@ fun AppsScreen(
                 if (prog.isSuccess && (prog.type == app.mountx.data.model.OperationType.MOVE_TO_SD || prog.type == app.mountx.data.model.OperationType.RESTORE_TO_INTERNAL)) {
                     viewModel.clearMoveMessage()
                 }
+            },
+            onCancel = {
+                viewModel.cancelOperation()
             }
         )
     }

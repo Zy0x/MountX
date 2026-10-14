@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import app.mountx.ui.components.ModuleInstallDialog
 import app.mountx.ui.components.ConfirmDialog
 import app.mountx.ui.components.NeedMigrationDialog
+import app.mountx.ui.apps.OperationProgressDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -171,6 +172,7 @@ fun DashboardScreen(
     val internalStorageInfo by viewModel.internalStorageInfo.collectAsState()
     val offloadedStats by viewModel.offloadedStats.collectAsState()
     val liveTelemetry by viewModel.liveTelemetry.collectAsState()
+    val operationProgress by viewModel.operationProgress.collectAsState()
 
     DashboardContent(
         status = status,
@@ -184,6 +186,9 @@ fun DashboardScreen(
         internalStorageInfo = internalStorageInfo,
         offloadedStats = offloadedStats,
         liveTelemetry = liveTelemetry,
+        operationProgress = operationProgress,
+        onDismissOperationProgress = { viewModel.clearOperationProgress() },
+        onCancelOperation = { viewModel.cancelOperation() },
         onRefresh = { viewModel.refresh() },
         onNavigateToGames = onNavigateToGames,
         onNavigateToStorage = onNavigateToStorage,
@@ -217,6 +222,9 @@ fun DashboardContent(
     internalStorageInfo: InternalStorageInfo? = null,
     offloadedStats: Pair<Int, Long> = Pair(0, 0L),
     liveTelemetry: LiveNamespaceTelemetry = LiveNamespaceTelemetry(),
+    operationProgress: app.mountx.data.model.OperationProgress? = null,
+    onDismissOperationProgress: () -> Unit = {},
+    onCancelOperation: () -> Unit = {},
     onRefresh: () -> Unit,
     onNavigateToGames: () -> Unit,
     onNavigateToStorage: () -> Unit,
@@ -432,6 +440,14 @@ fun DashboardContent(
                     onOpenGameDetail(target)
                 },
                 onDismiss = { gameToMigrateConfirm = null }
+            )
+        }
+
+        operationProgress?.let { prog ->
+            OperationProgressDialog(
+                progress = prog,
+                onDismiss = onDismissOperationProgress,
+                onCancel = onCancelOperation
             )
         }
     }

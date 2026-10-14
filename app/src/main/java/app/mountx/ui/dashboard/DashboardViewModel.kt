@@ -7,6 +7,7 @@ import app.mountx.data.model.AppStatus
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountPointConfig
 import app.mountx.data.model.MountStatus
+import app.mountx.data.model.OperationProgress
 import app.mountx.data.model.RootSolution
 import app.mountx.data.repository.GameRepository
 import app.mountx.data.repository.StorageRepository
@@ -46,6 +47,19 @@ class DashboardViewModel @Inject constructor(
     private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    private val _operationProgress = MutableStateFlow<OperationProgress?>(null)
+    val operationProgress: StateFlow<OperationProgress?> = _operationProgress.asStateFlow()
+
+    fun clearOperationProgress() {
+        _operationProgress.value = null
+    }
+
+    fun cancelOperation() {
+        viewModelScope.launch {
+            storageRepository.cancelCurrentOperation()
+        }
+    }
 
     private val _liveTelemetry = MutableStateFlow(LiveNamespaceTelemetry())
     val liveTelemetry: StateFlow<LiveNamespaceTelemetry> = _liveTelemetry.asStateFlow()
@@ -253,9 +267,13 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
             if (game.mountStatus == MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game)
+                gameRepository.unmountGame(game) { prog ->
+                    _operationProgress.value = prog
+                }
             } else {
-                gameRepository.mountGame(game, sdBase)
+                gameRepository.mountGame(game, sdBase) { prog ->
+                    _operationProgress.value = prog
+                }
             }
             refresh()
         }
@@ -279,14 +297,19 @@ class DashboardViewModel @Inject constructor(
 
             // Unmount if currently mounted to prevent cyclic file locks
             if (game.mountStatus == MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game)
+                gameRepository.unmountGame(game) { prog ->
+                    _operationProgress.value = prog
+                }
             }
 
             val result = storageRepository.moveGameMountPoints(
                 packageName = game.packageName,
                 mountPoints = activePoints,
                 direction = app.mountx.data.model.MoveDirection.TO_SD,
-                sdBase = targetBase
+                sdBase = targetBase,
+                onProgress = { prog ->
+                    _operationProgress.value = prog
+                }
             )
             if (result.isSuccess) {
                 val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else activePoints
@@ -303,7 +326,9 @@ class DashboardViewModel @Inject constructor(
                     isEnabled = true
                 )
                 gameRepository.updateGame(updated)
-                gameRepository.mountGame(updated, targetBase)
+                gameRepository.mountGame(updated, targetBase) { prog ->
+                    _operationProgress.value = prog
+                }
             }
             refresh()
         }

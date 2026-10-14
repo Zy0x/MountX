@@ -977,6 +977,16 @@
     <string name="op_status_success">Operation Completed Successfully</string>
     <string name="op_copying_item">Copying: %1$s</string>
     <string name="op_restoring_item">Restoring: %1$s</string>
+    <string name="op_engine_tar">Streaming Tar Pipeline</string>
+    <string name="op_engine_cp">Direct Large-Block I/O</string>
+    <string name="op_engine_label">Engine: %1$s</string>
+    <string name="op_btn_cancel">Cancel</string>
+    <string name="op_cancel_dialog_title">Cancel Operation?</string>
+    <string name="op_cancel_dialog_desc">Are you sure you want to stop this data transfer? Files copied so far will remain safe and source files will not be deleted.</string>
+    <string name="op_btn_confirm_cancel">Yes, Cancel</string>
+    <string name="op_btn_continue">Continue</string>
+    <string name="err_fat32_4gb_limit">Destination filesystem (FAT32) does not support files larger than 4 GB. Please format the storage partition to F2FS or ExFAT.</string>
+    <string name="err_insufficient_space_slack">Destination storage space is insufficient! Needed: %1$s (including cluster slack compensation), Available: %2$s.</string>
 
     <!-- v2.2.23 Migration Confirmation & Conflict Resolution -->
     <string name="migration_confirm_title_to_sd">Confirm Data Migration</string>

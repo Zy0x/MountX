@@ -24,6 +24,7 @@ import app.mountx.data.model.ConflictStrategy
 import app.mountx.data.model.OperationProgress
 import app.mountx.data.model.OperationType
 import app.mountx.util.AppLogger
+import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -42,11 +43,56 @@ class InsufficientStorageException(
 ) : IllegalStateException(message)
 
 /**
+ * Exception thrown when a file exceeds the 4GB limit on a FAT32 filesystem.
+ */
+class FileTooLargeForFat32Exception(
+    val filePath: String,
+    val fileSize: Long,
+    message: String
+) : IllegalStateException(message)
+
+/**
+ * Engine type used for data migration.
+ */
+enum class MigrationEngineType(val label: String) {
+    STREAMING_TAR("Streaming Tar Pipeline"),
+    DIRECT_BLOCK_CP("Direct Large-Block I/O")
+}
+
+/**
+ * Metadata and capabilities of target storage location.
+ */
+data class StorageInspectionResult(
+    val fsType: String,
+    val clusterSizeBytes: Long,
+    val isNonPosix: Boolean,
+    val isFat32: Boolean,
+    val supportsSymlinks: Boolean
+) {
+    val isPosix: Boolean get() = !isNonPosix
+}
+
+/**
  * Low-level storage and partition manager using root commands.
  * Handles device discovery, mounting/unmounting partitions, formatting (f2fs/ext4/etc),
  * and migrating physical game data between internal storage and MicroSD.
  */
 class StorageManager {
+
+    @Volatile
+    private var activeTransferPid: Int? = null
+
+    @Volatile
+    private var isCancellationRequested: Boolean = false
+
+    suspend fun cancelCurrentTransfer() = withContext(Dispatchers.IO) {
+        isCancellationRequested = true
+        val pid = activeTransferPid
+        if (pid != null && pid > 0) {
+            AppLogger.warn("StorageManager", "User requested cancel. Terminating migration PID $pid...")
+            Shell.cmd("kill -15 $pid 2>/dev/null", "kill -9 $pid 2>/dev/null").exec()
+        }
+    }
 
     private data class HwDiskCache(val manfid: String, val model: String, val vendor: String, val sizeSectors: Long)
     private val diskHardwareCache = java.util.concurrent.ConcurrentHashMap<String, HwDiskCache>()
@@ -1619,6 +1665,82 @@ class StorageManager {
         return kb * 1024L
     }
 
+    suspend fun inspectStorageTarget(targetDir: String): StorageInspectionResult {
+        val fsType = RootShell.execForOutput("stat -f -c %T \"$targetDir\" 2>/dev/null").trim().lowercase().ifEmpty { "ext4" }
+        val clusterBytes = RootShell.execForOutput("stat -f -c %S \"$targetDir\" 2>/dev/null").trim().toLongOrNull() ?: 4096L
+        val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || targetDir.startsWith("/mnt/media_rw")
+        val isFat32 = fsType in listOf("vfat", "msdos", "fat32")
+        val supportsSymlinks = !isNonPosix
+        return StorageInspectionResult(
+            fsType = fsType,
+            clusterSizeBytes = clusterBytes,
+            isNonPosix = isNonPosix,
+            isFat32 = isFat32,
+            supportsSymlinks = supportsSymlinks
+        )
+    }
+
+    private suspend fun checkFat32FileLimit(sourceDir: String, isFat32: Boolean) {
+        if (!isFat32 || !RootShell.exists(sourceDir)) return
+        val checkCmd = "find \"$sourceDir\" -type f -size +4194303k -print -quit 2>/dev/null"
+        val overLimitFile = RootShell.execForOutput(checkCmd).trim()
+        if (overLimitFile.isNotEmpty()) {
+            val fileName = overLimitFile.substringAfterLast('/')
+            throw FileTooLargeForFat32Exception(
+                filePath = overLimitFile,
+                fileSize = 4294967296L,
+                message = "Batas FAT32 Terlampaui: File '$fileName' berukuran >= 4 GB. Sistem file FAT32 tidak dapat menyimpan file ini. Silakan format partisi penyimpanan ke F2FS atau ExFAT terlebih dahulu."
+            )
+        }
+    }
+
+    private suspend fun calculateSlackHeadroom(sourceDir: String, clusterSizeBytes: Long): Long {
+        if (clusterSizeBytes <= 4096L || !RootShell.exists(sourceDir)) return 0L
+        val fileCount = RootShell.execForOutput("find \"$sourceDir\" -type f 2>/dev/null | wc -l").trim().toLongOrNull() ?: 0L
+        return fileCount * (clusterSizeBytes / 2L)
+    }
+
+    private suspend fun safeCleanSourceDirectory(
+        sourcePathToClean: String,
+        destPathPreserved: String,
+        packageName: String
+    ): Boolean {
+        if (sourcePathToClean.trimEnd('/') == destPathPreserved.trimEnd('/') || sourcePathToClean.isBlank() || sourcePathToClean == "/") {
+            AppLogger.error("StorageManager", "ANTI-DELETION LOCK: Invalid cleanup paths ($sourcePathToClean == $destPathPreserved)")
+            return false
+        }
+        // Lock 1: Mountpoint check across namespaces
+        if (RootShell.isMountpoint(sourcePathToClean)) {
+            AppLogger.error("StorageManager", "ANTI-DELETION LOCK: $sourcePathToClean is still a mountpoint! Refusing delete to protect real data.")
+            return false
+        }
+        val relPath = MountManager.extractRelativePath(sourcePathToClean)
+        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage/emulated/0", "/data/media/0")) {
+            if (RootShell.isMountpoint("$ns/$relPath")) {
+                AppLogger.error("StorageManager", "ANTI-DELETION LOCK: Namespace $ns/$relPath is still mounted! Refusing delete.")
+                return false
+            }
+        }
+
+        // Lock 2: Canary check
+        if (RootShell.exists("$sourcePathToClean/.mountx_canary") && !RootShell.exists("$destPathPreserved/.mountx_canary")) {
+            AppLogger.error("StorageManager", "ANTI-DELETION LOCK: $sourcePathToClean contains .mountx_canary while destination does not! Refusing delete.")
+            return false
+        }
+
+        // Lock 3: Filesystem device ID comparison (via stat -c %d)
+        val devSource = RootShell.execForOutput("stat -c %d \"$sourcePathToClean\" 2>/dev/null").trim()
+        val devDest = RootShell.execForOutput("stat -c %d \"$destPathPreserved\" 2>/dev/null").trim()
+        if (devSource.isNotBlank() && devDest.isNotBlank() && devSource == devDest && devSource != "0") {
+            AppLogger.warn("StorageManager", "ANTI-DELETION WARNING: Both source ($sourcePathToClean) and destination ($destPathPreserved) share block device $devSource.")
+        }
+
+        // Passed all guards: clean directory contents
+        AppLogger.info("StorageManager", "Safe clean approved for $sourcePathToClean (Verified independent from $destPathPreserved)")
+        RootShell.exec("rm -rf \"$sourcePathToClean\"/* \"$sourcePathToClean\"/.[!.]* 2>/dev/null")
+        return true
+    }
+
     private suspend fun copyWithRealtimeProgress(
         sourceDir: String,
         destDir: String,
@@ -1639,6 +1761,10 @@ class StorageManager {
             AppLogger.warn("StorageManager", "sourceDir and destDir are identical ($sourceDir). Skipping copy.")
             return
         }
+
+        isCancellationRequested = false
+        activeTransferPid = null
+
         val estimatedPointBytes = if (pointSizeBytes > 0L) pointSizeBytes else getDirSizeBytes(sourceDir)
         val initialDestBytes = getDirSizeBytes(destDir)
         val existedInitially = RootShell.exists(destDir)
@@ -1664,6 +1790,22 @@ class StorageManager {
                 }
             }
         }
+
+        // Ensure destination directory exists before inspection
+        RootShell.exec("mkdir -p \"$destDir\"")
+
+        // 1. Storage Inspection & Pre-Flight Limit Guards
+        val inspection = inspectStorageTarget(destDir)
+        checkFat32FileLimit(sourceDir, inspection.isFat32)
+
+        // 2. Adaptive Engine Selection (Streaming Tar Pipeline vs Direct Block I/O)
+        val hasBusyboxTar = RootShell.exec("busybox tar --help 2>&1 | grep -q 'Create' && echo YES || echo NO").output.trim() == "YES"
+        val engine = if (hasBusyboxTar && conflictStrategy != ConflictStrategy.MERGE) {
+            MigrationEngineType.STREAMING_TAR
+        } else {
+            MigrationEngineType.DIRECT_BLOCK_CP
+        }
+        AppLogger.info("StorageManager", "Selected migration engine: ${engine.label} (fs=${inspection.fsType}, cluster=${inspection.clusterSizeBytes}b, nonPosix=${inspection.isNonPosix})")
 
         val reportProgress: (Long) -> Unit = { currentCopied ->
             val clampedCopied = currentCopied.coerceIn(0L, estimatedPointBytes)
@@ -1699,6 +1841,8 @@ class StorageManager {
                     etaSeconds = eta,
                     progressPercent = prog,
                     currentItemName = categoryName,
+                    engineName = engine.label,
+                    canCancel = true,
                     isFinished = false
                 )
             )
@@ -1707,67 +1851,100 @@ class StorageManager {
         // Emit initial progress for this stage
         reportProgress(0L)
 
-        // Ensure destination directory exists
-        RootShell.exec("mkdir -p \"$destDir\"")
-
-        // Collision Guard: Never copy a directory to itself
-        if (sourceDir.trimEnd('/') == destDir.trimEnd('/')) {
-            AppLogger.warn("StorageManager", "Source and destination paths are identical ($sourceDir). Skipping copy.")
-            reportProgress(estimatedPointBytes)
-            return
-        }
-
-        val baseCpCmd = when (conflictStrategy) {
-            ConflictStrategy.MERGE -> "cp -a -u \"$sourceDir/.\" \"$destDir/\""
-            else -> "cp -a -f \"$sourceDir/.\" \"$destDir/\""
-        }
-
         val timestamp = System.currentTimeMillis()
-        val scriptFile = "/data/local/tmp/mountx_cp_$timestamp.sh"
-        val exitFile = "/data/local/tmp/mountx_cp_exit_$timestamp.txt"
+        val scriptFile = "/data/local/tmp/mountx_mig_$timestamp.sh"
+        val exitFile = "/data/local/tmp/mountx_mig_exit_$timestamp.txt"
 
-        val runnerScript = """
-            mkdir -p "$destDir"
-            $baseCpCmd &
-            CP_PID=${'$'}!
-            echo "STARTED:${'$'}CP_PID"
-            
-            HAS_PROC_IO=0
-            if [ -d "/proc/${'$'}CP_PID" ] && [ -f "/proc/${'$'}CP_PID/io" ]; then
-                HAS_PROC_IO=1
-            fi
-            
-            while kill -0 ${'$'}CP_PID 2>/dev/null; do
-                if [ "${'$'}HAS_PROC_IO" = "1" ] || [ -f "/proc/${'$'}CP_PID/io" ]; then
+        val runnerScript = if (engine == MigrationEngineType.STREAMING_TAR) {
+            val derefFlag = if (inspection.isNonPosix) "-h" else ""
+            val extractFlags = if (inspection.isNonPosix) "--overwrite -o --no-same-permissions" else "--overwrite"
+            """
+                mkdir -p "$destDir"
+                busybox tar -cf - -C "$sourceDir" $derefFlag . 2>/dev/null | (
+                    busybox tar -xf - -C "$destDir" $extractFlags 2>/dev/null &
+                    RECV_PID=${'$'}!
+                    echo "STARTED:${'$'}RECV_PID"
+                    
+                    HAS_PROC_IO=0
+                    if [ -d "/proc/${'$'}RECV_PID" ] && [ -f "/proc/${'$'}RECV_PID/io" ]; then
+                        HAS_PROC_IO=1
+                    fi
+                    
+                    while kill -0 ${'$'}RECV_PID 2>/dev/null; do
+                        if [ "${'$'}HAS_PROC_IO" = "1" ] || [ -f "/proc/${'$'}RECV_PID/io" ]; then
+                            HAS_PROC_IO=1
+                            W_BYTES=${'$'}(grep wchar "/proc/${'$'}RECV_PID/io" 2>/dev/null | cut -d' ' -f2)
+                            if [ -n "${'$'}W_BYTES" ]; then
+                                echo "PROGRESS_BYTES:${'$'}W_BYTES"
+                            fi
+                        else
+                            SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
+                            if [ -n "${'$'}SZ_KB" ]; then
+                                echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
+                            fi
+                        fi
+                        sleep 0.25
+                    done
+                    
+                    wait ${'$'}RECV_PID
+                    EXIT_CODE=${'$'}?
+                    echo "${'$'}EXIT_CODE" > "$exitFile"
+                    echo "COPY_EXIT:${'$'}EXIT_CODE"
+                )
+            """.trimIndent()
+        } else {
+            val baseCpCmd = when (conflictStrategy) {
+                ConflictStrategy.MERGE -> "cp -a -u \"$sourceDir/.\" \"$destDir/\""
+                else -> "cp -a -f \"$sourceDir/.\" \"$destDir/\""
+            }
+            """
+                mkdir -p "$destDir"
+                $baseCpCmd &
+                CP_PID=${'$'}!
+                echo "STARTED:${'$'}CP_PID"
+                
+                HAS_PROC_IO=0
+                if [ -d "/proc/${'$'}CP_PID" ] && [ -f "/proc/${'$'}CP_PID/io" ]; then
                     HAS_PROC_IO=1
-                    W_BYTES=${'$'}(grep wchar /proc/${'$'}CP_PID/io 2>/dev/null | cut -d' ' -f2)
-                    if [ -n "${'$'}W_BYTES" ]; then
-                        echo "PROGRESS_BYTES:${'$'}W_BYTES"
-                    fi
-                else
-                    SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
-                    if [ -n "${'$'}SZ_KB" ]; then
-                        echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
-                    fi
                 fi
-                sleep 0.3
-            done
-            
-            wait ${'$'}CP_PID
-            EXIT_CODE=${'$'}?
-            echo "${'$'}EXIT_CODE" > "$exitFile"
-            echo "COPY_EXIT:${'$'}EXIT_CODE"
-        """.trimIndent()
+                
+                while kill -0 ${'$'}CP_PID 2>/dev/null; do
+                    if [ "${'$'}HAS_PROC_IO" = "1" ] || [ -f "/proc/${'$'}CP_PID/io" ]; then
+                        HAS_PROC_IO=1
+                        W_BYTES=${'$'}(grep wchar /proc/${'$'}CP_PID/io 2>/dev/null | cut -d' ' -f2)
+                        if [ -n "${'$'}W_BYTES" ]; then
+                            echo "PROGRESS_BYTES:${'$'}W_BYTES"
+                        fi
+                    else
+                        SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
+                        if [ -n "${'$'}SZ_KB" ]; then
+                            echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
+                        fi
+                    fi
+                    sleep 0.3
+                done
+                
+                wait ${'$'}CP_PID
+                EXIT_CODE=${'$'}?
+                echo "${'$'}EXIT_CODE" > "$exitFile"
+                echo "COPY_EXIT:${'$'}EXIT_CODE"
+            """.trimIndent()
+        }
 
         var copyExitCode = -1
 
         val streamRes = try {
-            val writeCmd = "cat << 'MOUNTX_CP_EOF' > \"$scriptFile\"\n$runnerScript\nMOUNTX_CP_EOF\nchmod 755 \"$scriptFile\""
+            val writeCmd = "cat << 'MOUNTX_MIG_EOF' > \"$scriptFile\"\n$runnerScript\nMOUNTX_MIG_EOF\nchmod 755 \"$scriptFile\""
             RootShell.exec(writeCmd)
             RootShell.execStreaming("sh \"$scriptFile\"") { line ->
                 val trimmed = line.trim()
-                AppLogger.info("StorageManager", "CP_STREAM: $trimmed")
-                if (trimmed.startsWith("PROGRESS_BYTES:")) {
+                if (trimmed.startsWith("STARTED:")) {
+                    activeTransferPid = trimmed.removePrefix("STARTED:").trim().toIntOrNull()
+                    activeTransferPid?.let { pid ->
+                        // Prevent Android Low Memory Killer from interrupting migration subshell
+                        Shell.cmd("echo -900 > /proc/$pid/oom_score_adj 2>/dev/null").exec()
+                    }
+                } else if (trimmed.startsWith("PROGRESS_BYTES:")) {
                     val b = trimmed.removePrefix("PROGRESS_BYTES:").trim().toLongOrNull()
                     if (b != null && b > 0L) {
                         reportProgress(b)
@@ -1788,10 +1965,18 @@ class StorageManager {
                 val savedExit = RootShell.execForOutput("cat \"$exitFile\" 2>/dev/null").toIntOrNull()
                 if (savedExit != null) {
                     copyExitCode = savedExit
-                    AppLogger.info("StorageManager", "Recovered copy exit code from $exitFile: $copyExitCode")
+                    AppLogger.info("StorageManager", "Recovered migration exit code from $exitFile: $copyExitCode")
                 }
             }
             RootShell.exec("rm -f \"$scriptFile\" \"$exitFile\" 2>/dev/null")
+            activeTransferPid = null
+        }
+
+        if (isCancellationRequested) {
+            if (!existedInitially) {
+                RootShell.exec("rm -rf \"$destDir\" 2>/dev/null")
+            }
+            throw kotlinx.coroutines.CancellationException("Operasi pemindahan dibatalkan oleh pengguna.")
         }
 
         // Final point progress
@@ -1887,12 +2072,19 @@ class StorageManager {
             } else {
                 getAvailableFreeBytes(targetBase)
             }
+            val clusterSize = RootShell.execForOutput("stat -f -c %S \"$targetBase\" 2>/dev/null").trim().toLongOrNull() ?: 4096L
+            var totalSlackCompensation = 0L
+            if (isToSd) {
+                for (pt in activePoints) {
+                    totalSlackCompensation += calculateSlackHeadroom(pt.targetPath, clusterSize)
+                }
+            }
             val headroom = if (isToSd) {
                 maxOf(250 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
             } else {
                 maxOf(250_000_000L, (totalMigrationBytes * 0.05).toLong())
             }
-            val requiredTotal = totalMigrationBytes + headroom
+            val requiredTotal = totalMigrationBytes + headroom + totalSlackCompensation
 
             if (totalMigrationBytes > 0L && freeBytes < requiredTotal) {
                 val deficit = requiredTotal - freeBytes
@@ -1905,7 +2097,7 @@ class StorageManager {
                     availableBytes = freeBytes,
                     deficitBytes = deficit,
                     targetName = targetLabel,
-                    message = "Kapasitas ruang di $targetLabel tidak mencukupi! Dibutuhkan: ${reqMb} MB, Tersedia: ${availMb} MB (Kurang ${deficitMb} MB)."
+                    message = "Kapasitas ruang di $targetLabel tidak mencukupi! Dibutuhkan: ${reqMb} MB (termasuk kompensasi cluster slack), Tersedia: ${availMb} MB (Kurang ${deficitMb} MB)."
                 )
             }
 
@@ -1923,16 +2115,19 @@ class StorageManager {
                     etaSeconds = 0L,
                     progressPercent = 0.05f,
                     currentItemName = null,
+                    canCancel = true,
                     isFinished = false
                 )
             )
 
-            // Force stop app to prevent file locks
-            RootShell.exec("am force-stop \"$packageName\"")
+            // Deep Package Suspension: freeze app to prevent background file locks, jobs, and alarms
+            RootShell.exec("pm suspend \"$packageName\" 2>/dev/null")
+            RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
 
-            val uid = RootShell.exec(
-                "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
-            ).output.trim().toIntOrNull() ?: 10000
+            try {
+                val uid = RootShell.exec(
+                    "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
+                ).output.trim().toIntOrNull() ?: 10000
 
             var accumulatedBytes = 0L
 
@@ -2080,9 +2275,12 @@ class StorageManager {
                                     )
                                 )
 
-                                RootShell.exec("chown -R $uid:1023 \"$sourcePath\"")
-                                RootShell.exec("chmod -R 777 \"$sourcePath\"")
-                                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\"")
+                                val destInspection = inspectStorageTarget(sourcePath)
+                                if (!destInspection.isNonPosix) {
+                                    RootShell.exec("chown -R $uid:1023 \"$sourcePath\" 2>/dev/null")
+                                    RootShell.exec("chmod -R 777 \"$sourcePath\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\" 2>/dev/null")
+                                }
 
                                 // Purge any stale root .nomedia in MountX/Android to ensure media folders aren't hidden from Gallery
                                 val mountXAndroid = "$sdBase/MountX/Android"
@@ -2120,9 +2318,7 @@ class StorageManager {
                                         isFinished = false
                                     )
                                 )
-                                if (!RootShell.isMountpoint(targetPath) && targetPath.trimEnd('/') != sourcePath.trimEnd('/')) {
-                                    RootShell.exec("rm -rf \"$targetPath\"/* \"$targetPath\"/.[!.]* 2>/dev/null")
-                                }
+                                safeCleanSourceDirectory(targetPath, sourcePath, packageName)
                             }
                         }
                     }
@@ -2249,11 +2445,7 @@ class StorageManager {
                                 )
                                 val destVerifiedSize = getDirSizeBytes(targetPath)
                                 if (destVerifiedSize > 0L && sourcePath.trimEnd('/') != targetPath.trimEnd('/')) {
-                                    if (RootShell.isMountpoint(targetPath)) {
-                                        AppLogger.error("StorageManager", "CRITICAL SAFETY: $targetPath is still a mountpoint! Skipping MicroSD cleanup to prevent data loss.")
-                                    } else {
-                                        RootShell.exec("rm -rf \"$sourcePath\"")
-                                    }
+                                    safeCleanSourceDirectory(sourcePath, targetPath, packageName)
                                 }
                             }
                         }
@@ -2289,6 +2481,10 @@ class StorageManager {
                 )
             )
             Unit
+            } finally {
+                // Ensure target package is always unsuspended
+                RootShell.exec("pm unsuspend \"$packageName\" 2>/dev/null")
+            }
         }.onFailure { err ->
             onProgress?.invoke(
                 OperationProgress(
@@ -2317,6 +2513,7 @@ class StorageManager {
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            isCancellationRequested = false
             val isToSd = direction == MoveDirection.TO_SD
             val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
             val title = if (isToSd) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal"
@@ -2338,9 +2535,8 @@ class StorageManager {
                 )
             }
 
-            val uid = RootShell.exec(
-                "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
-            ).output.trim().toIntOrNull() ?: 10000
+            val targetBase = if (isToSd) sdBase else "/data"
+            val targetFsInfo = inspectStorageTarget(targetBase)
 
             val moveData = (target == MigrationTarget.ALL || target == MigrationTarget.DATA_ONLY)
             val moveObb = (target == MigrationTarget.ALL || target == MigrationTarget.OBB_ONLY)
@@ -2350,11 +2546,65 @@ class StorageManager {
             val internalObb = "/data/media/0/Android/obb/$packageName"
             val sdObb = "$sdBase/Android/obb/$packageName"
 
+            // Pre-Flight FAT32 Check
+            if (isToSd) {
+                if (moveData && RootShell.exists(internalData)) {
+                    checkFat32FileLimit(internalData, targetFsInfo.isFat32)
+                }
+                if (moveObb && RootShell.exists(internalObb)) {
+                    checkFat32FileLimit(internalObb, targetFsInfo.isFat32)
+                }
+            }
+
             val dataSize = if (isToSd) getDirSizeBytes(internalData) else getDirSizeBytes(sdData)
             val obbSize = if (isToSd) getDirSizeBytes(internalObb) else getDirSizeBytes(sdObb)
             var totalMigrationBytes = 0L
             if (moveData) totalMigrationBytes += dataSize
             if (moveObb) totalMigrationBytes += obbSize
+
+            // Pre-Flight Free Space Guard with Cluster Slack Compensation
+            val freeBytes = if (!isToSd) {
+                try {
+                    android.os.StatFs("/data").availableBytes
+                } catch (e: Exception) {
+                    getAvailableFreeBytes("/data")
+                }
+            } else {
+                getAvailableFreeBytes(targetBase)
+            }
+
+            val clusterSize = RootShell.execForOutput("stat -f -c %S \"$targetBase\" 2>/dev/null").trim().toLongOrNull() ?: 4096L
+            var totalSlackCompensation = 0L
+            if (isToSd) {
+                if (moveData && RootShell.exists(internalData)) {
+                    totalSlackCompensation += calculateSlackHeadroom(internalData, clusterSize)
+                }
+                if (moveObb && RootShell.exists(internalObb)) {
+                    totalSlackCompensation += calculateSlackHeadroom(internalObb, clusterSize)
+                }
+            }
+
+            val headroom = if (isToSd) {
+                maxOf(250 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
+            } else {
+                maxOf(250_000_000L, (totalMigrationBytes * 0.05).toLong())
+            }
+            val requiredTotal = totalMigrationBytes + headroom + totalSlackCompensation
+
+            if (totalMigrationBytes > 0L && freeBytes < requiredTotal) {
+                val deficit = requiredTotal - freeBytes
+                val reqMb = requiredTotal / (1024 * 1024)
+                val availMb = freeBytes / (1024 * 1024)
+                val deficitMb = deficit / (1024 * 1024)
+                val targetLabel = if (isToSd) "MicroSD" else "Memori Internal"
+                throw InsufficientStorageException(
+                    requiredBytes = requiredTotal,
+                    availableBytes = freeBytes,
+                    deficitBytes = deficit,
+                    targetName = targetLabel,
+                    message = "Kapasitas ruang di $targetLabel tidak mencukupi! Dibutuhkan: ${reqMb} MB (termasuk kompensasi cluster slack), Tersedia: ${availMb} MB (Kurang ${deficitMb} MB)."
+                )
+            }
 
             onProgress?.invoke(
                 OperationProgress(
@@ -2370,168 +2620,226 @@ class StorageManager {
                     etaSeconds = 0L,
                     progressPercent = 0.05f,
                     currentItemName = null,
+                    canCancel = true,
                     isFinished = false
                 )
             )
 
-            // Terminate app
-            RootShell.exec("am force-stop \"$packageName\"")
+            // Deep Package Suspension: freeze app to prevent background file locks, jobs, and alarms
+            RootShell.exec("pm suspend \"$packageName\" 2>/dev/null")
+            RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
 
-            var accumulatedBytes = 0L
+            try {
+                val uid = RootShell.exec(
+                    "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
+                ).output.trim().toIntOrNull() ?: 10000
 
-            when (direction) {
-                MoveDirection.TO_SD -> {
-                    // 1. Move Data if requested
-                    if (moveData) {
-                        if (RootShell.exists(internalData)) {
-                            RootShell.exec("mkdir -p \"$sdBase/Android/data\"")
-                            copyWithRealtimeProgress(
-                                sourceDir = internalData,
-                                destDir = sdData,
-                                categoryName = "Data Game",
-                                pointSizeBytes = dataSize,
-                                overallProcessedBytes = accumulatedBytes,
-                                totalMigrationBytes = totalMigrationBytes,
-                                stepIndex = 1,
-                                totalSteps = steps.size,
-                                stepDescriptions = steps,
-                                opType = opType,
-                                title = title,
-                                subtitle = packageName,
-                                conflictStrategy = conflictStrategy,
-                                onProgress = onProgress
-                            )
-                            accumulatedBytes += dataSize
-                            RootShell.exec("chown -R $uid:1023 \"$sdData\"")
-                            RootShell.exec("chmod -R 777 \"$sdData\"")
-                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdData\"")
-                            // Clean original internal data content to free space
-                            RootShell.exec("rm -rf \"$internalData\"/*")
-                        } else if (target == MigrationTarget.DATA_ONLY) {
-                            error("Internal data path does not exist: $internalData")
-                        }
+                // Safety Guard: Unmount target paths across runtime namespaces before migration
+                for (targetPath in listOf(internalData, internalObb)) {
+                    val relPath = MountManager.extractRelativePath(targetPath)
+                    for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                        RootShell.exec("umount -f -l \"$ns/emulated/0/$relPath\" 2>/dev/null")
+                        RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
                     }
+                    RootShell.exec("umount -f -l \"/data/media/0/$relPath\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+                }
 
-                    // 2. Move OBB if requested
-                    if (moveObb) {
-                        if (RootShell.exists(internalObb)) {
-                            RootShell.exec("mkdir -p \"$sdBase/Android/obb\"")
-                            copyWithRealtimeProgress(
-                                sourceDir = internalObb,
-                                destDir = sdObb,
-                                categoryName = "OBB",
-                                pointSizeBytes = obbSize,
-                                overallProcessedBytes = accumulatedBytes,
-                                totalMigrationBytes = totalMigrationBytes,
-                                stepIndex = 1,
-                                totalSteps = steps.size,
-                                stepDescriptions = steps,
-                                opType = opType,
-                                title = title,
-                                subtitle = packageName,
-                                conflictStrategy = conflictStrategy,
-                                onProgress = onProgress
-                            )
-                            accumulatedBytes += obbSize
-                            RootShell.exec("chown -R $uid:1023 \"$sdObb\"")
-                            RootShell.exec("chmod -R 777 \"$sdObb\"")
-                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdObb\"")
-                            // Clean original internal OBB content to free space
-                            RootShell.exec("rm -rf \"$internalObb\"/*")
-                        } else if (target == MigrationTarget.OBB_ONLY) {
-                            error("Internal OBB path does not exist: $internalObb")
-                        }
+                if (direction == MoveDirection.TO_INTERNAL) {
+                    var retryCount = 0
+                    while ((RootShell.isMountpoint(internalData) || RootShell.isMountpoint(internalObb)) && retryCount < 3) {
+                        retryCount++
+                        RootShell.exec("sync")
+                        RootShell.exec("umount -f -l \"$internalData\" 2>/dev/null")
+                        RootShell.exec("umount -f -l \"$internalObb\" 2>/dev/null")
+                        delay(200)
+                    }
+                    if (RootShell.isMountpoint(internalData) || RootShell.isMountpoint(internalObb)) {
+                        throw IllegalStateException("CRITICAL: Gagal melepas mount sebelum pemindahan ke internal. Operasi dibatalkan demi menjaga data.")
                     }
                 }
-                MoveDirection.TO_INTERNAL -> {
-                    // 1. Restore Data if requested
-                    if (moveData) {
-                        if (RootShell.exists(sdData)) {
-                            RootShell.exec("mkdir -p \"/data/media/0/Android/data\"")
-                            copyWithRealtimeProgress(
-                                sourceDir = sdData,
-                                destDir = internalData,
-                                categoryName = "Data Game",
-                                pointSizeBytes = dataSize,
-                                overallProcessedBytes = accumulatedBytes,
-                                totalMigrationBytes = totalMigrationBytes,
-                                stepIndex = 1,
-                                totalSteps = steps.size,
-                                stepDescriptions = steps,
-                                opType = opType,
-                                title = title,
-                                subtitle = packageName,
-                                conflictStrategy = conflictStrategy,
-                                onProgress = onProgress
-                            )
-                            accumulatedBytes += dataSize
-                            RootShell.exec("chown -R $uid:1023 \"$internalData\"")
-                            RootShell.exec("chmod -R 775 \"$internalData\"")
-                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$internalData\"")
-                            RootShell.exec("rm -rf \"$sdData\"")
-                        } else if (target == MigrationTarget.DATA_ONLY) {
-                            error("SD data path does not exist: $sdData")
+
+                var accumulatedBytes = 0L
+
+                when (direction) {
+                    MoveDirection.TO_SD -> {
+                        // 1. Move Data if requested
+                        if (moveData) {
+                            if (RootShell.exists(internalData)) {
+                                RootShell.exec("mkdir -p \"$sdBase/Android/data\"")
+                                copyWithRealtimeProgress(
+                                    sourceDir = internalData,
+                                    destDir = sdData,
+                                    categoryName = "Data Game",
+                                    pointSizeBytes = dataSize,
+                                    overallProcessedBytes = accumulatedBytes,
+                                    totalMigrationBytes = totalMigrationBytes,
+                                    stepIndex = 1,
+                                    totalSteps = steps.size,
+                                    stepDescriptions = steps,
+                                    opType = opType,
+                                    title = title,
+                                    subtitle = packageName,
+                                    conflictStrategy = conflictStrategy,
+                                    onProgress = onProgress
+                                )
+                                accumulatedBytes += dataSize
+                                if (targetFsInfo.isPosix) {
+                                    RootShell.exec("chown -R $uid:1023 \"$sdData\"")
+                                    RootShell.exec("chmod -R 777 \"$sdData\"")
+                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdData\"")
+                                }
+                                RootShell.exec("touch \"$sdData/.mountx_canary\" 2>/dev/null")
+                                val destVerifiedSize = getDirSizeBytes(sdData)
+                                if (destVerifiedSize > 0L) {
+                                    safeCleanSourceDirectory(internalData, sdData, packageName)
+                                }
+                            } else if (target == MigrationTarget.DATA_ONLY) {
+                                error("Internal data path does not exist: $internalData")
+                            }
+                        }
+
+                        // 2. Move OBB if requested
+                        if (moveObb) {
+                            if (RootShell.exists(internalObb)) {
+                                RootShell.exec("mkdir -p \"$sdBase/Android/obb\"")
+                                copyWithRealtimeProgress(
+                                    sourceDir = internalObb,
+                                    destDir = sdObb,
+                                    categoryName = "OBB",
+                                    pointSizeBytes = obbSize,
+                                    overallProcessedBytes = accumulatedBytes,
+                                    totalMigrationBytes = totalMigrationBytes,
+                                    stepIndex = 1,
+                                    totalSteps = steps.size,
+                                    stepDescriptions = steps,
+                                    opType = opType,
+                                    title = title,
+                                    subtitle = packageName,
+                                    conflictStrategy = conflictStrategy,
+                                    onProgress = onProgress
+                                )
+                                accumulatedBytes += obbSize
+                                if (targetFsInfo.isPosix) {
+                                    RootShell.exec("chown -R $uid:1023 \"$sdObb\"")
+                                    RootShell.exec("chmod -R 777 \"$sdObb\"")
+                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sdObb\"")
+                                }
+                                RootShell.exec("touch \"$sdObb/.mountx_canary\" 2>/dev/null")
+                                val destVerifiedSize = getDirSizeBytes(sdObb)
+                                if (destVerifiedSize > 0L) {
+                                    safeCleanSourceDirectory(internalObb, sdObb, packageName)
+                                }
+                            } else if (target == MigrationTarget.OBB_ONLY) {
+                                error("Internal OBB path does not exist: $internalObb")
+                            }
                         }
                     }
-
-                    // 2. Restore OBB if requested
-                    if (moveObb) {
-                        if (RootShell.exists(sdObb)) {
-                            RootShell.exec("mkdir -p \"/data/media/0/Android/obb\"")
-                            copyWithRealtimeProgress(
-                                sourceDir = sdObb,
-                                destDir = internalObb,
-                                categoryName = "OBB",
-                                pointSizeBytes = obbSize,
-                                overallProcessedBytes = accumulatedBytes,
-                                totalMigrationBytes = totalMigrationBytes,
-                                stepIndex = 1,
-                                totalSteps = steps.size,
-                                stepDescriptions = steps,
-                                opType = opType,
-                                title = title,
-                                subtitle = packageName,
-                                conflictStrategy = conflictStrategy,
-                                onProgress = onProgress
-                            )
-                            accumulatedBytes += obbSize
-                            RootShell.exec("chown -R $uid:1023 \"$internalObb\"")
-                            RootShell.exec("chmod -R 775 \"$internalObb\"")
-                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$internalObb\"")
-                            RootShell.exec("rm -rf \"$sdObb\"")
-                        } else if (target == MigrationTarget.OBB_ONLY) {
-                            error("SD OBB path does not exist: $sdObb")
+                    MoveDirection.TO_INTERNAL -> {
+                        // 1. Restore Data if requested
+                        if (moveData) {
+                            if (RootShell.exists(sdData)) {
+                                RootShell.exec("mkdir -p \"/data/media/0/Android/data\"")
+                                copyWithRealtimeProgress(
+                                    sourceDir = sdData,
+                                    destDir = internalData,
+                                    categoryName = "Data Game",
+                                    pointSizeBytes = dataSize,
+                                    overallProcessedBytes = accumulatedBytes,
+                                    totalMigrationBytes = totalMigrationBytes,
+                                    stepIndex = 1,
+                                    totalSteps = steps.size,
+                                    stepDescriptions = steps,
+                                    opType = opType,
+                                    title = title,
+                                    subtitle = packageName,
+                                    conflictStrategy = conflictStrategy,
+                                    onProgress = onProgress
+                                )
+                                accumulatedBytes += dataSize
+                                RootShell.exec("chown -R $uid:1023 \"$internalData\"")
+                                RootShell.exec("chmod -R 775 \"$internalData\"")
+                                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$internalData\"")
+                                RootShell.exec("restorecon -FR \"$internalData\" 2>/dev/null")
+                                RootShell.exec("rm -f \"$internalData/.mountx_canary\" 2>/dev/null")
+                                val destVerifiedSize = getDirSizeBytes(internalData)
+                                if (destVerifiedSize > 0L) {
+                                    safeCleanSourceDirectory(sdData, internalData, packageName)
+                                }
+                            } else if (target == MigrationTarget.DATA_ONLY) {
+                                error("SD data path does not exist: $sdData")
+                            }
                         }
-                    }
 
-                    // Restore internal app sandbox directory permissions
-                    RootShell.exec("chown -R $uid:$uid \"/data/user/0/$packageName\" 2>/dev/null")
-                    RootShell.exec("chmod -R 775 \"/data/user/0/$packageName\" 2>/dev/null")
-                    RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
-                    RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
-                    RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+                        // 2. Restore OBB if requested
+                        if (moveObb) {
+                            if (RootShell.exists(sdObb)) {
+                                RootShell.exec("mkdir -p \"/data/media/0/Android/obb\"")
+                                copyWithRealtimeProgress(
+                                    sourceDir = sdObb,
+                                    destDir = internalObb,
+                                    categoryName = "OBB",
+                                    pointSizeBytes = obbSize,
+                                    overallProcessedBytes = accumulatedBytes,
+                                    totalMigrationBytes = totalMigrationBytes,
+                                    stepIndex = 1,
+                                    totalSteps = steps.size,
+                                    stepDescriptions = steps,
+                                    opType = opType,
+                                    title = title,
+                                    subtitle = packageName,
+                                    conflictStrategy = conflictStrategy,
+                                    onProgress = onProgress
+                                )
+                                accumulatedBytes += obbSize
+                                RootShell.exec("chown -R $uid:1023 \"$internalObb\"")
+                                RootShell.exec("chmod -R 775 \"$internalObb\"")
+                                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$internalObb\"")
+                                RootShell.exec("restorecon -FR \"$internalObb\" 2>/dev/null")
+                                RootShell.exec("rm -f \"$internalObb/.mountx_canary\" 2>/dev/null")
+                                val destVerifiedSize = getDirSizeBytes(internalObb)
+                                if (destVerifiedSize > 0L) {
+                                    safeCleanSourceDirectory(sdObb, internalObb, packageName)
+                                }
+                            } else if (target == MigrationTarget.OBB_ONLY) {
+                                error("SD OBB path does not exist: $sdObb")
+                            }
+                        }
+
+                        // Restore internal app sandbox directory permissions
+                        RootShell.exec("chown -R $uid:$uid \"/data/user/0/$packageName\" 2>/dev/null")
+                        RootShell.exec("chmod -R 775 \"/data/user/0/$packageName\" 2>/dev/null")
+                        RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
+                        RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
+                        RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+                    }
                 }
-            }
 
-            onProgress?.invoke(
-                OperationProgress(
-                    type = opType,
-                    title = title,
-                    subtitle = packageName,
-                    currentStepIndex = steps.size - 1,
-                    totalSteps = steps.size,
-                    stepDescriptions = steps,
-                    bytesProcessed = totalMigrationBytes,
-                    totalBytes = totalMigrationBytes,
-                    speedBytesPerSec = 0L,
-                    etaSeconds = 0L,
-                    progressPercent = 1.0f,
-                    currentItemName = null,
-                    isFinished = true,
-                    isSuccess = true
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = opType,
+                        title = title,
+                        subtitle = packageName,
+                        currentStepIndex = steps.size - 1,
+                        totalSteps = steps.size,
+                        stepDescriptions = steps,
+                        bytesProcessed = totalMigrationBytes,
+                        totalBytes = totalMigrationBytes,
+                        speedBytesPerSec = 0L,
+                        etaSeconds = 0L,
+                        progressPercent = 1.0f,
+                        currentItemName = null,
+                        isFinished = true,
+                        isSuccess = true
+                    )
                 )
-            )
-            Unit
+                Unit
+            } finally {
+                // Ensure target package is always unsuspended
+                RootShell.exec("pm unsuspend \"$packageName\" 2>/dev/null")
+            }
         }.onFailure { err ->
             onProgress?.invoke(
                 OperationProgress(

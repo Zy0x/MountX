@@ -49,7 +49,7 @@ export PATH
 # Ensure standalone busybox applets and filesystem links exist
 if [ -f "${MODULE_DIR}/bin/busybox" ]; then
     chmod 755 "${MODULE_DIR}/bin/busybox" 2>/dev/null
-    for _applet in fstrim awk flock blkid losetup fdisk; do
+    for _applet in fstrim awk flock blkid losetup fdisk tar; do
         if [ ! -e "${MODULE_DIR}/bin/${_applet}" ] && ! command -v "${_applet}" >/dev/null 2>&1; then
             ln -sf "${MODULE_DIR}/bin/busybox" "${MODULE_DIR}/bin/${_applet}" 2>/dev/null || true
         fi
