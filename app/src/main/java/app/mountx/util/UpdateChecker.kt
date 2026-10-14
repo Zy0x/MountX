@@ -111,22 +111,9 @@ class UpdateChecker @Inject constructor(
         val tagName = json.optString("tag_name", "").removePrefix("v")
         val changelog = json.optString("body", "")
 
-        // Find APK in assets
-        var downloadUrl = ""
-        val assets = json.optJSONArray("assets")
-        if (assets != null) {
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                val name = asset.optString("name", "")
-                if (name.endsWith(".apk")) {
-                    downloadUrl = asset.optString("browser_download_url", "")
-                    break
-                }
-            }
-        }
-        if (downloadUrl.isBlank()) {
-            downloadUrl = json.optString("html_url", "")
-        }
+        // Direct users to GitHub latest release page to increase repository visits, stars, and engagement
+        val htmlUrl = json.optString("html_url", "")
+        val downloadUrl = if (htmlUrl.isNotBlank()) htmlUrl else "https://github.com/Zy0x/MountX/releases/latest"
 
         val currentVersion = BuildConfig.VERSION_NAME
         val isAvailable = isNewerVersion(tagName, currentVersion)
