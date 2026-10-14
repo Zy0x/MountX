@@ -1762,8 +1762,8 @@ class StorageManager {
         var copyExitCode = -1
 
         val streamRes = try {
-            val encodedScript = android.util.Base64.encodeToString(runnerScript.toByteArray(), android.util.Base64.NO_WRAP)
-            RootShell.exec("echo \"$encodedScript\" | base64 -d > \"$scriptFile\" && chmod 755 \"$scriptFile\"")
+            val writeCmd = "cat << 'MOUNTX_CP_EOF' > \"$scriptFile\"\n$runnerScript\nMOUNTX_CP_EOF\nchmod 755 \"$scriptFile\""
+            RootShell.exec(writeCmd)
             RootShell.execStreaming("sh \"$scriptFile\"") { line ->
                 val trimmed = line.trim()
                 AppLogger.info("StorageManager", "CP_STREAM: $trimmed")

@@ -24,6 +24,13 @@ class MountXApp : Application() {
     @Inject
     lateinit var mountNotificationManager: MountNotificationManager
 
+    class ShellInitializer : Shell.Initializer() {
+        override fun onInit(context: android.content.Context, shell: Shell): Boolean {
+            shell.newJob().add("case \":\$PATH:\" in *\":/data/adb/modules/MountX/bin:\"*) ;; *) export PATH=\"/data/adb/modules/MountX/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac").exec()
+            return true
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         // Configure libsu for root shell access
@@ -32,6 +39,7 @@ class MountXApp : Application() {
             Shell.Builder.create()
                 .setFlags(Shell.FLAG_REDIRECT_STDERR or Shell.FLAG_MOUNT_MASTER)
                 .setTimeout(30)
+                .setInitializers(ShellInitializer::class.java)
         )
 
         // Initialize notification channels & sync status bar notification
