@@ -29,7 +29,7 @@ class AboutViewModel @Inject constructor(
         viewModelScope.launch {
             _isChecking.value = true
             _checkError.value = null
-            val result = updateChecker.checkForUpdate()
+            val result = updateChecker.checkForUpdate(force = true)
             _isChecking.value = false
             if (result.isSuccess) {
                 _updateInfo.value = result.getOrNull()

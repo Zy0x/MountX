@@ -11,12 +11,14 @@ import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
 import app.mountx.data.model.MountStatus
+import app.mountx.data.model.UpdateInfo
 import app.mountx.data.repository.AppRepository
 import app.mountx.data.rescue.EmergencyRescueManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
 import app.mountx.util.AppPreferences
 import app.mountx.util.ThemeMode
+import app.mountx.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -50,8 +52,18 @@ class SettingsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val appRepository: AppRepository,
     private val emergencyRescueManager: EmergencyRescueManager,
+    private val updateChecker: UpdateChecker,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    private val _isCheckingUpdate = MutableStateFlow(false)
+    val isCheckingUpdate: StateFlow<Boolean> = _isCheckingUpdate.asStateFlow()
+
+    private val _updateCheckResult = MutableStateFlow<UpdateInfo?>(null)
+    val updateCheckResult: StateFlow<UpdateInfo?> = _updateCheckResult.asStateFlow()
+
+    private val _updateCheckMessage = MutableStateFlow<String?>(null)
+    val updateCheckMessage: StateFlow<String?> = _updateCheckMessage.asStateFlow()
 
     private val _isExecutingRescue = MutableStateFlow(false)
     val isExecutingRescue: StateFlow<Boolean> = _isExecutingRescue.asStateFlow()
@@ -90,8 +102,42 @@ class SettingsViewModel @Inject constructor(
     val autoMountOnBoot: StateFlow<Boolean> = appPreferences.autoMountOnBoot
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    val autoCheckUpdate: StateFlow<Boolean> = appPreferences.autoCheckUpdate
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
     val conflictStrategy: StateFlow<ConflictStrategy> = appPreferences.conflictStrategy
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ConflictStrategy.OVERWRITE)
+
+    fun setAutoCheckUpdate(enabled: Boolean) {
+        viewModelScope.launch { appPreferences.setAutoCheckUpdate(enabled) }
+    }
+
+    fun checkForUpdateNow() {
+        viewModelScope.launch {
+            _isCheckingUpdate.value = true
+            _updateCheckMessage.value = null
+            val result = updateChecker.checkForUpdate(force = true)
+            _isCheckingUpdate.value = false
+            if (result.isSuccess) {
+                val info = result.getOrNull()
+                if (info != null && info.isUpdateAvailable) {
+                    _updateCheckResult.value = info
+                } else {
+                    _updateCheckMessage.value = context.getString(app.mountx.R.string.settings_update_up_to_date)
+                }
+            } else {
+                _updateCheckMessage.value = result.exceptionOrNull()?.message ?: "Check failed"
+            }
+        }
+    }
+
+    fun clearUpdateCheckResult() {
+        _updateCheckResult.value = null
+    }
+
+    fun clearUpdateCheckMessage() {
+        _updateCheckMessage.value = null
+    }
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { appPreferences.setThemeMode(mode) }

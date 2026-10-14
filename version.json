@@ -1,0 +1,7 @@
+{
+  "version": "2.2.46",
+  "versionCode": 20246,
+  "summary": "Storage migration robustness, partition tools overhaul & bilingual parity polish.",
+  "changelog": "• Refined storage partition tools\n• Enhanced backup and restore reliability\n• Comprehensive bilingual parity across English and Indonesian",
+  "apkUrl": "https://github.com/Zy0x/MountX/releases/download/v2.2.46/MountX-v2.2.46.apk"
+}

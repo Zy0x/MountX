@@ -39,11 +39,13 @@ class MountNotificationManager @Inject constructor(
         const val CHANNEL_ACTIVE_STATUS = "mountx_active_status"
         const val CHANNEL_EMERGENCY_ALERTS = "mountx_emergency_alerts"
         const val CHANNEL_OPERATIONS = "mountx_operations"
+        const val CHANNEL_UPDATES = "mountx_updates"
 
         const val ACTIVE_NOTIF_ID = 1001
         const val EMERGENCY_NOTIF_ID = 9999
         const val HOTPLUG_NOTIF_ID = 9998
         const val DISK_ERROR_NOTIF_ID = 9997
+        const val UPDATE_NOTIF_ID = 2002
     }
 
     /**
@@ -79,9 +81,19 @@ class MountNotificationManager @Inject constructor(
                 setShowBadge(false)
             }
 
+            val updatesChannel = NotificationChannel(
+                CHANNEL_UPDATES,
+                context.getString(R.string.notif_channel_updates_name),
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = context.getString(R.string.notif_channel_updates_desc)
+                setShowBadge(true)
+            }
+
             notificationManager.createNotificationChannel(statusChannel)
             notificationManager.createNotificationChannel(emergencyChannel)
             notificationManager.createNotificationChannel(operationsChannel)
+            notificationManager.createNotificationChannel(updatesChannel)
         }
     }
 
@@ -397,6 +409,44 @@ class MountNotificationManager @Inject constructor(
                 syncActiveMountNotification()
             } catch (e: Exception) {
                 AppLogger.error("Notification", "Failed to post hotplug notification: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Posts notification when a new version of MountX is available.
+     */
+    fun postUpdateAvailableNotification(version: String, downloadUrl: String) {
+        scope.launch {
+            try {
+                createNotificationChannels()
+
+                val intent = if (downloadUrl.isNotBlank()) {
+                    Intent(Intent.ACTION_VIEW, android.net.Uri.parse(downloadUrl)).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                } else {
+                    Intent(context, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    }
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context, UPDATE_NOTIF_ID, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val builder = NotificationCompat.Builder(context, CHANNEL_UPDATES)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setColor(0xFF4F46E5.toInt())
+                    .setContentTitle(context.getString(R.string.notif_update_title, version))
+                    .setContentText(context.getString(R.string.notif_update_body))
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent)
+
+                notificationManager.notify(UPDATE_NOTIF_ID, builder.build())
+            } catch (e: Exception) {
+                AppLogger.error("Notification", "Failed to post update notification: ${e.message}")
             }
         }
     }

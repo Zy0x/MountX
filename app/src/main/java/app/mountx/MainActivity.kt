@@ -27,13 +27,21 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import app.mountx.data.model.AppStatus
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import app.mountx.data.model.FilesystemType
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.RootSolution
 import app.mountx.data.model.StorageInfo
+import app.mountx.data.model.UpdateInfo
+import app.mountx.service.MountNotificationManager
+import app.mountx.service.SystemSyncMonitor
 import app.mountx.ui.components.ModernNavigationBar
+import app.mountx.ui.components.UpdateOverlayDialog
 import app.mountx.ui.dashboard.DashboardContent
 import app.mountx.ui.apps.GamesContent
 import app.mountx.ui.navigation.NavGraph
@@ -42,6 +50,7 @@ import app.mountx.ui.storage.StorageContent
 import app.mountx.ui.theme.MountXTheme
 import app.mountx.util.AppPreferences
 import app.mountx.util.ThemeMode
+import app.mountx.util.UpdateChecker
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -52,7 +61,13 @@ class MainActivity : ComponentActivity() {
     lateinit var appPreferences: AppPreferences
 
     @Inject
-    lateinit var systemSyncMonitor: app.mountx.service.SystemSyncMonitor
+    lateinit var systemSyncMonitor: SystemSyncMonitor
+
+    @Inject
+    lateinit var updateChecker: UpdateChecker
+
+    @Inject
+    lateinit var mountNotificationManager: MountNotificationManager
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -131,12 +146,58 @@ class MainActivity : ComponentActivity() {
                         mutableStateOf(!state.areEssentialGranted)
                     }
 
+                    var availableUpdateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+
+                    androidx.compose.runtime.LaunchedEffect(Unit) {
+                        val autoCheck = appPreferences.autoCheckUpdate.first()
+                        if (autoCheck) {
+                            // Non-blocking jitter delay (1.5s) to ensure ultra-smooth cold launch
+                            delay(1500)
+                            val result = updateChecker.checkForUpdate(force = false)
+                            if (result.isSuccess) {
+                                val info = result.getOrNull()
+                                if (info != null && info.isUpdateAvailable) {
+                                    val lastDismissed = appPreferences.lastDismissedUpdateVersion.first()
+                                    if (lastDismissed != info.latestVersion) {
+                                        availableUpdateInfo = info
+                                    }
+
+                                    val lastNotified = appPreferences.lastNotifiedUpdateVersion.first()
+                                    if (lastNotified != info.latestVersion) {
+                                        mountNotificationManager.postUpdateAvailableNotification(info.latestVersion, info.downloadUrl)
+                                        appPreferences.setLastNotifiedUpdateVersion(info.latestVersion)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Surface(modifier = Modifier.fillMaxSize()) {
                         NavGraph()
 
                         if (showPermissionSheet) {
                             app.mountx.ui.components.PermissionOnboardingSheet(
                                 onDismiss = { showPermissionSheet = false }
+                            )
+                        }
+
+                        availableUpdateInfo?.let { updateInfo ->
+                            UpdateOverlayDialog(
+                                updateInfo = updateInfo,
+                                onDismiss = {
+                                    lifecycleScope.launch {
+                                        appPreferences.setLastDismissedUpdateVersion(updateInfo.latestVersion)
+                                    }
+                                    availableUpdateInfo = null
+                                },
+                                onDownload = {
+                                    val intent = android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(updateInfo.downloadUrl)
+                                    )
+                                    startActivity(intent)
+                                    availableUpdateInfo = null
+                                }
                             )
                         }
                     }

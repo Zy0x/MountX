@@ -1082,6 +1082,24 @@
     <string name="dashboard_disk_detached_hero_desc">Kartu MicroSD tidak terdeteksi. Aplikasi tidak dapat mengakses data yang dialihkan secara aman.</string>
     <string name="dashboard_disk_detached_badge">Penyimpanan Terputus</string>
     <string name="dashboard_disk_detached_action_rescan">Pindai Ulang</string>
+
+    <!-- App Update System & Dialog -->
+    <string name="update_dialog_title">Pembaruan Aplikasi</string>
+    <string name="update_badge_available">Pembaruan Tersedia</string>
+    <string name="update_whats_new">Catatan Pembaruan</string>
+    <string name="update_default_notes">Versi baru MountX telah tersedia dengan peningkatan dan perbaikan sistem.</string>
+    <string name="update_btn_later">Nanti</string>
+    <string name="update_btn_download">Unduh</string>
+    <string name="settings_updates_section">Pembaruan Perangkat Lunak</string>
+    <string name="settings_auto_check_update_title">Pemeriksaan Pembaruan Otomatis</string>
+    <string name="settings_auto_check_update_desc">Periksa rilis baru berkala via CDN hemat kuota</string>
+    <string name="settings_check_update_btn">Cek Pembaruan</string>
+    <string name="settings_update_checking">Memeriksa pembaruan…</string>
+    <string name="settings_update_up_to_date">MountX sudah versi terbaru</string>
+    <string name="notif_channel_updates_name">Pembaruan Aplikasi</string>
+    <string name="notif_channel_updates_desc">Notifikasi ketersediaan rilis baru MountX</string>
+    <string name="notif_update_title">MountX %1$s Tersedia</string>
+    <string name="notif_update_body">Ketuk untuk melihat dan mengunduh pembaruan terbaru.</string>
 </resources>
 
 

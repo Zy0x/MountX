@@ -1098,6 +1098,24 @@
     <string name="dashboard_disk_detached_hero_desc">MicroSD card is missing or not detected. Apps cannot safely access bound data.</string>
     <string name="dashboard_disk_detached_badge">Storage Disconnected</string>
     <string name="dashboard_disk_detached_action_rescan">Rescan Storage</string>
+
+    <!-- App Update System & Dialog -->
+    <string name="update_dialog_title">Software Update</string>
+    <string name="update_badge_available">Update Available</string>
+    <string name="update_whats_new">What’s New</string>
+    <string name="update_default_notes">A new version of MountX is available with improvements and fixes.</string>
+    <string name="update_btn_later">Later</string>
+    <string name="update_btn_download">Download</string>
+    <string name="settings_updates_section">Software Updates</string>
+    <string name="settings_auto_check_update_title">Auto-check for updates</string>
+    <string name="settings_auto_check_update_desc">Check periodically via cached CDN</string>
+    <string name="settings_check_update_btn">Check for Updates</string>
+    <string name="settings_update_checking">Checking for updates…</string>
+    <string name="settings_update_up_to_date">MountX is up to date</string>
+    <string name="notif_channel_updates_name">App Updates</string>
+    <string name="notif_channel_updates_desc">Notifications for new MountX releases</string>
+    <string name="notif_update_title">MountX %1$s Available</string>
+    <string name="notif_update_body">Tap to view and download the latest update.</string>
 </resources>
 
 

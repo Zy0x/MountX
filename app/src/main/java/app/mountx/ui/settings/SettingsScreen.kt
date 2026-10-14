@@ -5,14 +5,22 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -26,6 +34,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
+import android.content.Intent
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import java.text.SimpleDateFormat
@@ -35,6 +44,7 @@ import app.mountx.R
 import app.mountx.ui.components.CompactScreenHeader
 import app.mountx.ui.components.ConfirmDialog
 import app.mountx.ui.components.SectionHeader
+import app.mountx.ui.components.UpdateOverlayDialog
 import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.NeonCrimson
@@ -57,6 +67,10 @@ fun SettingsScreen(
     val themeMode by viewModel.themeMode.collectAsState()
     val language by viewModel.language.collectAsState()
     val autoMount by viewModel.autoMountOnBoot.collectAsState()
+    val autoCheckUpdate by viewModel.autoCheckUpdate.collectAsState()
+    val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsState()
+    val updateCheckResult by viewModel.updateCheckResult.collectAsState()
+    val updateCheckMessage by viewModel.updateCheckMessage.collectAsState()
 
     val isExporting by viewModel.isExporting.collectAsState()
     val isImporting by viewModel.isImporting.collectAsState()
@@ -126,13 +140,14 @@ fun SettingsScreen(
                     }
                     else -> msg
                 }
-            }
+            } ?: updateCheckMessage
             if (messageToShow != null) {
                 Snackbar(
                     action = {
                         TextButton(onClick = {
                             viewModel.clearRescueMessage()
                             viewModel.clearPortabilityMessage()
+                            viewModel.clearUpdateCheckMessage()
                         }) {
                             Text(stringResource(R.string.common_ok), color = MaterialTheme.colorScheme.primary)
                         }
@@ -275,6 +290,87 @@ fun SettingsScreen(
                             checked = autoMount,
                             onCheckedChange = { viewModel.setAutoMountOnBoot(it) }
                         )
+                    }
+                }
+            }
+
+            // Software Updates
+            item {
+                SectionHeader(title = stringResource(R.string.settings_updates_section))
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                Text(
+                                    text = stringResource(R.string.settings_auto_check_update_title),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_auto_check_update_desc),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                            Switch(
+                                checked = autoCheckUpdate,
+                                onCheckedChange = { viewModel.setAutoCheckUpdate(it) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        val infiniteTransition = rememberInfiniteTransition(label = "settings_spin")
+                        val spinAngle by infiniteTransition.animateFloat(
+                            initialValue = 0f,
+                            targetValue = 360f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(750, easing = LinearEasing),
+                                repeatMode = RepeatMode.Restart
+                            ),
+                            label = "settings_spin_angle"
+                        )
+
+                        OutlinedButton(
+                            onClick = { viewModel.checkForUpdateNow() },
+                            enabled = !isCheckingUpdate,
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .graphicsLayer {
+                                        if (isCheckingUpdate) rotationZ = spinAngle
+                                    }
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isCheckingUpdate) stringResource(R.string.settings_update_checking) else stringResource(R.string.settings_check_update_btn),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -659,6 +755,18 @@ fun SettingsScreen(
                 TextButton(onClick = { viewModel.clearPendingImport() }) {
                     Text(stringResource(R.string.common_cancel))
                 }
+            }
+        )
+    }
+
+    updateCheckResult?.let { updateInfo ->
+        UpdateOverlayDialog(
+            updateInfo = updateInfo,
+            onDismiss = { viewModel.clearUpdateCheckResult() },
+            onDownload = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
+                context.startActivity(intent)
+                viewModel.clearUpdateCheckResult()
             }
         )
     }

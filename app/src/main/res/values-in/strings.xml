@@ -1050,6 +1050,24 @@
     <string name="collision_switch_storage_btn">Ganti Penyimpanan</string>
     <string name="collision_active_storage_label">Penyimpanan Aktif: %1$s</string>
     <string name="collision_mount_blocked_active">Gagal mengaitkan: aplikasi ini sudah aktif ter-mount dari %1$s. Lepaskan terlebih dahulu untuk beralih disk.</string>
+
+    <!-- App Update System & Dialog -->
+    <string name="update_dialog_title">Pembaruan Aplikasi</string>
+    <string name="update_badge_available">Pembaruan Tersedia</string>
+    <string name="update_whats_new">Catatan Pembaruan</string>
+    <string name="update_default_notes">Versi baru MountX telah tersedia dengan peningkatan dan perbaikan sistem.</string>
+    <string name="update_btn_later">Nanti</string>
+    <string name="update_btn_download">Unduh</string>
+    <string name="settings_updates_section">Pembaruan Perangkat Lunak</string>
+    <string name="settings_auto_check_update_title">Pemeriksaan Pembaruan Otomatis</string>
+    <string name="settings_auto_check_update_desc">Periksa rilis baru berkala via CDN hemat kuota</string>
+    <string name="settings_check_update_btn">Cek Pembaruan</string>
+    <string name="settings_update_checking">Memeriksa pembaruan…</string>
+    <string name="settings_update_up_to_date">MountX sudah versi terbaru</string>
+    <string name="notif_channel_updates_name">Pembaruan Aplikasi</string>
+    <string name="notif_channel_updates_desc">Notifikasi ketersediaan rilis baru MountX</string>
+    <string name="notif_update_title">MountX %1$s Tersedia</string>
+    <string name="notif_update_body">Ketuk untuk melihat dan mengunduh pembaruan terbaru.</string>
 </resources>
 
 

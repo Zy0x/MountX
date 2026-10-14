@@ -35,6 +35,10 @@ class AppPreferences @Inject constructor(
         val KEY_BASELINE_SCHEDULER = stringPreferencesKey("baseline_scheduler")
         val KEY_BASELINE_CAPTURED = booleanPreferencesKey("baseline_captured")
         val KEY_CONFLICT_STRATEGY = stringPreferencesKey("conflict_strategy")
+        val KEY_AUTO_CHECK_UPDATE = booleanPreferencesKey("auto_check_update")
+        val KEY_LAST_UPDATE_CHECK_TIME = androidx.datastore.preferences.core.longPreferencesKey("last_update_check_time")
+        val KEY_LAST_NOTIFIED_UPDATE_VERSION = stringPreferencesKey("last_notified_update_version")
+        val KEY_LAST_DISMISSED_UPDATE_VERSION = stringPreferencesKey("last_dismissed_update_version")
     }
 
     val conflictStrategy: Flow<app.mountx.data.model.ConflictStrategy> = context.dataStore.data.map { prefs ->
@@ -142,6 +146,38 @@ class AppPreferences @Inject constructor(
                 prefs[KEY_BASELINE_SCHEDULER] = scheduler
             }
         }
+    }
+
+    val autoCheckUpdate: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_AUTO_CHECK_UPDATE] ?: true
+    }
+
+    suspend fun setAutoCheckUpdate(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_AUTO_CHECK_UPDATE] = enabled }
+    }
+
+    val lastUpdateCheckTime: Flow<Long> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LAST_UPDATE_CHECK_TIME] ?: 0L
+    }
+
+    suspend fun setLastUpdateCheckTime(timestamp: Long) {
+        context.dataStore.edit { it[KEY_LAST_UPDATE_CHECK_TIME] = timestamp }
+    }
+
+    val lastNotifiedUpdateVersion: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LAST_NOTIFIED_UPDATE_VERSION] ?: ""
+    }
+
+    suspend fun setLastNotifiedUpdateVersion(version: String) {
+        context.dataStore.edit { it[KEY_LAST_NOTIFIED_UPDATE_VERSION] = version }
+    }
+
+    val lastDismissedUpdateVersion: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LAST_DISMISSED_UPDATE_VERSION] ?: ""
+    }
+
+    suspend fun setLastDismissedUpdateVersion(version: String) {
+        context.dataStore.edit { it[KEY_LAST_DISMISSED_UPDATE_VERSION] = version }
     }
 
     suspend fun resetDefaults() {
