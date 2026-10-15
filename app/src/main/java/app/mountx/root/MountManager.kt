@@ -64,7 +64,6 @@ class MountManager {
         val list = mutableListOf<String>()
         val userIds = if (specificUserId != null) listOf(specificUserId) else getActiveUserIds()
         for (uid in userIds) {
-            list.add("/data/media/$uid")
             list.add("/mnt/runtime/default/emulated/$uid")
             list.add("/mnt/runtime/read/emulated/$uid")
             list.add("/mnt/runtime/write/emulated/$uid")
@@ -79,6 +78,8 @@ class MountManager {
             if (RootShell.isMountpoint("/storage/emulated")) {
                 list.add("/storage/emulated/$uid")
             }
+            // CRITICAL: /data/media/$uid MUST be mounted LAST after user-facing views to prevent sdcardfs EXDEV dead-lock
+            list.add("/data/media/$uid")
         }
         list.filter { RootShell.exists(it) }.distinct()
     }
@@ -391,6 +392,7 @@ class MountManager {
                     RootShell.exec("chmod -R 777 \"$dataSrcPath\" 2>/dev/null")
                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
                     RootShell.exec("touch \"$dataSrcPath/.mountx_canary\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data/media/$appUserId/$dataRelPath\" 2>/dev/null")
 
                     for (namespace in namespaces) {
                         val targetPath = "$namespace/$dataRelPath"
@@ -408,6 +410,7 @@ class MountManager {
                     RootShell.exec("chmod -R 777 \"$obbSrcPath\" 2>/dev/null")
                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
                     RootShell.exec("touch \"$obbSrcPath/.mountx_canary\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data/media/$appUserId/$obbRelPath\" 2>/dev/null")
 
                     for (namespace in namespaces) {
                         val targetPath = "$namespace/$obbRelPath"
@@ -486,6 +489,12 @@ class MountManager {
 
         // Extract relative path from target path across any user profile
         val relPath = extractRelativePath(mp.targetPath)
+        val targetUserId = resolveUserId(mp.targetPath)
+
+        // Clear any preexisting /data/media mount point to prevent sdcardfs EXDEV (Cross-device link) error
+        // When /data/media has an active mount on another filesystem, sdcardfs on /storage/emulated
+        // throws EXDEV on any pathname lookup for that child directory.
+        RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
 
         val fsType = RootShell.execForOutput("stat -f -c %T \"${mp.sourcePath}\" 2>/dev/null").trim().lowercase()
         val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || mp.sourcePath.startsWith("/mnt/media_rw")

@@ -448,6 +448,11 @@ bind_mount_to_runtime_namespaces() {
         }
 
         if [ -n "${REL}" ]; then
+            # Clean up any preexisting /data/media mount point to prevent sdcardfs EXDEV (Cross-device link) error
+            # When /data/media has an active mount on another filesystem, sdcardfs on /storage/emulated
+            # throws EXDEV on any pathname lookup for that child directory.
+            umount -f -l "/data/media/${USER_ID}/${REL}" 2>/dev/null
+
             for R in \
                 "/mnt/runtime/default/emulated/${USER_ID}" \
                 "/mnt/runtime/read/emulated/${USER_ID}" \
@@ -620,6 +625,17 @@ load_mountpoints() {
             continue
         fi
 
+        # Extract relative path to inspect user-facing runtime namespace
+        local rel=""
+        case "${dst}" in
+            */Android/*)
+                rel="Android/"$(echo "${dst}" | sed 's|.*/Android/||')
+                ;;
+            *)
+                rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||;s|^/||')
+                ;;
+        esac
+
         # ── Multi-Disk Collision & Anti-Stacking Check ─────────────────────────
         if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
             local cur_dev
@@ -631,15 +647,23 @@ load_mountpoints() {
                 if [ -n "${exp_dev}" ] && [ -n "${cur_dev}" ] && [ "${cur_dev}" != "${exp_dev}" ]; then
                     log_warn "  [${pkg}] Target ${dst} mounted from ${cur_dev}, but configured UUID=${disk_uuid} expects ${exp_dev}. Unmounting stale device mount..."
                     umount -f -l "${dst}" 2>/dev/null
+                elif [ -n "${rel}" ] && ! grep -qF " /storage/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null && ! grep -qF " /mnt/runtime/default/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null; then
+                    log_warn "  [${pkg}] Target ${dst} mounted in /proc/mounts, but runtime namespaces are missing (soft-restart detected). Unmounting base mount to clear sdcardfs EXDEV dead-lock..."
+                    umount -f -l "${dst}" 2>/dev/null
                 else
                     log_info "  [${pkg}] Target ${dst} is already mounted correctly from ${cur_dev}. Skipping duplicate bind."
                     entries=$((entries + 1))
                     continue
                 fi
             else
-                log_info "  [${pkg}] Target ${dst} is already mounted. Skipping duplicate bind."
-                entries=$((entries + 1))
-                continue
+                if [ -n "${rel}" ] && ! grep -qF " /storage/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null && ! grep -qF " /mnt/runtime/default/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null; then
+                    log_warn "  [${pkg}] Target ${dst} mounted in /proc/mounts, but runtime namespaces are missing (soft-restart detected). Unmounting base mount to clear sdcardfs EXDEV dead-lock..."
+                    umount -f -l "${dst}" 2>/dev/null
+                else
+                    log_info "  [${pkg}] Target ${dst} is already mounted. Skipping duplicate bind."
+                    entries=$((entries + 1))
+                    continue
+                fi
             fi
         fi
 
@@ -793,14 +817,20 @@ mount_watchdog() {
     # A soft restart (SystemServer / Zygote restart without kernel reboot) changes
     # the zygote64 PID but does NOT trigger service.sh re-execution. We detect
     # this by comparing the current zygote64 PID against the one recorded at boot.
-    # NOTE: Use ps-based grep instead of pgrep -x because -x (exact match) is
-    # not supported on all Android variants (e.g. MediaTek Infinix, Realme, etc.)
+    # NOTE: Use pidof with fallback to ps -A to ensure accurate PID across
+    # both toybox and busybox ps implementations (busybox ps $2 is USER, not PID).
     _get_zygote_pid() {
-        ps -ef 2>/dev/null | grep -w zygote64 | grep -v grep | awk '{print $2}' | head -n 1
+        local p
+        p=$(pidof zygote64 2>/dev/null | awk '{print $1}')
+        [ -z "${p}" ] && p=$(pidof zygote 2>/dev/null | awk '{print $1}')
+        if [ -z "${p}" ]; then
+            p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote64$" | awk '{print $1}' | head -n 1)
+            [ -z "${p}" ] && p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote$" | awk '{print $1}' | head -n 1)
+        fi
+        echo "${p}"
     }
     ZYGOTE_PID_LAST=$(_get_zygote_pid)
-    [ -z "${ZYGOTE_PID_LAST}" ] && ZYGOTE_PID_LAST=$(ps -ef 2>/dev/null | grep -w zygote | grep -v grep | awk '{print $2}' | head -n 1)
-    log_info "[Watchdog] Starting. PID=$$, Zygote64=${ZYGOTE_PID_LAST}, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
+    log_info "[Watchdog] Starting. PID=$$, Zygote64=${ZYGOTE_PID_LAST:-N/A}, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
 
     # ── Helper: perform lightweight mount integrity check ─────────────────────
     check_mounts() {
@@ -821,6 +851,9 @@ mount_watchdog() {
         bat_status=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo "Discharging")
         local bat
         bat=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 100)
+        case "${bat}" in
+            ''|*[!0-9]*) bat=100 ;;
+        esac
         if [ "${bat_status}" != "Charging" ] && [ "${bat_status}" != "Full" ]; then
             if [ "${bat}" -lt 10 ] 2>/dev/null; then
                 echo "[Watchdog] Battery critical (${bat}%), skipping check." >> "${WATCHDOG_LOG}" 2>/dev/null
@@ -915,8 +948,7 @@ mount_watchdog() {
 
         # Signal A: Zygote PID change
         local zygote_pid_now
-        zygote_pid_now=$(ps -ef 2>/dev/null | grep -w zygote64 | grep -v grep | awk '{print $2}' | head -n 1)
-        [ -z "${zygote_pid_now}" ] && zygote_pid_now=$(ps -ef 2>/dev/null | grep -w zygote | grep -v grep | awk '{print $2}' | head -n 1)
+        zygote_pid_now=$(_get_zygote_pid)
         if [ -n "${zygote_pid_now}" ] && [ -n "${ZYGOTE_PID_LAST}" ] && \
            [ "${zygote_pid_now}" != "${ZYGOTE_PID_LAST}" ]; then
             log_warn "[Watchdog] Zygote PID changed: ${ZYGOTE_PID_LAST} → ${zygote_pid_now}. Soft restart detected!"
@@ -927,7 +959,7 @@ mount_watchdog() {
         # Signal B: Namespace mount count dropped (check /mnt/runtime for first game)
         if [ ${soft_restart} -eq 0 ] && [ -n "${sample_pkg}" ]; then
             local ns_count
-            ns_count=$(grep -c "/mnt/runtime.*${sample_pkg}" /proc/mounts 2>/dev/null || echo 0)
+            ns_count=$(grep "/mnt/runtime.*${sample_pkg}" /proc/mounts 2>/dev/null | wc -l)
             if [ "${ns_count}" -eq 0 ] && grep -qF " ${sample_dst} " /proc/mounts 2>/dev/null; then
                 # Base mount exists but namespace mounts are gone → soft restart symptom
                 log_warn "[Watchdog] Namespace mounts for ${sample_pkg} lost (count=0) while base mount exists. Soft restart suspected."
@@ -944,6 +976,14 @@ mount_watchdog() {
                 sleep 2
                 wait_tries=$((wait_tries + 1))
             done
+            # Sweep away any stale base /data/media and runtime mounts to clear sdcardfs EXDEV locks
+            while read dev mnt rest; do
+                case "${mnt}" in
+                    /data/media/*/Android/data/*|/data/media/*/Android/obb/*|/storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*)
+                        umount -f -l "${mnt}" 2>/dev/null
+                        ;;
+                esac
+            done < /proc/mounts
             load_mountpoints 2>/dev/null || true
             # Notify the app to re-sync its mount status UI
             am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
