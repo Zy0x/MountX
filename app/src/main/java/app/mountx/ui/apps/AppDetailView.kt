@@ -59,9 +59,12 @@ import androidx.compose.material.icons.filled.SdStorage
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material3.*
 import app.mountx.data.repository.CandidateDirectory
 import androidx.compose.runtime.*
@@ -127,6 +130,17 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+enum class TargetModalMode {
+    DIRECT_MOUNT,
+    TRANSFER
+}
+
+data class OcclusionWarningData(
+    val internalBytes: Long,
+    val targetBase: String,
+    val points: List<MountPointConfig>
+)
+
 @Composable
 fun GameDetailView(
     game: GameEntry,
@@ -146,6 +160,8 @@ fun GameDetailView(
     sdBase: String = "/data/sdext2",
     onDismiss: () -> Unit,
     onMoveMountPoints: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit = { _, _, _, _, _ -> },
+    onDirectMountMountPoints: (List<MountPointConfig>, String) -> Unit = { _, _ -> },
+    onUnmountMountPoints: (List<MountPointConfig>) -> Unit = {},
     onSaveGame: ((GameEntry) -> Unit)? = null,
     onUpdateMountPoints: ((List<MountPointConfig>) -> Unit)? = null,
     onDelete: () -> Unit = {},
@@ -172,6 +188,8 @@ fun GameDetailView(
     sdBase = sdBase,
     onDismiss = onDismiss,
     onMoveMountPoints = onMoveMountPoints,
+    onDirectMountMountPoints = onDirectMountMountPoints,
+    onUnmountMountPoints = onUnmountMountPoints,
     onSaveGame = onSaveGame,
     onUpdateMountPoints = onUpdateMountPoints,
     onDelete = onDelete,
@@ -201,6 +219,8 @@ fun AppDetailView(
     sdBase: String = "/data/sdext2",
     onDismiss: () -> Unit,
     onMoveMountPoints: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit = { _, _, _, _, _ -> },
+    onDirectMountMountPoints: (List<MountPointConfig>, String) -> Unit = { _, _ -> },
+    onUnmountMountPoints: (List<MountPointConfig>) -> Unit = {},
     onSaveGame: ((GameEntry) -> Unit)? = null,
     onUpdateMountPoints: ((List<MountPointConfig>) -> Unit)? = null,
     onDelete: () -> Unit = {},
@@ -497,6 +517,30 @@ fun AppDetailView(
                         onMountPointsChanged = { updated ->
                             currentMountPoints = updated
                             onUpdateMountPoints?.invoke(updated)
+                        },
+                        onDirectMountMountPoints = { pts, base ->
+                            val updatedPoints = currentMountPoints.map { pt ->
+                                val matching = pts.firstOrNull { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }
+                                matching?.copy(enabled = true) ?: pt
+                            }.toMutableList()
+                            for (newPt in pts) {
+                                if (updatedPoints.none { it.id == newPt.id || it.resolveCategory() == newPt.resolveCategory() }) {
+                                    updatedPoints.add(newPt.copy(enabled = true))
+                                }
+                            }
+                            currentMountPoints = updatedPoints
+                            onUpdateMountPoints?.invoke(updatedPoints)
+                            onDirectMountMountPoints(pts, base)
+                        },
+                        onUnmountMountPoints = { pts ->
+                            val updatedPoints = currentMountPoints.map { pt ->
+                                if (pts.any { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }) {
+                                    pt.copy(enabled = false)
+                                } else pt
+                            }
+                            currentMountPoints = updatedPoints
+                            onUpdateMountPoints?.invoke(updatedPoints)
+                            onUnmountMountPoints(pts)
                         },
                         packageInfo = packageInfo,
                         onDeleteCategoryData = onDeleteCategoryData
@@ -845,6 +889,8 @@ private fun StorageTabContent(
     sdBase: String = "/data/sdext2",
     packageInfo: android.content.pm.PackageInfo? = null,
     onMove: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit,
+    onDirectMountMountPoints: (List<MountPointConfig>, String) -> Unit = { _, _ -> },
+    onUnmountMountPoints: (List<MountPointConfig>) -> Unit = {},
     onMount: () -> Unit,
     onUnmount: () -> Unit,
     onMountPointsChanged: (List<MountPointConfig>) -> Unit,
@@ -853,10 +899,14 @@ private fun StorageTabContent(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val safeBreakdown = breakdown ?: AppStorageBreakdown()
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedCategoryIds by remember { mutableStateOf(setOf("data", "obb")) }
+    var targetModalMode by remember { mutableStateOf(TargetModalMode.TRANSFER) }
     var showTargetModal by remember { mutableStateOf(false) }
+    var showBatchUnmountConfirmDialog by remember { mutableStateOf(false) }
+    var occlusionWarningData by remember { mutableStateOf<OcclusionWarningData?>(null) }
     var inspectingCategory by remember { mutableStateOf<UnifiedCategoryItem?>(null) }
     var categoryToDelete by remember { mutableStateOf<UnifiedCategoryItem?>(null) }
     var isDeletingCategory by remember { mutableStateOf(false) }
@@ -866,7 +916,13 @@ private fun StorageTabContent(
     var showAddCustomDialog by remember { mutableStateOf(false) }
 
     // Hierarchical Step-by-Step Back Navigation inside Storage Tab
-    BackHandler(enabled = showNeedMigrationDialog) {
+    BackHandler(enabled = occlusionWarningData != null) {
+        occlusionWarningData = null
+    }
+    BackHandler(enabled = occlusionWarningData == null && showBatchUnmountConfirmDialog) {
+        showBatchUnmountConfirmDialog = false
+    }
+    BackHandler(enabled = occlusionWarningData == null && !showBatchUnmountConfirmDialog && showNeedMigrationDialog) {
         showNeedMigrationDialog = false
     }
     BackHandler(enabled = !showNeedMigrationDialog && showAddCustomDialog) {
@@ -1586,37 +1642,129 @@ private fun StorageTabContent(
                 }
             }
         } else {
-            // Selection Mode: Batal + Lanjutkan (N)
-            Row(
+            // Selection Mode: Decoupled Actions (Kaitkan Langsung, Pindahkan Data, Lepas Kaitan, Batal)
+            val anySelectedMounted = remember(selectedCategoryIds, categories, mountPoints, isMounted) {
+                selectedCategoryIds.any { id ->
+                    val catItem = categories.firstOrNull { it.id == id }
+                    val pt = mountPoints.firstOrNull { it.id == id || it.resolveCategory() == catItem?.mountCategory }
+                    pt?.enabled == true || (isMounted && catItem?.isMicroSd == true)
+                }
+            }
+
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = { isSelectionMode = false },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
+                // Header Row: Selected Count + Cancel Action
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.common_cancel),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                        text = stringResource(R.string.manage_select_categories_selected, selectedCategoryIds.size),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     )
+                    TextButton(
+                        onClick = { isSelectionMode = false },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.common_cancel),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                    }
                 }
 
-                Button(
-                    onClick = { showTargetModal = true },
-                    enabled = selectedCategoryIds.isNotEmpty(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
+                // Primary Actions: Direct Mount vs Transfer Data
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.manage_btn_continue_format, selectedCategoryIds.size),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                    )
+                    OutlinedButton(
+                        onClick = {
+                            targetModalMode = TargetModalMode.DIRECT_MOUNT
+                            showTargetModal = true
+                        },
+                        enabled = selectedCategoryIds.isNotEmpty(),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Link,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.manage_btn_direct_mount_format, selectedCategoryIds.size),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            targetModalMode = TargetModalMode.TRANSFER
+                            showTargetModal = true
+                        },
+                        enabled = selectedCategoryIds.isNotEmpty(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.manage_btn_transfer_data_format, selectedCategoryIds.size),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Optional Batch Unmount for selected categories if any is mounted
+                if (anySelectedMounted) {
+                    val unmountBorderColor = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+                    val unmountTextColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                    OutlinedButton(
+                        onClick = { showBatchUnmountConfirmDialog = true },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = unmountTextColor),
+                        border = BorderStroke(1.dp, unmountBorderColor),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LinkOff,
+                            contentDescription = null,
+                            tint = unmountTextColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.manage_btn_unmount_selected_format, selectedCategoryIds.size),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = unmountTextColor
+                        )
+                    }
                 }
             }
         }
@@ -1643,6 +1791,7 @@ private fun StorageTabContent(
                     part.mountPoint != null && pt.sourcePath.startsWith(part.mountPoint)
                 }?.mountPoint
             } ?: sdBase,
+            modalMode = targetModalMode,
             onDismiss = { showTargetModal = false },
             onConfirmMove = { dir, targetDisk, targetPartition ->
                 showTargetModal = false
@@ -1691,6 +1840,39 @@ private fun StorageTabContent(
                     targetPartition = targetPartition,
                     pointsToMigrate = targetPoints
                 )
+            },
+            onConfirmDirectMount = { targetDisk, targetPartition ->
+                showTargetModal = false
+                isSelectionMode = false
+                val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase)
+
+                val internalBytes = targetPoints.sumOf { pt ->
+                    when (pt.resolveCategory()) {
+                        MountPointCategory.EXTERNAL_DATA -> safeBreakdown.ext1DataBytes
+                        MountPointCategory.OBB_STORAGE -> safeBreakdown.ext1ObbBytes
+                        MountPointCategory.MEDIA_DOWNLOADS -> safeBreakdown.ext1MediaBytes
+                        else -> 0L
+                    }
+                }
+                val externalBytes = targetPoints.sumOf { pt ->
+                    when (pt.resolveCategory()) {
+                        MountPointCategory.EXTERNAL_DATA -> safeBreakdown.ext2DataBytes
+                        MountPointCategory.OBB_STORAGE -> safeBreakdown.ext2ObbBytes
+                        MountPointCategory.MEDIA_DOWNLOADS -> safeBreakdown.ext2MediaBytes
+                        else -> pt.sizeBytes
+                    }
+                }
+
+                if (internalBytes > 512 * 1024L && externalBytes <= 128 * 1024L) {
+                    occlusionWarningData = OcclusionWarningData(
+                        internalBytes = internalBytes,
+                        targetBase = effectiveSdBase,
+                        points = targetPoints
+                    )
+                } else {
+                    onDirectMountMountPoints(targetPoints, effectiveSdBase)
+                }
             }
         )
     }
@@ -1715,6 +1897,26 @@ private fun StorageTabContent(
         CategoryInspectorBottomSheet(
             item = currentInspectItem,
             onDismiss = { inspectingCategory = null },
+            onRequestDirectMount = {
+                val catId = currentInspectItem.id
+                inspectingCategory = null
+                selectedCategoryIds = setOf(catId)
+                targetModalMode = TargetModalMode.DIRECT_MOUNT
+                showTargetModal = true
+            },
+            onRequestTransfer = {
+                val catId = currentInspectItem.id
+                inspectingCategory = null
+                selectedCategoryIds = setOf(catId)
+                targetModalMode = TargetModalMode.TRANSFER
+                showTargetModal = true
+            },
+            onRequestUnmount = {
+                val catId = currentInspectItem.id
+                inspectingCategory = null
+                val targetPoints = buildTargetMountPoints(setOf(catId), mountPoints, game, sdBase)
+                onUnmountMountPoints(targetPoints)
+            },
             onRequestDelete = {
                 categoryToDelete = inspectingCategory
             },
@@ -1775,6 +1977,125 @@ private fun StorageTabContent(
         )
     }
 
+    // ── OCCLUSION WARNING DIALOG ──
+    if (occlusionWarningData != null) {
+        val warnData = occlusionWarningData!!
+        AlertDialog(
+            onDismissRequest = { occlusionWarningData = null },
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(20.dp),
+            icon = {
+                Icon(
+                    Icons.Default.WarningAmber,
+                    contentDescription = null,
+                    tint = SunsetAmber,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    stringResource(R.string.occlusion_warning_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.occlusion_warning_desc,
+                        FormatUtils.formatExactBytes(warnData.internalBytes)
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val pts = warnData.points
+                        val base = warnData.targetBase
+                        occlusionWarningData = null
+                        onDirectMountMountPoints(pts, base)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SunsetAmber)
+                ) {
+                    Text(
+                        stringResource(R.string.occlusion_btn_proceed_mount),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        occlusionWarningData = null
+                        targetModalMode = TargetModalMode.TRANSFER
+                        showTargetModal = true
+                    }
+                ) {
+                    Text(
+                        stringResource(R.string.occlusion_btn_transfer_first),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                }
+            }
+        )
+    }
+
+    // ── BATCH UNMOUNT CONFIRMATION DIALOG ──
+    if (showBatchUnmountConfirmDialog) {
+        val pointsToUnmount = remember(selectedCategoryIds, mountPoints, game, sdBase) {
+            buildTargetMountPoints(selectedCategoryIds, mountPoints, game, sdBase)
+        }
+        val unmountTextColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+        AlertDialog(
+            onDismissRequest = { showBatchUnmountConfirmDialog = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(20.dp),
+            icon = {
+                Icon(
+                    Icons.Default.LinkOff,
+                    contentDescription = null,
+                    tint = unmountTextColor,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    stringResource(R.string.unmount_selected_confirm_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.unmount_selected_confirm_desc, selectedCategoryIds.size),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBatchUnmountConfirmDialog = false
+                        isSelectionMode = false
+                        onUnmountMountPoints(pointsToUnmount)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = unmountTextColor)
+                ) {
+                    Text(
+                        stringResource(R.string.common_ok),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchUnmountConfirmDialog = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
     // ── UNMOUNT CONFIRMATION DIALOG ──
     if (showUnmountConfirmDialog) {
         AlertDialog(
@@ -1830,6 +2151,11 @@ private fun StorageTabContent(
                 showNeedMigrationDialog = false
                 val activePoints = points.map { it.copy(enabled = true) }
                 onMove(MoveDirection.TO_SD, activePoints, null, null, ConflictStrategy.OVERWRITE)
+            },
+            onDirectMount = { points, targetBase ->
+                showNeedMigrationDialog = false
+                val activePoints = points.map { it.copy(enabled = true) }
+                onDirectMountMountPoints(activePoints, targetBase)
             },
             onOpenDetail = null,
             onDismiss = { showNeedMigrationDialog = false }
@@ -2333,6 +2659,9 @@ private fun CategoryCardItem(
 private fun CategoryInspectorBottomSheet(
     item: UnifiedCategoryItem,
     onDismiss: () -> Unit,
+    onRequestDirectMount: () -> Unit = {},
+    onRequestTransfer: () -> Unit = {},
+    onRequestUnmount: () -> Unit = {},
     onRequestDelete: () -> Unit,
     onTogglePreserveMedia: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -2803,6 +3132,109 @@ private fun CategoryInspectorBottomSheet(
                 }
             }
 
+            // ── CARD: CATEGORY STORAGE ACTIONS ──
+            Card(
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.category_actions_title),
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onRequestDirectMount,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (item.isCategoryMounted) Icons.Default.SwapHoriz else Icons.Default.Link,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (item.isCategoryMounted) stringResource(R.string.category_inspector_action_change_target)
+                                       else stringResource(R.string.category_inspector_action_direct_mount),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Button(
+                            onClick = onRequestTransfer,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(R.string.category_inspector_action_transfer),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    if (item.isCategoryMounted) {
+                        val unmountBorderColor = if (isDark) WarmCrimsonBorderDark else WarmCrimsonBorderLight
+                        val unmountTextColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                        OutlinedButton(
+                            onClick = onRequestUnmount,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, unmountBorderColor),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = unmountTextColor),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LinkOff,
+                                contentDescription = null,
+                                tint = unmountTextColor,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.category_inspector_action_unmount),
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = unmountTextColor
+                            )
+                        }
+                    }
+                }
+            }
+
             // ── ACTION: DELETE CATEGORY DATA ──
             val hasDataToDelete = item.internalBytes > 0L || item.sdBytes > 0L || item.bytes > 0L
             if (hasDataToDelete) {
@@ -3087,8 +3519,10 @@ private fun SmartStoragePartitionBottomSheet(
     selectedCategoryIds: Set<String>,
     categories: List<UnifiedCategoryItem>,
     currentSdBase: String = "/data/sdext2",
+    modalMode: TargetModalMode = TargetModalMode.TRANSFER,
     onDismiss: () -> Unit,
-    onConfirmMove: (dir: MoveDirection, targetDisk: SdCardDiskInfo?, targetPartition: PartitionInfo?) -> Unit
+    onConfirmMove: (dir: MoveDirection, targetDisk: SdCardDiskInfo?, targetPartition: PartitionInfo?) -> Unit,
+    onConfirmDirectMount: ((targetDisk: SdCardDiskInfo?, targetPartition: PartitionInfo?) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var modalStep by remember { mutableStateOf(1) } // 1: Disk, 2: Partition, 3: Confirmation
@@ -3113,15 +3547,17 @@ private fun SmartStoragePartitionBottomSheet(
         selectedItems.any { it.isRisk }
     }
 
-    var isTargetInternal by remember(allSelectedOnMicroSd) { mutableStateOf(allSelectedOnMicroSd) }
+    var isTargetInternal by remember(allSelectedOnMicroSd, modalMode) {
+        mutableStateOf(if (modalMode == TargetModalMode.DIRECT_MOUNT) false else allSelectedOnMicroSd)
+    }
 
     var selectedDisk by remember(externalDisks) {
         mutableStateOf<SdCardDiskInfo?>(externalDisks.firstOrNull())
     }
 
-    var selectedPartition by remember(selectedDisk, allSelectedOnMicroSd, currentSdBase) {
+    var selectedPartition by remember(selectedDisk, allSelectedOnMicroSd, currentSdBase, modalMode) {
         val allParts = selectedDisk?.partitions ?: emptyList()
-        val validPart = if (allSelectedOnMicroSd) {
+        val validPart = if (modalMode != TargetModalMode.DIRECT_MOUNT && allSelectedOnMicroSd) {
             allParts.firstOrNull { it.mountPoint != null && it.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/') }
         } else {
             allParts.firstOrNull()
@@ -3148,7 +3584,8 @@ private fun SmartStoragePartitionBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = stringResource(R.string.manage_target_modal_title),
+                    text = if (modalMode == TargetModalMode.DIRECT_MOUNT) stringResource(R.string.manage_direct_mount_title)
+                           else stringResource(R.string.manage_target_modal_title),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontSize = 16.5.sp,
                         fontWeight = FontWeight.Bold
@@ -3225,7 +3662,8 @@ private fun SmartStoragePartitionBottomSheet(
                 1 -> {
                     // ── LANGKAH 1: PILIH DISK ──
                     Text(
-                        text = stringResource(R.string.manage_pick_disk_subtitle),
+                        text = if (modalMode == TargetModalMode.DIRECT_MOUNT) stringResource(R.string.manage_direct_mount_subtitle)
+                               else stringResource(R.string.manage_pick_disk_subtitle),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -3234,83 +3672,85 @@ private fun SmartStoragePartitionBottomSheet(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Option 1: Memori Internal (Frozen / Disabled if all data originates from internal)
-                        Card(
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (allSelectedOnInternal) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                else MaterialTheme.colorScheme.surface
-                            ),
-                            border = BorderStroke(
-                                1.dp,
-                                if (!allSelectedOnInternal && isTargetInternal) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = !allSelectedOnInternal) {
-                                    isTargetInternal = true
-                                    selectedDisk = null
-                                    selectedPartition = null
-                                }
-                        ) {
-                            Row(
+                        // Option 1: Memori Internal (Only shown in TRANSFER mode)
+                        if (modalMode != TargetModalMode.DIRECT_MOUNT) {
+                            Card(
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (allSelectedOnInternal) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                    else MaterialTheme.colorScheme.surface
+                                ),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (!allSelectedOnInternal && isTargetInternal) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    .clickable(enabled = !allSelectedOnInternal) {
+                                        isTargetInternal = true
+                                        selectedDisk = null
+                                        selectedPartition = null
+                                    }
                             ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
+                                Row(
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .background(
-                                            color = if (allSelectedOnInternal) Color.Gray.copy(alpha = 0.15f) else Color(0xFFDF4006).copy(alpha = 0.12f),
-                                            shape = RoundedCornerShape(8.dp)
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(
+                                                color = if (allSelectedOnInternal) Color.Gray.copy(alpha = 0.15f) else Color(0xFFDF4006).copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Smartphone,
+                                            contentDescription = null,
+                                            tint = if (allSelectedOnInternal) Color.Gray else Color(0xFFDF4006),
+                                            modifier = Modifier.size(20.dp)
                                         )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Smartphone,
-                                        contentDescription = null,
-                                        tint = if (allSelectedOnInternal) Color.Gray else Color(0xFFDF4006),
-                                        modifier = Modifier.size(20.dp)
+                                    }
+
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.manage_internal_memory_label),
+                                            style = MaterialTheme.typography.titleSmall.copy(
+                                                fontSize = 13.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = if (allSelectedOnInternal) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                    else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = if (allSelectedOnInternal) stringResource(R.string.manage_current_location_disabled)
+                                                   else stringResource(R.string.manage_available_space, FormatUtils.formatExactBytes(internalFreeBytes)),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = if (allSelectedOnInternal) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    RadioButton(
+                                        selected = !allSelectedOnInternal && isTargetInternal,
+                                        onClick = if (!allSelectedOnInternal) {
+                                            {
+                                                isTargetInternal = true
+                                                selectedDisk = null
+                                                selectedPartition = null
+                                            }
+                                        } else null,
+                                        enabled = !allSelectedOnInternal
                                     )
                                 }
-
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(1.dp)
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.manage_internal_memory_label),
-                                        style = MaterialTheme.typography.titleSmall.copy(
-                                            fontSize = 13.5.sp,
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = if (allSelectedOnInternal) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                                else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = if (allSelectedOnInternal) stringResource(R.string.manage_current_location_disabled)
-                                               else stringResource(R.string.manage_available_space, FormatUtils.formatExactBytes(internalFreeBytes)),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = if (allSelectedOnInternal) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                                else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                RadioButton(
-                                    selected = !allSelectedOnInternal && isTargetInternal,
-                                    onClick = if (!allSelectedOnInternal) {
-                                        {
-                                            isTargetInternal = true
-                                            selectedDisk = null
-                                            selectedPartition = null
-                                        }
-                                    } else null,
-                                    enabled = !allSelectedOnInternal
-                                )
                             }
                         }
 
@@ -3320,7 +3760,7 @@ private fun SmartStoragePartitionBottomSheet(
                                 val hasOtherPartitions = disk.partitions.any { part ->
                                     !part.mountPoint.isNullOrBlank() && part.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/')
                                 }
-                                val isDiskDisabled = allSelectedOnMicroSd && !hasOtherPartitions
+                                val isDiskDisabled = if (modalMode == TargetModalMode.DIRECT_MOUNT) false else (allSelectedOnMicroSd && !hasOtherPartitions)
                                 val isSelected = !isTargetInternal && selectedDisk == disk
                                 Card(
                                     shape = RoundedCornerShape(10.dp),
@@ -3482,8 +3922,12 @@ private fun SmartStoragePartitionBottomSheet(
                                 modalStep = 2
                             }
                         },
-                        enabled = (isTargetInternal && !allSelectedOnInternal) ||
-                            (!isTargetInternal && (selectedDisk == null || !allSelectedOnMicroSd || selectedDisk!!.partitions.any { !it.mountPoint.isNullOrBlank() && it.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/') })),
+                        enabled = if (modalMode == TargetModalMode.DIRECT_MOUNT) {
+                            selectedDisk != null || externalDisks.isEmpty()
+                        } else {
+                            (isTargetInternal && !allSelectedOnInternal) ||
+                            (!isTargetInternal && (selectedDisk == null || !allSelectedOnMicroSd || selectedDisk!!.partitions.any { !it.mountPoint.isNullOrBlank() && it.mountPoint.trimEnd('/') != currentSdBase.trimEnd('/') }))
+                        },
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         modifier = Modifier
@@ -3517,10 +3961,10 @@ private fun SmartStoragePartitionBottomSheet(
                     ) {
                         if (partitions.isNotEmpty()) {
                             partitions.forEach { partition ->
-                                val isCurrentPartition = allSelectedOnMicroSd && (
+                                val isCurrentPartition = if (modalMode == TargetModalMode.DIRECT_MOUNT) false else (allSelectedOnMicroSd && (
                                     (!partition.mountPoint.isNullOrBlank() && partition.mountPoint.trimEnd('/') == currentSdBase.trimEnd('/')) ||
                                     (partition.mountPoint.isNullOrBlank() && currentSdBase == "/data/sdext2" && partition.partitionNumber == 3)
-                                )
+                                ))
                                 val isSelected = !isCurrentPartition && selectedPartition == partition
                                 Card(
                                     shape = RoundedCornerShape(10.dp),
@@ -3669,7 +4113,7 @@ private fun SmartStoragePartitionBottomSheet(
 
                         Button(
                             onClick = { modalStep = 3 },
-                            enabled = selectedPartition != null && (!allSelectedOnMicroSd || selectedPartition?.mountPoint?.trimEnd('/') != currentSdBase.trimEnd('/')),
+                            enabled = selectedPartition != null && (modalMode == TargetModalMode.DIRECT_MOUNT || (!allSelectedOnMicroSd || selectedPartition?.mountPoint?.trimEnd('/') != currentSdBase.trimEnd('/') )),
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             modifier = Modifier
@@ -3718,7 +4162,9 @@ private fun SmartStoragePartitionBottomSheet(
                             )
                             SummaryRow(
                                 label = stringResource(R.string.manage_summary_from),
-                                value = if (isTargetInternal) {
+                                value = if (modalMode == TargetModalMode.DIRECT_MOUNT) {
+                                    stringResource(R.string.manage_internal_memory_label)
+                                } else if (isTargetInternal) {
                                     val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
                                     val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
                                     "$diskName$partName"
@@ -3728,7 +4174,11 @@ private fun SmartStoragePartitionBottomSheet(
                             )
                             SummaryRow(
                                 label = stringResource(R.string.manage_summary_to),
-                                value = if (isTargetInternal) {
+                                value = if (modalMode == TargetModalMode.DIRECT_MOUNT) {
+                                    val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                                    val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
+                                    "$diskName$partName"
+                                } else if (isTargetInternal) {
                                     stringResource(R.string.manage_internal_memory_label)
                                 } else {
                                     val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
@@ -3801,30 +4251,57 @@ private fun SmartStoragePartitionBottomSheet(
                             )
                         }
 
-                        Button(
-                            onClick = {
-                                onConfirmMove(
-                                    if (isTargetInternal) MoveDirection.TO_INTERNAL else MoveDirection.TO_SD,
-                                    selectedDisk,
-                                    selectedPartition
+                        if (modalMode == TargetModalMode.DIRECT_MOUNT) {
+                            Button(
+                                onClick = {
+                                    onConfirmDirectMount?.invoke(
+                                        selectedDisk,
+                                        selectedPartition
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Link,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
                                 )
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier
-                                .weight(1.5f)
-                                .height(44.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = stringResource(R.string.manage_btn_start_move),
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                            )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.manage_btn_confirm_direct_mount),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    onConfirmMove(
+                                        if (isTargetInternal) MoveDirection.TO_INTERNAL else MoveDirection.TO_SD,
+                                        selectedDisk,
+                                        selectedPartition
+                                    )
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .height(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.manage_btn_start_move),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
                         }
                     }
                 }

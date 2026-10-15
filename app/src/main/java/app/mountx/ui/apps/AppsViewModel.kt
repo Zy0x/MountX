@@ -14,6 +14,7 @@ import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.OperationProgress
+import app.mountx.data.model.OperationType
 import app.mountx.data.repository.AppRepository
 import app.mountx.data.repository.StorageRepository
 import app.mountx.util.AppPreferences
@@ -481,6 +482,68 @@ class AppsViewModel @Inject constructor(
                 }
             } else {
                 _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
+            }
+        }
+    }
+
+    fun directMount(
+        packageName: String,
+        points: List<app.mountx.data.model.MountPointConfig>,
+        targetBase: String
+    ) {
+        viewModelScope.launch {
+            val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
+            _isMovingData.value = true
+            _operationProgress.value = OperationProgress(
+                type = OperationType.MOUNT,
+                title = "Kaitkan Langsung",
+                subtitle = "${game.displayName} • ${points.size} Kategori",
+                progressPercent = 0.1f
+            )
+
+            val result = gameRepository.directMountGame(game, points, targetBase) { prog ->
+                _operationProgress.value = prog
+            }
+
+            _isMovingData.value = false
+            if (result.isSuccess) {
+                _moveMessage.value = "SUCCESS"
+            } else {
+                _moveMessage.value = result.exceptionOrNull()?.message ?: "Direct mount failed"
+            }
+
+            val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, targetBase)
+            _storageBreakdownMap.update { it + (packageName to breakdown) }
+            if (_activePackageName.value == packageName) {
+                _detailedStorage.value = breakdown
+                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            }
+        }
+    }
+
+    fun unmountMountPoints(
+        packageName: String,
+        points: List<app.mountx.data.model.MountPointConfig>
+    ) {
+        viewModelScope.launch {
+            val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
+            _operationProgress.value = OperationProgress(
+                type = OperationType.UNMOUNT,
+                title = "Melepaskan Kaitan Kategori",
+                subtitle = "${game.displayName} • ${points.size} Kategori",
+                progressPercent = 0.2f
+            )
+
+            val result = gameRepository.unmountMountPoints(game, points) { prog ->
+                _operationProgress.value = prog
+            }
+
+            val defaultSdBase = appPreferences.sdBasePath.first()
+            val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, defaultSdBase)
+            _storageBreakdownMap.update { it + (packageName to breakdown) }
+            if (_activePackageName.value == packageName) {
+                _detailedStorage.value = breakdown
+                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
             }
         }
     }

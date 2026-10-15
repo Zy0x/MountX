@@ -8,6 +8,7 @@ import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountPointConfig
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.OperationProgress
+import app.mountx.data.model.OperationType
 import app.mountx.data.model.RootSolution
 import app.mountx.data.repository.GameRepository
 import app.mountx.data.repository.StorageRepository
@@ -329,6 +330,22 @@ class DashboardViewModel @Inject constructor(
                 gameRepository.mountGame(updated, targetBase) { prog ->
                     _operationProgress.value = prog
                 }
+            }
+            refresh()
+        }
+    }
+
+    fun directMountWithOptions(game: GameEntry, selectedPoints: List<MountPointConfig>, targetBase: String) {
+        viewModelScope.launch {
+            val activePoints = selectedPoints.map { it.copy(enabled = true) }
+            _operationProgress.value = OperationProgress(
+                type = OperationType.MOUNT,
+                title = "Kaitkan Langsung",
+                subtitle = "${game.displayName} • ${activePoints.size} Kategori",
+                progressPercent = 0.1f
+            )
+            gameRepository.directMountGame(game, activePoints, targetBase) { prog ->
+                _operationProgress.value = prog
             }
             refresh()
         }

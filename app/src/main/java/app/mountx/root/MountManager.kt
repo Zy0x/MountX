@@ -155,7 +155,8 @@ class MountManager {
     suspend fun mountGame(
         game: GameEntry,
         sdBase: String,
-        onProgress: ((OperationProgress) -> Unit)? = null
+        onProgress: ((OperationProgress) -> Unit)? = null,
+        autoCreateSource: Boolean = true
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val steps = listOf(
@@ -322,7 +323,7 @@ class MountManager {
 
                     val mounted = when (mp.category) {
                         MountPointCategory.EXTERNAL_DATA, MountPointCategory.OBB_STORAGE, MountPointCategory.GAME_ASSETS -> {
-                            mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false)
+                            mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false, autoCreateSource = autoCreateSource)
                         }
                         MountPointCategory.MEDIA_DOWNLOADS -> {
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
@@ -333,15 +334,15 @@ class MountManager {
                             } else {
                                 RootShell.exec("rm -f \"${mp.sourcePath}/.nomedia\" 2>/dev/null")
                             }
-                            val res = mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = true)
+                            val res = mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = true, autoCreateSource = autoCreateSource)
                             if (res) triggerMediaScan(mp.targetPath)
                             res
                         }
                         MountPointCategory.CACHE_SHADERS -> {
-                            mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false)
+                            mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false, autoCreateSource = autoCreateSource)
                         }
                         MountPointCategory.CUSTOM -> {
-                            val res = mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false)
+                            val res = mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false, autoCreateSource = autoCreateSource)
                             if (res) triggerMediaScan(mp.targetPath)
                             res
                         }
@@ -475,11 +476,21 @@ class MountManager {
         uid: Int,
         gid: Int,
         namespaces: List<String>,
-        isMedia: Boolean
+        isMedia: Boolean,
+        autoCreateSource: Boolean = true
     ): Boolean {
         if (!RootShell.exists(mp.sourcePath)) {
-            AppLogger.warn("MountManager", "Source path ${mp.sourcePath} does not exist on SD storage. Skipping mount to prevent hiding internal data.")
-            return false
+            if (autoCreateSource) {
+                AppLogger.info("MountManager", "Source path ${mp.sourcePath} does not exist on target storage. Creating directory for direct mount.")
+                RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
+                RootShell.exec("chown -R $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
+                RootShell.exec("chmod -R 777 \"${mp.sourcePath}\" 2>/dev/null")
+                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
+            } else {
+                AppLogger.warn("MountManager", "Source path ${mp.sourcePath} does not exist on SD storage. Skipping mount to prevent hiding internal data.")
+                return false
+            }
         }
 
         RootShell.exec("chown -R $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
@@ -737,6 +748,109 @@ class MountManager {
                 )
             }
         }
+
+    /**
+     * Unmount specific mount points without unmounting other active points of the game.
+     */
+    suspend fun unmountMountPoints(
+        game: GameEntry,
+        points: List<MountPointConfig>,
+        onProgress: ((OperationProgress) -> Unit)? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val steps = listOf(
+                "Menghentikan Proses Aplikasi",
+                "Melepaskan Kaitan VFS Namespaces Terpilih",
+                "Memulihkan Konteks SELinux",
+                "Pelepasan Selesai"
+            )
+            val opType = OperationType.UNMOUNT
+            val title = "Melepaskan Kaitan Kategori"
+            val subtitle = "${game.displayName} • ${points.size} Kategori"
+
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = 0,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    progressPercent = 0.25f
+                )
+            )
+
+            // Force-stop app process if running
+            val pgrepRes = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
+            if (pgrepRes.isSuccess && pgrepRes.output.isNotBlank()) {
+                RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
+            }
+
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = 1,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    progressPercent = 0.6f
+                )
+            )
+
+            for (mp in points) {
+                val targetUserId = resolveUserId(mp.targetPath)
+                if (mp.category == MountPointCategory.PRIVATE_INTERNAL || mp.isVirtualContainer) {
+                    RootShell.exec("sync")
+                    RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data/data/${game.packageName}\" 2>/dev/null")
+                    val loopDev = RootShell.execForOutput(
+                        "losetup -a 2>/dev/null | grep \"${game.packageName}_data.img\" | cut -d':' -f1 | tr -d '\\r\\n'"
+                    )
+                    if (loopDev.isNotBlank()) {
+                        RootShell.exec("losetup -d \"$loopDev\" 2>/dev/null")
+                    }
+                } else {
+                    val userNamespaces = getTargetNamespaces(targetUserId)
+                    val relPath = extractRelativePath(mp.targetPath)
+                    for (ns in userNamespaces) {
+                        RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                    }
+                    RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
+                    if (mp.category == MountPointCategory.MEDIA_DOWNLOADS || mp.category == MountPointCategory.CUSTOM) {
+                        triggerMediaScan(mp.targetPath)
+                    }
+                }
+            }
+
+            onProgress?.invoke(
+                OperationProgress(
+                    type = opType,
+                    title = title,
+                    subtitle = subtitle,
+                    currentStepIndex = 3,
+                    totalSteps = steps.size,
+                    stepDescriptions = steps,
+                    progressPercent = 1.0f,
+                    isFinished = true,
+                    isSuccess = true
+                )
+            )
+            Unit
+        }.onFailure { err ->
+            onProgress?.invoke(
+                OperationProgress(
+                    type = OperationType.UNMOUNT,
+                    title = "Melepaskan Kaitan Kategori",
+                    subtitle = "${game.displayName} • ${points.size} Kategori",
+                    isFinished = true,
+                    isSuccess = false,
+                    errorMessage = err.message
+                )
+            )
+        }
+    }
 
     /**
      * Unmount all bind-mounted paths and loop devices from the given sdBase.

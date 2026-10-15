@@ -198,6 +198,18 @@ fun AppsScreen(
                 )
                 viewModel.moveMountPoints(draftGame.packageName, pts, dir, basePath, conflictStrategy)
             },
+            onDirectMountMountPoints = { pts, basePath ->
+                viewModel.addGameWithMountPoints(
+                    packageName = draftGame.packageName,
+                    displayName = draftGame.displayName,
+                    mountPoints = pts,
+                    initialSizeBytes = draftGame.dataSizeBytes
+                )
+                viewModel.directMount(draftGame.packageName, pts, basePath)
+            },
+            onUnmountMountPoints = { pts ->
+                viewModel.unmountMountPoints(draftGame.packageName, pts)
+            },
             onMount = {
                 val game = games.firstOrNull { it.packageName == draftGame.packageName } ?: draftGame
                 viewModel.mountGame(game)
@@ -275,6 +287,12 @@ fun AppsScreen(
                 val basePath = targetPartition?.mountPoint ?: targetDisk?.mountPath
                 viewModel.moveMountPoints(updatedGame.packageName, pts, dir, basePath, conflictStrategy)
             },
+            onDirectMountMountPoints = { pts, basePath ->
+                viewModel.directMount(updatedGame.packageName, pts, basePath)
+            },
+            onUnmountMountPoints = { pts ->
+                viewModel.unmountMountPoints(updatedGame.packageName, pts)
+            },
             onUpdateMountPoints = { pts ->
                 viewModel.updateMountPoints(updatedGame.packageName, pts)
             },
@@ -317,6 +335,9 @@ fun AppsScreen(
                     direction = app.mountx.data.model.MoveDirection.TO_SD,
                     targetDiskBase = targetBase
                 )
+            },
+            onDirectMountWithOptions = { game, points, targetBase ->
+                viewModel.directMount(game.packageName, points, targetBase)
             },
             availableDisks = availableDisks,
             sdBase = sdBasePath,
@@ -410,6 +431,7 @@ fun GamesContent(
     onToggleMount: (GameEntry) -> Unit,
     onMigrateGame: (GameEntry) -> Unit = {},
     onMigrateGameWithOptions: (GameEntry, List<app.mountx.data.model.MountPointConfig>, String) -> Unit = { _, _, _ -> },
+    onDirectMountWithOptions: (GameEntry, List<app.mountx.data.model.MountPointConfig>, String) -> Unit = { _, _, _ -> },
     availableDisks: List<app.mountx.data.model.SdCardDiskInfo> = emptyList(),
     sdBase: String = "/data/sdext2",
     onMountAll: () -> Unit,
@@ -873,6 +895,10 @@ fun GamesContent(
             onConfirmMigration = { points, targetBase ->
                 gameForNeedMigration = null
                 onMigrateGameWithOptions(target, points, targetBase)
+            },
+            onDirectMount = { points, targetBase ->
+                gameForNeedMigration = null
+                onDirectMountWithOptions(target, points, targetBase)
             },
             onOpenDetail = {
                 gameForNeedMigration = null

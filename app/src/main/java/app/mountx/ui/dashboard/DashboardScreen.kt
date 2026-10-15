@@ -202,6 +202,9 @@ fun DashboardScreen(
         onMigrateGameWithOptions = { game, points, targetBase ->
             viewModel.migrateGameWithOptions(game, points, targetBase)
         },
+        onDirectMountWithOptions = { game, points, targetBase ->
+            viewModel.directMountWithOptions(game, points, targetBase)
+        },
         onRecalculateSizes = { viewModel.recalculateAllSizes() },
         onRefreshTelemetry = { viewModel.loadLiveTelemetry() },
         modifier = modifier
@@ -236,6 +239,7 @@ fun DashboardContent(
     onToggleGameMount: (GameEntry) -> Unit,
     onMigrateGame: (GameEntry) -> Unit = {},
     onMigrateGameWithOptions: (GameEntry, List<app.mountx.data.model.MountPointConfig>, String) -> Unit = { _, _, _ -> },
+    onDirectMountWithOptions: (GameEntry, List<app.mountx.data.model.MountPointConfig>, String) -> Unit = { _, _, _ -> },
     onRecalculateSizes: () -> Unit = {},
     onRefreshTelemetry: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -434,6 +438,10 @@ fun DashboardContent(
                 onConfirmMigration = { points, targetBase ->
                     gameToMigrateConfirm = null
                     onMigrateGameWithOptions(target, points, targetBase)
+                },
+                onDirectMount = { points, targetBase ->
+                    gameToMigrateConfirm = null
+                    onDirectMountWithOptions(target, points, targetBase)
                 },
                 onOpenDetail = {
                     gameToMigrateConfirm = null

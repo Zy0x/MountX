@@ -18,7 +18,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PermMedia
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tune
@@ -80,6 +82,7 @@ fun NeedMigrationDialog(
     availableDisks: List<SdCardDiskInfo> = emptyList(),
     defaultSdBase: String = "/data/sdext2",
     onConfirmMigration: (selectedPoints: List<MountPointConfig>, targetBase: String) -> Unit,
+    onDirectMount: ((selectedPoints: List<MountPointConfig>, targetBase: String) -> Unit)? = null,
     onOpenDetail: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
@@ -463,49 +466,89 @@ fun NeedMigrationDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    val targetBase = selectedTarget.mountPoint
-                    val chosenPoints = categoryOptions.filter { selectedCategoryIds.contains(it.id) }.map { opt ->
-                        val existing = opt.originalConfig
-                        val relSource = when (opt.category) {
-                            MountPointCategory.EXTERNAL_DATA -> "MountX/Android/data/$pkg"
-                            MountPointCategory.OBB_STORAGE -> "MountX/Android/obb/$pkg"
-                            MountPointCategory.MEDIA_DOWNLOADS -> "MountX/Android/media/$pkg"
-                            else -> "MountX/data/$pkg"
-                        }
-                        val finalSource = "$targetBase/$relSource"
-                        val defaultTarget = when (opt.category) {
-                            MountPointCategory.EXTERNAL_DATA -> "/data/media/0/Android/data/$pkg"
-                            MountPointCategory.OBB_STORAGE -> "/data/media/0/Android/obb/$pkg"
-                            MountPointCategory.MEDIA_DOWNLOADS -> "/data/media/0/Android/media/$pkg"
-                            else -> "/data/data/$pkg"
-                        }
-                        existing?.copy(
-                            sourcePath = finalSource,
-                            targetPath = if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/sdcard")) existing.targetPath else defaultTarget,
-                            enabled = true
-                        ) ?: MountPointConfig(
-                            id = "${opt.id}_${pkg}_${System.currentTimeMillis()}",
-                            category = opt.category,
-                            sourcePath = finalSource,
-                            targetPath = defaultTarget,
-                            enabled = true
+            val getChosenPoints = { targetBase: String ->
+                categoryOptions.filter { selectedCategoryIds.contains(it.id) }.map { opt ->
+                    val existing = opt.originalConfig
+                    val relSource = when (opt.category) {
+                        MountPointCategory.EXTERNAL_DATA -> "MountX/Android/data/$pkg"
+                        MountPointCategory.OBB_STORAGE -> "MountX/Android/obb/$pkg"
+                        MountPointCategory.MEDIA_DOWNLOADS -> "MountX/Android/media/$pkg"
+                        else -> "MountX/data/$pkg"
+                    }
+                    val finalSource = "$targetBase/$relSource"
+                    val defaultTarget = when (opt.category) {
+                        MountPointCategory.EXTERNAL_DATA -> "/data/media/0/Android/data/$pkg"
+                        MountPointCategory.OBB_STORAGE -> "/data/media/0/Android/obb/$pkg"
+                        MountPointCategory.MEDIA_DOWNLOADS -> "/data/media/0/Android/media/$pkg"
+                        else -> "/data/data/$pkg"
+                    }
+                    existing?.copy(
+                        sourcePath = finalSource,
+                        targetPath = if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/sdcard")) existing.targetPath else defaultTarget,
+                        enabled = true
+                    ) ?: MountPointConfig(
+                        id = "${opt.id}_${pkg}_${System.currentTimeMillis()}",
+                        category = opt.category,
+                        sourcePath = finalSource,
+                        targetPath = defaultTarget,
+                        enabled = true
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onDirectMount != null) {
+                    OutlinedButton(
+                        onClick = {
+                            val targetBase = selectedTarget.mountPoint
+                            val chosenPoints = getChosenPoints(targetBase)
+                            onDirectMount(chosenPoints, targetBase)
+                            onDismiss()
+                        },
+                        enabled = selectedCategoryIds.isNotEmpty(),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Link,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.migration_direct_mount_action),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                         )
                     }
-                    onConfirmMigration(chosenPoints, targetBase)
-                    onDismiss()
-                },
-                enabled = selectedCategoryIds.isNotEmpty(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = amberColor),
-                modifier = Modifier.height(44.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.migration_start_action),
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
-                )
+                }
+
+                Button(
+                    onClick = {
+                        val targetBase = selectedTarget.mountPoint
+                        val chosenPoints = getChosenPoints(targetBase)
+                        onConfirmMigration(chosenPoints, targetBase)
+                        onDismiss()
+                    },
+                    enabled = selectedCategoryIds.isNotEmpty(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = amberColor),
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.migration_start_action),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
             }
         },
         dismissButton = {

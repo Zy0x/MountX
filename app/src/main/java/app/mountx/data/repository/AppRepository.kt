@@ -374,6 +374,92 @@ class AppRepository @Inject constructor(
             }
         }
 
+    suspend fun directMountGame(
+        game: GameEntry,
+        points: List<MountPointConfig>,
+        targetBase: String,
+        onProgress: ((OperationProgress) -> Unit)? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        RootShell.rootExecutionMutex.withLock {
+            runCatching {
+                val pkg = game.packageName
+                AppLogger.info("Games", "Direct-mounting ${game.displayName} ($pkg) to $targetBase")
+
+                val currentPoints = game.mountPoints
+                val updatedPoints = currentPoints.map { pt ->
+                    val matching = points.firstOrNull { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }
+                    if (matching != null) matching.copy(enabled = true) else pt
+                }.toMutableList()
+                for (newPt in points) {
+                    if (updatedPoints.none { it.id == newPt.id || it.resolveCategory() == newPt.resolveCategory() }) {
+                        updatedPoints.add(newPt.copy(enabled = true))
+                    }
+                }
+
+                val updatedGame = game.copy(
+                    mountPoints = updatedPoints,
+                    mountStatus = MountStatus.MOUNTED,
+                    isEnabled = true
+                )
+                gameDao.updateGame(updatedGame)
+                syncModuleGamelist()
+
+                val mountResult = mountManager.mountGame(updatedGame, targetBase, onProgress = onProgress, autoCreateSource = true)
+                if (mountResult.isFailure) {
+                    gameDao.updateMountStatus(pkg, MountStatus.ERROR)
+                    throw mountResult.exceptionOrNull() ?: Exception("Direct mount failed")
+                }
+
+                gameDao.updateMountStatus(pkg, MountStatus.MOUNTED)
+                calculateDataSize(pkg, targetBase)
+                syncDiskCatalog(targetBase)
+                mountNotificationManager.syncActiveMountNotification()
+                AppLogger.success("Games", "Direct mount successful for ${game.displayName}")
+                Unit
+            }
+        }
+    }
+
+    suspend fun unmountMountPoints(
+        game: GameEntry,
+        points: List<MountPointConfig>,
+        sdBase: String = "/data/sdext2",
+        onProgress: ((OperationProgress) -> Unit)? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        RootShell.rootExecutionMutex.withLock {
+            runCatching {
+                val pkg = game.packageName
+                AppLogger.info("Games", "Unmounting ${points.size} categories for ${game.displayName} ($pkg)")
+                val unmountResult = mountManager.unmountMountPoints(game, points, onProgress)
+                if (unmountResult.isFailure) {
+                    throw unmountResult.exceptionOrNull() ?: Exception("Unmount failed")
+                }
+
+                val updatedPoints = game.mountPoints.map { pt ->
+                    if (points.any { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }) {
+                        pt.copy(enabled = false)
+                    } else {
+                        pt
+                    }
+                }
+                val anyEnabled = updatedPoints.any { it.enabled }
+                val updatedGame = game.copy(
+                    mountPoints = updatedPoints,
+                    mountStatus = if (anyEnabled) MountStatus.MOUNTED else MountStatus.UNMOUNTED,
+                    isEnabled = anyEnabled
+                )
+                gameDao.updateGame(updatedGame)
+                syncModuleGamelist()
+
+                calculateDataSize(pkg, sdBase)
+                syncDiskCatalog(sdBase)
+                mountNotificationManager.syncActiveMountNotification()
+                AppLogger.success("Games", "Successfully unmounted categories for ${game.displayName}")
+                Unit
+            }
+        }
+    }
+
     suspend fun mountAll(sdBase: String = "/data/sdext2"): Int =
         withContext(Dispatchers.IO) {
             RootShell.rootExecutionMutex.withLock {
