@@ -29,11 +29,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
+import android.graphics.BitmapFactory
+import java.io.File
+import java.io.FileOutputStream
+
 /**
- * High-performance 120 FPS application icon loader and memory cache for MountX.
+ * High-performance 120 FPS application icon loader, disk cache, and memory cache for MountX.
  * - In-memory ApplicationInfo cache eliminates repeated Binder IPC calls to system_server
- * - 1024-slot in-memory LruCache for instant synchronous rendering
- * - Serialized IO dispatcher preventing thread pool exhaustion
+ * - Multi-tiered caching: L1 (1024-slot LruCache in RAM) -> L2 (local persistent PNG disk cache) -> PackageManager
+ * - Balanced 3-worker IO dispatcher for multi-threaded decoding without thread pool saturation
  * - Background pre-warming mechanism with thread priority management
  */
 object AppIconManager {
@@ -41,7 +45,15 @@ object AppIconManager {
     val iconCache = LruCache<String, ImageBitmap>(1024)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val iconDispatcher = Dispatchers.IO.limitedParallelism(1)
+    val iconDispatcher = Dispatchers.IO.limitedParallelism(3)
+
+    private fun getIconCacheDir(context: Context): File {
+        val dir = File(context.cacheDir, "app_icons")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
 
     fun registerAppInfos(apps: List<android.content.pm.ApplicationInfo>) {
         for (app in apps) {
@@ -52,16 +64,41 @@ object AppIconManager {
     fun getCached(packageName: String): ImageBitmap? = iconCache.get(packageName)
 
     fun loadIcon(context: Context, packageName: String): ImageBitmap? {
+        // L1: Memory Cache
         val cached = iconCache.get(packageName)
         if (cached != null) return cached
 
+        // L2: Persistent Disk Cache
+        try {
+            val diskFile = File(getIconCacheDir(context), "$packageName.png")
+            if (diskFile.exists() && diskFile.length() > 0) {
+                val diskBitmap = BitmapFactory.decodeFile(diskFile.absolutePath)
+                if (diskBitmap != null) {
+                    val imageBitmap = diskBitmap.asImageBitmap()
+                    iconCache.put(packageName, imageBitmap)
+                    return imageBitmap
+                }
+            }
+        } catch (_: Exception) {}
+
+        // L3: PackageManager IPC
         return try {
             val pm = context.packageManager
             val appInfo = appInfoCache[packageName] ?: pm.getApplicationInfo(packageName, 0)
             val drawable = appInfo.loadIcon(pm)
-            val bitmap = drawableToImageBitmap(drawable)
-            iconCache.put(packageName, bitmap)
-            bitmap
+            val bitmap = drawableToBitmap(drawable)
+            val imageBitmap = bitmap.asImageBitmap()
+            iconCache.put(packageName, imageBitmap)
+
+            // Asynchronously / safely persist to disk cache
+            try {
+                val diskFile = File(getIconCacheDir(context), "$packageName.png")
+                FileOutputStream(diskFile).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+            } catch (_: Exception) {}
+
+            imageBitmap
         } catch (_: Exception) {
             null
         }
@@ -70,8 +107,8 @@ object AppIconManager {
     suspend fun prewarmIcons(context: Context, packageNames: List<String>) {
         withContext(iconDispatcher) {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
-            // Limit prewarming to top 25 visible apps to preserve CPU and flash IO; remainder loaded lazy on-demand
-            for (pkg in packageNames.take(25)) {
+            // Prewarm top 35 apps for instant buttery scroll
+            for (pkg in packageNames.take(35)) {
                 if (iconCache.get(pkg) == null) {
                     loadIcon(context, pkg)
                 }
@@ -79,22 +116,21 @@ object AppIconManager {
         }
     }
 
-    private fun drawableToImageBitmap(drawable: Drawable): ImageBitmap {
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
         val targetSize = 96
         if (drawable is BitmapDrawable && drawable.bitmap != null) {
             val orig = drawable.bitmap
             if (orig.width <= targetSize && orig.height <= targetSize && orig.config == Bitmap.Config.ARGB_8888) {
-                return orig.asImageBitmap()
+                return orig
             }
-            val scaled = Bitmap.createScaledBitmap(orig, targetSize, targetSize, true)
-            return scaled.asImageBitmap()
+            return Bitmap.createScaledBitmap(orig, targetSize, targetSize, true)
         }
 
         val bitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, targetSize, targetSize)
         drawable.draw(canvas)
-        return bitmap.asImageBitmap()
+        return bitmap
     }
 }
 

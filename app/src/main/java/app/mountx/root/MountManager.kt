@@ -530,7 +530,7 @@ class MountManager {
                     }
                 }
                 RootShell.exec("mkdir -p \"$nsTarget\" 2>/dev/null")
-                val mountRes = if (isNonPosix) {
+                var mountRes = if (isNonPosix) {
                     val sdRes = RootShell.exec("toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid=$uid,mask=0 \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
                     if (sdRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
                         sdRes
@@ -540,6 +540,25 @@ class MountManager {
                 } else {
                     RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
                 }
+
+                // SELinux and Permission Self-Healing Fallback
+                if (!mountRes.isSuccess && !RootShell.isMountpoint(nsTarget)) {
+                    AppLogger.warn("MountManager", "Bind mount initially failed on $nsTarget. Executing SELinux and permission self-healing...")
+                    RootShell.exec("restorecon -R \"${mp.sourcePath}\" 2>/dev/null")
+                    RootShell.exec("restorecon -R \"$nsTarget\" 2>/dev/null")
+                    RootShell.exec("chmod 775 \"$nsTarget\" 2>/dev/null")
+                    RootShell.exec("chown $uid:$gid \"$nsTarget\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$nsTarget\" 2>/dev/null")
+
+                    mountRes = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                    if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
+                        AppLogger.info("MountManager", "Self-healing succeeded: bind mount established on $nsTarget")
+                    } else {
+                        AppLogger.error("MountManager", "Self-healing bind mount retry failed on $nsTarget: ${mountRes.output}")
+                    }
+                }
+
                 if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
                     anyMounted = true
                 }

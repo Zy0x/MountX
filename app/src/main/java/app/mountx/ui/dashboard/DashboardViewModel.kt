@@ -127,7 +127,6 @@ class DashboardViewModel @Inject constructor(
 
     init {
         refresh()
-        startLiveStoragePulse()
         viewModelScope.launch {
             systemSyncMonitor.events.collect { event ->
                 when (event) {
@@ -189,9 +188,7 @@ class DashboardViewModel @Inject constructor(
                 // Background calculate game sizes so real storage is displayed accurately
                 launch(Dispatchers.IO) {
                     val current = games.value
-                    for (g in current) {
-                        gameRepository.calculateDataSize(g.packageName, sdBase)
-                    }
+                    gameRepository.calculateDataSizesBatch(current, sdBase)
                 }
                 loadLiveTelemetry()
             } finally {
@@ -211,9 +208,7 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val sdBase = appPreferences.sdBasePath.first()
             val current = games.value
-            for (g in current) {
-                gameRepository.calculateDataSize(g.packageName, sdBase)
-            }
+            gameRepository.calculateDataSizesBatch(current, sdBase)
             loadLiveTelemetry()
         }
     }
@@ -223,16 +218,17 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val sdBase = appPreferences.sdBasePath.first()
             val current = games.value
-            for (g in current) {
-                gameRepository.calculateDataSize(g.packageName, sdBase)
-            }
+            gameRepository.calculateDataSizesBatch(current, sdBase)
         }
     }
 
-    private fun startLiveStoragePulse() {
-        viewModelScope.launch(Dispatchers.IO) {
+    private var livePulseJob: kotlinx.coroutines.Job? = null
+
+    fun startLiveStoragePulse() {
+        if (livePulseJob?.isActive == true) return
+        livePulseJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
-                delay(8_000L) // 8-second gentle pulse
+                delay(15_000L) // 15-second gentle pulse
                 try {
                     val sdBase = appPreferences.sdBasePath.first()
                     val currentStorage = storageRepository.getStorageInfo(sdBase)
@@ -241,15 +237,18 @@ class DashboardViewModel @Inject constructor(
                             // Storage capacity changed (> 5 MB, e.g. game downloaded assets)
                             storageRepository.refreshStorage()
                             val mountedGames = games.value.filter { it.mountStatus == MountStatus.MOUNTED }
-                            for (g in mountedGames) {
-                                gameRepository.calculateDataSize(g.packageName, sdBase)
-                            }
+                            gameRepository.calculateDataSizesBatch(mountedGames, sdBase)
                         }
                         lastRecordedUsedBytes = currentStorage.usedBytes
                     }
                 } catch (_: Exception) {}
             }
         }
+    }
+
+    fun stopLiveStoragePulse() {
+        livePulseJob?.cancel()
+        livePulseJob = null
     }
 
     fun loadLiveTelemetry() {

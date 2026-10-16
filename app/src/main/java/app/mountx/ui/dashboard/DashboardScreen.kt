@@ -78,6 +78,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -173,6 +174,13 @@ fun DashboardScreen(
     val offloadedStats by viewModel.offloadedStats.collectAsState()
     val liveTelemetry by viewModel.liveTelemetry.collectAsState()
     val operationProgress by viewModel.operationProgress.collectAsState()
+
+    DisposableEffect(Unit) {
+        viewModel.startLiveStoragePulse()
+        onDispose {
+            viewModel.stopLiveStoragePulse()
+        }
+    }
 
     DashboardContent(
         status = status,
