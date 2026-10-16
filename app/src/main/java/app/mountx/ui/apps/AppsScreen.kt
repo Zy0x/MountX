@@ -190,9 +190,12 @@ fun AppsScreen(
                     initialSizeBytes = newGame.dataSizeBytes
                 )
                 configuringApp = null
+                selectedGameForDetail = newGame
+                viewModel.selectGameForDetail(newGame)
             },
             onMoveMountPoints = { dir, pts, targetDisk, targetPartition, conflictStrategy ->
                 val basePath = targetPartition?.mountPoint ?: targetDisk?.mountPath
+                val newEntry = draftGame.copy(mountPoints = pts)
                 viewModel.addGameWithMountPoints(
                     packageName = draftGame.packageName,
                     displayName = draftGame.displayName,
@@ -200,8 +203,12 @@ fun AppsScreen(
                     initialSizeBytes = draftGame.dataSizeBytes
                 )
                 viewModel.moveMountPoints(draftGame.packageName, pts, dir, basePath, conflictStrategy)
+                configuringApp = null
+                selectedGameForDetail = newEntry
+                viewModel.selectGameForDetail(newEntry)
             },
             onDirectMountMountPoints = { pts, basePath ->
+                val newEntry = draftGame.copy(mountPoints = pts)
                 viewModel.addGameWithMountPoints(
                     packageName = draftGame.packageName,
                     displayName = draftGame.displayName,
@@ -209,6 +216,9 @@ fun AppsScreen(
                     initialSizeBytes = draftGame.dataSizeBytes
                 )
                 viewModel.directMount(draftGame.packageName, pts, basePath)
+                configuringApp = null
+                selectedGameForDetail = newEntry
+                viewModel.selectGameForDetail(newEntry)
             },
             onUnmountMountPoints = { pts ->
                 viewModel.unmountMountPoints(draftGame.packageName, pts)
@@ -244,15 +254,7 @@ fun AppsScreen(
             },
             onConfigureApp = { appInfo ->
                 showAddSheet = false
-                viewModel.addGame(appInfo.packageName, appInfo.displayName, MountMode.PKG)
-                val newGame = GameEntry(
-                    packageName = appInfo.packageName,
-                    displayName = appInfo.displayName,
-                    mode = MountMode.PKG,
-                    mountStatus = MountStatus.UNMOUNTED
-                )
-                selectedGameForDetail = newGame
-                viewModel.selectGameForDetail(newGame)
+                configuringApp = appInfo
             },
             modifier = modifier
         )

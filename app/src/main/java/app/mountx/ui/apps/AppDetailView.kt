@@ -115,6 +115,7 @@ import app.mountx.ui.theme.BadgeMigrationBgLight
 import app.mountx.ui.theme.BadgeMigrationTextDark
 import app.mountx.ui.theme.BadgeMigrationTextLight
 import app.mountx.ui.theme.CyberEmerald
+import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.NeonCrimson
 import app.mountx.ui.theme.SunsetAmber
 import app.mountx.ui.theme.WarmCrimsonBgDark
@@ -370,26 +371,54 @@ fun AppDetailView(
 
                     Spacer(modifier = Modifier.width(4.dp))
 
-                    // Delete App Button
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(38.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(26.dp)
-                                .background(
-                                    color = NeonCrimson.copy(alpha = 0.15f),
-                                    shape = RoundedCornerShape(6.dp)
-                                ),
-                            contentAlignment = Alignment.Center
+                    if (isDraftMode) {
+                        if (onSaveGame != null) {
+                            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                            val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
+                            IconButton(
+                                onClick = { onSaveGame(game.copy(mountPoints = currentMountPoints)) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .background(
+                                            color = activeEmerald.copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = stringResource(R.string.common_save),
+                                        tint = activeEmerald,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Delete App Button
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(38.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = stringResource(R.string.dialog_delete_app_title),
-                                tint = NeonCrimson,
-                                modifier = Modifier.size(15.dp)
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .background(
+                                        color = NeonCrimson.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = stringResource(R.string.dialog_delete_app_title),
+                                    tint = NeonCrimson,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
                         }
                     }
                 }
