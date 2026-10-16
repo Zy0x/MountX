@@ -227,24 +227,19 @@ class AppsViewModel @Inject constructor(
             _isRefreshingDetail.value = true
             try {
                 val sdBase = appPreferences.sdBasePath.first()
-                // 1. Force recalculate app size
-                gameRepository.calculateDataSize(packageName, sdBase)
-                // 2. Force reload detailed storage breakdown
+                // 1. Force reload detailed storage breakdown and update Room DB dataSizeBytes in 1 pass
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
                 _storageBreakdownMap.update { it + (packageName to breakdown) }
                 if (_activePackageName.value == packageName) {
                     _detailedStorage.value = breakdown
                     _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
                 }
-                // 3. Rescan candidate directories if candidate list is active
+                // 2. Rescan candidate directories if candidate list is active
                 if (_candidateDirectories.value.isNotEmpty()) {
                     _candidateDirectories.value = gameRepository.scanCandidateDirectories(packageName, displayName, sdBase)
                 }
-                // 4. Refresh global storage and disks
-                storageRepository.refreshStorage()
-                val detected = storageRepository.detectPartitions(sdBase)
-                _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
-                refresh()
+                // 3. Sync mount status without global multi-app rescan
+                gameRepository.refreshMountStatuses()
             } catch (e: Exception) {
                 app.mountx.util.AppLogger.error("GamesVM", "refreshAppDetail failed for $packageName: ${e.message}")
             } finally {
@@ -314,6 +309,7 @@ class AppsViewModel @Inject constructor(
             _isUnmounting.value = false
             _restoreProgress.value = 0f
             _restoreMessage.value = ""
+            _storageBreakdownMap.update { it - packageName }
             refresh()
             onComplete?.invoke(result.isSuccess, result.exceptionOrNull()?.message)
         }
@@ -424,9 +420,7 @@ class AppsViewModel @Inject constructor(
                 val sdBase = appPreferences.sdBasePath.first()
                 loadAvailableDisks()
                 gameRepository.refreshMountStatuses()
-                games.value.forEach { g ->
-                    gameRepository.calculateDataSize(g.packageName, sdBase)
-                }
+                gameRepository.calculateDataSizesBatch(games.value, sdBase)
                 scanDiscoveredGames()
             } finally {
                 _isRefreshing.value = false
@@ -661,6 +655,12 @@ class AppsViewModel @Inject constructor(
 
     fun clearMoveMessage() {
         _moveMessage.value = null
+    }
+
+    fun ensureDiscoveredGamesLoaded() {
+        if (_discoveredGames.value.isEmpty() && !_isScanningDiscovered.value) {
+            scanDiscoveredGames()
+        }
     }
 
     fun scanDiscoveredGames() {

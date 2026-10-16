@@ -656,26 +656,24 @@ class DiskCatalogManager @Inject constructor(
         minSizeBytes: Long = 1024L * 1024L,
         requireRegularFiles: Boolean = true
     ): Boolean = withContext(Dispatchers.IO) {
-        if (!RootShell.exists(path)) return@withContext false
         if (path.endsWith(".img")) {
             return@withContext RootShell.exec("[ -s \"$path\" ] && echo 1 || echo 0").output.trim() == "1"
         }
         val minKb = (minSizeBytes / 1024L).coerceAtLeast(1L)
-        val sizeKbRes = RootShell.execForOutput("du -sk \"$path\" 2>/dev/null").split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L
-        if (sizeKbRes < minKb) {
-            return@withContext false
+        val isObb = path.contains("/Android/obb") || path.contains("/obb")
+        val filter = if (isObb) {
+            "-name \"*.obb\""
+        } else {
+            "! -name \".nomedia\" ! -name \".mountx_canary\" ! -name \"$CANARY_FILE\""
         }
-        if (requireRegularFiles) {
-            val isObb = path.contains("/Android/obb") || path.contains("/obb")
-            val findCmd = if (isObb) {
-                "find \"$path\" -maxdepth 2 -type f -name \"*.obb\" -size +0c 2>/dev/null | head -n 1"
-            } else {
-                "find \"$path\" -type f ! -name \".nomedia\" ! -name \".mountx_canary\" ! -name \"$CANARY_FILE\" -size +0c 2>/dev/null | head -n 1"
-            }
-            val hasFile = RootShell.execForOutput(findCmd).isNotBlank()
-            if (!hasFile) return@withContext false
+        val cmd = if (requireRegularFiles) {
+            "[ -d \"$path\" ] && [ \"\$(find \"$path\" -maxdepth 3 -type f $filter -size +0c 2>/dev/null | head -1)\" ] && du -sk \"$path\" 2>/dev/null || echo 0"
+        } else {
+            "[ -d \"$path\" ] && du -sk \"$path\" 2>/dev/null || echo 0"
         }
-        true
+        val out = RootShell.execForOutput(cmd)
+        val kb = out.split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L
+        kb >= minKb
     }
 
     /**

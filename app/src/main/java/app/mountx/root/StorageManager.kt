@@ -270,15 +270,6 @@ class StorageManager {
      * (disk name, partition number, size, filesystem, mount point, label, UUID).
      */
     suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> = withContext(Dispatchers.IO) {
-        // Proactively ensure MountX unified structure exists as soon as external storage is scanned
-        if (!RootShell.exists("$targetMountPoint/MountX/Android/data")) {
-            ensureMountXStorageStructure(targetMountPoint)
-        }
-        // Automatically migrate legacy $targetMountPoint/Android to $targetMountPoint/MountX/Android
-        if (RootShell.exists("$targetMountPoint/Android")) {
-            migrateLegacyStorageToMountX(targetMountPoint)
-        }
-
         // Collect all mount entries from /proc/mounts using RootShell first for full root namespace visibility
         data class RawMount(val spec: String, val file: String, val vfstype: String)
         val allMounts = mutableListOf<RawMount>()

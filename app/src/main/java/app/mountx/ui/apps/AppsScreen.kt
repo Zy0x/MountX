@@ -114,7 +114,7 @@ fun AppsScreen(
     var showRestructureDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        viewModel.scanDiscoveredGames()
+        viewModel.ensureDiscoveredGamesLoaded()
     }
 
     val vmSelectedGame by viewModel.selectedGameForDetail.collectAsState()

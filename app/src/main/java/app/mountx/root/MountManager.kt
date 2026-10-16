@@ -933,10 +933,32 @@ class MountManager {
     }
 
     /**
+     * Get all currently mounted target paths parsed into an in-memory HashSet.
+     * Uses RootShell to ensure full root namespace visibility across Android namespaces.
+     */
+    suspend fun getActiveMountpointsSet(): Set<String> = withContext(Dispatchers.IO) {
+        val mounts = HashSet<String>()
+        val res = RootShell.exec("cat /proc/mounts 2>/dev/null")
+        if (res.isSuccess) {
+            for (line in res.stdout) {
+                val parts = line.split(Regex("\\s+"))
+                if (parts.size >= 2) {
+                    val target = parts[1].trimEnd('/')
+                    if (target.isNotBlank()) {
+                        mounts.add(target)
+                    }
+                }
+            }
+        }
+        mounts
+    }
+
+    /**
      * Check if a specific path is currently mounted.
      */
     suspend fun isMounted(path: String): Boolean {
-        return RootShell.isMountpoint(path)
+        val clean = path.trimEnd('/')
+        return getActiveMountpointsSet().contains(clean)
     }
 
     /**
