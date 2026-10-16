@@ -219,6 +219,40 @@ class AppsViewModel @Inject constructor(
         }
     }
 
+    private val _isRefreshingDetail = MutableStateFlow(false)
+    val isRefreshingDetail: StateFlow<Boolean> = _isRefreshingDetail.asStateFlow()
+
+    fun refreshAppDetail(packageName: String, displayName: String) {
+        viewModelScope.launch {
+            _isRefreshingDetail.value = true
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                // 1. Force recalculate app size
+                gameRepository.calculateDataSize(packageName, sdBase)
+                // 2. Force reload detailed storage breakdown
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+                _storageBreakdownMap.update { it + (packageName to breakdown) }
+                if (_activePackageName.value == packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
+                // 3. Rescan candidate directories if candidate list is active
+                if (_candidateDirectories.value.isNotEmpty()) {
+                    _candidateDirectories.value = gameRepository.scanCandidateDirectories(packageName, displayName, sdBase)
+                }
+                // 4. Refresh global storage and disks
+                storageRepository.refreshStorage()
+                val detected = storageRepository.detectPartitions(sdBase)
+                _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
+                refresh()
+            } catch (e: Exception) {
+                app.mountx.util.AppLogger.error("GamesVM", "refreshAppDetail failed for $packageName: ${e.message}")
+            } finally {
+                _isRefreshingDetail.value = false
+            }
+        }
+    }
+
     fun updateGameMode(packageName: String, mode: MountMode) {
         viewModelScope.launch {
             gameRepository.updateGameMode(packageName, mode)

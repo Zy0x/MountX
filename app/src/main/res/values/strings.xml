@@ -1144,6 +1144,10 @@
     <string name="notif_channel_updates_desc">Notifications for new MountX releases</string>
     <string name="notif_update_title">MountX %1$s Available</string>
     <string name="notif_update_body">Tap to view and download the latest update.</string>
+
+    <!-- App Detail Manual Refresh -->
+    <string name="game_detail_refresh">Refresh Details</string>
+    <string name="game_detail_refreshed">App details refreshed</string>
 </resources>
 
 

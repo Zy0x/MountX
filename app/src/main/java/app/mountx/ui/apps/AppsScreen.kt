@@ -110,6 +110,7 @@ fun AppsScreen(
     val operationProgress by viewModel.operationProgress.collectAsState()
     val isRestructuring by viewModel.isRestructuring.collectAsState()
     val restructureProgressMessage by viewModel.restructureProgressMessage.collectAsState()
+    val isRefreshingDetail by viewModel.isRefreshingDetail.collectAsState()
     var showRestructureDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -174,6 +175,8 @@ fun AppsScreen(
             onQuickMountDisk = { disk -> viewModel.quickMountDisk(disk) },
             onQuickMountPartition = { part -> viewModel.quickMountPartition(part) },
             onRefreshDisks = { viewModel.refreshDisks() },
+            isRefreshing = isRefreshingDetail,
+            onRefresh = { viewModel.refreshAppDetail(draftGame.packageName, draftGame.displayName) },
             onDismiss = {
                 viewModel.clearMoveMessage()
                 viewModel.clearDetailedStorage()
@@ -274,6 +277,8 @@ fun AppsScreen(
             onQuickMountDisk = { disk -> viewModel.quickMountDisk(disk) },
             onQuickMountPartition = { part -> viewModel.quickMountPartition(part) },
             onRefreshDisks = { viewModel.refreshDisks() },
+            isRefreshing = isRefreshingDetail,
+            onRefresh = { viewModel.refreshAppDetail(updatedGame.packageName, updatedGame.displayName) },
             onDismiss = {
                 viewModel.clearMoveMessage()
                 viewModel.clearDetailedStorage()

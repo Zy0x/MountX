@@ -1128,6 +1128,10 @@
     <string name="notif_channel_updates_desc">Notifikasi ketersediaan rilis baru MountX</string>
     <string name="notif_update_title">MountX %1$s Tersedia</string>
     <string name="notif_update_body">Ketuk untuk melihat dan mengunduh pembaruan terbaru.</string>
+
+    <!-- App Detail Manual Refresh -->
+    <string name="game_detail_refresh">Segarkan Detail</string>
+    <string name="game_detail_refreshed">Detail aplikasi diperbarui</string>
 </resources>
 
 

@@ -8,6 +8,11 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -169,6 +174,8 @@ fun GameDetailView(
     onUnmount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
+    isRefreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) = AppDetailView(
     game = game,
@@ -197,6 +204,8 @@ fun GameDetailView(
     onUnmount = onUnmount,
     onToggleMount = onToggleMount,
     onDeleteCategoryData = onDeleteCategoryData,
+    isRefreshing = isRefreshing,
+    onRefresh = onRefresh,
     modifier = modifier
 )
 
@@ -228,6 +237,8 @@ fun AppDetailView(
     onUnmount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
+    isRefreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val pagerState = rememberPagerState(pageCount = { 2 })
@@ -323,6 +334,49 @@ fun AppDetailView(
                     }
                 },
                 actions = {
+                    // Manual Refresh Button
+                    if (onRefresh != null) {
+                        val rotation by animateFloatAsState(
+                            targetValue = if (isRefreshing) 360f else 0f,
+                            animationSpec = if (isRefreshing) {
+                                infiniteRepeatable(
+                                    animation = tween(800, easing = LinearEasing),
+                                    repeatMode = RepeatMode.Restart
+                                )
+                            } else {
+                                tween(300)
+                            },
+                            label = "detail_refresh_rotation"
+                        )
+
+                        IconButton(
+                            onClick = onRefresh,
+                            enabled = !isRefreshing,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(6.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = stringResource(R.string.game_detail_refresh),
+                                    tint = if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .size(15.dp)
+                                        .graphicsLayer { rotationZ = rotation }
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+
                     // System App Details Button
                     IconButton(
                         onClick = {
