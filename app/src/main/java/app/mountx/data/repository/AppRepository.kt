@@ -813,6 +813,48 @@ class AppRepository @Inject constructor(
         return bases.toList()
     }
 
+    /**
+     * Extracts canonical root storage base from an arbitrary directory path.
+     * Maps e.g. /data/sdext2/MountX/Android/... -> /data/sdext2
+     * /mnt/media_rw/UUID/Android/... -> /mnt/media_rw/UUID
+     */
+    private fun extractBasePartition(path: String): String {
+        val clean = path.trim().trimEnd('/')
+        return when {
+            clean.startsWith("/data/sdext") -> clean.substringBefore("/MountX/Android/").substringBefore("/Android/").substringBefore("/MountX/").substringBeforeLast('/')
+            clean.startsWith("/mnt/media_rw/") -> {
+                val parts = clean.split('/')
+                if (parts.size >= 4) "/${parts[1]}/${parts[2]}/${parts[3]}" else clean
+            }
+            clean.startsWith("/storage/") -> {
+                val parts = clean.split('/')
+                if (parts.size >= 3) "/${parts[1]}/${parts[2]}" else clean
+            }
+            clean.contains("/MountX/Android/") -> clean.substringBefore("/MountX/Android/")
+            clean.contains("/Android/") -> clean.substringBefore("/Android/")
+            else -> clean
+        }
+    }
+
+    /**
+     * Resolves substantive bytes across multiple candidate paths on external storage disks.
+     * Groups paths by base storage partition (e.g. /data/sdext2 vs /mnt/media_rw/UUID)
+     * and takes the maximum substantive size on each partition to prevent double-counting
+     * MountX layout (/MountX/Android/...) and legacy layout (/Android/...) on the same disk.
+     */
+    private fun resolveExternalPartitionBytes(paths: List<String>, sizeMap: Map<String, Long>): Long {
+        val pathsByBase = paths.filter { it.isNotBlank() }.groupBy { extractBasePartition(it) }
+        val baseSizes = pathsByBase.mapValues { (_, basePaths) ->
+            basePaths.maxOfOrNull { sizeMap[it] ?: 0L } ?: 0L
+        }
+        val hasSubstantive = baseSizes.values.any { it > 512 * 1024L }
+        return if (hasSubstantive) {
+            baseSizes.values.filter { it > 128 * 1024L }.sum()
+        } else {
+            baseSizes.values.sum()
+        }
+    }
+
     suspend fun calculateDataSize(packageName: String, sdBase: String = "/data/sdext2"): Long =
         withContext(Dispatchers.IO) {
             val game = gameDao.getGameByPackage(packageName)
@@ -830,7 +872,7 @@ class AppRepository @Inject constructor(
             val candidateCustomPaths = mutableListOf<String>()
             game?.mountPoints?.forEach { mp ->
                 if (mp.sourcePath.isNotBlank()) {
-                    when (mp.category) {
+                    when (mp.resolveCategory()) {
                         MountPointCategory.EXTERNAL_DATA, MountPointCategory.GAME_ASSETS -> candidateExtDataPaths.add(mp.sourcePath)
                         MountPointCategory.OBB_STORAGE -> candidateExtObbPaths.add(mp.sourcePath)
                         MountPointCategory.MEDIA_DOWNLOADS -> candidateExtMediaPaths.add(mp.sourcePath)
@@ -840,13 +882,20 @@ class AppRepository @Inject constructor(
                 }
             }
 
+            val distinctExtData = candidateExtDataPaths.distinct()
+            val distinctExtObb = candidateExtObbPaths.distinct()
+            val distinctExtMedia = candidateExtMediaPaths.distinct()
+            val distinctCustom = candidateCustomPaths.distinct().filter { p ->
+                !distinctExtData.contains(p) && !distinctExtObb.contains(p) && !distinctExtMedia.contains(p)
+            }
+
             val pathsToScan = mutableListOf<String>()
             pathsToScan.add(internalData)
             pathsToScan.add(internalObb)
-            pathsToScan.addAll(candidateExtDataPaths)
-            pathsToScan.addAll(candidateExtObbPaths)
-            pathsToScan.addAll(candidateExtMediaPaths)
-            pathsToScan.addAll(candidateCustomPaths)
+            pathsToScan.addAll(distinctExtData)
+            pathsToScan.addAll(distinctExtObb)
+            pathsToScan.addAll(distinctExtMedia)
+            pathsToScan.addAll(distinctCustom)
 
             val validTargets = pathsToScan
                 .map { it.trim().trim('\"') }
@@ -870,40 +919,10 @@ class AppRepository @Inject constructor(
             val internalDataSize = sizeMap[internalData] ?: 0L
             val internalObbSize = sizeMap[internalObb] ?: 0L
 
-            var extDataBytesSum = 0L
-            val seenExtBases = mutableSetOf<String>()
-            candidateExtDataPaths.distinct().forEach { p ->
-                val baseKey = p.substringBefore("/Android/")
-                if (seenExtBases.add(baseKey)) {
-                    val b = sizeMap[p] ?: 0L
-                    extDataBytesSum += b
-                }
-            }
-
-            var extObbBytesSum = 0L
-            val seenExtObbBases = mutableSetOf<String>()
-            candidateExtObbPaths.distinct().forEach { p ->
-                val baseKey = p.substringBefore("/Android/")
-                if (seenExtObbBases.add(baseKey)) {
-                    val b = sizeMap[p] ?: 0L
-                    extObbBytesSum += b
-                }
-            }
-
-            var extMediaBytesSum = 0L
-            val seenExtMediaBases = mutableSetOf<String>()
-            candidateExtMediaPaths.distinct().forEach { p ->
-                val baseKey = p.substringBefore("/Android/")
-                if (seenExtMediaBases.add(baseKey)) {
-                    val b = sizeMap[p] ?: 0L
-                    extMediaBytesSum += b
-                }
-            }
-
-            var customBytesSum = 0L
-            candidateCustomPaths.distinct().forEach { p ->
-                customBytesSum += (sizeMap[p] ?: 0L)
-            }
+            val extDataBytesSum = resolveExternalPartitionBytes(distinctExtData, sizeMap)
+            val extObbBytesSum = resolveExternalPartitionBytes(distinctExtObb, sizeMap)
+            val extMediaBytesSum = resolveExternalPartitionBytes(distinctExtMedia, sizeMap)
+            val customBytesSum = distinctCustom.sumOf { sizeMap[it] ?: 0L }
 
             // Smart Data Size Resolution:
             // A canary / empty directory skeleton is typically <= 128 KB.
@@ -954,9 +973,10 @@ class AppRepository @Inject constructor(
      * Batches all candidate internal and external paths across all games into a single du -sk invocation,
      * reducing N*M root shell commands down to a single pass.
      */
-    suspend fun calculateDataSizesBatch(games: List<GameEntry>, sdBase: String = "/data/sdext2") =
+    suspend fun calculateDataSizesBatch(games: List<GameEntry> = emptyList(), sdBase: String = "/data/sdext2") =
         withContext(Dispatchers.IO) {
-            if (games.isEmpty()) return@withContext
+            val targetGames = if (games.isNotEmpty()) games else gameDao.getAllGamesSync()
+            if (targetGames.isEmpty()) return@withContext
             val activeMounts = mountManager.getActiveMountpointsSet()
 
             data class GameBundle(
@@ -970,24 +990,43 @@ class AppRepository @Inject constructor(
             val bundles = mutableMapOf<String, GameBundle>()
             val allTargets = mutableSetOf<String>()
 
-            for (game in games) {
+            for (game in targetGames) {
                 val pkg = game.packageName
                 val internalData = "/data/media/0/Android/data/$pkg"
                 val internalObb = "/data/media/0/Android/obb/$pkg"
                 val externalBases = getExternalStorageBases(sdBase, game)
-                val extData = externalBases.flatMap { listOf("$it/MountX/Android/data/$pkg", "$it/Android/data/$pkg") }
-                val extObb = externalBases.flatMap { listOf("$it/MountX/Android/obb/$pkg", "$it/Android/obb/$pkg") }
-                val extMedia = externalBases.flatMap { listOf("$it/MountX/Android/media/$pkg", "$it/Android/media/$pkg") }
-                val custom = game.mountPoints.filter { it.sourcePath.isNotBlank() }.map { it.sourcePath }
+                val extData = externalBases.flatMap { listOf("$it/MountX/Android/data/$pkg", "$it/Android/data/$pkg") }.toMutableList()
+                val extObb = externalBases.flatMap { listOf("$it/MountX/Android/obb/$pkg", "$it/Android/obb/$pkg") }.toMutableList()
+                val extMedia = externalBases.flatMap { listOf("$it/MountX/Android/media/$pkg", "$it/Android/media/$pkg") }.toMutableList()
+                val custom = mutableListOf<String>()
 
-                bundles[pkg] = GameBundle(internalData, internalObb, extData, extObb, extMedia, custom)
+                game.mountPoints.forEach { mp ->
+                    if (mp.sourcePath.isNotBlank()) {
+                        when (mp.resolveCategory()) {
+                            MountPointCategory.EXTERNAL_DATA, MountPointCategory.GAME_ASSETS -> extData.add(mp.sourcePath)
+                            MountPointCategory.OBB_STORAGE -> extObb.add(mp.sourcePath)
+                            MountPointCategory.MEDIA_DOWNLOADS -> extMedia.add(mp.sourcePath)
+                            MountPointCategory.CUSTOM -> custom.add(mp.sourcePath)
+                            else -> {}
+                        }
+                    }
+                }
+
+                val distinctExtData = extData.distinct()
+                val distinctExtObb = extObb.distinct()
+                val distinctExtMedia = extMedia.distinct()
+                val distinctCustom = custom.distinct().filter { p ->
+                    !distinctExtData.contains(p) && !distinctExtObb.contains(p) && !distinctExtMedia.contains(p)
+                }
+
+                bundles[pkg] = GameBundle(internalData, internalObb, distinctExtData, distinctExtObb, distinctExtMedia, distinctCustom)
 
                 allTargets.add(internalData)
                 allTargets.add(internalObb)
-                allTargets.addAll(extData)
-                allTargets.addAll(extObb)
-                allTargets.addAll(extMedia)
-                allTargets.addAll(custom)
+                allTargets.addAll(distinctExtData)
+                allTargets.addAll(distinctExtObb)
+                allTargets.addAll(distinctExtMedia)
+                allTargets.addAll(distinctCustom)
             }
 
             val validTargets = allTargets
@@ -1008,7 +1047,7 @@ class AppRepository @Inject constructor(
                 }
             }
 
-            for (game in games) {
+            for (game in targetGames) {
                 val pkg = game.packageName
                 val bundle = bundles[pkg] ?: continue
                 val isDataMountedReal = activeMounts.contains(bundle.internalData.trimEnd('/'))
@@ -1017,37 +1056,10 @@ class AppRepository @Inject constructor(
                 val internalDataSize = sizeMap[bundle.internalData] ?: 0L
                 val internalObbSize = sizeMap[bundle.internalObb] ?: 0L
 
-                var extDataBytesSum = 0L
-                val seenExtDataBases = mutableSetOf<String>()
-                bundle.extDataPaths.distinct().forEach { p ->
-                    val baseKey = p.substringBefore("/Android/")
-                    if (seenExtDataBases.add(baseKey)) {
-                        extDataBytesSum += sizeMap[p] ?: 0L
-                    }
-                }
-
-                var extObbBytesSum = 0L
-                val seenExtObbBases = mutableSetOf<String>()
-                bundle.extObbPaths.distinct().forEach { p ->
-                    val baseKey = p.substringBefore("/Android/")
-                    if (seenExtObbBases.add(baseKey)) {
-                        extObbBytesSum += sizeMap[p] ?: 0L
-                    }
-                }
-
-                var extMediaBytesSum = 0L
-                val seenExtMediaBases = mutableSetOf<String>()
-                bundle.extMediaPaths.distinct().forEach { p ->
-                    val baseKey = p.substringBefore("/Android/")
-                    if (seenExtMediaBases.add(baseKey)) {
-                        extMediaBytesSum += sizeMap[p] ?: 0L
-                    }
-                }
-
-                var customBytesSum = 0L
-                bundle.customPaths.distinct().forEach { p ->
-                    customBytesSum += sizeMap[p] ?: 0L
-                }
+                val extDataBytesSum = resolveExternalPartitionBytes(bundle.extDataPaths, sizeMap)
+                val extObbBytesSum = resolveExternalPartitionBytes(bundle.extObbPaths, sizeMap)
+                val extMediaBytesSum = resolveExternalPartitionBytes(bundle.extMediaPaths, sizeMap)
+                val customBytesSum = bundle.customPaths.sumOf { sizeMap[it] ?: 0L }
 
                 val effectiveDataSize = when {
                     extDataBytesSum > 512 * 1024L && internalDataSize <= 128 * 1024L -> extDataBytesSum
@@ -1081,21 +1093,24 @@ class AppRepository @Inject constructor(
             val internalObb = "/data/media/0/Android/obb/$packageName"
 
             val externalBases = getExternalStorageBases(sdBase, game)
-            val candidateExtDataPaths = externalBases.map { "$it/Android/data/$packageName" }.toMutableList()
-            val candidateExtObbPaths = externalBases.map { "$it/Android/obb/$packageName" }.toMutableList()
+            val candidateExtDataPaths = externalBases.flatMap { listOf("$it/MountX/Android/data/$packageName", "$it/Android/data/$packageName") }.toMutableList()
+            val candidateExtObbPaths = externalBases.flatMap { listOf("$it/MountX/Android/obb/$packageName", "$it/Android/obb/$packageName") }.toMutableList()
             game?.mountPoints?.forEach { mp ->
                 if (mp.sourcePath.isNotBlank()) {
-                    if (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.GAME_ASSETS) {
-                        candidateExtDataPaths.add(mp.sourcePath)
-                    } else if (mp.category == MountPointCategory.OBB_STORAGE) {
-                        candidateExtObbPaths.add(mp.sourcePath)
+                    when (mp.resolveCategory()) {
+                        MountPointCategory.EXTERNAL_DATA, MountPointCategory.GAME_ASSETS -> candidateExtDataPaths.add(mp.sourcePath)
+                        MountPointCategory.OBB_STORAGE -> candidateExtObbPaths.add(mp.sourcePath)
+                        else -> {}
                     }
                 }
             }
 
+            val distinctExtData = candidateExtDataPaths.distinct()
+            val distinctExtObb = candidateExtObbPaths.distinct()
+
             val pathsToScan = mutableListOf(internalData, internalObb)
-            pathsToScan.addAll(candidateExtDataPaths)
-            pathsToScan.addAll(candidateExtObbPaths)
+            pathsToScan.addAll(distinctExtData)
+            pathsToScan.addAll(distinctExtObb)
 
             val validTargets = pathsToScan
                 .map { it.trim().trim('\"') }
@@ -1117,25 +1132,8 @@ class AppRepository @Inject constructor(
             }
 
             val internalBytes = (sizeMap[internalData] ?: 0L) + (sizeMap[internalObb] ?: 0L)
-
-            var extDataSum = 0L
-            val seenExtBases = mutableSetOf<String>()
-            candidateExtDataPaths.distinct().forEach { p ->
-                val baseKey = p.substringBefore("/Android/")
-                if (seenExtBases.add(baseKey)) {
-                    extDataSum += (sizeMap[p] ?: 0L)
-                }
-            }
-
-            var extObbSum = 0L
-            val seenExtObbBases = mutableSetOf<String>()
-            candidateExtObbPaths.distinct().forEach { p ->
-                val baseKey = p.substringBefore("/Android/")
-                if (seenExtObbBases.add(baseKey)) {
-                    extObbSum += (sizeMap[p] ?: 0L)
-                }
-            }
-
+            val extDataSum = resolveExternalPartitionBytes(distinctExtData, sizeMap)
+            val extObbSum = resolveExternalPartitionBytes(distinctExtObb, sizeMap)
             val sdBytes = extDataSum + extObbSum
             Pair(internalBytes, sdBytes)
         }
@@ -1234,7 +1232,7 @@ class AppRepository @Inject constructor(
         val candidateCustomPaths = mutableListOf<String>()
         game?.mountPoints?.forEach { mp ->
             if (mp.sourcePath.isNotBlank()) {
-                when (mp.category) {
+                when (mp.resolveCategory()) {
                     MountPointCategory.EXTERNAL_DATA, MountPointCategory.GAME_ASSETS -> candidateExtDataPaths.add(mp.sourcePath)
                     MountPointCategory.OBB_STORAGE -> candidateExtObbPaths.add(mp.sourcePath)
                     MountPointCategory.MEDIA_DOWNLOADS -> candidateExtMediaPaths.add(mp.sourcePath)
@@ -1244,14 +1242,21 @@ class AppRepository @Inject constructor(
             }
         }
 
+        val distinctExtData = candidateExtDataPaths.distinct()
+        val distinctExtObb = candidateExtObbPaths.distinct()
+        val distinctExtMedia = candidateExtMediaPaths.distinct()
+        val distinctCustom = candidateCustomPaths.distinct().filter { p ->
+            !distinctExtData.contains(p) && !distinctExtObb.contains(p) && !distinctExtMedia.contains(p)
+        }
+
         // Always scan ALL paths (internal + external) to get accurate sizes regardless of mountStatus.
         // When data is bind-mounted from SD to internal path, du on internal path returns SD size — correct.
         // When not mounted, internal path shows actual internal size — also correct.
         val targetsList = mutableListOf(oatDir, dataDir, cacheDir, codeCacheDir, ext1Data, ext1Obb, ext1Media)
-        targetsList.addAll(candidateExtDataPaths)
-        targetsList.addAll(candidateExtObbPaths)
-        targetsList.addAll(candidateExtMediaPaths)
-        targetsList.addAll(candidateCustomPaths)
+        targetsList.addAll(distinctExtData)
+        targetsList.addAll(distinctExtObb)
+        targetsList.addAll(distinctExtMedia)
+        targetsList.addAll(distinctCustom)
 
         val validTargets = targetsList
             .map { it.trim().trim('\"') }
@@ -1285,48 +1290,10 @@ class AppRepository @Inject constructor(
             }
         }
 
-        // Accumulate all external partition sizes per unique storage base.
-        // Deduplication by base path prevents counting the same physical data twice when
-        // accessed via different bind-mount paths (e.g., /storage/UUID vs /mnt/media_rw/UUID).
-        var extDataBytesSum = 0L
-        var extObbBytesSum = 0L
-        var extMediaBytesSum = 0L
-        val seenExtBases = mutableSetOf<String>()
-        candidateExtDataPaths.distinct().forEach { p ->
-            val baseKey = p.substringBefore("/Android/")
-            if (seenExtBases.add(baseKey)) {
-                val b = sizeMap[p] ?: 0L
-                extDataBytesSum += b
-                AppLogger.info("GameRepo", "  ext data $p = ${b/1024}KB (base=$baseKey)")
-            }
-        }
-        val seenExtObbBases = mutableSetOf<String>()
-        candidateExtObbPaths.distinct().forEach { p ->
-            val baseKey = p.substringBefore("/Android/")
-            if (seenExtObbBases.add(baseKey)) {
-                val b = sizeMap[p] ?: 0L
-                extObbBytesSum += b
-                AppLogger.info("GameRepo", "  ext obb $p = ${b/1024}KB (base=$baseKey)")
-            }
-        }
-        val seenExtMediaBases = mutableSetOf<String>()
-        candidateExtMediaPaths.distinct().forEach { p ->
-            val baseKey = p.substringBefore("/Android/")
-            if (seenExtMediaBases.add(baseKey)) {
-                val b = sizeMap[p] ?: 0L
-                extMediaBytesSum += b
-                AppLogger.info("GameRepo", "  ext media $p = ${b/1024}KB (base=$baseKey)")
-            }
-        }
-        var customBytesSum = 0L
-        candidateCustomPaths.distinct().forEach { p ->
-            val b = sizeMap[p] ?: 0L
-            customBytesSum += b
-            AppLogger.info("GameRepo", "  custom $p = ${b/1024}KB")
-        }
-        ext2DataBytes = extDataBytesSum
-        ext2ObbBytes = extObbBytesSum
-        ext2MediaBytes = extMediaBytesSum
+        ext2DataBytes = resolveExternalPartitionBytes(distinctExtData, sizeMap)
+        ext2ObbBytes = resolveExternalPartitionBytes(distinctExtObb, sizeMap)
+        ext2MediaBytes = resolveExternalPartitionBytes(distinctExtMedia, sizeMap)
+        val customBytesSum = distinctCustom.sumOf { sizeMap[it] ?: 0L }
 
         val dataBytes = (rawPrivateDataBytes - cacheBytes).coerceAtLeast(0L)
 

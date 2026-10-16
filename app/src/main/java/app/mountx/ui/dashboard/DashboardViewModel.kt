@@ -131,6 +131,13 @@ class DashboardViewModel @Inject constructor(
 
     init {
         refresh()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                games.first { it.isNotEmpty() }
+                val sdBase = appPreferences.sdBasePath.first()
+                gameRepository.calculateDataSizesBatch(games.value, sdBase)
+            } catch (_: Exception) {}
+        }
         viewModelScope.launch {
             systemSyncMonitor.events.collect { event ->
                 when (event) {
@@ -302,9 +309,7 @@ class DashboardViewModel @Inject constructor(
             try {
                 val sdBase = appPreferences.sdBasePath.first()
                 val currentGames = games.value
-                for (g in currentGames) {
-                    gameRepository.calculateDataSize(g.packageName, sdBase)
-                }
+                gameRepository.calculateDataSizesBatch(currentGames, sdBase)
                 refresh()
             } finally {
                 _isRecalculating.value = false
