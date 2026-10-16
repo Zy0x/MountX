@@ -111,6 +111,7 @@ fun AppsScreen(
     val isRestructuring by viewModel.isRestructuring.collectAsState()
     val restructureProgressMessage by viewModel.restructureProgressMessage.collectAsState()
     val isRefreshingDetail by viewModel.isRefreshingDetail.collectAsState()
+    val pendingOperations by viewModel.pendingOperations.collectAsState()
     var showRestructureDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -326,6 +327,7 @@ fun AppsScreen(
             searchQuery = searchQuery,
             filterStatus = filterStatus,
             sortOption = sortOption,
+            pendingOperations = pendingOperations,
             onSearchQueryChange = { viewModel.setSearchQuery(it) },
             onFilterStatusChange = { viewModel.setFilterStatus(it) },
             onSortOptionChange = { viewModel.setSortOption(it) },
@@ -458,6 +460,7 @@ fun GamesContent(
     searchQuery: String,
     filterStatus: GameFilterStatus,
     sortOption: GameSortOption,
+    pendingOperations: Set<String> = emptySet(),
     isRefreshing: Boolean = false,
     isBottomBarVisible: Boolean = true,
     onRefresh: () -> Unit = {},
@@ -885,6 +888,7 @@ fun GamesContent(
                         items(processedGames, key = { it.packageName }) { game ->
                             ModernGameCard(
                                 game = game,
+                                isPending = pendingOperations.contains(game.packageName),
                                 onToggleMount = {
                                     if (game.mountStatus == MountStatus.DISK_DETACHED) {
                                         // Ignore toggle when disk is detached
@@ -951,11 +955,13 @@ fun GamesContent(
 @Composable
 fun ModernAppCard(
     game: GameEntry,
+    isPending: Boolean = false,
     onToggleMount: () -> Unit,
     onCardClick: () -> Unit,
     onCardLongClick: (() -> Unit)? = null
 ) = ModernGameCard(
     game = game,
+    isPending = isPending,
     onToggleMount = onToggleMount,
     onCardClick = onCardClick,
     onCardLongClick = onCardLongClick
@@ -965,6 +971,7 @@ fun ModernAppCard(
 @Composable
 fun ModernGameCard(
     game: GameEntry,
+    isPending: Boolean = false,
     onToggleMount: () -> Unit,
     onCardClick: () -> Unit,
     onCardLongClick: (() -> Unit)? = null
@@ -986,8 +993,8 @@ fun ModernGameCard(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = onCardClick,
-                onLongClick = onCardLongClick
+                onClick = { if (!isPending) onCardClick() },
+                onLongClick = if (onCardLongClick != null && !isPending) { { onCardLongClick() } } else null
             )
     ) {
         Row(
@@ -1100,25 +1107,40 @@ fun ModernGameCard(
                 }
             }
 
-            // Compact Switch (Toggle Tactile)
-            Switch(
-                checked = isMounted,
-                enabled = game.mountStatus != MountStatus.DISK_DETACHED,
-                onCheckedChange = { onToggleMount() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = activeEmerald,
-                    checkedBorderColor = activeEmerald,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                    disabledCheckedThumbColor = Color.White.copy(alpha = 0.5f),
-                    disabledCheckedTrackColor = activeEmerald.copy(alpha = 0.3f),
-                    disabledUncheckedThumbColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                    disabledUncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                ),
-                modifier = Modifier.scale(0.8f)
-            )
+            if (isPending) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .padding(4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = activeEmerald
+                    )
+                }
+            } else {
+                // Compact Switch (Toggle Tactile)
+                Switch(
+                    checked = isMounted,
+                    enabled = game.mountStatus != MountStatus.DISK_DETACHED,
+                    onCheckedChange = { onToggleMount() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = activeEmerald,
+                        checkedBorderColor = activeEmerald,
+                        uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        uncheckedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        disabledCheckedThumbColor = Color.White.copy(alpha = 0.5f),
+                        disabledCheckedTrackColor = activeEmerald.copy(alpha = 0.3f),
+                        disabledUncheckedThumbColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        disabledUncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    ),
+                    modifier = Modifier.scale(0.8f)
+                )
+            }
         }
     }
 }

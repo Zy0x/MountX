@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+import app.mountx.root.RootShell
+import kotlinx.coroutines.delay
+
 @AndroidEntryPoint
 class BootReceiver : BroadcastReceiver() {
 
@@ -28,6 +31,17 @@ class BootReceiver : BroadcastReceiver() {
                     mountNotificationManager.createNotificationChannels()
                     val autoMount = appPreferences.autoMountOnBoot.first()
                     if (autoMount) {
+                        // Cold-boot settling grace period: wait for storage daemon & vold to become ready
+                        var attempts = 0
+                        while (attempts < 10) {
+                            if (RootShell.exists("/storage/emulated/0") ||
+                                RootShell.isMountpoint("/data/sdext2")
+                            ) {
+                                break
+                            }
+                            delay(500)
+                            attempts++
+                        }
                         MountService.startMountAll(context)
                     }
                     mountNotificationManager.syncActiveMountNotification()

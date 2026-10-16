@@ -84,10 +84,6 @@ log() {
     local ts
     ts=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[${ts}] [${level}] ${msg}" >> "${LOG_FILE}"
-    # Only mirror to /storage/emulated/0/mountx.log if storage is verified mounted to prevent tmpfs file creation
-    if [ -d "/data/media/0" ] && grep -q " /storage/emulated " /proc/mounts 2>/dev/null; then
-        echo "[${ts}] [${level}] ${msg}" >> "/storage/emulated/0/mountx.log" 2>/dev/null
-    fi
 }
 
 log_info()  { log "INFO " "$@"; }

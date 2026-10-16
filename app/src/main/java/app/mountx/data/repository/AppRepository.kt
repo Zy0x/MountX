@@ -474,18 +474,22 @@ class AppRepository @Inject constructor(
                             continue
                         }
 
-                        val targetData = when (g.mode) {
-                            MountMode.FILES -> "/storage/emulated/0/Android/data/${g.packageName}/files"
-                            MountMode.PKG -> "/storage/emulated/0/Android/data/${g.packageName}"
+                        val isFullyMounted = if (g.mountPoints.isNotEmpty()) {
+                            val enabledPoints = g.mountPoints.filter { it.enabled }
+                            enabledPoints.isNotEmpty() && enabledPoints.all { mp ->
+                                val rel = MountManager.extractRelativePath(mp.targetPath)
+                                RootShell.isMountpoint(mp.targetPath) ||
+                                RootShell.isMountpoint("/storage/emulated/0/$rel") ||
+                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel")
+                            }
+                        } else {
+                            val targetData = when (g.mode) {
+                                MountMode.FILES -> "/storage/emulated/0/Android/data/${g.packageName}/files"
+                                MountMode.PKG -> "/storage/emulated/0/Android/data/${g.packageName}"
+                            }
+                            val relData = MountManager.extractRelativePath(targetData)
+                            RootShell.isMountpoint(targetData) || RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$relData")
                         }
-                        val relData = MountManager.extractRelativePath(targetData)
-                        val isFullyMounted = (RootShell.isMountpoint(targetData) || RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$relData")) &&
-                                (g.mountPoints.isEmpty() || g.mountPoints.filter { it.enabled }.all { mp ->
-                                    val rel = MountManager.extractRelativePath(mp.targetPath)
-                                    RootShell.isMountpoint(mp.targetPath) ||
-                                    RootShell.isMountpoint("/storage/emulated/0/$rel") ||
-                                    RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel")
-                                })
 
                         if (isFullyMounted) {
                             gameDao.updateMountStatus(g.packageName, MountStatus.MOUNTED)
@@ -747,8 +751,6 @@ class AppRepository @Inject constructor(
             val newStatus = when {
                 !isStorageAttached -> MountStatus.DISK_DETACHED
                 isMounted -> MountStatus.MOUNTED
-                g.mountStatus == MountStatus.ERROR -> MountStatus.ERROR
-                g.mountStatus == MountStatus.UNMOUNTED -> MountStatus.UNMOUNTED
                 else -> {
                     val extData = "/data/sdext2/MountX/Android/data/${g.packageName}"
                     val extObb = "/data/sdext2/MountX/Android/obb/${g.packageName}"
@@ -764,6 +766,8 @@ class AppRepository @Inject constructor(
                         val hasInternal = RootShell.exists(internalData) || RootShell.exists(internalObb)
                         if (hasInternal) {
                             MountStatus.NEED_MIGRATION
+                        } else if (g.mountStatus == MountStatus.ERROR) {
+                            MountStatus.ERROR
                         } else {
                             MountStatus.UNMOUNTED
                         }

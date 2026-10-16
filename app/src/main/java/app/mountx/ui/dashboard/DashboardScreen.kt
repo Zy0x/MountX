@@ -61,6 +61,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -174,6 +175,7 @@ fun DashboardScreen(
     val offloadedStats by viewModel.offloadedStats.collectAsState()
     val liveTelemetry by viewModel.liveTelemetry.collectAsState()
     val operationProgress by viewModel.operationProgress.collectAsState()
+    val pendingOperations by viewModel.pendingOperations.collectAsState()
 
     DisposableEffect(Unit) {
         viewModel.startLiveStoragePulse()
@@ -195,6 +197,7 @@ fun DashboardScreen(
         offloadedStats = offloadedStats,
         liveTelemetry = liveTelemetry,
         operationProgress = operationProgress,
+        pendingOperations = pendingOperations,
         onDismissOperationProgress = { viewModel.clearOperationProgress() },
         onCancelOperation = { viewModel.cancelOperation() },
         onRefresh = { viewModel.refresh() },
@@ -234,6 +237,7 @@ fun DashboardContent(
     offloadedStats: Pair<Int, Long> = Pair(0, 0L),
     liveTelemetry: LiveNamespaceTelemetry = LiveNamespaceTelemetry(),
     operationProgress: app.mountx.data.model.OperationProgress? = null,
+    pendingOperations: Set<String> = emptySet(),
     onDismissOperationProgress: () -> Unit = {},
     onCancelOperation: () -> Unit = {},
     onRefresh: () -> Unit,
@@ -305,6 +309,7 @@ fun DashboardContent(
                             mountedCount = status.mountedGamesCount,
                             totalCount = status.totalGamesCount,
                             diskHealthStatus = diskHealthStatus,
+                            pendingOperations = pendingOperations,
                             onMountAll = onMountAll,
                             onUnmountAll = onUnmountAll,
                             onNavigateToGames = onNavigateToGames,
@@ -369,6 +374,7 @@ fun DashboardContent(
                         mountedCount = status.mountedGamesCount,
                         totalCount = status.totalGamesCount,
                         diskHealthStatus = diskHealthStatus,
+                        pendingOperations = pendingOperations,
                         onMountAll = onMountAll,
                         onUnmountAll = onUnmountAll,
                         onNavigateToGames = onNavigateToGames,
@@ -883,6 +889,7 @@ private fun SmartMasterControlCard(
     mountedCount: Int,
     totalCount: Int,
     diskHealthStatus: app.mountx.data.model.DiskHealthStatus = app.mountx.data.model.DiskHealthStatus.HEALTHY,
+    pendingOperations: Set<String> = emptySet(),
     onMountAll: () -> Unit,
     onUnmountAll: () -> Unit,
     onNavigateToGames: () -> Unit,
@@ -1027,6 +1034,7 @@ private fun SmartMasterControlCard(
                     for (game in previewGames) {
                         val isMounted = game.mountStatus == MountStatus.MOUNTED
                         val isDetached = game.mountStatus == MountStatus.DISK_DETACHED || (hasDetached && isMounted)
+                        val isPending = pendingOperations.contains(game.packageName)
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
@@ -1041,8 +1049,10 @@ private fun SmartMasterControlCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onOpenGameDetail(game)
+                                    if (!isPending) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onOpenGameDetail(game)
+                                    }
                                 }
                         ) {
                             Row(
@@ -1122,9 +1132,12 @@ private fun SmartMasterControlCard(
 
                                 Surface(
                                     onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onToggleGameMount(game)
+                                        if (!isPending) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onToggleGameMount(game)
+                                        }
                                     },
+                                    enabled = !isPending,
                                     shape = RoundedCornerShape(12.dp),
                                     color = pillBg,
                                     border = BorderStroke(1.dp, pillBorder),
@@ -1135,16 +1148,24 @@ private fun SmartMasterControlCard(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .background(
-                                                    if (isMounted || isNeedMigration || isError) pillColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                                    CircleShape
-                                                )
-                                        )
+                                        if (isPending) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(10.dp),
+                                                strokeWidth = 1.5.dp,
+                                                color = pillColor
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .background(
+                                                        if (isMounted || isNeedMigration || isError) pillColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                        CircleShape
+                                                    )
+                                            )
+                                        }
                                         Text(
-                                            text = pillText,
+                                            text = if (isPending) "..." else pillText,
                                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                             fontWeight = FontWeight.Bold,
                                             color = pillColor
@@ -1207,6 +1228,7 @@ private fun SmartMasterControlCard(
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onUnmountAll()
                         },
+                        enabled = pendingOperations.isEmpty(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(38.dp),
@@ -1243,6 +1265,7 @@ private fun SmartMasterControlCard(
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onMountAll()
                         },
+                        enabled = pendingOperations.isEmpty(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(38.dp),

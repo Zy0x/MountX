@@ -961,27 +961,50 @@ class StorageManager {
         fsType: FilesystemType = FilesystemType.F2FS
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            // 1. If already mounted cleanly at target mount point, ensure private propagation and return immediately
+            if (RootShell.isMountpoint(mountPoint)) {
+                RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
+                return@runCatching Unit
+            }
+
             RootShell.exec("mkdir -p \"$mountPoint\" 2>/dev/null")
+
+            // 2. Resolve block device dynamically if path shifted on reboot or was unassigned
+            var targetDev = blockDevice.trim()
+            if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
+                val partitions = detectPartitions(mountPoint)
+                val candidate = partitions.firstOrNull { it.isTargetMount }
+                    ?: partitions.firstOrNull { it.mountPoint == mountPoint }
+                    ?: partitions.firstOrNull { it.fsType.equals("f2fs", ignoreCase = true) || it.fsType.equals("ext4", ignoreCase = true) }
+                    ?: partitions.firstOrNull { it.path.contains("mmcblk") || it.path.contains("sd") }
+                if (candidate != null && RootShell.exists(candidate.path)) {
+                    targetDev = candidate.path
+                }
+            }
+
+            if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
+                error("No accessible block device found for $mountPoint (requested: $blockDevice)")
+            }
             
             // Try primary fsType with optimized game streaming flags
             val primaryCmd = when (fsType) {
-                FilesystemType.F2FS -> "mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry,flush_merge,mode=adaptive \"$blockDevice\" \"$mountPoint\""
-                FilesystemType.EXT4 -> "mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc,data=writeback \"$blockDevice\" \"$mountPoint\""
-                FilesystemType.EXFAT -> "mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime \"$blockDevice\" \"$mountPoint\""
-                FilesystemType.FAT32 -> "mount -t vfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,nodiratime \"$blockDevice\" \"$mountPoint\""
-                FilesystemType.NTFS -> "mount.ntfs -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$blockDevice\" \"$mountPoint\""
-                else -> "mount -t ${fsType.command} -o noatime,nodiratime,rw \"$blockDevice\" \"$mountPoint\""
+                FilesystemType.F2FS -> "mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry,flush_merge,mode=adaptive \"$targetDev\" \"$mountPoint\""
+                FilesystemType.EXT4 -> "mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc,data=writeback \"$targetDev\" \"$mountPoint\""
+                FilesystemType.EXFAT -> "mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime \"$targetDev\" \"$mountPoint\""
+                FilesystemType.FAT32 -> "mount -t vfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,nodiratime \"$targetDev\" \"$mountPoint\""
+                FilesystemType.NTFS -> "mount.ntfs -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\""
+                else -> "mount -t ${fsType.command} -o noatime,nodiratime,rw \"$targetDev\" \"$mountPoint\""
             }
             var res = RootShell.exec(primaryCmd)
             
             // If failed, try comprehensive multi-filesystem fallback chain
             if (!res.isSuccess) {
-                val fallbackCmd = "mount -t ext4 -o noatime,nodiratime,rw \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount.ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$blockDevice\" \"$mountPoint\" 2>/dev/null || mount \"$blockDevice\" \"$mountPoint\""
+                val fallbackCmd = "mount -t ext4 -o noatime,nodiratime,rw \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount.ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount \"$targetDev\" \"$mountPoint\""
                 res = RootShell.exec(fallbackCmd)
             }
 
             if (!RootShell.isMountpoint(mountPoint)) {
-                error("Failed to mount $blockDevice to $mountPoint: ${res.stderr.joinToString("\n")}")
+                error("Failed to mount $targetDev to $mountPoint: ${res.stderr.joinToString("\n")}")
             }
             RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
             Unit
