@@ -697,13 +697,38 @@ class AppRepository @Inject constructor(
         val sdBlockDev = if (sdBaseMountLine.isNotBlank()) {
             sdBaseMountLine.split(Regex("\\s+")).firstOrNull() ?: ""
         } else ""
-        val isSdBlockAlive = if (sdBlockDev.startsWith("/dev/block/")) {
-            RootShell.exists(sdBlockDev) || RootShell.exists("/sys/class/block/${sdBlockDev.substringAfterLast('/')}")
+
+        val pathsToProbe = mutableSetOf<String>()
+        if (sdBlockDev.startsWith("/dev/block/")) {
+            pathsToProbe.add(sdBlockDev)
+            pathsToProbe.add("/sys/class/block/${sdBlockDev.substringAfterLast('/')}")
         } else {
-            RootShell.exists("/sys/block/mmcblk0") || RootShell.exists("/dev/block/mmcblk0")
+            pathsToProbe.add("/sys/block/mmcblk0")
+            pathsToProbe.add("/dev/block/mmcblk0")
+        }
+        pathsToProbe.add("/data/sdext2/MountX")
+
+        for (g in games) {
+            val pkg = g.packageName
+            pathsToProbe.add("/data/sdext2/MountX/Android/data/$pkg")
+            pathsToProbe.add("/data/sdext2/MountX/Android/obb/$pkg")
+            pathsToProbe.add("/data/media/0/Android/data/$pkg")
+            pathsToProbe.add("/data/media/0/Android/obb/$pkg")
+            g.mountPoints.forEach { mp ->
+                if (mp.sourcePath.isNotBlank()) pathsToProbe.add(mp.sourcePath)
+            }
         }
 
-        val isSdBaseMounted = (activeMounts.contains("/data/sdext2") || RootShell.exists("/data/sdext2/MountX")) && isSdBlockAlive
+        // Single high-performance batch shell execution for all paths
+        val existingPaths = RootShell.pathsExistBatch(pathsToProbe)
+
+        val isSdBlockAlive = if (sdBlockDev.startsWith("/dev/block/")) {
+            existingPaths.contains(sdBlockDev) || existingPaths.contains("/sys/class/block/${sdBlockDev.substringAfterLast('/')}")
+        } else {
+            existingPaths.contains("/sys/block/mmcblk0") || existingPaths.contains("/dev/block/mmcblk0")
+        }
+
+        val isSdBaseMounted = (activeMounts.contains("/data/sdext2") || existingPaths.contains("/data/sdext2/MountX")) && isSdBlockAlive
 
         for (g in games) {
             val targetData = when (g.mode) {
@@ -734,7 +759,7 @@ class AppRepository @Inject constructor(
             val isStorageAttached = if (g.mountPoints.isNotEmpty()) {
                 g.mountPoints.any { mp ->
                     (mp.diskUuid != null && blkidOut.contains(mp.diskUuid, ignoreCase = true)) ||
-                    (RootShell.exists(mp.sourcePath) && isSdBlockAlive)
+                    (existingPaths.contains(mp.sourcePath) && isSdBlockAlive)
                 } || isSdBaseMounted
             } else {
                 isSdBaseMounted
@@ -754,8 +779,8 @@ class AppRepository @Inject constructor(
                 else -> {
                     val extData = "/data/sdext2/MountX/Android/data/${g.packageName}"
                     val extObb = "/data/sdext2/MountX/Android/obb/${g.packageName}"
-                    val hasCustomSd = g.mountPoints.any { RootShell.exists(it.sourcePath) }
-                    val hasSd = hasCustomSd || RootShell.exists(extData) || RootShell.exists(extObb)
+                    val hasCustomSd = g.mountPoints.any { existingPaths.contains(it.sourcePath) }
+                    val hasSd = hasCustomSd || existingPaths.contains(extData) || existingPaths.contains(extObb)
                     if (hasSd) {
                         MountStatus.UNMOUNTED
                     } else if (g.mountStatus == MountStatus.NEED_MIGRATION) {
@@ -763,7 +788,7 @@ class AppRepository @Inject constructor(
                     } else {
                         val internalData = "/data/media/0/Android/data/${g.packageName}"
                         val internalObb = "/data/media/0/Android/obb/${g.packageName}"
-                        val hasInternal = RootShell.exists(internalData) || RootShell.exists(internalObb)
+                        val hasInternal = existingPaths.contains(internalData) || existingPaths.contains(internalObb)
                         if (hasInternal) {
                             MountStatus.NEED_MIGRATION
                         } else if (g.mountStatus == MountStatus.ERROR) {
@@ -821,7 +846,10 @@ class AppRepository @Inject constructor(
     private fun extractBasePartition(path: String): String {
         val clean = path.trim().trimEnd('/')
         return when {
-            clean.startsWith("/data/sdext") -> clean.substringBefore("/MountX/Android/").substringBefore("/Android/").substringBefore("/MountX/").substringBeforeLast('/')
+            clean.startsWith("/data/sdext") -> {
+                val parts = clean.split('/')
+                if (parts.size >= 3) "/${parts[1]}/${parts[2]}" else clean
+            }
             clean.startsWith("/mnt/media_rw/") -> {
                 val parts = clean.split('/')
                 if (parts.size >= 4) "/${parts[1]}/${parts[2]}/${parts[3]}" else clean

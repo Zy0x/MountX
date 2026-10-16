@@ -1049,6 +1049,38 @@ class MountManager {
     }
 
     /**
+     * High-performance batch canary verification check.
+     * Probes all canary files across all games in a single shell command instead of N*M individual calls.
+     */
+    suspend fun verifyCanariesBatch(games: List<GameEntry>): Map<String, Boolean> = withContext(Dispatchers.IO) {
+        if (games.isEmpty()) return@withContext emptyMap()
+        val pathsByGame = mutableMapOf<String, List<String>>()
+        val allPaths = mutableSetOf<String>()
+
+        for (game in games) {
+            val pkg = game.packageName
+            val checkPaths = mutableListOf(
+                "/storage/emulated/0/Android/data/$pkg/.mountx_canary",
+                "/data/media/0/Android/data/$pkg/.mountx_canary",
+                "/storage/emulated/0/Android/obb/$pkg/.mountx_canary",
+                "/data/media/0/Android/obb/$pkg/.mountx_canary"
+            )
+            for (mp in game.mountPoints) {
+                if (mp.targetPath.isNotBlank()) {
+                    checkPaths.add("${mp.targetPath}/.mountx_canary")
+                    val rel = extractRelativePath(mp.targetPath)
+                    checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                }
+            }
+            pathsByGame[pkg] = checkPaths
+            allPaths.addAll(checkPaths)
+        }
+
+        val existing = RootShell.pathsExistBatch(allPaths)
+        pathsByGame.mapValues { (_, paths) -> paths.any { existing.contains(it) } }
+    }
+
+    /**
      * Canary verification check: verifies if the canary file is visible in target namespace.
      * Checks data, obb, and any configured custom mount points.
      */
@@ -1061,12 +1093,15 @@ class MountManager {
         )
         if (appEntry != null && appEntry.mountPoints.isNotEmpty()) {
             for (mp in appEntry.mountPoints) {
-                checkPaths.add("${mp.targetPath}/.mountx_canary")
-                val rel = extractRelativePath(mp.targetPath)
-                checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                if (mp.targetPath.isNotBlank()) {
+                    checkPaths.add("${mp.targetPath}/.mountx_canary")
+                    val rel = extractRelativePath(mp.targetPath)
+                    checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                }
             }
         }
-        checkPaths.any { RootShell.exists(it) }
+        val existing = RootShell.pathsExistBatch(checkPaths)
+        existing.isNotEmpty()
     }
 }
 

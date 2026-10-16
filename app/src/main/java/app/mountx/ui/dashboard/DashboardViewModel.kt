@@ -283,12 +283,8 @@ class DashboardViewModel @Inject constructor(
 
                 val currentGames = games.value
                 val mountedGames = currentGames.filter { it.mountStatus == MountStatus.MOUNTED }
-                var canariesVerified = 0
-                for (g in mountedGames) {
-                    if (mountManager.verifyCanary(g.packageName)) {
-                        canariesVerified++
-                    }
-                }
+                val canaryResults = mountManager.verifyCanariesBatch(mountedGames)
+                val canariesVerified = canaryResults.values.count { it }
 
                 _liveTelemetry.value = LiveNamespaceTelemetry(
                     isMasterNamespaceActive = Shell.isAppGrantedRoot() == true,

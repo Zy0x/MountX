@@ -141,6 +141,27 @@ object RootShell {
     }
 
     /**
+     * Batch check existence of multiple paths in a single root shell command.
+     * Returns the Set of paths that actually exist on disk.
+     */
+    suspend fun pathsExistBatch(paths: Collection<String>): Set<String> = withContext(Dispatchers.IO) {
+        val validPaths = paths.map { it.trim().trim('\"') }.filter { it.isNotBlank() }.distinct()
+        if (validPaths.isEmpty()) return@withContext emptySet()
+        val existing = mutableSetOf<String>()
+        validPaths.chunked(50).forEach { chunk ->
+            val targets = chunk.joinToString(" ") { "\"$it\"" }
+            val res = exec("ls -d $targets 2>/dev/null")
+            for (line in res.stdout) {
+                val p = line.trim()
+                if (p.isNotBlank()) {
+                    existing.add(p)
+                }
+            }
+        }
+        existing
+    }
+
+    /**
      * Check if a path is a mounted mountpoint.
      */
     suspend fun isMountpoint(path: String): Boolean {

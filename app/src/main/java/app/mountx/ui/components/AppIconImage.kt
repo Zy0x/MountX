@@ -25,8 +25,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 import android.graphics.BitmapFactory
@@ -46,6 +49,9 @@ object AppIconManager {
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val iconDispatcher = Dispatchers.IO.limitedParallelism(3)
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val diskWriteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
     private fun getIconCacheDir(context: Context): File {
         val dir = File(context.cacheDir, "app_icons")
@@ -90,13 +96,15 @@ object AppIconManager {
             val imageBitmap = bitmap.asImageBitmap()
             iconCache.put(packageName, imageBitmap)
 
-            // Asynchronously / safely persist to disk cache
-            try {
-                val diskFile = File(getIconCacheDir(context), "$packageName.png")
-                FileOutputStream(diskFile).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                }
-            } catch (_: Exception) {}
+            // Asynchronously / safely persist to disk cache without blocking caller thread
+            diskWriteScope.launch {
+                try {
+                    val diskFile = File(getIconCacheDir(context), "$packageName.png")
+                    FileOutputStream(diskFile).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                } catch (_: Exception) {}
+            }
 
             imageBitmap
         } catch (_: Exception) {

@@ -167,51 +167,52 @@ class MountWatchdogDaemon @Inject constructor(
             AppLogger.info("Watchdog", "User intentional unmount active (/dev/.mountx_unmounted exists), skipping auto-remount.")
             return
         }
-        val games = gameDao.getAllGames().firstOrNull() ?: return
+        val games = gameDao.getAllGamesSync()
+        val mountedGames = games.filter { it.isEnabled && it.mountStatus == MountStatus.MOUNTED }
+        if (mountedGames.isEmpty()) return
         val sdBase = appPreferences.sdBasePath.first()
         val activeMounts = mountManager.getActiveMountpointsSet()
+        val canaryResults = mountManager.verifyCanariesBatch(mountedGames)
 
-        for (game in games) {
-            if (game.isEnabled && game.mountStatus == MountStatus.MOUNTED) {
-                val hasCanary = mountManager.verifyCanary(game.packageName, game)
-                if (!hasCanary) {
-                    val isAlreadyMounted = if (game.mountPoints.isNotEmpty()) {
-                        val activeConfigs = game.mountPoints.filter { it.enabled }
-                        activeConfigs.isNotEmpty() && activeConfigs.all { mp ->
-                            activeMounts.contains(mp.targetPath) ||
-                            activeMounts.any { it.endsWith(MountManager.extractRelativePath(mp.targetPath)) } ||
-                            RootShell.isMountpoint(mp.targetPath)
-                        }
-                    } else {
-                        val dataTarget = "/storage/emulated/0/Android/data/${game.packageName}"
-                        val isDataMounted = activeMounts.contains(dataTarget) ||
-                                RootShell.isMountpoint(dataTarget) ||
-                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${game.packageName}")
-
-                        val obbSrc = "$sdBase/Android/obb/${game.packageName}"
-                        val hasObbOnSd = RootShell.exists(obbSrc)
-                        if (hasObbOnSd) {
-                            val obbTarget = "/storage/emulated/0/Android/obb/${game.packageName}"
-                            val isObbMounted = activeMounts.contains(obbTarget) ||
-                                    RootShell.isMountpoint(obbTarget) ||
-                                    RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/obb/${game.packageName}")
-                            isDataMounted && isObbMounted
-                        } else {
-                            isDataMounted
-                        }
+        for (game in mountedGames) {
+            val hasCanary = canaryResults[game.packageName] ?: false
+            if (!hasCanary) {
+                val isAlreadyMounted = if (game.mountPoints.isNotEmpty()) {
+                    val activeConfigs = game.mountPoints.filter { it.enabled }
+                    activeConfigs.isNotEmpty() && activeConfigs.all { mp ->
+                        activeMounts.contains(mp.targetPath) ||
+                        activeMounts.any { it.endsWith(MountManager.extractRelativePath(mp.targetPath)) } ||
+                        RootShell.isMountpoint(mp.targetPath)
                     }
+                } else {
+                    val dataTarget = "/storage/emulated/0/Android/data/${game.packageName}"
+                    val isDataMounted = activeMounts.contains(dataTarget) ||
+                            RootShell.isMountpoint(dataTarget) ||
+                            RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${game.packageName}")
 
-                    if (!isAlreadyMounted) {
-                        AppLogger.warn("Watchdog", "Canary lost and mount not active for ${game.displayName} (${game.packageName}), re-mounting...")
-                        val result = mountManager.mountGame(game, sdBase)
-                        if (result.isSuccess) {
-                            AppLogger.success("Watchdog", "Auto-remounted ${game.displayName} successfully.")
-                        } else {
-                            AppLogger.error("Watchdog", "Failed auto-remount for ${game.displayName}")
-                        }
+                    val obbSrc = "$sdBase/Android/obb/${game.packageName}"
+                    val hasObbOnSd = RootShell.exists(obbSrc)
+                    if (hasObbOnSd) {
+                        val obbTarget = "/storage/emulated/0/Android/obb/${game.packageName}"
+                        val isObbMounted = activeMounts.contains(obbTarget) ||
+                                RootShell.isMountpoint(obbTarget) ||
+                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/obb/${game.packageName}")
+                        isDataMounted && isObbMounted
                     } else {
-                        AppLogger.info("Watchdog", "Mountpoint still active for ${game.displayName}, skipping duplicate mount.")
+                        isDataMounted
                     }
+                }
+
+                if (!isAlreadyMounted) {
+                    AppLogger.warn("Watchdog", "Canary lost and mount not active for ${game.displayName} (${game.packageName}), re-mounting...")
+                    val result = mountManager.mountGame(game, sdBase)
+                    if (result.isSuccess) {
+                        AppLogger.success("Watchdog", "Auto-remounted ${game.displayName} successfully.")
+                    } else {
+                        AppLogger.error("Watchdog", "Failed auto-remount for ${game.displayName}")
+                    }
+                } else {
+                    AppLogger.info("Watchdog", "Mountpoint still active for ${game.displayName}, skipping duplicate mount.")
                 }
             }
         }
@@ -224,7 +225,7 @@ class MountWatchdogDaemon @Inject constructor(
         AppLogger.warn("Watchdog", "MicroSD ejection detected! Performing emergency lazy unmount...")
         val sdBase = appPreferences.sdBasePath.first()
         mountManager.unmountAll(sdBase)
-        val games = gameDao.getAllGames().firstOrNull() ?: emptyList()
+        val games = gameDao.getAllGamesSync()
         for (g in games) {
             if (g.mountStatus == MountStatus.MOUNTED) {
                 gameDao.updateMountStatus(g.packageName, MountStatus.DISK_DETACHED)
