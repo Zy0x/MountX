@@ -1247,7 +1247,16 @@ class AppRepository @Inject constructor(
         )
     }
 
-    suspend fun getInstalledApps(context: Context): List<InstalledAppInfo> = withContext(Dispatchers.IO) {
+    private var cachedInstalledApps: List<InstalledAppInfo>? = null
+
+    fun invalidateInstalledAppsCache() {
+        cachedInstalledApps = null
+    }
+
+    suspend fun getInstalledApps(context: Context, force: Boolean = false): List<InstalledAppInfo> = withContext(Dispatchers.IO) {
+        if (!force && cachedInstalledApps != null) {
+            return@withContext cachedInstalledApps!!
+        }
         val pm = context.packageManager
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             PackageManager.ApplicationInfoFlags.of(0L)
@@ -1263,13 +1272,18 @@ class AppRepository @Inject constructor(
 
         app.mountx.ui.components.AppIconManager.registerAppInfos(apps)
 
-        apps
+        val mapped = apps
             .map { app ->
-                val label = pm.getApplicationLabel(app).toString()
                 val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
                     (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
                 val preset = SmartGamePresets.findPreset(app.packageName)
                 val isGame = (app.category == ApplicationInfo.CATEGORY_GAME) || (preset != null)
+                val label = if (isGame || !isSystem) {
+                    pm.getApplicationLabel(app).toString()
+                } else {
+                    // For background system apps, avoid binder IPC bottleneck
+                    app.packageName
+                }
                 InstalledAppInfo(
                     packageName = app.packageName,
                     displayName = label.ifBlank { app.packageName },
@@ -1283,6 +1297,8 @@ class AppRepository @Inject constructor(
                     .thenBy { it.isSystemApp }
                     .thenBy { it.displayName.lowercase() }
             )
+        cachedInstalledApps = mapped
+        mapped
     }
 
     suspend fun scanCandidateDirectories(
@@ -1451,23 +1467,50 @@ class AppRepository @Inject constructor(
 
     private suspend fun scanSubItems(parentDir: String, sdParentDir: String): List<CandidateSubItem> {
         if (!RootShell.exists(parentDir)) return emptyList()
-        val res = RootShell.exec("ls -1 \"$parentDir\" 2>/dev/null")
-        if (!res.isSuccess || res.stdout.isEmpty()) return emptyList()
         val items = mutableListOf<CandidateSubItem>()
-        for (name in res.stdout.map { it.trim() }.filter { it.isNotBlank() }) {
-            val childPath = "$parentDir/$name"
-            val childSd = "$sdParentDir/$name"
-            val sz = getDirSizeBytes(childPath)
-            items.add(
-                CandidateSubItem(
-                    id = name,
-                    name = name,
-                    internalPath = childPath,
-                    sdPath = childSd,
-                    sizeBytes = sz,
-                    enabled = true
-                )
-            )
+        // Batch calculate all children in 1 single du -sk invocation instead of sequential N root shell calls
+        val duRes = RootShell.exec("du -sk \"$parentDir\"/* 2>/dev/null")
+        if (duRes.isSuccess && duRes.stdout.isNotEmpty()) {
+            for (line in duRes.stdout) {
+                val parts = line.trim().split(Regex("\\s+"), limit = 2)
+                if (parts.size >= 2) {
+                    val kb = parts[0].toLongOrNull() ?: continue
+                    val childPath = parts[1].trim()
+                    val name = childPath.substringAfterLast('/')
+                    if (name.isBlank() || name == "." || name == "..") continue
+                    val childSd = "$sdParentDir/$name"
+                    items.add(
+                        CandidateSubItem(
+                            id = name,
+                            name = name,
+                            internalPath = childPath,
+                            sdPath = childSd,
+                            sizeBytes = kb * 1024L,
+                            enabled = true
+                        )
+                    )
+                }
+            }
+        }
+        // Fallback if wildcard had no subfolders or didn't expand
+        if (items.isEmpty()) {
+            val res = RootShell.exec("ls -1 \"$parentDir\" 2>/dev/null")
+            if (res.isSuccess && res.stdout.isNotEmpty()) {
+                for (name in res.stdout.map { it.trim() }.filter { it.isNotBlank() }) {
+                    val childPath = "$parentDir/$name"
+                    val childSd = "$sdParentDir/$name"
+                    items.add(
+                        CandidateSubItem(
+                            id = name,
+                            name = name,
+                            internalPath = childPath,
+                            sdPath = childSd,
+                            sizeBytes = 0L,
+                            enabled = true
+                        )
+                    )
+                }
+            }
         }
         return items
     }

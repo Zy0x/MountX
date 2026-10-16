@@ -115,7 +115,8 @@ class AppsViewModel @Inject constructor(
                     }
                     is app.mountx.service.SystemSyncEvent.PackageInstalled,
                     is app.mountx.service.SystemSyncEvent.PackageRemoved -> {
-                        loadInstalledApps()
+                        appRepository.invalidateInstalledAppsCache()
+                        loadInstalledApps(force = true)
                         refresh()
                     }
                 }

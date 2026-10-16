@@ -177,8 +177,8 @@ class StorageManager {
                 rm -f "$mountXBase/Android/.nomedia" 2>/dev/null
                 touch "$mountXBase/Android/data/.nomedia" 2>/dev/null
                 touch "$mountXBase/Android/obb/.nomedia" 2>/dev/null
-                chown -R media_rw:media_rw "$mountXBase" 2>/dev/null
-                chmod -R 777 "$mountXBase" 2>/dev/null
+                chown media_rw:media_rw "$mountXBase" "$mountXBase/Android" "$mountXBase/Android/data" "$mountXBase/Android/obb" "$mountXBase/Android/media" "$mountXBase/Custom" "$mountXBase/app" "$mountXBase/containers" 2>/dev/null
+                chmod 777 "$mountXBase" "$mountXBase/Android" "$mountXBase/Android/data" "$mountXBase/Android/obb" "$mountXBase/Android/media" "$mountXBase/Custom" "$mountXBase/app" "$mountXBase/containers" 2>/dev/null
             """.trimIndent())
             AppLogger.info("StorageManager", "Ensured MountX storage structure on $sdBase")
         }
@@ -252,9 +252,9 @@ class StorageManager {
                 RootShell.exec("rmdir \"$legacyAndroid\" 2>/dev/null")
             }
 
-            // Re-apply correct ownership and permissions on MountX
-            RootShell.exec("chown -R media_rw:media_rw \"$mountXBase\" 2>/dev/null")
-            RootShell.exec("chmod -R 777 \"$mountXBase\" 2>/dev/null")
+            // Re-apply correct ownership and permissions on MountX top structure
+            RootShell.exec("chown media_rw:media_rw \"$mountXBase\" \"$mountXBase/Android\" 2>/dev/null")
+            RootShell.exec("chmod 777 \"$mountXBase\" \"$mountXBase/Android\" 2>/dev/null")
 
             if (migratedCount > 0) {
                 AppLogger.info("StorageManager", "Successfully migrated $migratedCount legacy packages to $mountXAndroid")
@@ -271,9 +271,13 @@ class StorageManager {
      */
     suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> = withContext(Dispatchers.IO) {
         // Proactively ensure MountX unified structure exists as soon as external storage is scanned
-        ensureMountXStorageStructure(targetMountPoint)
+        if (!RootShell.exists("$targetMountPoint/MountX/Android/data")) {
+            ensureMountXStorageStructure(targetMountPoint)
+        }
         // Automatically migrate legacy $targetMountPoint/Android to $targetMountPoint/MountX/Android
-        migrateLegacyStorageToMountX(targetMountPoint)
+        if (RootShell.exists("$targetMountPoint/Android")) {
+            migrateLegacyStorageToMountX(targetMountPoint)
+        }
 
         // Collect all mount entries from /proc/mounts using RootShell first for full root namespace visibility
         data class RawMount(val spec: String, val file: String, val vfstype: String)

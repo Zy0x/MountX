@@ -70,7 +70,8 @@ object AppIconManager {
     suspend fun prewarmIcons(context: Context, packageNames: List<String>) {
         withContext(iconDispatcher) {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
-            for (pkg in packageNames) {
+            // Limit prewarming to top 25 visible apps to preserve CPU and flash IO; remainder loaded lazy on-demand
+            for (pkg in packageNames.take(25)) {
                 if (iconCache.get(pkg) == null) {
                     loadIcon(context, pkg)
                 }

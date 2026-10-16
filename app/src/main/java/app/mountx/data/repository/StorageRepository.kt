@@ -22,6 +22,7 @@ import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import app.mountx.service.SystemSyncMonitor
 import kotlinx.coroutines.flow.Flow
@@ -46,16 +47,18 @@ class StorageRepository @Inject constructor(
 
     /**
      * Event-driven storage info observation.
-     * Fires immediately, on broadcast media changes, and throttled to >= 3000ms.
+     * Fires immediately on manual refresh; throttled to >= 3000ms for hardware system events.
      * Stops automatically when UI unsubscribes (lifecycle aware), allowing deep sleep.
      */
     fun observeStorageInfo(mountPoint: String = "/data/sdext2"): Flow<StorageInfo?> = flow {
         emit(storageManager.getStorageInfo(mountPoint))
         merge(
-            _manualRefresh,
-            systemSyncMonitor.events
-        ).collect {
-            delay(3000L) // 3000ms debouncing to keep CPU cool
+            _manualRefresh.map { false },
+            systemSyncMonitor.events.map { true }
+        ).collect { isSystemEvent ->
+            if (isSystemEvent) {
+                delay(3000L) // 3000ms debouncing only for hardware events to keep CPU cool
+            }
             emit(storageManager.getStorageInfo(mountPoint))
         }
     }.flowOn(Dispatchers.IO)
@@ -66,10 +69,12 @@ class StorageRepository @Inject constructor(
     fun observeInternalStorage(): Flow<InternalStorageInfo?> = flow {
         emit(storageManager.getInternalStorageInfo())
         merge(
-            _manualRefresh,
-            systemSyncMonitor.events
-        ).collect {
-            delay(3000L) // 3000ms debouncing to keep CPU cool
+            _manualRefresh.map { false },
+            systemSyncMonitor.events.map { true }
+        ).collect { isSystemEvent ->
+            if (isSystemEvent) {
+                delay(3000L) // 3000ms debouncing only for hardware events to keep CPU cool
+            }
             emit(storageManager.getInternalStorageInfo())
         }
     }.flowOn(Dispatchers.IO)

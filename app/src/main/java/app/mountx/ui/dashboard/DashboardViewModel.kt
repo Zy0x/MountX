@@ -20,6 +20,8 @@ import com.topjohnwu.superuser.Shell
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -125,6 +127,7 @@ class DashboardViewModel @Inject constructor(
 
     init {
         refresh()
+        startLiveStoragePulse()
         viewModelScope.launch {
             systemSyncMonitor.events.collect { event ->
                 when (event) {
@@ -193,6 +196,58 @@ class DashboardViewModel @Inject constructor(
                 loadLiveTelemetry()
             } finally {
                 _isRefreshing.value = false
+            }
+        }
+    }
+
+    private var lastRecordedUsedBytes: Long = -1L
+    private var lastForegroundResumeTime: Long = 0L
+
+    fun onAppForegroundResume() {
+        val now = System.currentTimeMillis()
+        if (now - lastForegroundResumeTime < 15_000L) return
+        lastForegroundResumeTime = now
+        storageRepository.refreshStorage()
+        viewModelScope.launch(Dispatchers.IO) {
+            val sdBase = appPreferences.sdBasePath.first()
+            val current = games.value
+            for (g in current) {
+                gameRepository.calculateDataSize(g.packageName, sdBase)
+            }
+            loadLiveTelemetry()
+        }
+    }
+
+    fun refreshStorageQuick() {
+        storageRepository.refreshStorage()
+        viewModelScope.launch(Dispatchers.IO) {
+            val sdBase = appPreferences.sdBasePath.first()
+            val current = games.value
+            for (g in current) {
+                gameRepository.calculateDataSize(g.packageName, sdBase)
+            }
+        }
+    }
+
+    private fun startLiveStoragePulse() {
+        viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(8_000L) // 8-second gentle pulse
+                try {
+                    val sdBase = appPreferences.sdBasePath.first()
+                    val currentStorage = storageRepository.getStorageInfo(sdBase)
+                    if (currentStorage != null && currentStorage.isMounted) {
+                        if (lastRecordedUsedBytes > 0L && Math.abs(currentStorage.usedBytes - lastRecordedUsedBytes) > 5 * 1024 * 1024L) {
+                            // Storage capacity changed (> 5 MB, e.g. game downloaded assets)
+                            storageRepository.refreshStorage()
+                            val mountedGames = games.value.filter { it.mountStatus == MountStatus.MOUNTED }
+                            for (g in mountedGames) {
+                                gameRepository.calculateDataSize(g.packageName, sdBase)
+                            }
+                        }
+                        lastRecordedUsedBytes = currentStorage.usedBytes
+                    }
+                } catch (_: Exception) {}
             }
         }
     }
