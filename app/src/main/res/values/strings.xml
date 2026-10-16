@@ -773,6 +773,17 @@
     <string name="dialog_delete_storage_insufficient">Internal storage insufficient (Available: %1$s, Required: %2$s). Restore aborted to prevent full memory.</string>
     <string name="dialog_delete_restoring_title">Restoring Data to Internal…</string>
     <string name="dialog_delete_restoring_msg">Copying physical files and restoring permissions. Do not close the app or turn off the device.</string>
+    <string name="dialog_delete_unmounting_title">Unmounting &amp; Removing…</string>
+    <string name="dialog_delete_unmounting_subtitle">Cleaning up system namespaces and entries</string>
+    <string name="dialog_delete_unmounting_msg">Unmounting namespaces across system processes, updating catalog, and cleaning database entries. Physical data remains safe on MicroSD.</string>
+    <string name="dialog_delete_step_1_title">Physical file transfer</string>
+    <string name="dialog_delete_step_2_title">Permissions &amp; SELinux context</string>
+    <string name="dialog_delete_step_3_title">Release mount &amp; sync</string>
+    <string name="dialog_delete_step_1_desc">1/3 Moving files back to internal storage…</string>
+    <string name="dialog_delete_step_2_desc">2/3 Restoring permissions &amp; SELinux…</string>
+    <string name="dialog_delete_step_3_desc">3/3 Releasing mount &amp; cleaning database…</string>
+    <string name="dialog_delete_success_removed">\"%1$s\" successfully removed from MountX</string>
+    <string name="dialog_delete_failed_removed">Failed to remove \"%1$s\": %2$s</string>
     <string name="custom_path_dialog_title">Add Custom Directory</string>
     <string name="custom_path_dialog_desc">Define internal custom directory to map precisely to MicroSD.</string>
     <string name="custom_path_label_hint">Label / Directory Name (e.g., Downloads)</string>

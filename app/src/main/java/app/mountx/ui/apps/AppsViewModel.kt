@@ -269,6 +269,8 @@ class AppsViewModel @Inject constructor(
 
     private val _isRestoring = MutableStateFlow(false)
     val isRestoring: StateFlow<Boolean> = _isRestoring.asStateFlow()
+    private val _isUnmounting = MutableStateFlow(false)
+    val isUnmounting: StateFlow<Boolean> = _isUnmounting.asStateFlow()
     private val _restoreProgress = MutableStateFlow(0f)
     val restoreProgress: StateFlow<Float> = _restoreProgress.asStateFlow()
     private val _restoreMessage = MutableStateFlow("")
@@ -289,7 +291,13 @@ class AppsViewModel @Inject constructor(
         onComplete: ((Boolean, String?) -> Unit)? = null
     ) {
         viewModelScope.launch {
-            _isRestoring.value = restoreToInternal
+            if (restoreToInternal) {
+                _isRestoring.value = true
+                _isUnmounting.value = false
+            } else {
+                _isRestoring.value = false
+                _isUnmounting.value = true
+            }
             _restoreProgress.value = 0f
             _restoreMessage.value = ""
             val sdBase = appPreferences.sdBasePath.first()
@@ -303,7 +311,9 @@ class AppsViewModel @Inject constructor(
                 _restoreMessage.value = msg
             }
             _isRestoring.value = false
+            _isUnmounting.value = false
             _restoreProgress.value = 0f
+            _restoreMessage.value = ""
             refresh()
             onComplete?.invoke(result.isSuccess, result.exceptionOrNull()?.message)
         }

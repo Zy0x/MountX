@@ -57,6 +57,7 @@ fun DeleteAppConfirmDialog(
     requiredRestoreBytes: Long,
     internalFreeBytes: Long,
     isRestoring: Boolean,
+    isUnmounting: Boolean = false,
     restoreProgress: Float,
     restoreMessage: String,
     onConfirmRestoreAndDelete: () -> Unit,
@@ -64,14 +65,15 @@ fun DeleteAppConfirmDialog(
     onDismiss: () -> Unit
 ) {
     val isStorageSufficient = internalFreeBytes >= (requiredRestoreBytes + 250_000_000L) || requiredRestoreBytes == 0L
+    val isProcessing = isRestoring || isUnmounting
 
     Dialog(
         onDismissRequest = {
-            if (!isRestoring) onDismiss()
+            if (!isProcessing) onDismiss()
         },
         properties = DialogProperties(
-            dismissOnBackPress = !isRestoring,
-            dismissOnClickOutside = !isRestoring
+            dismissOnBackPress = !isProcessing,
+            dismissOnClickOutside = !isProcessing
         )
     ) {
         Surface(
@@ -115,9 +117,9 @@ fun DeleteAppConfirmDialog(
                             )
                             Text(
                                 text = when (currentStep) {
-                                    1 -> "1/3 Memindahkan berkas ke internal..."
-                                    2 -> "2/3 Menyesuaikan izin & SELinux..."
-                                    else -> "3/3 Melepas mount & database..."
+                                    1 -> stringResource(R.string.dialog_delete_step_1_desc)
+                                    2 -> stringResource(R.string.dialog_delete_step_2_desc)
+                                    else -> stringResource(R.string.dialog_delete_step_3_desc)
                                 },
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 fontWeight = FontWeight.SemiBold,
@@ -133,7 +135,7 @@ fun DeleteAppConfirmDialog(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = restoreMessage.ifBlank { "Menyalin berkas fisik..." },
+                                text = restoreMessage.ifBlank { stringResource(R.string.dialog_delete_restoring_msg) },
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -168,22 +170,91 @@ fun DeleteAppConfirmDialog(
                     ) {
                         StepItem(
                             stepNumber = 1,
-                            title = "Pemindahan berkas fisik",
+                            title = stringResource(R.string.dialog_delete_step_1_title),
                             isActive = currentStep == 1,
                             isDone = currentStep > 1
                         )
                         StepItem(
                             stepNumber = 2,
-                            title = "Perizinan & konteks SELinux",
+                            title = stringResource(R.string.dialog_delete_step_2_title),
                             isActive = currentStep == 2,
                             isDone = currentStep > 2
                         )
                         StepItem(
                             stepNumber = 3,
-                            title = "Pelepasan kaitan & sinkronisasi",
+                            title = stringResource(R.string.dialog_delete_step_3_title),
                             isActive = currentStep == 3,
                             isDone = restoreProgress >= 1f
                         )
+                    }
+                } else if (isUnmounting) {
+                    // ── UNMOUNTING PROGRESS STATE ──
+                    val crimsonColor = adaptiveCrimson()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.5.dp,
+                            color = crimsonColor
+                        )
+                        Column {
+                            Text(
+                                text = stringResource(R.string.dialog_delete_unmounting_title),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = stringResource(R.string.dialog_delete_unmounting_subtitle),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                fontWeight = FontWeight.SemiBold,
+                                color = crimsonColor
+                            )
+                        }
+                    }
+
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp),
+                        color = crimsonColor,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(crimsonColor.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LinkOff,
+                                    contentDescription = null,
+                                    tint = crimsonColor,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.dialog_delete_unmounting_msg),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 } else {
                     // ── NORMAL SELECTION STATE ──

@@ -737,6 +737,17 @@
     <string name="dialog_delete_storage_insufficient">Penyimpanan internal tidak mencukupi (Tersedia: %1$s, Dibutuhkan: %2$s). Pemulihan ke internal dicegah untuk menghindari memori penuh.</string>
     <string name="dialog_delete_restoring_title">Memulihkan Data ke Internal…</string>
     <string name="dialog_delete_restoring_msg">Sedang menyalin berkas fisik dan memperbaiki perizinan. Jangan menutup aplikasi atau mematikan perangkat.</string>
+    <string name="dialog_delete_unmounting_title">Melepas Mount &amp; Menghapus…</string>
+    <string name="dialog_delete_unmounting_subtitle">Membersihkan mount namespace sistem dan entri</string>
+    <string name="dialog_delete_unmounting_msg">Melepaskan mount di namespace sistem, memperbarui katalog, dan membersihkan entri database. Data fisik tetap aman di MicroSD.</string>
+    <string name="dialog_delete_step_1_title">Pemindahan berkas fisik</string>
+    <string name="dialog_delete_step_2_title">Perizinan &amp; konteks SELinux</string>
+    <string name="dialog_delete_step_3_title">Pelepasan kaitan &amp; sinkronisasi</string>
+    <string name="dialog_delete_step_1_desc">1/3 Memindahkan berkas ke internal…</string>
+    <string name="dialog_delete_step_2_desc">2/3 Menyesuaikan izin &amp; SELinux…</string>
+    <string name="dialog_delete_step_3_desc">3/3 Melepas mount &amp; database…</string>
+    <string name="dialog_delete_success_removed">\"%1$s\" berhasil dihapus dari MountX</string>
+    <string name="dialog_delete_failed_removed">Gagal menghapus \"%1$s\": %2$s</string>
     <string name="custom_path_dialog_title">Tambah Direktori Kustom</string>
     <string name="custom_path_dialog_desc">Tentukan direktori kustom internal yang ingin dipetakan secara presisi ke MicroSD.</string>
     <string name="custom_path_label_hint">Label / Nama Direktori (misal: Downloads)</string>

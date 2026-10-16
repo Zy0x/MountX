@@ -362,6 +362,7 @@ fun AppsScreen(
 
     // Delete Confirmation Dialog
     val isRestoring by viewModel.isRestoring.collectAsState()
+    val isUnmounting by viewModel.isUnmounting.collectAsState()
     val restoreProgress by viewModel.restoreProgress.collectAsState()
     val restoreMessage by viewModel.restoreMessage.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -373,19 +374,48 @@ fun AppsScreen(
             requiredRestoreBytes = game.dataSizeBytes,
             internalFreeBytes = android.os.Environment.getDataDirectory().freeSpace,
             isRestoring = isRestoring,
+            isUnmounting = isUnmounting,
             restoreProgress = restoreProgress,
             restoreMessage = restoreMessage,
             onConfirmRestoreAndDelete = {
-                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = true) { _, _ ->
+                val appLabel = game.displayName.ifBlank { game.packageName }
+                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = true) { success, errorMsg ->
                     gameToDelete = null
+                    if (success) {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.dialog_delete_success_removed, appLabel),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.dialog_delete_failed_removed, appLabel, errorMsg ?: ""),
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             },
             onConfirmUnmountAndDelete = {
-                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = false) { _, _ ->
+                val appLabel = game.displayName.ifBlank { game.packageName }
+                viewModel.removeGameWithOption(context, game.packageName, restoreToInternal = false) { success, errorMsg ->
                     gameToDelete = null
+                    if (success) {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.dialog_delete_success_removed, appLabel),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.dialog_delete_failed_removed, appLabel, errorMsg ?: ""),
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             },
-            onDismiss = { if (!isRestoring) gameToDelete = null }
+            onDismiss = { if (!isRestoring && !isUnmounting) gameToDelete = null }
         )
     }
 
