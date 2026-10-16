@@ -164,6 +164,24 @@
     <string name="migration_category_data">Data Game</string>
     <string name="migration_category_obb">Resource OBB</string>
     <string name="migration_category_media">Media &amp; Unduhan</string>
+    <string name="migration_direct_mount_action">Kaitkan Langsung Saja</string>
+    <string name="manage_btn_direct_mount_format">Kaitkan Langsung (%1$d)</string>
+    <string name="manage_btn_transfer_data_format">Pindahkan Data (%1$d)</string>
+    <string name="manage_btn_unmount_selected_format">Lepas Kaitan (%1$d)</string>
+    <string name="manage_direct_mount_title">Kaitkan Langsung ke Penyimpanan</string>
+    <string name="manage_direct_mount_subtitle">Pilih partisi penyimpanan untuk dikaitkan langsung tanpa memindahkan berkas.</string>
+    <string name="manage_btn_confirm_direct_mount">Kaitkan Sekarang</string>
+    <string name="occlusion_warning_title">Peringatan Penutupan Data Internal</string>
+    <string name="occlusion_warning_desc">Memori internal memiliki data sebesar %1$s untuk aplikasi ini. Mengaitkan direktori eksternal yang kosong langsung akan menutupi data internal selama kaitan aktif. Berkas internal tetap aman dan tidak terhapus, namun tidak dapat dibaca aplikasi sampai dilepas.\n\nApakah Anda ingin tetap mengaitkan langsung, atau memindahkan data internal terlebih dahulu?</string>
+    <string name="occlusion_btn_proceed_mount">Tetap Kaitkan Langsung</string>
+    <string name="occlusion_btn_transfer_first">Pindahkan Data Dahulu</string>
+    <string name="category_inspector_action_direct_mount">Kaitkan Langsung</string>
+    <string name="category_inspector_action_transfer">Pindahkan Data</string>
+    <string name="category_inspector_action_unmount">Lepas Kaitan</string>
+    <string name="category_inspector_action_change_target">Ganti Target</string>
+    <string name="category_actions_title">Aksi Penyimpanan Kategori</string>
+    <string name="unmount_selected_confirm_title">Lepaskan Kaitan Kategori Terpilih?</string>
+    <string name="unmount_selected_confirm_desc">Yakin ingin melepaskan kaitan untuk %1$d kategori terpilih? Data game di penyimpanan eksternal tetap aman dan tidak akan terhapus.</string>
     <string name="btn_add_custom_directory">Tambah Direktori Kustom</string>
     <string name="dialog_add_custom_directory_title">Tambah Direktori Kustom</string>
     <string name="dialog_add_custom_directory_desc">Masukkan path direktori internal yang ingin dikaitkan ke MicroSD:</string>
@@ -210,6 +228,7 @@
     <string name="game_detail_legend_internal_sys">Sistem</string>
     <string name="game_detail_legend_internal_shared">Bersama</string>
     <string name="game_detail_legend_microsd">Kartu MicroSD</string>
+    <string name="game_detail_legend_usb">USB Eksternal</string>
     <string name="game_detail_legend_total">Total</string>
     <string name="game_detail_chart_all_internal">100% Memori HP</string>
     <string name="game_detail_chart_all_microsd">100% MicroSD</string>
@@ -919,7 +938,9 @@
     <string name="category_inspector_mount_inactive">Tidak Ter-mount (Data Standar)</string>
     <string name="category_inspector_internal_title">Penyimpanan Internal</string>
     <string name="category_inspector_microsd_title">Penyimpanan MicroSD</string>
+    <string name="category_inspector_usb_title">USB OTG / Penyimpanan Eksternal</string>
     <string name="category_inspector_not_migrated">Belum dialihkan ke MicroSD</string>
+    <string name="category_inspector_not_migrated_usb">Belum dialihkan ke USB OTG</string>
     <string name="category_inspector_copy_path">Salin</string>
     <string name="category_inspector_path_copied">Path direktori disalin ke clipboard</string>
     <string name="category_inspector_delete_btn">Hapus Data Kategori</string>
@@ -935,6 +956,7 @@
     <string name="category_inspector_delete_success">Data kategori berhasil dihapus</string>
     <string name="category_inspector_delete_failed">Gagal menghapus data: %1$s</string>
     <string name="category_inspector_internal_mounted_note">Dialihkan ke MicroSD</string>
+    <string name="category_inspector_internal_mounted_note_usb">Dialihkan ke Penyimpanan USB</string>
     <string name="category_inspector_delete_loc_sd_mounted_hint">Data kategori ini ter-mount ke MicroSD (%1$s). Menghapus data akan melepas kaitan mount dan menghapus berkas fisik di kartu memori.</string>
     <string name="category_inspector_delete_loc_internal_hint">Data kategori ini tersimpan di memori internal (%1$s). Menghapus data akan menghapus berkas di penyimpanan lokal perangkat.</string>
 
@@ -968,6 +990,16 @@
     <string name="op_status_success">Operasi Berhasil Diselesaikan</string>
     <string name="op_copying_item">Menyalin: %1$s</string>
     <string name="op_restoring_item">Memulihkan: %1$s</string>
+    <string name="op_engine_tar">Streaming Tar Pipeline</string>
+    <string name="op_engine_cp">Direct Large-Block I/O</string>
+    <string name="op_engine_label">Mesin: %1$s</string>
+    <string name="op_btn_cancel">Batalkan</string>
+    <string name="op_cancel_dialog_title">Batalkan Operasi?</string>
+    <string name="op_cancel_dialog_desc">Apakah Anda yakin ingin menghentikan pemindahan data ini? Berkas yang telah tersalin akan tetap aman dan berkas asal tidak akan dihapus.</string>
+    <string name="op_btn_confirm_cancel">Ya, Batalkan</string>
+    <string name="op_btn_continue">Lanjutkan</string>
+    <string name="err_fat32_4gb_limit">Sistem file tujuan (FAT32) tidak mendukung file di atas 4 GB. Silakan format partisi penyimpanan ke F2FS atau ExFAT terlebih dahulu.</string>
+    <string name="err_insufficient_space_slack">Kapasitas ruang penyimpanan tujuan tidak mencukupi! Dibutuhkan: %1$s (termasuk kompensasi cluster slack), Tersedia: %2$s.</string>
 
     <!-- v2.2.23 Migration Confirmation & Conflict Resolution -->
     <string name="migration_confirm_title_to_sd">Konfirmasi Pemindahan Data</string>
@@ -1062,6 +1094,34 @@
     <string name="collision_active_storage_label">Penyimpanan Aktif: %1$s</string>
     <string name="collision_mount_blocked_active">Gagal mengaitkan: aplikasi ini sudah aktif ter-mount dari %1$s. Lepaskan terlebih dahulu untuk beralih disk.</string>
 
+    <!-- Peringatan Kesehatan & Hardware I/O Error MicroSD -->
+    <string name="notif_disk_error_title">Gangguan Hardware MicroSD Terdeteksi</string>
+    <string name="notif_disk_error_desc">MicroSD mengalami error I/O atau pemutusan daya. Kaitan dinonaktifkan demi mencegah game macet.</string>
+    <string name="notif_active_status_title_error">⚠️ Error Disk: MicroSD Tidak Merespons</string>
+    <string name="notif_active_status_error_summary">Error I/O hardware terdeteksi · Kaitan dinonaktifkan</string>
+    <string name="dashboard_disk_error_title">Masalah Kartu MicroSD (Hardware I/O Error)</string>
+    <string name="dashboard_disk_error_desc">Sistem mendeteksi error baca/tulis kritis pada kartu MicroSD (msdc power-off / CRC timeout). Game berisiko blank screen atau hang jika dibuka.</string>
+    <string name="dashboard_disk_error_action_unmount">Lepas Darurat</string>
+    <string name="dashboard_disk_error_action_diagnose">Diagnostik &amp; Cek Disk</string>
+    <string name="dashboard_disk_error_unmounted_msg">Seluruh kaitan aktif telah dilepaskan secara aman.</string>
+    <string name="disk_health_healthy">Sehat</string>
+    <string name="disk_health_warning">Peringatan</string>
+    <string name="disk_health_io_error">Error I/O Hardware</string>
+    <string name="disk_health_unresponsive">Tidak Merespons</string>
+    <string name="disk_health_disconnected">Terputus</string>
+    <string name="disk_health_badge_healthy">Normal</string>
+    <string name="disk_health_badge_error">I/O Error</string>
+    <string name="disk_health_troubleshoot_title">Panduan Pemulihan MicroSD</string>
+    <string name="disk_health_troubleshoot_step1">1. Lepas-pasang kembali tray kartu MicroSD, atau restart HP untuk me-reset daya controller.</string>
+    <string name="disk_health_troubleshoot_step2">2. Pastikan konektor kuningan MicroSD bersih dan rapat.</string>
+    <string name="disk_health_troubleshoot_step3">3. Jalankan Periksa Integritas Filesystem (FSCK) di menu Alat Partisi.</string>
+    <string name="dashboard_disk_detached_title">MicroSD Tidak Terdeteksi</string>
+    <string name="dashboard_disk_detached_desc">Penyimpanan eksternal tidak terdeteksi oleh sistem hardware. Silakan lepas-pasang kembali (re-plugin) tray kartu MicroSD Anda.</string>
+    <string name="dashboard_disk_detached_hero">Penyimpanan Terputus</string>
+    <string name="dashboard_disk_detached_hero_desc">Kartu MicroSD tidak terdeteksi. Aplikasi tidak dapat mengakses data yang dialihkan secara aman.</string>
+    <string name="dashboard_disk_detached_badge">Penyimpanan Terputus</string>
+    <string name="dashboard_disk_detached_action_rescan">Pindai Ulang</string>
+
     <!-- App Update System & Dialog -->
     <string name="update_dialog_title">Pembaruan Aplikasi</string>
     <string name="update_badge_available">Pembaruan Tersedia</string>
@@ -1079,6 +1139,10 @@
     <string name="notif_channel_updates_desc">Notifikasi ketersediaan rilis baru MountX</string>
     <string name="notif_update_title">MountX %1$s Tersedia</string>
     <string name="notif_update_body">Ketuk untuk melihat dan mengunduh pembaruan terbaru.</string>
+
+    <!-- App Detail Manual Refresh -->
+    <string name="game_detail_refresh">Segarkan Detail</string>
+    <string name="game_detail_refreshed">Detail aplikasi diperbarui</string>
 </resources>
 
 

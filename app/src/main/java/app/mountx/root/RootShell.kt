@@ -31,7 +31,7 @@ object RootShell {
             }
         }
 
-    private const val ENV_SETUP = "case \":\$PATH:\" in *\":/data/adb/modules/MountX/bin:\"*) ;; *) export PATH=\"/data/adb/modules/MountX/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac; "
+    private const val ENV_SETUP = "case \":\$PATH:\" in *\":/data/adb/modules/MountX/bin:\"*) ;; *) export PATH=\"/data/adb/modules/MountX/bin:/data/adb/modules/mountx/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac; "
 
     /**
      * Execute a shell command with root and return the result.
@@ -145,5 +145,15 @@ object RootShell {
      */
     suspend fun isMountpoint(path: String): Boolean {
         return exec("mountpoint -q \"$path\" && echo 1 || echo 0").output.trim() == "1"
+    }
+
+    /**
+     * Atomically writes string content to a target file via root using Base64 decoding.
+     * Prevents shell escaping glitches, argument buffer limits, and newline/quote corruption.
+     */
+    suspend fun writeFile(path: String, content: String): Boolean = withContext(Dispatchers.IO) {
+        val b64 = android.util.Base64.encodeToString(content.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+        val res = exec("echo '$b64' | base64 -d > \"$path\" && sync")
+        res.isSuccess
     }
 }

@@ -26,7 +26,7 @@ class MountXApp : Application() {
 
     class ShellInitializer : Shell.Initializer() {
         override fun onInit(context: android.content.Context, shell: Shell): Boolean {
-            shell.newJob().add("case \":\$PATH:\" in *\":/data/adb/modules/MountX/bin:\"*) ;; *) export PATH=\"/data/adb/modules/MountX/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac").exec()
+            shell.newJob().add("case \":\$PATH:\" in *\":/data/adb/modules/MountX/bin:\"*) ;; *) export PATH=\"/data/adb/modules/MountX/bin:/data/adb/modules/mountx/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac").exec()
             return true
         }
     }

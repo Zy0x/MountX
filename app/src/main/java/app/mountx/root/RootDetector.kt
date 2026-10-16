@@ -51,10 +51,15 @@ object RootDetector {
             MODULE_FOUND=0
             for TRY_MOD in \
                 "/data/adb/modules/MountX" \
+                "/data/adb/modules/mountx" \
                 "/data/adb/modules/Mountify" \
+                "/data/adb/modules/mountify" \
                 "/data/adb/ksu/modules/MountX" \
+                "/data/adb/ksu/modules/mountx" \
                 "/data/adb/ksud/modules/MountX" \
-                "/data/adb/ap/modules/MountX"; do
+                "/data/adb/ksud/modules/mountx" \
+                "/data/adb/ap/modules/MountX" \
+                "/data/adb/ap/modules/mountx"; do
                 if [ -d "${'$'}TRY_MOD" ] && [ ! -f "${'$'}TRY_MOD/disable" ] && [ ! -f "${'$'}TRY_MOD/remove" ]; then
                     echo "MODULE:1"
                     if [ -f "${'$'}TRY_MOD/module.prop" ]; then

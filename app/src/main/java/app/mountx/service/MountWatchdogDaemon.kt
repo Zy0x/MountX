@@ -68,8 +68,19 @@ class MountWatchdogDaemon @Inject constructor(
                     scope.launch {
                         val sdBase = appPreferences.sdBasePath.first()
                         val isSdBaseMounted = RootShell.isMountpoint(sdBase)
-                        val isMmcStillAlive = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
-                        if (!isSdBaseMounted && !isMmcStillAlive) {
+                        val configuredDevice = appPreferences.sdBlockDevice.first().trim()
+                        val parentDev = configuredDevice.removePrefix("/dev/block/").replace(Regex("p[0-9]+$"), "")
+                        val isConfiguredAlive = configuredDevice.isNotBlank() && (
+                            RootShell.exists(configuredDevice) ||
+                            (parentDev.isNotBlank() && (RootShell.exists("/dev/block/$parentDev") || RootShell.exists("/sys/block/$parentDev")))
+                        )
+                        val isGenericDeviceAlive = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0") ||
+                            RootShell.exists("/dev/block/mmcblk1") || RootShell.exists("/sys/block/mmcblk1") ||
+                            RootShell.exists("/dev/block/sda") || RootShell.exists("/sys/block/sda") ||
+                            RootShell.exists("/dev/block/sdb") || RootShell.exists("/sys/block/sdb")
+                        val isDeviceStillAlive = isConfiguredAlive || isGenericDeviceAlive
+
+                        if (!isSdBaseMounted && !isDeviceStillAlive) {
                             AppLogger.warn("Watchdog", "MicroSD physically detached. Executing emergency lazy unmount.")
                             emergencyLazyUnmount()
                         } else {

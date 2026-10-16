@@ -17,8 +17,8 @@ import java.util.Locale
  * - Asynchronously appends to persistent log files via a Channel queue so file
  *   writes never block the caller coroutine (prevents storage breakdown delay).
  * Persistent logs:
- * - /storage/emulated/0/mountx.log
- * - /data/adb/modules/MountX/mountx.log (or /data/adb/modules/Mountify/mountx.log fallback)
+ * - /data/user/0/app.mountx/files/mountx.log
+ * - /data/adb/modules/MountX/mountx.log (or /data/adb/modules/mountx/mountx.log / /data/adb/modules/Mountify/mountx.log fallback)
  */
 object AppLogger {
 
@@ -27,8 +27,9 @@ object AppLogger {
     // Channel buffers log lines so file-writes are fully decoupled from callers
     private val logChannel = Channel<String>(capacity = Channel.UNLIMITED)
 
-    private const val USER_LOG_FILE = "/storage/emulated/0/mountx.log"
+    private const val USER_LOG_FILE = "/data/user/0/app.mountx/files/mountx.log"
     private const val MOD_LOG_FILE = "/data/adb/modules/MountX/mountx.log"
+    private const val ALT_MOD_LOG_FILE = "/data/adb/modules/mountx/mountx.log"
     private const val FALLBACK_MOD_LOG = "/data/adb/modules/Mountify/mountx.log"
 
     init {
@@ -46,19 +47,22 @@ object AppLogger {
                     val userFile = java.io.File(USER_LOG_FILE)
                     var directWritten = 0
                     try {
+                        userFile.parentFile?.mkdirs()
                         userFile.appendText(batch.joinToString("\n", postfix = "\n"))
                         directWritten = batch.size
                     } catch (_: Exception) {}
 
                     // Also mirror to Magisk module log if directory exists
                     val modDirMountX = java.io.File("/data/adb/modules/MountX")
+                    val modDirMountxLower = java.io.File("/data/adb/modules/mountx")
                     val modDirMountify = java.io.File("/data/adb/modules/Mountify")
-                    if (modDirMountX.exists() || modDirMountify.exists() || directWritten < batch.size) {
+                    if (modDirMountX.exists() || modDirMountxLower.exists() || modDirMountify.exists() || directWritten < batch.size) {
                         val script = batch.joinToString("\n") { line ->
                             val safe = line.replace("\"", "'")
                             val userAppend = if (directWritten < batch.size) "echo \"$safe\" >> \"$USER_LOG_FILE\" 2>/dev/null; " else ""
                             "$userAppend" +
                             "if [ -d /data/adb/modules/MountX ]; then echo \"$safe\" >> \"$MOD_LOG_FILE\" 2>/dev/null; " +
+                            "elif [ -d /data/adb/modules/mountx ]; then echo \"$safe\" >> \"$ALT_MOD_LOG_FILE\" 2>/dev/null; " +
                             "elif [ -d /data/adb/modules/Mountify ]; then echo \"$safe\" >> \"$FALLBACK_MOD_LOG\" 2>/dev/null; fi"
                         }
                         RootShell.execScript(script)

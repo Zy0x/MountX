@@ -23,9 +23,11 @@ class LogsViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        const val LOG_PATH = "/storage/emulated/0/mountx.log"
+        const val LOG_PATH = "/data/user/0/app.mountx/files/mountx.log"
         const val MOD_LOG_PATH = "/data/adb/modules/MountX/mountx.log"
-        const val LEGACY_LOG_PATH = "/storage/emulated/0/mountify.log"
+        const val ALT_MOD_LOG_PATH = "/data/adb/modules/mountx/mountx.log"
+        const val LEGACY_LOG_PATH = "/storage/emulated/0/mountx.log"
+        const val LEGACY_MOUNTIFY_LOG_PATH = "/storage/emulated/0/mountify.log"
         const val LEGACY_MOD_LOG_PATH = "/data/adb/modules/Mountify/mountify.log"
     }
 
@@ -57,7 +59,7 @@ class LogsViewModel @Inject constructor(
     fun clearLog() {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                RootShell.exec("echo '' > \"$LOG_PATH\"; echo '' > \"$MOD_LOG_PATH\" 2>/dev/null; rm -f \"$LEGACY_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_MOD_LOG_PATH\" 2>/dev/null")
+                RootShell.exec("rm -f \"$LEGACY_LOG_PATH\" \"$LEGACY_MOUNTIFY_LOG_PATH\" 2>/dev/null; echo '' > \"$LOG_PATH\" 2>/dev/null; echo '' > \"$MOD_LOG_PATH\" 2>/dev/null; echo '' > \"$ALT_MOD_LOG_PATH\" 2>/dev/null; echo '' > \"$LEGACY_MOD_LOG_PATH\" 2>/dev/null")
             }
             readLogFile()
         }
@@ -94,7 +96,7 @@ class LogsViewModel @Inject constructor(
     }
 
     private suspend fun readLogFile() = withContext(Dispatchers.IO) {
-        val cmd = "cat \"$MOD_LOG_PATH\" \"$LOG_PATH\" \"$LEGACY_MOD_LOG_PATH\" \"$LEGACY_LOG_PATH\" 2>/dev/null | tail -n 350"
+        val cmd = "cat \"$MOD_LOG_PATH\" \"$ALT_MOD_LOG_PATH\" \"$LOG_PATH\" \"$LEGACY_MOD_LOG_PATH\" \"$LEGACY_LOG_PATH\" \"$LEGACY_MOUNTIFY_LOG_PATH\" 2>/dev/null | tail -n 350"
         val result = RootShell.exec(cmd)
         val rawLines = if (result.isSuccess && result.stdout.isNotEmpty()) {
             result.stdout.filter { it.isNotBlank() }

@@ -2953,6 +2953,7 @@ class StorageManager {
             if (config.isBootPersistent) {
                 val script = """
                     cfgFile="/data/adb/modules/MountX/config.conf"
+                    [ ! -f "${'$'}cfgFile" ] && cfgFile="/data/adb/modules/mountx/config.conf"
                     [ ! -f "${'$'}cfgFile" ] && cfgFile="/data/adb/modules/Mountify/config.conf"
                     if [ -f "${'$'}cfgFile" ]; then
                         grep -q "^IO_TWEAKS_ENABLED=" "${'$'}cfgFile" && sed -i "s/^IO_TWEAKS_ENABLED=.*/IO_TWEAKS_ENABLED=1/" "${'$'}cfgFile" || echo "IO_TWEAKS_ENABLED=1" >> "${'$'}cfgFile"
@@ -3142,6 +3143,7 @@ class StorageManager {
             if (partition.isTargetMount) {
                 val serviceScript = """
                     [ -f /data/adb/modules/MountX/service.sh ] && sh /data/adb/modules/MountX/service.sh 2>/dev/null &
+                    [ -f /data/adb/modules/mountx/service.sh ] && sh /data/adb/modules/mountx/service.sh 2>/dev/null &
                     [ -f /data/adb/modules/Mountify/service.sh ] && sh /data/adb/modules/Mountify/service.sh 2>/dev/null &
                 """.trimIndent()
                 RootShell.exec(serviceScript)

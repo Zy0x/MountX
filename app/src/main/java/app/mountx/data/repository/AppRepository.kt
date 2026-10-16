@@ -540,7 +540,7 @@ class AppRepository @Inject constructor(
         }
 
     suspend fun syncModuleGamelist() = withContext(Dispatchers.IO) {
-        val targetDirs = listOf("/data/adb/modules/MountX", "/data/adb/modules/Mountify")
+        val targetDirs = listOf("/data/adb/modules/MountX", "/data/adb/modules/mountx", "/data/adb/modules/Mountify", "/data/adb/modules/mountify")
         val games = gameDao.getAllGamesSync()
 
         // 1. Legacy gamelist.conf

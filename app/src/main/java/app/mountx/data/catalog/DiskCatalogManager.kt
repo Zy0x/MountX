@@ -188,11 +188,13 @@ class DiskCatalogManager @Inject constructor(
             }
 
             RootShell.exec("mkdir -p \"$dirPath\" 2>/dev/null")
-            val escapedJson = json.toString(2).replace("'", "'\\''")
-            val writeCmd = "echo '$escapedJson' > \"$tmpPath\" && sync && mv -f \"$tmpPath\" \"$finalPath\""
-            val result = RootShell.exec(writeCmd)
-            if (!result.isSuccess) {
-                error("Failed atomic catalog write: ${result.output}")
+            val writeOk = RootShell.writeFile(tmpPath, json.toString(2))
+            if (!writeOk) {
+                error("Failed atomic catalog write to $tmpPath")
+            }
+            val mvRes = RootShell.exec("mv -f \"$tmpPath\" \"$finalPath\"")
+            if (!mvRes.isSuccess) {
+                error("Failed atomic catalog rename: ${mvRes.output}")
             }
             AppLogger.info("DiskCatalog", "Atomically saved catalog (${catalog.games.size} games) to $finalPath")
         }
