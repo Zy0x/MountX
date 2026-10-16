@@ -59,6 +59,15 @@ class SystemSyncMonitor @Inject constructor(
     private val _events = MutableSharedFlow<SystemSyncEvent>(extraBufferCapacity = 64)
     val events: SharedFlow<SystemSyncEvent> = _events.asSharedFlow()
 
+    /**
+     * Broadcasts a global refresh event across all active view models (Dashboard, Apps, Storage).
+     */
+    fun notifyRefreshAll() {
+        scope.launch {
+            _events.emit(SystemSyncEvent.RefreshAll)
+        }
+    }
+
     private var isRegistered = false
     private var healthMonitorJob: kotlinx.coroutines.Job? = null
 
@@ -100,6 +109,16 @@ class SystemSyncMonitor @Inject constructor(
                     if (!pkg.isNullOrBlank()) {
                         scope.launch {
                             _events.emit(SystemSyncEvent.PackageInstalled(pkg))
+                        }
+                    }
+                }
+                Intent.ACTION_PACKAGE_REPLACED -> {
+                    val pkg = intent.data?.schemeSpecificPart
+                    if (!pkg.isNullOrBlank()) {
+                        scope.launch {
+                            AppLogger.info("SystemSyncMonitor", "Package updated/replaced: $pkg")
+                            _events.emit(SystemSyncEvent.PackageInstalled(pkg))
+                            _events.emit(SystemSyncEvent.RefreshAll)
                         }
                     }
                 }

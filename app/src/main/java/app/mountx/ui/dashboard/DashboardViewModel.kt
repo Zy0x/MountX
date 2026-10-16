@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -57,6 +58,9 @@ class DashboardViewModel @Inject constructor(
     fun clearOperationProgress() {
         _operationProgress.value = null
     }
+
+    private val _pendingOperations = MutableStateFlow<Set<String>>(emptySet())
+    val pendingOperations: StateFlow<Set<String>> = _pendingOperations.asStateFlow()
 
     fun cancelOperation() {
         viewModelScope.launch {
@@ -319,18 +323,24 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun toggleMount(game: GameEntry) {
+        if (_pendingOperations.value.contains(game.packageName)) return
+        _pendingOperations.update { it + game.packageName }
         viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            if (game.mountStatus == MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game) { prog ->
-                    _operationProgress.value = prog
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                if (game.mountStatus == MountStatus.MOUNTED) {
+                    gameRepository.unmountGame(game) { prog ->
+                        _operationProgress.value = prog
+                    }
+                } else {
+                    gameRepository.mountGame(game, sdBase) { prog ->
+                        _operationProgress.value = prog
+                    }
                 }
-            } else {
-                gameRepository.mountGame(game, sdBase) { prog ->
-                    _operationProgress.value = prog
-                }
+                refresh()
+            } finally {
+                _pendingOperations.update { it - game.packageName }
             }
-            refresh()
         }
     }
 
@@ -344,64 +354,76 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun migrateGameWithOptions(game: GameEntry, selectedPoints: List<MountPointConfig>, targetBase: String) {
+        if (_pendingOperations.value.contains(game.packageName)) return
+        _pendingOperations.update { it + game.packageName }
         viewModelScope.launch {
-            val activePoints = selectedPoints.map { it.copy(enabled = true) }
+            try {
+                val activePoints = selectedPoints.map { it.copy(enabled = true) }
 
-            // Force stop active process before migration
-            RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
+                // Force stop active process before migration
+                RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
 
-            // Unmount if currently mounted to prevent cyclic file locks
-            if (game.mountStatus == MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game) { prog ->
-                    _operationProgress.value = prog
+                // Unmount if currently mounted to prevent cyclic file locks
+                if (game.mountStatus == MountStatus.MOUNTED) {
+                    gameRepository.unmountGame(game) { prog ->
+                        _operationProgress.value = prog
+                    }
                 }
-            }
 
-            val result = storageRepository.moveGameMountPoints(
-                packageName = game.packageName,
-                mountPoints = activePoints,
-                direction = app.mountx.data.model.MoveDirection.TO_SD,
-                sdBase = targetBase,
-                onProgress = { prog ->
-                    _operationProgress.value = prog
-                }
-            )
-            if (result.isSuccess) {
-                val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else activePoints
-                val existingUpdated = currentPoints.map { pt ->
-                    val moved = activePoints.firstOrNull { it.id == pt.id || it.category == pt.category }
-                    if (moved != null) moved.copy(enabled = true) else pt
-                }
-                val missing = activePoints.filter { ap ->
-                    existingUpdated.none { it.id == ap.id || it.category == ap.category }
-                }
-                val updated = game.copy(
-                    mountPoints = existingUpdated + missing,
-                    mountStatus = MountStatus.MOUNTED,
-                    isEnabled = true
+                val result = storageRepository.moveGameMountPoints(
+                    packageName = game.packageName,
+                    mountPoints = activePoints,
+                    direction = app.mountx.data.model.MoveDirection.TO_SD,
+                    sdBase = targetBase,
+                    onProgress = { prog ->
+                        _operationProgress.value = prog
+                    }
                 )
-                gameRepository.updateGame(updated)
-                gameRepository.mountGame(updated, targetBase) { prog ->
-                    _operationProgress.value = prog
+                if (result.isSuccess) {
+                    val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else activePoints
+                    val existingUpdated = currentPoints.map { pt ->
+                        val moved = activePoints.firstOrNull { it.id == pt.id || it.category == pt.category }
+                        if (moved != null) moved.copy(enabled = true) else pt
+                    }
+                    val missing = activePoints.filter { ap ->
+                        existingUpdated.none { it.id == ap.id || it.category == ap.category }
+                    }
+                    val updated = game.copy(
+                        mountPoints = existingUpdated + missing,
+                        mountStatus = MountStatus.MOUNTED,
+                        isEnabled = true
+                    )
+                    gameRepository.updateGame(updated)
+                    gameRepository.mountGame(updated, targetBase) { prog ->
+                        _operationProgress.value = prog
+                    }
                 }
+                refresh()
+            } finally {
+                _pendingOperations.update { it - game.packageName }
             }
-            refresh()
         }
     }
 
     fun directMountWithOptions(game: GameEntry, selectedPoints: List<MountPointConfig>, targetBase: String) {
+        if (_pendingOperations.value.contains(game.packageName)) return
+        _pendingOperations.update { it + game.packageName }
         viewModelScope.launch {
-            val activePoints = selectedPoints.map { it.copy(enabled = true) }
-            _operationProgress.value = OperationProgress(
-                type = OperationType.MOUNT,
-                title = "Kaitkan Langsung",
-                subtitle = "${game.displayName} • ${activePoints.size} Kategori",
-                progressPercent = 0.1f
-            )
-            gameRepository.directMountGame(game, activePoints, targetBase) { prog ->
-                _operationProgress.value = prog
+            try {
+                val activePoints = selectedPoints.map { it.copy(enabled = true) }
+                _operationProgress.value = OperationProgress(
+                    type = OperationType.MOUNT,
+                    title = "Kaitkan Langsung",
+                    subtitle = "${game.displayName} • ${activePoints.size} Kategori",
+                    progressPercent = 0.1f
+                )
+                gameRepository.directMountGame(game, activePoints, targetBase) { prog ->
+                    _operationProgress.value = prog
+                }
+                refresh()
+            } finally {
+                _pendingOperations.update { it - game.packageName }
             }
-            refresh()
         }
     }
 }

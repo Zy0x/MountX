@@ -40,6 +40,9 @@ class MountService : Service() {
     @Inject
     lateinit var mountNotificationManager: MountNotificationManager
 
+    @Inject
+    lateinit var systemSyncMonitor: SystemSyncMonitor
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
@@ -115,6 +118,7 @@ class MountService : Service() {
                         }
                     } finally {
                         mountNotificationManager.syncActiveMountNotification()
+                        systemSyncMonitor.notifyRefreshAll()
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf(startId)
                     }
@@ -131,6 +135,7 @@ class MountService : Service() {
                         // ignore and ensure notification dismissed
                     } finally {
                         mountNotificationManager.syncActiveMountNotification()
+                        systemSyncMonitor.notifyRefreshAll()
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf(startId)
                     }

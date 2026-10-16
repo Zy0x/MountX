@@ -23,6 +23,9 @@ class MountActionReceiver : BroadcastReceiver() {
     @Inject
     lateinit var gameRepository: GameRepository
 
+    @Inject
+    lateinit var systemSyncMonitor: SystemSyncMonitor
+
     companion object {
         const val ACTION_SYNC_NOTIFICATION = "app.mountx.ACTION_SYNC_NOTIFICATION"
         const val ACTION_UNMOUNT_ALL = "app.mountx.ACTION_UNMOUNT_ALL"
@@ -53,6 +56,7 @@ class MountActionReceiver : BroadcastReceiver() {
             } catch (t: Throwable) {
                 AppLogger.error("MountActionReceiver", "Failed to handle action $action: ${t.message}")
             } finally {
+                systemSyncMonitor.notifyRefreshAll()
                 pendingResult.finish()
             }
         }

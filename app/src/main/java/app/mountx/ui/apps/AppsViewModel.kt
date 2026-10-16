@@ -94,6 +94,9 @@ class AppsViewModel @Inject constructor(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _pendingOperations = MutableStateFlow<Set<String>>(emptySet())
+    val pendingOperations: StateFlow<Set<String>> = _pendingOperations.asStateFlow()
+
     private val _selectedGameForDetail = MutableStateFlow<GameEntry?>(null)
     val selectedGameForDetail: StateFlow<GameEntry?> = _selectedGameForDetail.asStateFlow()
 
@@ -285,33 +288,39 @@ class AppsViewModel @Inject constructor(
         restoreToInternal: Boolean,
         onComplete: ((Boolean, String?) -> Unit)? = null
     ) {
+        if (_pendingOperations.value.contains(packageName)) return
+        _pendingOperations.update { it + packageName }
         viewModelScope.launch {
-            if (restoreToInternal) {
-                _isRestoring.value = true
-                _isUnmounting.value = false
-            } else {
+            try {
+                if (restoreToInternal) {
+                    _isRestoring.value = true
+                    _isUnmounting.value = false
+                } else {
+                    _isRestoring.value = false
+                    _isUnmounting.value = true
+                }
+                _restoreProgress.value = 0f
+                _restoreMessage.value = ""
+                val sdBase = appPreferences.sdBasePath.first()
+                val result = gameRepository.removeGameWithOption(
+                    context = context,
+                    packageName = packageName,
+                    restoreToInternal = restoreToInternal,
+                    sdBase = sdBase
+                ) { progress, msg ->
+                    _restoreProgress.value = progress
+                    _restoreMessage.value = msg
+                }
                 _isRestoring.value = false
-                _isUnmounting.value = true
+                _isUnmounting.value = false
+                _restoreProgress.value = 0f
+                _restoreMessage.value = ""
+                _storageBreakdownMap.update { it - packageName }
+                refresh()
+                onComplete?.invoke(result.isSuccess, result.exceptionOrNull()?.message)
+            } finally {
+                _pendingOperations.update { it - packageName }
             }
-            _restoreProgress.value = 0f
-            _restoreMessage.value = ""
-            val sdBase = appPreferences.sdBasePath.first()
-            val result = gameRepository.removeGameWithOption(
-                context = context,
-                packageName = packageName,
-                restoreToInternal = restoreToInternal,
-                sdBase = sdBase
-            ) { progress, msg ->
-                _restoreProgress.value = progress
-                _restoreMessage.value = msg
-            }
-            _isRestoring.value = false
-            _isUnmounting.value = false
-            _restoreProgress.value = 0f
-            _restoreMessage.value = ""
-            _storageBreakdownMap.update { it - packageName }
-            refresh()
-            onComplete?.invoke(result.isSuccess, result.exceptionOrNull()?.message)
         }
     }
 
@@ -324,34 +333,46 @@ class AppsViewModel @Inject constructor(
     }
 
     fun mountGame(game: GameEntry) {
+        if (_pendingOperations.value.contains(game.packageName)) return
+        _pendingOperations.update { it + game.packageName }
         viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            gameRepository.mountGame(game, sdBase) { prog ->
-                _operationProgress.value = prog
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                gameRepository.mountGame(game, sdBase) { prog ->
+                    _operationProgress.value = prog
+                }
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
+                _storageBreakdownMap.update { it + (game.packageName to breakdown) }
+                if (_activePackageName.value == game.packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
+                refresh()
+            } finally {
+                _pendingOperations.update { it - game.packageName }
             }
-            val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
-            _storageBreakdownMap.update { it + (game.packageName to breakdown) }
-            if (_activePackageName.value == game.packageName) {
-                _detailedStorage.value = breakdown
-                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
-            }
-            refresh()
         }
     }
 
     fun unmountGame(game: GameEntry) {
+        if (_pendingOperations.value.contains(game.packageName)) return
+        _pendingOperations.update { it + game.packageName }
         viewModelScope.launch {
-            gameRepository.unmountGame(game) { prog ->
-                _operationProgress.value = prog
+            try {
+                gameRepository.unmountGame(game) { prog ->
+                    _operationProgress.value = prog
+                }
+                val sdBase = appPreferences.sdBasePath.first()
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
+                _storageBreakdownMap.update { it + (game.packageName to breakdown) }
+                if (_activePackageName.value == game.packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
+                refresh()
+            } finally {
+                _pendingOperations.update { it - game.packageName }
             }
-            val sdBase = appPreferences.sdBasePath.first()
-            val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
-            _storageBreakdownMap.update { it + (game.packageName to breakdown) }
-            if (_activePackageName.value == game.packageName) {
-                _detailedStorage.value = breakdown
-                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
-            }
-            refresh()
         }
     }
 
@@ -435,92 +456,99 @@ class AppsViewModel @Inject constructor(
         targetDiskBase: String? = null,
         conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE
     ) {
+        if (_pendingOperations.value.contains(packageName)) return
+        _pendingOperations.update { it + packageName }
         viewModelScope.launch {
-            _isMovingData.value = true
-            _moveMessage.value = null
-            val defaultSdBase = appPreferences.sdBasePath.first()
-            val sdBase = targetDiskBase ?: defaultSdBase
-            val game = games.value.firstOrNull { it.packageName == packageName }
-            val rawPoints = if (mountPoints.isNotEmpty()) mountPoints else {
-                game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
-            }
-            val effectivePoints = if (direction == MoveDirection.TO_SD && rawPoints.none { it.enabled }) {
-                rawPoints.map { it.copy(enabled = true) }
-            } else {
-                rawPoints
-            }
-
-            // Always unmount from runtime namespaces first before moving data in either direction
-            // to avoid circular reading/writing across bind mounts
-            if (game != null && game.mountStatus == MountStatus.MOUNTED) {
-                gameRepository.unmountGame(game) { prog ->
-                    _operationProgress.value = prog
+            try {
+                _isMovingData.value = true
+                _moveMessage.value = null
+                val defaultSdBase = appPreferences.sdBasePath.first()
+                val sdBase = targetDiskBase ?: defaultSdBase
+                val game = games.value.firstOrNull { it.packageName == packageName }
+                val rawPoints = if (mountPoints.isNotEmpty()) mountPoints else {
+                    game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
                 }
-            }
+                val effectivePoints = if (direction == MoveDirection.TO_SD && rawPoints.none { it.enabled }) {
+                    rawPoints.map { it.copy(enabled = true) }
+                } else {
+                    rawPoints
+                }
 
-            val result = storageRepository.moveGameMountPoints(
-                packageName = packageName,
-                mountPoints = effectivePoints,
-                direction = direction,
-                sdBase = sdBase,
-                conflictStrategy = conflictStrategy,
-                onProgress = { prog -> _operationProgress.value = prog }
-            )
-            _isMovingData.value = false
-            if (result.isSuccess) {
-                _moveMessage.value = "SUCCESS"
-
-                if (game != null) {
-                    if (direction == MoveDirection.TO_INTERNAL) {
-                        // Mark moved points as disabled, update game status to UNMOUNTED
-                        val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
-                        val updatedPoints = currentPoints.map { pt ->
-                            if (effectivePoints.any { it.id == pt.id || it.category == pt.category }) {
-                                pt.copy(enabled = false)
-                            } else {
-                                pt
-                            }
-                        }
-                        val allDisabled = updatedPoints.none { it.enabled }
-                        val updated = game.copy(
-                            mountPoints = updatedPoints,
-                            mountStatus = MountStatus.UNMOUNTED,
-                            isEnabled = if (allDisabled) false else game.isEnabled
-                        )
-                        gameRepository.updateGame(updated)
-                    } else {
-                        // TO_SD
-                        val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
-                        val existingUpdated = currentPoints.map { pt ->
-                            val moved = effectivePoints.firstOrNull { it.id == pt.id || it.category == pt.category }
-                            if (moved != null) moved.copy(enabled = true) else pt
-                        }
-                        val missingPoints = effectivePoints.filter { ep ->
-                            existingUpdated.none { it.id == ep.id || it.category == ep.category }
-                        }.map { it.copy(enabled = true) }
-                        val finalPoints = existingUpdated + missingPoints
-                        val updated = game.copy(
-                            mountPoints = if (finalPoints.isNotEmpty()) finalPoints else effectivePoints.map { it.copy(enabled = true) },
-                            mountStatus = MountStatus.MOUNTED,
-                            isEnabled = true
-                        )
-                        gameRepository.updateGame(updated)
-                        gameRepository.mountGame(updated, sdBase) { prog ->
-                            _operationProgress.value = prog
-                        }
+                // Always unmount from runtime namespaces first before moving data in either direction
+                // to avoid circular reading/writing across bind mounts
+                if (game != null && game.mountStatus == MountStatus.MOUNTED) {
+                    gameRepository.unmountGame(game) { prog ->
+                        _operationProgress.value = prog
                     }
                 }
 
-                gameRepository.calculateDataSize(packageName, sdBase)
-                gameRepository.syncDiskCatalog(sdBase)
-                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
-                _storageBreakdownMap.update { it + (packageName to breakdown) }
-                if (_activePackageName.value == packageName) {
-                    _detailedStorage.value = breakdown
-                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                val result = storageRepository.moveGameMountPoints(
+                    packageName = packageName,
+                    mountPoints = effectivePoints,
+                    direction = direction,
+                    sdBase = sdBase,
+                    conflictStrategy = conflictStrategy,
+                    onProgress = { prog -> _operationProgress.value = prog }
+                )
+                _isMovingData.value = false
+                if (result.isSuccess) {
+                    _moveMessage.value = "SUCCESS"
+
+                    if (game != null) {
+                        if (direction == MoveDirection.TO_INTERNAL) {
+                            // Mark moved points as disabled, update game status to UNMOUNTED
+                            val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
+                            val updatedPoints = currentPoints.map { pt ->
+                                if (effectivePoints.any { it.id == pt.id || it.category == pt.category }) {
+                                    pt.copy(enabled = false)
+                                } else {
+                                    pt
+                                }
+                            }
+                            val allDisabled = updatedPoints.none { it.enabled }
+                            val updated = game.copy(
+                                mountPoints = updatedPoints,
+                                mountStatus = MountStatus.UNMOUNTED,
+                                isEnabled = if (allDisabled) false else game.isEnabled
+                            )
+                            gameRepository.updateGame(updated)
+                        } else {
+                            // TO_SD
+                            val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
+                            val existingUpdated = currentPoints.map { pt ->
+                                val moved = effectivePoints.firstOrNull { it.id == pt.id || it.category == pt.category }
+                                if (moved != null) moved.copy(enabled = true) else pt
+                            }
+                            val missingPoints = effectivePoints.filter { ep ->
+                                existingUpdated.none { it.id == ep.id || it.category == ep.category }
+                            }.map { it.copy(enabled = true) }
+                            val finalPoints = existingUpdated + missingPoints
+                            val updated = game.copy(
+                                mountPoints = if (finalPoints.isNotEmpty()) finalPoints else effectivePoints.map { it.copy(enabled = true) },
+                                mountStatus = MountStatus.MOUNTED,
+                                isEnabled = true
+                            )
+                            gameRepository.updateGame(updated)
+                            gameRepository.mountGame(updated, sdBase) { prog ->
+                                _operationProgress.value = prog
+                            }
+                        }
+                    }
+
+                    gameRepository.calculateDataSize(packageName, sdBase)
+                    gameRepository.syncDiskCatalog(sdBase)
+                    val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+                    _storageBreakdownMap.update { it + (packageName to breakdown) }
+                    if (_activePackageName.value == packageName) {
+                        _detailedStorage.value = breakdown
+                        _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                    }
+                } else {
+                    _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
                 }
-            } else {
-                _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
+            } finally {
+                _isMovingData.value = false
+                _pendingOperations.update { it - packageName }
             }
         }
     }
@@ -530,32 +558,39 @@ class AppsViewModel @Inject constructor(
         points: List<app.mountx.data.model.MountPointConfig>,
         targetBase: String
     ) {
+        if (_pendingOperations.value.contains(packageName)) return
+        _pendingOperations.update { it + packageName }
         viewModelScope.launch {
-            val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
-            _isMovingData.value = true
-            _operationProgress.value = OperationProgress(
-                type = OperationType.MOUNT,
-                title = "Kaitkan Langsung",
-                subtitle = "${game.displayName} • ${points.size} Kategori",
-                progressPercent = 0.1f
-            )
+            try {
+                val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
+                _isMovingData.value = true
+                _operationProgress.value = OperationProgress(
+                    type = OperationType.MOUNT,
+                    title = "Kaitkan Langsung",
+                    subtitle = "${game.displayName} • ${points.size} Kategori",
+                    progressPercent = 0.1f
+                )
 
-            val result = gameRepository.directMountGame(game, points, targetBase) { prog ->
-                _operationProgress.value = prog
-            }
+                val result = gameRepository.directMountGame(game, points, targetBase) { prog ->
+                    _operationProgress.value = prog
+                }
 
-            _isMovingData.value = false
-            if (result.isSuccess) {
-                _moveMessage.value = "SUCCESS"
-            } else {
-                _moveMessage.value = result.exceptionOrNull()?.message ?: "Direct mount failed"
-            }
+                _isMovingData.value = false
+                if (result.isSuccess) {
+                    _moveMessage.value = "SUCCESS"
+                } else {
+                    _moveMessage.value = result.exceptionOrNull()?.message ?: "Direct mount failed"
+                }
 
-            val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, targetBase)
-            _storageBreakdownMap.update { it + (packageName to breakdown) }
-            if (_activePackageName.value == packageName) {
-                _detailedStorage.value = breakdown
-                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, targetBase)
+                _storageBreakdownMap.update { it + (packageName to breakdown) }
+                if (_activePackageName.value == packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
+            } finally {
+                _isMovingData.value = false
+                _pendingOperations.update { it - packageName }
             }
         }
     }
@@ -564,25 +599,31 @@ class AppsViewModel @Inject constructor(
         packageName: String,
         points: List<app.mountx.data.model.MountPointConfig>
     ) {
+        if (_pendingOperations.value.contains(packageName)) return
+        _pendingOperations.update { it + packageName }
         viewModelScope.launch {
-            val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
-            _operationProgress.value = OperationProgress(
-                type = OperationType.UNMOUNT,
-                title = "Melepaskan Kaitan Kategori",
-                subtitle = "${game.displayName} • ${points.size} Kategori",
-                progressPercent = 0.2f
-            )
+            try {
+                val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
+                _operationProgress.value = OperationProgress(
+                    type = OperationType.UNMOUNT,
+                    title = "Melepaskan Kaitan Kategori",
+                    subtitle = "${game.displayName} • ${points.size} Kategori",
+                    progressPercent = 0.2f
+                )
 
-            val result = gameRepository.unmountMountPoints(game, points) { prog ->
-                _operationProgress.value = prog
-            }
+                val result = gameRepository.unmountMountPoints(game, points) { prog ->
+                    _operationProgress.value = prog
+                }
 
-            val defaultSdBase = appPreferences.sdBasePath.first()
-            val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, defaultSdBase)
-            _storageBreakdownMap.update { it + (packageName to breakdown) }
-            if (_activePackageName.value == packageName) {
-                _detailedStorage.value = breakdown
-                _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                val defaultSdBase = appPreferences.sdBasePath.first()
+                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, defaultSdBase)
+                _storageBreakdownMap.update { it + (packageName to breakdown) }
+                if (_activePackageName.value == packageName) {
+                    _detailedStorage.value = breakdown
+                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                }
+            } finally {
+                _pendingOperations.update { it - packageName }
             }
         }
     }

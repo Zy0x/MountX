@@ -400,7 +400,16 @@ class MountManager {
                         if (RootShell.exists("$namespace/Android/data")) {
                             if (!RootShell.isMountpoint(targetPath)) {
                                 RootShell.exec("mkdir -p \"$targetPath\" 2>/dev/null")
-                                RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
+                                val mountRes = RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
+                                if (!mountRes.isSuccess && !RootShell.isMountpoint(targetPath)) {
+                                    RootShell.exec("restorecon -R \"$dataSrcPath\" 2>/dev/null")
+                                    RootShell.exec("restorecon -R \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("chmod 775 \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("chown $uid:$gid \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
+                                }
                             }
                         }
                     }
@@ -418,7 +427,16 @@ class MountManager {
                         if (RootShell.exists("$namespace/Android")) {
                             if (!RootShell.isMountpoint(targetPath)) {
                                 RootShell.exec("mkdir -p \"$namespace/Android/obb\" \"$targetPath\" 2>/dev/null")
-                                RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
+                                val mountRes = RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
+                                if (!mountRes.isSuccess && !RootShell.isMountpoint(targetPath)) {
+                                    RootShell.exec("restorecon -R \"$obbSrcPath\" 2>/dev/null")
+                                    RootShell.exec("restorecon -R \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("chmod 775 \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("chown $uid:$gid \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
+                                }
                             }
                         }
                     }

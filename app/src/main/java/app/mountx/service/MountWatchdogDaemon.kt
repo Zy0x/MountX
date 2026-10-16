@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import app.mountx.data.db.GameDao
 import app.mountx.data.model.MountStatus
+import androidx.core.content.ContextCompat
 import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
@@ -89,7 +90,7 @@ class MountWatchdogDaemon @Inject constructor(
     }
 
     /**
-     * Start the passive event-driven watchdog listener.
+     * Start the passive event-driven watchdog listener with Android 14/15 export flags.
      */
     fun start() {
         if (isRegistered) return
@@ -106,9 +107,24 @@ class MountWatchdogDaemon @Inject constructor(
         }
 
         try {
-            context.registerReceiver(eventReceiver, screenFilter)
-            context.registerReceiver(eventReceiver, mediaFilter)
-            context.registerReceiver(eventReceiver, pkgFilter)
+            ContextCompat.registerReceiver(
+                context,
+                eventReceiver,
+                screenFilter,
+                ContextCompat.RECEIVER_EXPORTED
+            )
+            ContextCompat.registerReceiver(
+                context,
+                eventReceiver,
+                mediaFilter,
+                ContextCompat.RECEIVER_EXPORTED
+            )
+            ContextCompat.registerReceiver(
+                context,
+                eventReceiver,
+                pkgFilter,
+                ContextCompat.RECEIVER_EXPORTED
+            )
             isRegistered = true
             AppLogger.info("Watchdog", "Passive integrity watchdog registered (screen, media, pkg).")
         } catch (e: Exception) {
@@ -133,6 +149,7 @@ class MountWatchdogDaemon @Inject constructor(
     /**
      * Passive canary check: verifies whether mounted games still have valid canary visibility.
      * Re-mounts if Android system_server / vold dropped the mount during deep sleep.
+     * Accurately supports both modular multi-mount points and legacy entries without OBB false-positives.
      */
     suspend fun checkAndRemountCanaries() {
         if (RootShell.exists("/dev/.mountx_unmounted")) {
@@ -141,17 +158,40 @@ class MountWatchdogDaemon @Inject constructor(
         }
         val games = gameDao.getAllGames().firstOrNull() ?: return
         val sdBase = appPreferences.sdBasePath.first()
+        val activeMounts = mountManager.getActiveMountpointsSet()
 
         for (game in games) {
             if (game.isEnabled && game.mountStatus == MountStatus.MOUNTED) {
                 val hasCanary = mountManager.verifyCanary(game.packageName, game)
                 if (!hasCanary) {
-                    val isAlreadyMounted = (RootShell.isMountpoint("/storage/emulated/0/Android/data/${game.packageName}") ||
-                            RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${game.packageName}")) &&
-                            (RootShell.isMountpoint("/storage/emulated/0/Android/obb/${game.packageName}") ||
-                            RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/obb/${game.packageName}"))
+                    val isAlreadyMounted = if (game.mountPoints.isNotEmpty()) {
+                        val activeConfigs = game.mountPoints.filter { it.enabled }
+                        activeConfigs.isNotEmpty() && activeConfigs.all { mp ->
+                            activeMounts.contains(mp.targetPath) ||
+                            activeMounts.any { it.endsWith(MountManager.extractRelativePath(mp.targetPath)) } ||
+                            RootShell.isMountpoint(mp.targetPath)
+                        }
+                    } else {
+                        val dataTarget = "/storage/emulated/0/Android/data/${game.packageName}"
+                        val isDataMounted = activeMounts.contains(dataTarget) ||
+                                RootShell.isMountpoint(dataTarget) ||
+                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${game.packageName}")
+
+                        val obbSrc = "$sdBase/Android/obb/${game.packageName}"
+                        val hasObbOnSd = RootShell.exists(obbSrc)
+                        if (hasObbOnSd) {
+                            val obbTarget = "/storage/emulated/0/Android/obb/${game.packageName}"
+                            val isObbMounted = activeMounts.contains(obbTarget) ||
+                                    RootShell.isMountpoint(obbTarget) ||
+                                    RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/obb/${game.packageName}")
+                            isDataMounted && isObbMounted
+                        } else {
+                            isDataMounted
+                        }
+                    }
+
                     if (!isAlreadyMounted) {
-                        AppLogger.warn("Watchdog", "Canary lost for ${game.displayName} (${game.packageName}), re-mounting...")
+                        AppLogger.warn("Watchdog", "Canary lost and mount not active for ${game.displayName} (${game.packageName}), re-mounting...")
                         val result = mountManager.mountGame(game, sdBase)
                         if (result.isSuccess) {
                             AppLogger.success("Watchdog", "Auto-remounted ${game.displayName} successfully.")
