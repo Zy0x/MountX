@@ -57,7 +57,6 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.SdStorage
@@ -71,6 +70,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import app.mountx.data.repository.CandidateDirectory
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -146,6 +146,7 @@ data class OcclusionWarningData(
     val points: List<MountPointConfig>
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameDetailView(
     game: GameEntry,
@@ -209,6 +210,7 @@ fun GameDetailView(
     modifier = modifier
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppDetailView(
     game: GameEntry,
@@ -334,49 +336,6 @@ fun AppDetailView(
                     }
                 },
                 actions = {
-                    // Manual Refresh Button
-                    if (onRefresh != null) {
-                        val rotation by animateFloatAsState(
-                            targetValue = if (isRefreshing) 360f else 0f,
-                            animationSpec = if (isRefreshing) {
-                                infiniteRepeatable(
-                                    animation = tween(800, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Restart
-                                )
-                            } else {
-                                tween(300)
-                            },
-                            label = "detail_refresh_rotation"
-                        )
-
-                        IconButton(
-                            onClick = onRefresh,
-                            enabled = !isRefreshing,
-                            modifier = Modifier.size(38.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(26.dp)
-                                    .background(
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = RoundedCornerShape(6.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = stringResource(R.string.game_detail_refresh),
-                                    tint = if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .size(15.dp)
-                                        .graphicsLayer { rotationZ = rotation }
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-
                     // System App Details Button
                     IconButton(
                         onClick = {
@@ -523,83 +482,89 @@ fun AppDetailView(
                 )
             }
 
-            // ── SWIPEABLE HORIZONTAL PAGER CONTENT ──
-            HorizontalPager(
-                state = pagerState,
-                beyondViewportPageCount = 1,
+            // ── SWIPEABLE HORIZONTAL PAGER CONTENT WITH PULL TO REFRESH ──
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { onRefresh?.invoke() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-            ) { page ->
-                when (page) {
-                    0 -> StorageTabContent(
-                        game = game,
-                        mountPoints = currentMountPoints,
-                        breakdown = breakdown,
-                        availableDisks = availableDisks,
-                        internalFreeBytes = internalFreeBytes,
-                        isMoving = isMoving,
-                        moveMessage = moveMessage,
-                        sdBase = sdBase,
-                        onMove = { dir, pts, disk, partition, strategy ->
-                            val updatedPoints = currentMountPoints.map { pt ->
-                                if (dir == MoveDirection.TO_SD) {
-                                    val oldBase = sdBase
-                                    val newBase = partition?.mountPoint ?: disk?.mountPath ?: sdBase
-                                    val newSourcePath = if (pt.sourcePath.startsWith(oldBase)) {
-                                        pt.sourcePath.replaceFirst(oldBase, newBase)
-                                    } else if (!pt.sourcePath.startsWith(newBase)) {
-                                        "$newBase/${pt.sourcePath.trimStart('/')}"
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    beyondViewportPageCount = 1,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    when (page) {
+                        0 -> StorageTabContent(
+                            game = game,
+                            mountPoints = currentMountPoints,
+                            breakdown = breakdown,
+                            availableDisks = availableDisks,
+                            internalFreeBytes = internalFreeBytes,
+                            isMoving = isMoving,
+                            moveMessage = moveMessage,
+                            sdBase = sdBase,
+                            onMove = { dir, pts, disk, partition, strategy ->
+                                val updatedPoints = currentMountPoints.map { pt ->
+                                    if (dir == MoveDirection.TO_SD) {
+                                        val oldBase = sdBase
+                                        val newBase = partition?.mountPoint ?: disk?.mountPath ?: sdBase
+                                        val newSourcePath = if (pt.sourcePath.startsWith(oldBase)) {
+                                            pt.sourcePath.replaceFirst(oldBase, newBase)
+                                        } else if (!pt.sourcePath.startsWith(newBase)) {
+                                            "$newBase/${pt.sourcePath.trimStart('/')}"
+                                        } else {
+                                            pt.sourcePath
+                                        }
+                                        pt.copy(diskUuid = partition?.uuid ?: disk?.uuid, sourcePath = newSourcePath)
                                     } else {
-                                        pt.sourcePath
+                                        pt
                                     }
-                                    pt.copy(diskUuid = partition?.uuid ?: disk?.uuid, sourcePath = newSourcePath)
-                                } else {
-                                    pt
                                 }
-                            }
-                            currentMountPoints = updatedPoints
-                            onUpdateMountPoints?.invoke(updatedPoints)
-                            onMoveMountPoints(dir, pts, disk, partition, strategy)
-                        },
-                        onMount = {
-                            onMount?.invoke() ?: onToggleMount?.invoke()
-                        },
-                        onUnmount = {
-                            onUnmount?.invoke() ?: onToggleMount?.invoke()
-                        },
-                        onMountPointsChanged = { updated ->
-                            currentMountPoints = updated
-                            onUpdateMountPoints?.invoke(updated)
-                        },
-                        onDirectMountMountPoints = { pts, base ->
-                            val updatedPoints = currentMountPoints.map { pt ->
-                                val matching = pts.firstOrNull { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }
-                                matching?.copy(enabled = true) ?: pt
-                            }.toMutableList()
-                            for (newPt in pts) {
-                                if (updatedPoints.none { it.id == newPt.id || it.resolveCategory() == newPt.resolveCategory() }) {
-                                    updatedPoints.add(newPt.copy(enabled = true))
+                                currentMountPoints = updatedPoints
+                                onUpdateMountPoints?.invoke(updatedPoints)
+                                onMoveMountPoints(dir, pts, disk, partition, strategy)
+                            },
+                            onMount = {
+                                onMount?.invoke() ?: onToggleMount?.invoke()
+                            },
+                            onUnmount = {
+                                onUnmount?.invoke() ?: onToggleMount?.invoke()
+                            },
+                            onMountPointsChanged = { updated ->
+                                currentMountPoints = updated
+                                onUpdateMountPoints?.invoke(updated)
+                            },
+                            onDirectMountMountPoints = { pts, base ->
+                                val updatedPoints = currentMountPoints.map { pt ->
+                                    val matching = pts.firstOrNull { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }
+                                    matching?.copy(enabled = true) ?: pt
+                                }.toMutableList()
+                                for (newPt in pts) {
+                                    if (updatedPoints.none { it.id == newPt.id || it.resolveCategory() == newPt.resolveCategory() }) {
+                                        updatedPoints.add(newPt.copy(enabled = true))
+                                    }
                                 }
-                            }
-                            currentMountPoints = updatedPoints
-                            onUpdateMountPoints?.invoke(updatedPoints)
-                            onDirectMountMountPoints(pts, base)
-                        },
-                        onUnmountMountPoints = { pts ->
-                            val updatedPoints = currentMountPoints.map { pt ->
-                                if (pts.any { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }) {
-                                    pt.copy(enabled = false)
-                                } else pt
-                            }
-                            currentMountPoints = updatedPoints
-                            onUpdateMountPoints?.invoke(updatedPoints)
-                            onUnmountMountPoints(pts)
-                        },
-                        packageInfo = packageInfo,
-                        onDeleteCategoryData = onDeleteCategoryData
-                    )
-                    1 -> AppInfoTabContent(game = game, packageInfo = packageInfo)
+                                currentMountPoints = updatedPoints
+                                onUpdateMountPoints?.invoke(updatedPoints)
+                                onDirectMountMountPoints(pts, base)
+                            },
+                            onUnmountMountPoints = { pts ->
+                                val updatedPoints = currentMountPoints.map { pt ->
+                                    if (pts.any { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }) {
+                                        pt.copy(enabled = false)
+                                    } else pt
+                                }
+                                currentMountPoints = updatedPoints
+                                onUpdateMountPoints?.invoke(updatedPoints)
+                                onUnmountMountPoints(pts)
+                            },
+                            packageInfo = packageInfo,
+                            onDeleteCategoryData = onDeleteCategoryData
+                        )
+                        1 -> AppInfoTabContent(game = game, packageInfo = packageInfo)
+                    }
                 }
             }
         }
