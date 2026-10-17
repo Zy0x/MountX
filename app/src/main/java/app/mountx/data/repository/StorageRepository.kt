@@ -13,22 +13,26 @@ import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.PartitionSchemeConfig
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
+import app.mountx.data.model.StorageHierarchyResult
 import app.mountx.data.model.SupportedFilesystemInfo
 import app.mountx.data.model.GlobalTrimReport
 import app.mountx.data.model.MountPointConfig
 import app.mountx.data.model.OperationProgress
 import app.mountx.root.StorageManager
 import app.mountx.util.AppLogger
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.launch
 import app.mountx.service.SystemSyncMonitor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,9 +43,68 @@ class StorageRepository @Inject constructor(
     private val systemSyncMonitor: SystemSyncMonitor
 ) {
 
+    @Volatile
+    private var cachedHierarchy: StorageHierarchyResult? = null
+
+    @Volatile
+    private var lastScanTimeMillis: Long = 0L
+
+    private val scanMutex = Mutex()
+    private val repositoryScope = CoroutineScope(Dispatchers.IO)
+
+    companion object {
+        private const val CACHE_TTL_MS = 30_000L // 30s cache TTL for instant tab switching
+    }
+
+    init {
+        repositoryScope.launch {
+            systemSyncMonitor.events.collect { event ->
+                when (event) {
+                    is app.mountx.service.SystemSyncEvent.StorageMounted,
+                    is app.mountx.service.SystemSyncEvent.StorageDisconnected,
+                    is app.mountx.service.SystemSyncEvent.RefreshAll -> {
+                        invalidateCache()
+                    }
+                    else -> {}
+                }
+            }
+        }
+    }
+
+    fun getCachedDisks(): List<SdCardDiskInfo> = cachedHierarchy?.disks ?: emptyList()
+    fun getCachedPartitions(): List<PartitionInfo> = cachedHierarchy?.partitions ?: emptyList()
+
+    fun invalidateCache() {
+        cachedHierarchy = null
+        lastScanTimeMillis = 0L
+    }
+
+    suspend fun getStorageHierarchy(
+        targetMountPoint: String = "/data/sdext2",
+        force: Boolean = false
+    ): StorageHierarchyResult = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val cached = cachedHierarchy
+        if (!force && cached != null && (now - lastScanTimeMillis) < CACHE_TTL_MS) {
+            return@withContext cached
+        }
+        scanMutex.withLock {
+            val secondCheck = cachedHierarchy
+            val secondNow = System.currentTimeMillis()
+            if (!force && secondCheck != null && (secondNow - lastScanTimeMillis) < CACHE_TTL_MS) {
+                return@withLock secondCheck
+            }
+            val result = storageManager.detectStorageHierarchy(targetMountPoint)
+            cachedHierarchy = result
+            lastScanTimeMillis = System.currentTimeMillis()
+            result
+        }
+    }
+
     private val _manualRefresh = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     fun refreshStorage() {
+        invalidateCache()
         _manualRefresh.tryEmit(Unit)
     }
 
@@ -93,10 +156,12 @@ class StorageRepository @Inject constructor(
         storageManager.detectBlockDevices()
     }
 
-    suspend fun detectPartitions(targetMountPoint: String = "/data/sdext2"): List<PartitionInfo> =
-        withContext(Dispatchers.IO) {
-            storageManager.detectPartitions(targetMountPoint)
-        }
+    suspend fun detectPartitions(
+        targetMountPoint: String = "/data/sdext2",
+        force: Boolean = false
+    ): List<PartitionInfo> = withContext(Dispatchers.IO) {
+        getStorageHierarchy(targetMountPoint, force).partitions
+    }
 
     suspend fun checkFilesystem(blockDevice: String, fsType: String = ""): Result<FsckReport> =
         withContext(Dispatchers.IO) {
@@ -115,6 +180,7 @@ class StorageRepository @Inject constructor(
             AppLogger.info("Storage", "Writing label '$newLabel' on $blockDevice ($fsType)")
             val res = storageManager.setPartitionLabel(blockDevice, fsType, newLabel)
             if (res.isSuccess) {
+                invalidateCache()
                 AppLogger.success("Storage", "Label '$newLabel' written to $blockDevice successfully")
             } else {
                 AppLogger.error("Storage", "Failed to set label on $blockDevice: ${res.exceptionOrNull()?.message}")
@@ -135,6 +201,7 @@ class StorageRepository @Inject constructor(
         AppLogger.info("Storage", "Mounting $blockDevice to $mountPoint as ${fsType.label}")
         val res = storageManager.mountSdPartition(blockDevice, mountPoint, fsType)
         if (res.isSuccess) {
+            invalidateCache()
             AppLogger.success("Storage", "Mounted $blockDevice -> $mountPoint successfully")
         } else {
             AppLogger.error("Storage", "Mount failed for $blockDevice: ${res.exceptionOrNull()?.message}")
@@ -147,6 +214,7 @@ class StorageRepository @Inject constructor(
             AppLogger.info("Storage", "Unmounting SD partition from $mountPoint")
             val res = storageManager.unmountSdPartition(mountPoint)
             if (res.isSuccess) {
+                invalidateCache()
                 AppLogger.success("Storage", "Unmounted $mountPoint successfully")
             } else {
                 AppLogger.error("Storage", "Unmount failed for $mountPoint: ${res.exceptionOrNull()?.message}")
@@ -159,6 +227,7 @@ class StorageRepository @Inject constructor(
             AppLogger.info("Storage", "Unmounting partition ${partition.path} (${partition.name})")
             val res = storageManager.unmountPartition(partition)
             if (res.isSuccess) {
+                invalidateCache()
                 AppLogger.success("Storage", "Unmounted ${partition.path} successfully")
             } else {
                 AppLogger.error("Storage", "Failed to unmount ${partition.path}: ${res.exceptionOrNull()?.message}")
@@ -173,6 +242,7 @@ class StorageRepository @Inject constructor(
         AppLogger.info("Storage", "Mounting ${partition.path} -> $targetMountPoint")
         val res = storageManager.mountPartition(partition, targetMountPoint)
         if (res.isSuccess) {
+            invalidateCache()
             AppLogger.success("Storage", "Mounted ${partition.path} -> $targetMountPoint successfully")
         } else {
             AppLogger.error("Storage", "Failed to mount ${partition.path}: ${res.exceptionOrNull()?.message}")
@@ -188,6 +258,7 @@ class StorageRepository @Inject constructor(
         AppLogger.info("Format", "Formatting $blockDevice to ${fsType.label} (label=$label)")
         val res = storageManager.formatPartition(blockDevice, fsType, label)
         if (res.isSuccess) {
+            invalidateCache()
             AppLogger.success("Format", "Formatted $blockDevice to ${fsType.label} successfully")
         } else {
             AppLogger.error("Format", "Format failed for $blockDevice: ${res.exceptionOrNull()?.message}")
@@ -195,18 +266,21 @@ class StorageRepository @Inject constructor(
         res
     }
 
-    suspend fun getSdCardDiskInfo(targetMountPoint: String = "/data/sdext2"): SdCardDiskInfo? =
-        withContext(Dispatchers.IO) {
-            storageManager.detectSdCardDiskInfo(targetMountPoint)
-        }
+    suspend fun getSdCardDiskInfo(
+        targetMountPoint: String = "/data/sdext2",
+        force: Boolean = false
+    ): SdCardDiskInfo? = withContext(Dispatchers.IO) {
+        val disks = getAllDisks(targetMountPoint, force = force)
+        disks.firstOrNull { it.diskType == app.mountx.data.model.DiskType.MICRO_SD } ?: disks.firstOrNull()
+    }
 
     suspend fun getAllDisks(
         targetMountPoint: String = "/data/sdext2",
-        preScannedPartitions: List<PartitionInfo>? = null
-    ): List<SdCardDiskInfo> =
-        withContext(Dispatchers.IO) {
-            storageManager.detectAllDisks(targetMountPoint, preScannedPartitions)
-        }
+        preScannedPartitions: List<PartitionInfo>? = null,
+        force: Boolean = false
+    ): List<SdCardDiskInfo> = withContext(Dispatchers.IO) {
+        getStorageHierarchy(targetMountPoint, force).disks
+    }
 
     suspend fun repartitionDisk(
         diskPath: String,
@@ -215,6 +289,7 @@ class StorageRepository @Inject constructor(
         AppLogger.info("Repartition", "Starting repartition on $diskPath with ${partitions.size} partitions")
         val res = storageManager.repartitionDisk(diskPath, partitions)
         if (res.isSuccess) {
+            invalidateCache()
             AppLogger.success("Repartition", "Disk $diskPath repartitioned and formatted successfully")
         } else {
             AppLogger.error("Repartition", "Repartition failed on $diskPath: ${res.exceptionOrNull()?.message}")

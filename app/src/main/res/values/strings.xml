@@ -1210,6 +1210,7 @@
 
     <!-- Storage Headroom Advisory -->
     <string name="dashboard_low_headroom_warning">Low MicroSD headroom (&lt; 3 GB free). In-game patch updates may fail.</string>
+    <string name="dashboard_low_headroom_warning_usb">Low USB storage headroom (&lt; 3 GB free). In-game patch updates may fail.</string>
 </resources>
 
 

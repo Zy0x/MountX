@@ -1194,6 +1194,7 @@
 
     <!-- Storage Headroom Advisory -->
     <string name="dashboard_low_headroom_warning">Sisa ruang MicroSD menipis (&lt; 3 GB). Update patch di dalam game mungkin gagal.</string>
+    <string name="dashboard_low_headroom_warning_usb">Sisa ruang USB menipis (&lt; 3 GB). Update patch di dalam game mungkin gagal.</string>
 </resources>
 
 

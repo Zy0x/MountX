@@ -72,7 +72,7 @@ class AppsViewModel @Inject constructor(
     private val _restructureProgressMessage = MutableStateFlow<String?>(null)
     val restructureProgressMessage: StateFlow<String?> = _restructureProgressMessage.asStateFlow()
 
-    private val _availableDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(emptyList())
+    private val _availableDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(storageRepository.getCachedDisks())
     val availableDisks: StateFlow<List<app.mountx.data.model.SdCardDiskInfo>> = _availableDisks.asStateFlow()
 
     val sdBasePath: StateFlow<String> = appPreferences.sdBasePath

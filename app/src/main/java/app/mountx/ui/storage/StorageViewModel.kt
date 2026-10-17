@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import app.mountx.data.model.BenchmarkResult
 import app.mountx.data.model.DiskHardwareDetails
 import app.mountx.data.model.DiskIoConfig
+import app.mountx.data.model.DiskType
 import app.mountx.data.model.FilesystemType
 import app.mountx.data.model.InternalStorageInfo
 import app.mountx.data.model.IoPreset
@@ -56,10 +57,12 @@ class StorageViewModel @Inject constructor(
     val internalStorageInfo: StateFlow<InternalStorageInfo?> = storageRepository.observeInternalStorage()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    private val _diskInfo = MutableStateFlow<SdCardDiskInfo?>(null)
+    private val _diskInfo = MutableStateFlow<SdCardDiskInfo?>(
+        storageRepository.getCachedDisks().firstOrNull { it.diskType == DiskType.MICRO_SD } ?: storageRepository.getCachedDisks().firstOrNull()
+    )
     val diskInfo: StateFlow<SdCardDiskInfo?> = _diskInfo.asStateFlow()
 
-    private val _allDisks = MutableStateFlow<List<SdCardDiskInfo>>(emptyList())
+    private val _allDisks = MutableStateFlow<List<SdCardDiskInfo>>(storageRepository.getCachedDisks())
     val allDisks: StateFlow<List<SdCardDiskInfo>> = _allDisks.asStateFlow()
 
     private val _selectedDiskForDetail = MutableStateFlow<SdCardDiskInfo?>(null)
@@ -108,13 +111,17 @@ class StorageViewModel @Inject constructor(
     private val _isUrgentGcRunning = MutableStateFlow(false)
     val isUrgentGcRunning: StateFlow<Boolean> = _isUrgentGcRunning.asStateFlow()
 
-    private val _partitions = MutableStateFlow<List<PartitionInfo>>(emptyList())
+    private val _partitions = MutableStateFlow<List<PartitionInfo>>(storageRepository.getCachedPartitions())
     val partitions: StateFlow<List<PartitionInfo>> = _partitions.asStateFlow()
 
-    private val _selectedPartition = MutableStateFlow<PartitionInfo?>(null)
+    private val _selectedPartition = MutableStateFlow<PartitionInfo?>(
+        storageRepository.getCachedPartitions().firstOrNull { it.isTargetMount }
+            ?: storageRepository.getCachedPartitions().firstOrNull { it.isMountTargetReady }
+            ?: storageRepository.getCachedPartitions().firstOrNull()
+    )
     val selectedPartition: StateFlow<PartitionInfo?> = _selectedPartition.asStateFlow()
 
-    private val _detectedDevices = MutableStateFlow<List<String>>(emptyList())
+    private val _detectedDevices = MutableStateFlow<List<String>>(storageRepository.getCachedPartitions().map { it.path })
     val detectedDevices: StateFlow<List<String>> = _detectedDevices.asStateFlow()
 
     private val _isScanning = MutableStateFlow(false)
@@ -272,15 +279,18 @@ class StorageViewModel @Inject constructor(
         if (_isScanning.value) return
         if (!force && _partitions.value.isNotEmpty()) return
 
-        _isScanning.value = true
+        val shouldShowSpinner = force || _partitions.value.isEmpty()
+        if (shouldShowSpinner) {
+            _isScanning.value = true
+        }
         try {
             val sdBase = appPreferences.sdBasePath.first()
-            val detected = storageRepository.detectPartitions(sdBase)
+            val hierarchy = storageRepository.getStorageHierarchy(sdBase, force = force)
+            val detected = hierarchy.partitions
             _partitions.value = detected
             _detectedDevices.value = detected.map { it.path }
 
-            // Fetch hardware disks info reusing pre-scanned partitions
-            val disks = storageRepository.getAllDisks(sdBase, detected)
+            val disks = hierarchy.disks
             _allDisks.value = disks
             val primaryDisk = disks.firstOrNull { it.diskType == app.mountx.data.model.DiskType.MICRO_SD } ?: disks.firstOrNull()
             _diskInfo.value = primaryDisk
@@ -310,6 +320,7 @@ class StorageViewModel @Inject constructor(
     }
 
     fun openPartitionWizard(targetDisk: SdCardDiskInfo? = null) {
+        loadSupportedFilesystems()
         val disk = targetDisk ?: _selectedDiskForDetail.value ?: _diskInfo.value
         val totalBytes = if (disk != null && disk.totalSizeBytes > 0) {
             disk.totalSizeBytes

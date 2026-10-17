@@ -1588,10 +1588,16 @@ private fun DashboardTelemetryCard(
                     totalBytes = disk.totalSizeBytes,
                     freeBytes = disk.totalFreeBytes
                 )
-                val isLowHeadroom = (disk.totalFreeBytes in 1L..(3L * 1024L * 1024L * 1024L)) || disk.usedPercent >= 0.95f
+                val isLowHeadroom = disk.totalSizeBytes >= 1L * 1024L * 1024L * 1024L &&
+                    ((disk.totalFreeBytes in 1L..(3L * 1024L * 1024L * 1024L)) || disk.usedPercent >= 0.95f)
                 if (isLowHeadroom) {
                     val warnColor = if (isDark) SunsetAmber else WarmAmberLight
                     val warnBg = if (isDark) AmberGlow else WarmAmberContainerLight
+                    val warningRes = if (disk.diskType == DiskType.USB_OTG) {
+                        R.string.dashboard_low_headroom_warning_usb
+                    } else {
+                        R.string.dashboard_low_headroom_warning
+                    }
                     Spacer(modifier = Modifier.height(6.dp))
                     Surface(
                         shape = RoundedCornerShape(8.dp),
@@ -1611,7 +1617,7 @@ private fun DashboardTelemetryCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = stringResource(R.string.dashboard_low_headroom_warning),
+                                text = stringResource(warningRes),
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                                 color = warnColor
                             )

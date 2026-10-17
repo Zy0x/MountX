@@ -91,7 +91,7 @@ class DashboardViewModel @Inject constructor(
     private val _moduleVersion = MutableStateFlow("")
     val moduleVersion: StateFlow<String> = _moduleVersion.asStateFlow()
 
-    private val _allDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(emptyList())
+    private val _allDisks = MutableStateFlow<List<app.mountx.data.model.SdCardDiskInfo>>(storageRepository.getCachedDisks())
     val allDisks: StateFlow<List<app.mountx.data.model.SdCardDiskInfo>> = _allDisks.asStateFlow()
 
     private val _diskHealthStatus = MutableStateFlow(app.mountx.data.model.DiskHealthStatus.HEALTHY)

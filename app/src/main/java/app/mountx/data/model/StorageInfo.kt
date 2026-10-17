@@ -163,6 +163,13 @@ data class SdCardDiskInfo(
         get() = partitions.any { it.isMounted }
 }
 
+/** Combined storage hierarchy result containing both discovered partitions and physical disks */
+@androidx.compose.runtime.Immutable
+data class StorageHierarchyResult(
+    val partitions: List<PartitionInfo> = emptyList(),
+    val disks: List<SdCardDiskInfo> = emptyList()
+)
+
 /** Specification for creating a partition in the Partition Wizard */
 data class PartitionSchemeConfig(
     val partitionIndex: Int = 1,

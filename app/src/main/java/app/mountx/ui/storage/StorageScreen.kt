@@ -187,8 +187,7 @@ fun StorageScreen(
     var showRepartitionFinalConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        viewModel.detectPartitions(force = true)
-        viewModel.loadSupportedFilesystems()
+        viewModel.detectPartitions(force = false)
     }
 
     if (selectedDiskForDetail != null) {
@@ -1064,8 +1063,14 @@ private fun MultiDiskTelemetryCard(
                         )
                     }
 
-                    val isLowHeadroom = (disk.totalFreeBytes in 1L..(3L * 1024L * 1024L * 1024L)) || disk.usedPercent >= 0.95f
+                    val isLowHeadroom = disk.totalSizeBytes >= 1L * 1024L * 1024L * 1024L &&
+                        ((disk.totalFreeBytes in 1L..(3L * 1024L * 1024L * 1024L)) || disk.usedPercent >= 0.95f)
                     if (isLowHeadroom) {
+                        val warningRes = if (disk.diskType == DiskType.USB_OTG) {
+                            R.string.dashboard_low_headroom_warning_usb
+                        } else {
+                            R.string.dashboard_low_headroom_warning
+                        }
                         Spacer(modifier = Modifier.height(6.dp))
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -1085,7 +1090,7 @@ private fun MultiDiskTelemetryCard(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = stringResource(R.string.dashboard_low_headroom_warning),
+                                    text = stringResource(warningRes),
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                                     color = adaptiveAmber()
                                 )
