@@ -76,8 +76,15 @@ object AppIconManager {
 
         // L2: Persistent Disk Cache
         try {
-            val diskFile = File(getIconCacheDir(context), "$packageName.png")
-            if (diskFile.exists() && diskFile.length() > 0) {
+            val diskDir = getIconCacheDir(context)
+            val webpFile = File(diskDir, "$packageName.webp")
+            val pngFile = File(diskDir, "$packageName.png")
+            val diskFile = when {
+                webpFile.exists() && webpFile.length() > 0 -> webpFile
+                pngFile.exists() && pngFile.length() > 0 -> pngFile
+                else -> null
+            }
+            if (diskFile != null) {
                 val diskBitmap = BitmapFactory.decodeFile(diskFile.absolutePath)
                 if (diskBitmap != null) {
                     val imageBitmap = diskBitmap.asImageBitmap()
@@ -99,10 +106,17 @@ object AppIconManager {
             // Asynchronously / safely persist to disk cache without blocking caller thread
             diskWriteScope.launch {
                 try {
-                    val diskFile = File(getIconCacheDir(context), "$packageName.png")
+                    val diskFile = File(getIconCacheDir(context), "$packageName.webp")
+                    val legacyFile = File(getIconCacheDir(context), "$packageName.png")
                     FileOutputStream(diskFile).use { out ->
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                            bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 90, out)
+                        } else {
+                            bitmap.compress(Bitmap.CompressFormat.WEBP, 90, out)
+                        }
                     }
+                    // Clean up legacy PNG if exists
+                    if (legacyFile.exists()) legacyFile.delete()
                 } catch (_: Exception) {}
             }
 
@@ -115,8 +129,8 @@ object AppIconManager {
     suspend fun prewarmIcons(context: Context, packageNames: List<String>) {
         withContext(iconDispatcher) {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
-            // Prewarm top 35 apps for instant buttery scroll
-            for (pkg in packageNames.take(35)) {
+            // Prewarm top 50 apps for instant buttery scroll
+            for (pkg in packageNames.take(50)) {
                 if (iconCache.get(pkg) == null) {
                     loadIcon(context, pkg)
                 }

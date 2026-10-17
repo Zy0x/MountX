@@ -135,6 +135,8 @@ class DashboardViewModel @Inject constructor(
         refresh()
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Delay size calculation so the initial cold-start render is not blocked
+                delay(2_500L)
                 games.first { it.isNotEmpty() }
                 val sdBase = appPreferences.sdBasePath.first()
                 gameRepository.calculateDataSizesBatch(games.value, sdBase)
@@ -166,7 +168,8 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                val info = RootDetector.getRootAndModuleInfo(forceRefresh = true)
+                // Use cached info for instant render, refresh in background only after initial display
+                val info = RootDetector.getRootAndModuleInfo(forceRefresh = false)
                 _rootSolution.value = info.rootSolution
                 _isModuleInstalled.value = info.isModuleInstalled
                 _moduleVersion.value = info.moduleVersion
