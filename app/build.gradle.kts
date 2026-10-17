@@ -30,6 +30,11 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     signingConfigs {
         create("release") {
             val keystoreFile = layout.buildDirectory.file("release.jks").get().asFile

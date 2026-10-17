@@ -69,6 +69,20 @@ object AppIconManager {
 
     fun getCached(packageName: String): ImageBitmap? = iconCache.get(packageName)
 
+    fun removeCachedIcon(context: Context, packageName: String) {
+        iconCache.remove(packageName)
+        appInfoCache.remove(packageName)
+        diskWriteScope.launch {
+            try {
+                val diskDir = getIconCacheDir(context)
+                val webpFile = File(diskDir, "$packageName.webp")
+                val pngFile = File(diskDir, "$packageName.png")
+                if (webpFile.exists()) webpFile.delete()
+                if (pngFile.exists()) pngFile.delete()
+            } catch (_: Exception) {}
+        }
+    }
+
     fun loadIcon(context: Context, packageName: String): ImageBitmap? {
         // L1: Memory Cache
         val cached = iconCache.get(packageName)

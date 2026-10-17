@@ -94,6 +94,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        handleShortcutIntent(intent)
+
         setContent {
             val themeMode by appPreferences.themeMode.collectAsState(initial = app.mountx.util.ThemeMode.SYSTEM)
             val defaultLang = remember {
@@ -201,6 +203,22 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleShortcutIntent(intent)
+    }
+
+    private fun handleShortcutIntent(intent: android.content.Intent?) {
+        when (intent?.action) {
+            "app.mountx.ACTION_MOUNT_ALL" -> {
+                app.mountx.service.MountService.startMountAll(this)
+            }
+            "app.mountx.ACTION_UNMOUNT_ALL" -> {
+                app.mountx.service.MountService.startUnmountAll(this)
             }
         }
     }

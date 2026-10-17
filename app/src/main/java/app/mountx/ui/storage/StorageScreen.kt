@@ -1063,6 +1063,35 @@ private fun MultiDiskTelemetryCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+
+                    val isLowHeadroom = (disk.totalFreeBytes in 1L..(3L * 1024L * 1024L * 1024L)) || disk.usedPercent >= 0.95f
+                    if (isLowHeadroom) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = adaptiveAmberContainer(),
+                            border = BorderStroke(1.dp, adaptiveAmber().copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = adaptiveAmber(),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.dashboard_low_headroom_warning),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                    color = adaptiveAmber()
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

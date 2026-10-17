@@ -263,6 +263,7 @@ class AppRepository @Inject constructor(
         diskCatalogManager.removeGameFromCatalog(sdBase, packageName)
         syncDiskCatalog(sdBase)
         mountNotificationManager.syncActiveMountNotification()
+        app.mountx.ui.components.AppIconManager.removeCachedIcon(app.mountx.MountXApp.instance, packageName)
         AppLogger.info("Games", "Removed game: $packageName")
     }
 
@@ -320,6 +321,7 @@ class AppRepository @Inject constructor(
                 diskCatalogManager.removeGameFromCatalog(sdBase, packageName)
                 syncDiskCatalog(sdBase)
                 mountNotificationManager.syncActiveMountNotification()
+                app.mountx.ui.components.AppIconManager.removeCachedIcon(context, packageName)
                 AppLogger.info("Apps", "Removed app: $packageName (restoreToInternal=$restoreToInternal)")
             }
         }
@@ -383,6 +385,7 @@ class AppRepository @Inject constructor(
                 diskCatalogManager.removeGameFromCatalog(sdBase, packageName)
                 syncDiskCatalog(sdBase)
                 mountNotificationManager.syncActiveMountNotification()
+                app.mountx.ui.components.AppIconManager.removeCachedIcon(context, packageName)
                 onProgress(1.0f, "")
                 AppLogger.success("Apps", "Permanently purged app and MicroSD data: $packageName")
             }

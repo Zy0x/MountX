@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="mount_all"
+        android:enabled="true"
+        android:icon="@drawable/ic_notification"
+        android:shortcutShortLabel="@string/shortcut_mount_all_short"
+        android:shortcutLongLabel="@string/shortcut_mount_all_long">
+        <intent
+            android:action="app.mountx.ACTION_MOUNT_ALL"
+            android:targetPackage="app.mountx"
+            android:targetClass="app.mountx.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="unmount_all"
+        android:enabled="true"
+        android:icon="@drawable/ic_notification"
+        android:shortcutShortLabel="@string/shortcut_unmount_all_short"
+        android:shortcutLongLabel="@string/shortcut_unmount_all_long">
+        <intent
+            android:action="app.mountx.ACTION_UNMOUNT_ALL"
+            android:targetPackage="app.mountx"
+            android:targetClass="app.mountx.MainActivity" />
+    </shortcut>
+</shortcuts>

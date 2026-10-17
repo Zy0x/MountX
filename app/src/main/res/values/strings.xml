@@ -1190,6 +1190,26 @@
     <string name="portability_orphan_badge">Not Installed</string>
     <string name="portability_btn_delete_single">Delete Now</string>
     <string name="portability_clean_orphans_success">Orphaned game data deleted successfully.</string>
+
+    <!-- Safe Launch & User Convenience -->
+    <string name="unmounted_launch_warning_title">Game Data Unmounted</string>
+    <string name="unmounted_launch_warning_desc">This game\'s data is stored on MicroSD and is currently unmounted. Opening the game now may cause it to re-download all data to Internal Storage. Would you like to mount it first?</string>
+    <string name="unmounted_launch_btn_mount_and_launch">Mount &amp; Launch</string>
+    <string name="unmounted_launch_btn_launch_anyway">Launch Anyway</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_mount_label">MountX</string>
+    <string name="tile_mount_subtitle_active">%1$d/%2$d Mounted</string>
+    <string name="tile_mount_subtitle_inactive">All Unmounted</string>
+
+    <!-- App Launcher Shortcuts -->
+    <string name="shortcut_mount_all_short">Mount All</string>
+    <string name="shortcut_mount_all_long">Mount all configured apps</string>
+    <string name="shortcut_unmount_all_short">Unmount All</string>
+    <string name="shortcut_unmount_all_long">Safely unmount all active apps</string>
+
+    <!-- Storage Headroom Advisory -->
+    <string name="dashboard_low_headroom_warning">Low MicroSD headroom (&lt; 3 GB free). In-game patch updates may fail.</string>
 </resources>
 
 

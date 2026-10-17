@@ -1588,6 +1588,36 @@ private fun DashboardTelemetryCard(
                     totalBytes = disk.totalSizeBytes,
                     freeBytes = disk.totalFreeBytes
                 )
+                val isLowHeadroom = (disk.totalFreeBytes in 1L..(3L * 1024L * 1024L * 1024L)) || disk.usedPercent >= 0.95f
+                if (isLowHeadroom) {
+                    val warnColor = if (isDark) SunsetAmber else WarmAmberLight
+                    val warnBg = if (isDark) AmberGlow else WarmAmberContainerLight
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = warnBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, warnColor.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = warnColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.dashboard_low_headroom_warning),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                color = warnColor
+                            )
+                        }
+                    }
+                }
                 if (idx < disks.size - 1) {
                     Spacer(modifier = Modifier.height(10.dp))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline)

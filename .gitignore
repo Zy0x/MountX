@@ -39,6 +39,7 @@ Figma/
 Buka_Studio.bat
 Jalankan_Emulator.bat
 Pasang_ke_Emulator.bat
+build-safe.ps1
 
 # HTML preview files
 preview.html

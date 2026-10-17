@@ -1174,6 +1174,26 @@
     <string name="portability_orphan_badge">Tak Terpasang</string>
     <string name="portability_btn_delete_single">Hapus Sekarang</string>
     <string name="portability_clean_orphans_success">Data game yatim berhasil dibersihkan.</string>
+
+    <!-- Safe Launch & User Convenience -->
+    <string name="unmounted_launch_warning_title">Data Game Belum Terkait</string>
+    <string name="unmounted_launch_warning_desc">Data game ini berada di MicroSD dan saat ini belum terkait. Membuka aplikasi sekarang dapat memicu pengunduhan ulang data ke Memori Internal. Apakah Anda ingin mengaitkannya terlebih dahulu?</string>
+    <string name="unmounted_launch_btn_mount_and_launch">Kaitkan &amp; Buka</string>
+    <string name="unmounted_launch_btn_launch_anyway">Buka Saja</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_mount_label">MountX</string>
+    <string name="tile_mount_subtitle_active">%1$d/%2$d Terkait</string>
+    <string name="tile_mount_subtitle_inactive">Semua Terlepas</string>
+
+    <!-- App Launcher Shortcuts -->
+    <string name="shortcut_mount_all_short">Mount Semua</string>
+    <string name="shortcut_mount_all_long">Kaitkan semua data aplikasi</string>
+    <string name="shortcut_unmount_all_short">Lepas Semua</string>
+    <string name="shortcut_unmount_all_long">Lepas kaitan semua aplikasi</string>
+
+    <!-- Storage Headroom Advisory -->
+    <string name="dashboard_low_headroom_warning">Sisa ruang MicroSD menipis (&lt; 3 GB). Update patch di dalam game mungkin gagal.</string>
 </resources>
 
 

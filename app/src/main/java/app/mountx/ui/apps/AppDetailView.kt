@@ -118,6 +118,7 @@ import app.mountx.ui.theme.CyberEmerald
 import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.NeonCrimson
 import app.mountx.ui.theme.SunsetAmber
+import app.mountx.ui.theme.WarmAmberLight
 import app.mountx.ui.theme.WarmCrimsonBgDark
 import app.mountx.ui.theme.WarmCrimsonBgLight
 import app.mountx.ui.theme.WarmCrimsonBorderDark
@@ -592,7 +593,12 @@ fun AppDetailView(
                             packageInfo = packageInfo,
                             onDeleteCategoryData = onDeleteCategoryData
                         )
-                        1 -> AppInfoTabContent(game = game, packageInfo = packageInfo)
+                        1 -> AppInfoTabContent(
+                            game = game,
+                            packageInfo = packageInfo,
+                            onMount = onMount,
+                            onToggleMount = onToggleMount
+                        )
                     }
                 }
             }
@@ -4367,10 +4373,22 @@ private fun SmartStoragePartitionBottomSheet(
 private fun AppInfoTabContent(
     game: GameEntry,
     packageInfo: android.content.pm.PackageInfo?,
+    onMount: (() -> Unit)? = null,
+    onToggleMount: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    var showUnmountedLaunchDialog by remember { mutableStateOf(false) }
+
+    val executeLaunch = {
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(game.packageName)
+        if (launchIntent != null) {
+            context.startActivity(launchIntent)
+        } else {
+            Toast.makeText(context, "Aplikasi tidak dapat dibuka langsung", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()) }
     val installTimeStr = remember(packageInfo) {
@@ -4446,6 +4464,61 @@ private fun AppInfoTabContent(
         Toast.makeText(context, "$label disalin", Toast.LENGTH_SHORT).show()
     }
 
+    if (showUnmountedLaunchDialog) {
+        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        AlertDialog(
+            onDismissRequest = { showUnmountedLaunchDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.WarningAmber,
+                    contentDescription = null,
+                    tint = if (isDark) SunsetAmber else WarmAmberLight,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.unmounted_launch_warning_title),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.unmounted_launch_warning_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUnmountedLaunchDialog = false
+                        onMount?.invoke() ?: onToggleMount?.invoke()
+                        executeLaunch()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(stringResource(R.string.unmounted_launch_btn_mount_and_launch))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showUnmountedLaunchDialog = false
+                        executeLaunch()
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.unmounted_launch_btn_launch_anyway),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -4460,11 +4533,10 @@ private fun AppInfoTabContent(
         ) {
             Button(
                 onClick = {
-                    val launchIntent = context.packageManager.getLaunchIntentForPackage(game.packageName)
-                    if (launchIntent != null) {
-                        context.startActivity(launchIntent)
+                    if (game.mountStatus != MountStatus.MOUNTED) {
+                        showUnmountedLaunchDialog = true
                     } else {
-                        Toast.makeText(context, "Aplikasi tidak dapat dibuka langsung", Toast.LENGTH_SHORT).show()
+                        executeLaunch()
                     }
                 },
                 shape = RoundedCornerShape(12.dp),

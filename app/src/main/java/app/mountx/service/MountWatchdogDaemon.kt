@@ -272,6 +272,9 @@ class MountWatchdogDaemon @Inject constructor(
         }
         RootShell.exec("umount -f -l \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
         RootShell.exec("umount -f -l \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+
+        // Clean cached icon from memory and disk cache
+        app.mountx.ui.components.AppIconManager.removeCachedIcon(context, packageName)
     }
 
     /**
