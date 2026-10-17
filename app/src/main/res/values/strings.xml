@@ -1159,6 +1159,14 @@
     <!-- App Detail Manual Refresh -->
     <string name="game_detail_refresh">Refresh Details</string>
     <string name="game_detail_refreshed">App details refreshed</string>
+
+    <!-- Unmount Safety & Migration Clarity -->
+    <string name="unmount_confirm_game_running_warning">Warning: This app is currently running. Unmounting now will immediately stop its active process, and unsaved progress may be lost.</string>
+    <string name="unmount_all_confirm_title">Unmount All Apps?</string>
+    <string name="unmount_all_confirm_message">All active app storage mountpoints will be detached across all system namespaces. Any running apps will be stopped.</string>
+    <string name="migration_sd_data_detected">Existing Data Detected on MicroSD</string>
+    <string name="migration_action_hint_transfer">Moves local internal data to MicroSD. Best if this app has not been migrated yet or contains fresh save data.</string>
+    <string name="migration_action_hint_direct">Bypasses copying and binds existing MicroSD directories directly. Fast and ideal if files were pre-copied or already present.</string>
 </resources>
 
 

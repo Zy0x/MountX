@@ -1143,6 +1143,14 @@
     <!-- App Detail Manual Refresh -->
     <string name="game_detail_refresh">Segarkan Detail</string>
     <string name="game_detail_refreshed">Detail aplikasi diperbarui</string>
+
+    <!-- Unmount Safety & Migration Clarity -->
+    <string name="unmount_confirm_game_running_warning">Peringatan: Aplikasi ini sedang berjalan. Melepaskan kaitan sekarang akan langsung menghentikan proses aktif dan progres yang belum tersimpan dapat hilang.</string>
+    <string name="unmount_all_confirm_title">Lepas Kaitan Semua Aplikasi?</string>
+    <string name="unmount_all_confirm_message">Semua titik kait penyimpanan aplikasi akan dilepas dari seluruh ruang nama sistem. Aplikasi yang sedang berjalan akan dihentikan.</string>
+    <string name="migration_sd_data_detected">Data Terdeteksi di MicroSD</string>
+    <string name="migration_action_hint_transfer">Memindahkan data lokal internal ke MicroSD. Paling cocok jika aplikasi belum pernah dipindahkan atau memiliki data baru.</string>
+    <string name="migration_action_hint_direct">Melewati proses penyalinan dan langsung mengaitkan direktori MicroSD yang sudah ada. Cepat dan ideal jika data sudah disalin sebelumnya.</string>
 </resources>
 
 

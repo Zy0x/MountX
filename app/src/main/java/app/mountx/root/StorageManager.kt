@@ -1895,13 +1895,14 @@ class StorageManager {
                             if [ -n "${'$'}W_BYTES" ]; then
                                 echo "PROGRESS_BYTES:${'$'}W_BYTES"
                             fi
+                            sleep 0.25
                         else
                             SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
                             if [ -n "${'$'}SZ_KB" ]; then
                                 echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
                             fi
+                            sleep 1.5
                         fi
-                        sleep 0.25
                     done
                     
                     wait ${'$'}RECV_PID
@@ -1933,13 +1934,14 @@ class StorageManager {
                         if [ -n "${'$'}W_BYTES" ]; then
                             echo "PROGRESS_BYTES:${'$'}W_BYTES"
                         fi
+                        sleep 0.3
                     else
                         SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
                         if [ -n "${'$'}SZ_KB" ]; then
                             echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
                         fi
+                        sleep 1.5
                     fi
-                    sleep 0.3
                 done
                 
                 wait ${'$'}CP_PID
@@ -2049,17 +2051,15 @@ class StorageManager {
                 listOf(
                     "Menyiapkan Data & Direktori",
                     "Menyalin Berkas ke MicroSD",
-                    "Memverifikasi Integritas Berkas",
-                    "Mengaitkan VFS Namespaces",
-                    "Membersihkan Data Asal"
+                    "Memverifikasi Integritas & Izin",
+                    "Membersihkan Memori Internal"
                 )
             } else {
                 listOf(
                     "Menyiapkan Pemulihan",
                     "Menyalin Berkas ke Internal",
                     "Memulihkan Izin & SELinux",
-                    "Membersihkan Berkas di MicroSD",
-                    "Operasi Selesai"
+                    "Membersihkan Berkas di MicroSD"
                 )
             }
 
@@ -2318,13 +2318,13 @@ class StorageManager {
                                     }
                                 }
 
-                                // Step 4: Cleanup
+                                // Step 3: Cleanup
                                 onProgress?.invoke(
                                     OperationProgress(
                                         type = opType,
                                         title = title,
                                         subtitle = packageName,
-                                        currentStepIndex = 4,
+                                        currentStepIndex = 3,
                                         totalSteps = steps.size,
                                         stepDescriptions = steps,
                                         bytesProcessed = totalMigrationBytes,
@@ -2539,17 +2539,15 @@ class StorageManager {
                 listOf(
                     "Menyiapkan Data & Direktori",
                     "Menyalin Berkas ke MicroSD",
-                    "Memverifikasi Integritas Berkas",
-                    "Mengaitkan VFS Namespaces",
-                    "Membersihkan Data Asal"
+                    "Memverifikasi Integritas & Izin",
+                    "Membersihkan Memori Internal"
                 )
             } else {
                 listOf(
                     "Menyiapkan Pemulihan",
                     "Menyalin Berkas ke Internal",
                     "Memulihkan Izin & SELinux",
-                    "Membersihkan Berkas di MicroSD",
-                    "Operasi Selesai"
+                    "Membersihkan Berkas di MicroSD"
                 )
             }
 

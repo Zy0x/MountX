@@ -39,6 +39,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +60,9 @@ import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.util.FormatUtils
+import app.mountx.root.RootShell
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class MigrationCategoryOption(
     val id: String,
@@ -188,6 +192,18 @@ fun NeedMigrationDialog(
         mutableStateOf(setOf("data", "obb"))
     }
 
+    var hasDataOnSd by remember { mutableStateOf(false) }
+    LaunchedEffect(selectedTarget, pkg) {
+        val base = selectedTarget.mountPoint
+        withContext(Dispatchers.IO) {
+            val exists = RootShell.exists("$base/MountX/Android/data/$pkg") ||
+                         RootShell.exists("$base/MountX/Android/obb/$pkg") ||
+                         RootShell.exists("$base/Android/data/$pkg") ||
+                         RootShell.exists("$base/Android/obb/$pkg")
+            hasDataOnSd = exists
+        }
+    }
+
     val isSpaceLow = remember(selectedTarget, game.dataSizeBytes) {
         selectedTarget.freeBytes > 0L && game.dataSizeBytes > 0L && game.dataSizeBytes > selectedTarget.freeBytes
     }
@@ -252,11 +268,43 @@ fun NeedMigrationDialog(
                             )
                             if (game.dataSizeBytes > 0L) {
                                 Text(
-                                    text = FormatUtils.formatBytes(game.dataSizeBytes) + " di memori internal",
+                                    text = "${FormatUtils.formatBytes(game.dataSizeBytes)} • ${stringResource(R.string.manage_status_internal)}",
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                     color = amberColor
                                 )
                             }
+                        }
+                    }
+                }
+
+                // MicroSD Pre-existing Data Detected Badge
+                if (hasDataOnSd) {
+                    val emeraldColor = if (isDark) Color(0xFF34D399) else Color(0xFF059669)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = emeraldColor.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, emeraldColor.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = emeraldColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.migration_sd_data_detected),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = emeraldColor
+                            )
                         }
                     }
                 }
@@ -462,6 +510,53 @@ fun NeedMigrationDialog(
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.error
                     )
+                }
+
+                // Action Guidance Card
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = amberColor,
+                                modifier = Modifier.size(13.dp).padding(top = 2.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.migration_action_hint_transfer),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (onDirectMount != null) {
+                            Row(
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Link,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(13.dp).padding(top = 2.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.migration_action_hint_direct),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },

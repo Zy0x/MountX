@@ -42,6 +42,7 @@ class MountNotificationManager @Inject constructor(
         const val CHANNEL_UPDATES = "mountx_updates"
 
         const val ACTIVE_NOTIF_ID = 1001
+        const val OPERATIONS_NOTIF_ID = 1002
         const val EMERGENCY_NOTIF_ID = 9999
         const val HOTPLUG_NOTIF_ID = 9998
         const val DISK_ERROR_NOTIF_ID = 9997
@@ -449,5 +450,85 @@ class MountNotificationManager @Inject constructor(
                 AppLogger.error("Notification", "Failed to post update notification: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Updates an ongoing notification with real-time transfer progress (speed, ETA, percent).
+     * Gives users full visibility even when MountX is in background or screen is locked.
+     */
+    fun postOperationProgressNotification(progress: app.mountx.data.model.OperationProgress) {
+        scope.launch {
+            try {
+                createNotificationChannels()
+                if (progress.isFinished) {
+                    if (progress.isSuccess) {
+                        val openIntent = Intent(context, MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        }
+                        val pendingIntent = PendingIntent.getActivity(
+                            context, OPERATIONS_NOTIF_ID, openIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        val builder = NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
+                            .setSmallIcon(R.drawable.ic_notification)
+                            .setColor(0xFF00E676.toInt())
+                            .setContentTitle(progress.title)
+                            .setContentText(progress.subtitle.ifBlank { "Operasi Selesai" })
+                            .setPriority(NotificationCompat.PRIORITY_LOW)
+                            .setAutoCancel(true)
+                            .setContentIntent(pendingIntent)
+                        notificationManager.notify(OPERATIONS_NOTIF_ID, builder.build())
+                    } else {
+                        cancelOperationProgressNotification()
+                    }
+                    return@launch
+                }
+
+                val openIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context, OPERATIONS_NOTIF_ID, openIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val pct = (progress.progressPercent * 100).toInt().coerceIn(0, 100)
+                val speedStr = if (progress.speedBytesPerSec > 0L) "${FormatUtils.formatBytes(progress.speedBytesPerSec)}/s" else ""
+                val etaStr = if (progress.etaSeconds > 0L) {
+                    val m = progress.etaSeconds / 60
+                    val s = progress.etaSeconds % 60
+                    if (m > 0) "${m}m ${s}s" else "${s}s"
+                } else ""
+
+                val details = listOfNotNull(
+                    if (speedStr.isNotBlank()) speedStr else null,
+                    if (etaStr.isNotBlank()) "ETA $etaStr" else null,
+                    progress.currentItemName
+                ).joinToString(" • ")
+
+                val contentText = if (details.isNotBlank()) "$pct% • $details" else "$pct%"
+
+                val builder = NotificationCompat.Builder(context, CHANNEL_OPERATIONS)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setColor(0xFF00E5FF.toInt())
+                    .setContentTitle(progress.title)
+                    .setContentText(contentText)
+                    .setProgress(100, pct, progress.totalBytes <= 0L)
+                    .setOngoing(true)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setContentIntent(pendingIntent)
+
+                notificationManager.notify(OPERATIONS_NOTIF_ID, builder.build())
+            } catch (e: Exception) {
+                AppLogger.error("Notification", "Failed to update operation progress notification: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Cancels active operation progress notification.
+     */
+    fun cancelOperationProgressNotification() {
+        notificationManager.cancel(OPERATIONS_NOTIF_ID)
     }
 }

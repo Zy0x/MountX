@@ -358,6 +358,7 @@ fun AppsScreen(
             onSelectGameForDelete = { game ->
                 gameToDelete = game
             },
+            onCheckIsGameRunning = { pkg -> viewModel.isGameRunning(pkg) },
             modifier = modifier
         )
     }
@@ -478,6 +479,7 @@ fun GamesContent(
     onUnmountAll: () -> Unit,
     onSelectGameForDetail: (GameEntry) -> Unit,
     onSelectGameForDelete: (GameEntry) -> Unit = {},
+    onCheckIsGameRunning: suspend (String) -> Boolean = { false },
     modifier: Modifier = Modifier,
     discoveredGames: List<DiscoveredGame> = emptyList(),
     onImportAllDiscovered: () -> Unit = {},
@@ -485,8 +487,19 @@ fun GamesContent(
     onRestructureDiscovered: () -> Unit = {}
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
+    var showUnmountAllConfirm by remember { mutableStateOf(false) }
     var gameToUnmount by remember { mutableStateOf<GameEntry?>(null) }
     var gameForNeedMigration by remember { mutableStateOf<GameEntry?>(null) }
+    var isTargetGameRunning by remember(gameToUnmount) { mutableStateOf(false) }
+
+    LaunchedEffect(gameToUnmount) {
+        val target = gameToUnmount
+        if (target != null) {
+            isTargetGameRunning = onCheckIsGameRunning(target.packageName)
+        } else {
+            isTargetGameRunning = false
+        }
+    }
 
     val mountedCount = games.count { it.mountStatus == MountStatus.MOUNTED }
     val unmountedCount = games.count { it.mountStatus != MountStatus.MOUNTED }
@@ -556,7 +569,7 @@ fun GamesContent(
 
                             // Unmount All Action
                             IconButton(
-                                onClick = onUnmountAll,
+                                onClick = { showUnmountAllConfirm = true },
                                 enabled = mountedCount > 0,
                                 modifier = Modifier.size(28.dp)
                             ) {
@@ -913,11 +926,30 @@ fun GamesContent(
         }
     }
 
+    if (showUnmountAllConfirm) {
+        ConfirmDialog(
+            title = stringResource(R.string.unmount_all_confirm_title),
+            message = stringResource(R.string.unmount_all_confirm_message),
+            confirmText = stringResource(R.string.games_batch_unmount_all),
+            onConfirm = {
+                showUnmountAllConfirm = false
+                onUnmountAll()
+            },
+            onDismiss = { showUnmountAllConfirm = false }
+        )
+    }
+
     if (gameToUnmount != null) {
         val target = gameToUnmount!!
+        val baseMessage = stringResource(R.string.unmount_confirm_message)
+        val fullMessage = if (isTargetGameRunning) {
+            baseMessage + "\n\n" + stringResource(R.string.unmount_confirm_game_running_warning)
+        } else {
+            baseMessage
+        }
         ConfirmDialog(
             title = stringResource(R.string.unmount_confirm_title),
-            message = stringResource(R.string.unmount_confirm_message),
+            message = fullMessage,
             confirmText = stringResource(R.string.manage_btn_unmount_game),
             onConfirm = {
                 gameToUnmount = null

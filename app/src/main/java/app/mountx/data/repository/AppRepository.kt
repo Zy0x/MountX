@@ -465,6 +465,7 @@ class AppRepository @Inject constructor(
             RootShell.rootExecutionMutex.withLock {
                 RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
                 val games = gameDao.getAllGamesSync()
+                val activeMounts = mountManager.getActiveMountpointsSet()
                 var count = 0
                 AppLogger.info("Games", "Mounting all ${games.size} registered games")
                 for (g in games) {
@@ -477,18 +478,19 @@ class AppRepository @Inject constructor(
                         val isFullyMounted = if (g.mountPoints.isNotEmpty()) {
                             val enabledPoints = g.mountPoints.filter { it.enabled }
                             enabledPoints.isNotEmpty() && enabledPoints.all { mp ->
-                                val rel = MountManager.extractRelativePath(mp.targetPath)
-                                RootShell.isMountpoint(mp.targetPath) ||
-                                RootShell.isMountpoint("/storage/emulated/0/$rel") ||
-                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel")
+                                val cleanTarget = mp.targetPath.trimEnd('/')
+                                val rel = MountManager.extractRelativePath(mp.targetPath).trimEnd('/')
+                                activeMounts.contains(cleanTarget) ||
+                                activeMounts.contains("/storage/emulated/0/$rel") ||
+                                activeMounts.contains("/mnt/runtime/default/emulated/0/$rel")
                             }
                         } else {
                             val targetData = when (g.mode) {
                                 MountMode.FILES -> "/storage/emulated/0/Android/data/${g.packageName}/files"
                                 MountMode.PKG -> "/storage/emulated/0/Android/data/${g.packageName}"
                             }
-                            val relData = MountManager.extractRelativePath(targetData)
-                            RootShell.isMountpoint(targetData) || RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$relData")
+                            val relData = MountManager.extractRelativePath(targetData).trimEnd('/')
+                            activeMounts.contains(targetData.trimEnd('/')) || activeMounts.contains("/mnt/runtime/default/emulated/0/$relData")
                         }
 
                         if (isFullyMounted) {
@@ -518,6 +520,10 @@ class AppRepository @Inject constructor(
                 count
             }
         }
+
+    suspend fun isGameRunning(packageName: String): Boolean = withContext(Dispatchers.IO) {
+        mountManager.isGameRunning(packageName)
+    }
 
     suspend fun unmountAll(sdBase: String = "/data/sdext2"): Int =
         withContext(Dispatchers.IO) {

@@ -49,6 +49,7 @@ class DashboardViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val mountManager: MountManager,
     private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
+    private val mountNotificationManager: app.mountx.service.MountNotificationManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -57,6 +58,7 @@ class DashboardViewModel @Inject constructor(
 
     fun clearOperationProgress() {
         _operationProgress.value = null
+        mountNotificationManager.cancelOperationProgressNotification()
     }
 
     private val _pendingOperations = MutableStateFlow<Set<String>>(emptySet())
@@ -332,10 +334,12 @@ class DashboardViewModel @Inject constructor(
                 if (game.mountStatus == MountStatus.MOUNTED) {
                     gameRepository.unmountGame(game) { prog ->
                         _operationProgress.value = prog
+                        mountNotificationManager.postOperationProgressNotification(prog)
                     }
                 } else {
                     gameRepository.mountGame(game, sdBase) { prog ->
                         _operationProgress.value = prog
+                        mountNotificationManager.postOperationProgressNotification(prog)
                     }
                 }
                 refresh()
@@ -354,12 +358,18 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    fun migrateGameWithOptions(game: GameEntry, selectedPoints: List<MountPointConfig>, targetBase: String) {
+    fun migrateGameWithOptions(
+        game: GameEntry,
+        selectedPoints: List<MountPointConfig>,
+        targetBase: String,
+        conflictStrategy: app.mountx.data.model.ConflictStrategy? = null
+    ) {
         if (_pendingOperations.value.contains(game.packageName)) return
         _pendingOperations.update { it + game.packageName }
         viewModelScope.launch {
             try {
                 val activePoints = selectedPoints.map { it.copy(enabled = true) }
+                val effectiveStrategy = conflictStrategy ?: appPreferences.conflictStrategy.first()
 
                 // Force stop active process before migration
                 RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
@@ -376,8 +386,10 @@ class DashboardViewModel @Inject constructor(
                     mountPoints = activePoints,
                     direction = app.mountx.data.model.MoveDirection.TO_SD,
                     sdBase = targetBase,
+                    conflictStrategy = effectiveStrategy,
                     onProgress = { prog ->
                         _operationProgress.value = prog
+                        mountNotificationManager.postOperationProgressNotification(prog)
                     }
                 )
                 if (result.isSuccess) {
@@ -404,6 +416,10 @@ class DashboardViewModel @Inject constructor(
                 _pendingOperations.update { it - game.packageName }
             }
         }
+    }
+
+    suspend fun isGameRunning(packageName: String): Boolean {
+        return gameRepository.isGameRunning(packageName)
     }
 
     fun directMountWithOptions(game: GameEntry, selectedPoints: List<MountPointConfig>, targetBase: String) {

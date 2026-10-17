@@ -236,23 +236,34 @@ class MountManager {
             for (mp in activeMountPoints) {
                 if (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.OBB_STORAGE || mp.category == MountPointCategory.GAME_ASSETS || mp.category == MountPointCategory.CUSTOM) {
                     val srcExists = RootShell.exists(mp.sourcePath)
-                    val srcSizeKb = if (srcExists) {
-                        val duRes = RootShell.exec("du -sk \"${mp.sourcePath}\" 2>/dev/null")
-                        duRes.output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
-                    } else 0L
-
                     val targetExists = RootShell.exists(mp.targetPath)
                     val targetMounted = RootShell.isMountpoint(mp.targetPath)
+
+                    // Fast Path: Check unmigrated internal target size first.
+                    // If target doesn't exist, is already mounted, or is merely a skeleton (<= 512KB),
+                    // occlusion hazard is impossible, avoiding heavy du scans across tens of thousands of files on MicroSD.
                     val targetSizeKb = if (targetExists && !targetMounted) {
                         val duRes = RootShell.exec("du -sk \"${mp.targetPath}\" 2>/dev/null")
                         duRes.output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
                     } else 0L
 
-                    // Hazard: Target has substantial un-migrated data in internal storage (> 512KB),
-                    // but source on MicroSD is either missing, nearly empty (<= 128KB), or significantly smaller than target.
+                    if (targetSizeKb <= 512L) {
+                        if (!srcExists && !autoCreateSource) {
+                            hasOcclusionRisk = true
+                            break
+                        }
+                        continue
+                    }
+
+                    // Only when internal target contains substantive unmigrated data (> 512KB), inspect source on MicroSD:
+                    val srcSizeKb = if (srcExists) {
+                        val duRes = RootShell.exec("du -sk \"${mp.sourcePath}\" 2>/dev/null")
+                        duRes.output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
+                    } else 0L
+
                     val isSourceMissingOrEmpty = !srcExists || srcSizeKb <= 128L
                     val isTargetSubstantiallyLarger = targetSizeKb > 512L && (targetSizeKb > srcSizeKb * 2L)
-                    if (targetExists && !targetMounted && targetSizeKb > 512L && (isSourceMissingOrEmpty || isTargetSubstantiallyLarger)) {
+                    if (isSourceMissingOrEmpty || isTargetSubstantiallyLarger) {
                         hasOcclusionRisk = true
                         occlusionInternalBytes = targetSizeKb * 1024L
                         occlusionSdBytes = srcSizeKb * 1024L
@@ -528,16 +539,19 @@ class MountManager {
         val fsType = RootShell.execForOutput("stat -f -c %T \"${mp.sourcePath}\" 2>/dev/null").trim().lowercase()
         val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || mp.sourcePath.startsWith("/mnt/media_rw")
 
+        // Pre-resolve source block device and active mounts snapshot once to eliminate 20+ redundant shell calls across 11 namespaces
+        val reqDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").lines()
+            .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
+        val procMountsLines = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
+
         var anyMounted = false
         for (namespace in namespaces) {
             val nsTarget = "$namespace/$relPath"
             if (RootShell.exists(namespace)) {
                 if (RootShell.isMountpoint(nsTarget)) {
-                    val curDev = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
+                    val curDev = procMountsLines
                         .firstOrNull { it.contains(" $nsTarget ") }
                         ?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
-                    val reqDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").lines()
-                        .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
                     val isCurrentMountSame = curDev == mp.sourcePath || (curDev.isNotBlank() && reqDev.isNotBlank() && curDev == reqDev)
                     if (curDev.isNotBlank() && reqDev.isNotBlank() && !isCurrentMountSame) {
                         AppLogger.info("MountManager", "Unmounting stale mount on $nsTarget ($curDev -> $reqDev)")
@@ -996,6 +1010,14 @@ class MountManager {
     suspend fun isMounted(path: String): Boolean {
         val clean = path.trimEnd('/')
         return getActiveMountpointsSet().contains(clean)
+    }
+
+    /**
+     * Checks whether an application process is actively running in the background or foreground.
+     */
+    suspend fun isGameRunning(packageName: String): Boolean = withContext(Dispatchers.IO) {
+        val pgrepRes = RootShell.exec("pgrep -f \"$packageName\" 2>/dev/null")
+        pgrepRes.isSuccess && pgrepRes.output.isNotBlank()
     }
 
     /**

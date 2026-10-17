@@ -17,6 +17,7 @@ import app.mountx.data.model.OperationProgress
 import app.mountx.data.model.OperationType
 import app.mountx.data.repository.AppRepository
 import app.mountx.data.repository.StorageRepository
+import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -47,6 +48,7 @@ class AppsViewModel @Inject constructor(
     private val storageRepository: StorageRepository,
     private val appPreferences: AppPreferences,
     private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
+    private val mountNotificationManager: app.mountx.service.MountNotificationManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -159,6 +161,7 @@ class AppsViewModel @Inject constructor(
 
     fun clearOperationProgress() {
         _operationProgress.value = null
+        mountNotificationManager.cancelOperationProgressNotification()
     }
 
     fun cancelOperation() {
@@ -340,6 +343,7 @@ class AppsViewModel @Inject constructor(
                 val sdBase = appPreferences.sdBasePath.first()
                 gameRepository.mountGame(game, sdBase) { prog ->
                     _operationProgress.value = prog
+                    mountNotificationManager.postOperationProgressNotification(prog)
                 }
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
                 _storageBreakdownMap.update { it + (game.packageName to breakdown) }
@@ -361,6 +365,7 @@ class AppsViewModel @Inject constructor(
             try {
                 gameRepository.unmountGame(game) { prog ->
                     _operationProgress.value = prog
+                    mountNotificationManager.postOperationProgressNotification(prog)
                 }
                 val sdBase = appPreferences.sdBasePath.first()
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, game.packageName, sdBase)
@@ -449,12 +454,16 @@ class AppsViewModel @Inject constructor(
         }
     }
 
+    suspend fun isGameRunning(packageName: String): Boolean {
+        return appRepository.isGameRunning(packageName)
+    }
+
     fun moveMountPoints(
         packageName: String,
         mountPoints: List<app.mountx.data.model.MountPointConfig>,
         direction: MoveDirection,
         targetDiskBase: String? = null,
-        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE
+        conflictStrategy: ConflictStrategy? = null
     ) {
         if (_pendingOperations.value.contains(packageName)) return
         _pendingOperations.update { it + packageName }
@@ -464,6 +473,7 @@ class AppsViewModel @Inject constructor(
                 _moveMessage.value = null
                 val defaultSdBase = appPreferences.sdBasePath.first()
                 val sdBase = targetDiskBase ?: defaultSdBase
+                val effectiveConflictStrategy = conflictStrategy ?: appPreferences.conflictStrategy.first()
                 val game = games.value.firstOrNull { it.packageName == packageName }
                 val rawPoints = if (mountPoints.isNotEmpty()) mountPoints else {
                     game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
@@ -473,6 +483,9 @@ class AppsViewModel @Inject constructor(
                 } else {
                     rawPoints
                 }
+
+                // Force stop active process before migration
+                RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
 
                 // Always unmount from runtime namespaces first before moving data in either direction
                 // to avoid circular reading/writing across bind mounts
@@ -487,8 +500,11 @@ class AppsViewModel @Inject constructor(
                     mountPoints = effectivePoints,
                     direction = direction,
                     sdBase = sdBase,
-                    conflictStrategy = conflictStrategy,
-                    onProgress = { prog -> _operationProgress.value = prog }
+                    conflictStrategy = effectiveConflictStrategy,
+                    onProgress = { prog ->
+                        _operationProgress.value = prog
+                        mountNotificationManager.postOperationProgressNotification(prog)
+                    }
                 )
                 _isMovingData.value = false
                 if (result.isSuccess) {
@@ -531,6 +547,7 @@ class AppsViewModel @Inject constructor(
                             gameRepository.updateGame(updated)
                             gameRepository.mountGame(updated, sdBase) { prog ->
                                 _operationProgress.value = prog
+                                mountNotificationManager.postOperationProgressNotification(prog)
                             }
                         }
                     }
@@ -564,15 +581,18 @@ class AppsViewModel @Inject constructor(
             try {
                 val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
                 _isMovingData.value = true
-                _operationProgress.value = OperationProgress(
+                val initialProgress = OperationProgress(
                     type = OperationType.MOUNT,
                     title = "Kaitkan Langsung",
                     subtitle = "${game.displayName} • ${points.size} Kategori",
                     progressPercent = 0.1f
                 )
+                _operationProgress.value = initialProgress
+                mountNotificationManager.postOperationProgressNotification(initialProgress)
 
                 val result = gameRepository.directMountGame(game, points, targetBase) { prog ->
                     _operationProgress.value = prog
+                    mountNotificationManager.postOperationProgressNotification(prog)
                 }
 
                 _isMovingData.value = false
@@ -604,15 +624,18 @@ class AppsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
-                _operationProgress.value = OperationProgress(
+                val initialProgress = OperationProgress(
                     type = OperationType.UNMOUNT,
                     title = "Melepaskan Kaitan Kategori",
                     subtitle = "${game.displayName} • ${points.size} Kategori",
                     progressPercent = 0.2f
                 )
+                _operationProgress.value = initialProgress
+                mountNotificationManager.postOperationProgressNotification(initialProgress)
 
                 val result = gameRepository.unmountMountPoints(game, points) { prog ->
                     _operationProgress.value = prog
+                    mountNotificationManager.postOperationProgressNotification(prog)
                 }
 
                 val defaultSdBase = appPreferences.sdBasePath.first()
@@ -640,13 +663,17 @@ class AppsViewModel @Inject constructor(
         packageName: String,
         direction: MoveDirection,
         target: MigrationTarget = MigrationTarget.ALL,
-        conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE
+        conflictStrategy: ConflictStrategy? = null
     ) {
         viewModelScope.launch {
             _isMovingData.value = true
             _moveMessage.value = null
             val sdBase = appPreferences.sdBasePath.first()
+            val effectiveConflictStrategy = conflictStrategy ?: appPreferences.conflictStrategy.first()
             val game = games.value.firstOrNull { it.packageName == packageName }
+
+            // Force stop active process before migration
+            RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
 
             // Always unmount from runtime namespaces first before moving data in either direction
             if (game != null && game.mountStatus == MountStatus.MOUNTED) {
@@ -660,8 +687,11 @@ class AppsViewModel @Inject constructor(
                 direction = direction,
                 target = target,
                 sdBase = sdBase,
-                conflictStrategy = conflictStrategy,
-                onProgress = { prog -> _operationProgress.value = prog }
+                conflictStrategy = effectiveConflictStrategy,
+                onProgress = { prog ->
+                    _operationProgress.value = prog
+                    mountNotificationManager.postOperationProgressNotification(prog)
+                }
             )
             _isMovingData.value = false
             if (result.isSuccess) {

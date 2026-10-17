@@ -80,6 +80,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -218,6 +219,7 @@ fun DashboardScreen(
         },
         onRecalculateSizes = { viewModel.recalculateAllSizes() },
         onRefreshTelemetry = { viewModel.loadLiveTelemetry() },
+        onCheckIsGameRunning = { pkg -> viewModel.isGameRunning(pkg) },
         modifier = modifier
     )
 }
@@ -254,14 +256,26 @@ fun DashboardContent(
     onDirectMountWithOptions: (GameEntry, List<app.mountx.data.model.MountPointConfig>, String) -> Unit = { _, _, _ -> },
     onRecalculateSizes: () -> Unit = {},
     onRefreshTelemetry: () -> Unit = {},
+    onCheckIsGameRunning: suspend (String) -> Boolean = { false },
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var showNamespaceSheet by remember { mutableStateOf(false) }
     var showModuleInstallDialog by remember { mutableStateOf(false) }
+    var showUnmountAllConfirm by remember { mutableStateOf(false) }
     var gameToUnmountConfirm by remember { mutableStateOf<GameEntry?>(null) }
     var gameToMigrateConfirm by remember { mutableStateOf<GameEntry?>(null) }
+    var isTargetGameRunning by remember(gameToUnmountConfirm) { mutableStateOf(false) }
+
+    LaunchedEffect(gameToUnmountConfirm) {
+        val target = gameToUnmountConfirm
+        if (target != null) {
+            isTargetGameRunning = onCheckIsGameRunning(target.packageName)
+        } else {
+            isTargetGameRunning = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -311,7 +325,7 @@ fun DashboardContent(
                             diskHealthStatus = diskHealthStatus,
                             pendingOperations = pendingOperations,
                             onMountAll = onMountAll,
-                            onUnmountAll = onUnmountAll,
+                            onUnmountAll = { showUnmountAllConfirm = true },
                             onNavigateToGames = onNavigateToGames,
                             onOpenGameDetail = onOpenGameDetail,
                             onToggleGameMount = { game ->
@@ -376,7 +390,7 @@ fun DashboardContent(
                         diskHealthStatus = diskHealthStatus,
                         pendingOperations = pendingOperations,
                         onMountAll = onMountAll,
-                        onUnmountAll = onUnmountAll,
+                        onUnmountAll = { showUnmountAllConfirm = true },
                         onNavigateToGames = onNavigateToGames,
                         onOpenGameDetail = onOpenGameDetail,
                         onToggleGameMount = { game ->
@@ -430,11 +444,30 @@ fun DashboardContent(
             )
         }
 
+        if (showUnmountAllConfirm) {
+            ConfirmDialog(
+                title = stringResource(R.string.unmount_all_confirm_title),
+                message = stringResource(R.string.unmount_all_confirm_message),
+                confirmText = stringResource(R.string.dashboard_unmount_all),
+                onConfirm = {
+                    showUnmountAllConfirm = false
+                    onUnmountAll()
+                },
+                onDismiss = { showUnmountAllConfirm = false }
+            )
+        }
+
         if (gameToUnmountConfirm != null) {
             val target = gameToUnmountConfirm!!
+            val baseMessage = stringResource(R.string.unmount_confirm_message)
+            val fullMessage = if (isTargetGameRunning) {
+                baseMessage + "\n\n" + stringResource(R.string.unmount_confirm_game_running_warning)
+            } else {
+                baseMessage
+            }
             ConfirmDialog(
                 title = stringResource(R.string.unmount_confirm_title),
-                message = stringResource(R.string.unmount_confirm_message),
+                message = fullMessage,
                 confirmText = stringResource(R.string.manage_btn_unmount_game),
                 onConfirm = {
                     gameToUnmountConfirm = null
