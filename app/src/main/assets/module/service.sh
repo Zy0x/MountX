@@ -441,6 +441,7 @@ bind_mount_to_runtime_namespaces() {
             else
                 mount -o bind "${_s}" "${_t}" 2>/dev/null
             fi
+            mount --make-shared "${_t}" 2>/dev/null
         }
 
         if [ -n "${REL}" ]; then
@@ -490,6 +491,12 @@ bind_mount_to_runtime_namespaces() {
 
         # Pre-emptively stop any stale app process / pushservice that started before boot mount
         if [ -n "${PKG}" ]; then
+            # Auto-grant storage permissions for boot-mounted apps to guarantee zero-crash execution
+            appops set "${PKG}" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null
+            appops set "${PKG}" LEGACY_STORAGE allow 2>/dev/null
+            pm grant "${PKG}" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null
+            pm grant "${PKG}" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null
+
             pids=$(pgrep -f "^${PKG}" 2>/dev/null)
             if [ -n "${pids}" ]; then
                 for p in ${pids}; do
@@ -501,6 +508,8 @@ bind_mount_to_runtime_namespaces() {
                             nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
                             nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "${DST}" 2>/dev/null
                         fi
+                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-shared "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
+                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-shared "${DST}" 2>/dev/null
                     fi
                 done
                 am force-stop "${PKG}" 2>/dev/null
@@ -1070,6 +1079,12 @@ main() {
     # Trigger active status notification sync in MountX app
     am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
     log_info "Sent ACTION_SYNC_NOTIFICATION broadcast to app.mountx"
+
+    # Run asynchronous fstrim in background to ensure peak flash controller wear-leveling & speed
+    fstrim "${SD_BASE}" 2>/dev/null &
+
+    # Whitelist MountX in system Doze/battery optimization so background transfers never get killed
+    dumpsys deviceidle whitelist +app.mountx 2>/dev/null
 
     # Launch watchdog daemon in background (event-driven, minimal battery impact)
     mount_watchdog &

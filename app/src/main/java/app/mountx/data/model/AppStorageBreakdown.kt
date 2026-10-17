@@ -12,6 +12,7 @@ import kotlin.math.roundToInt
  * 6. Ext 1: Shared external storage on internal media (/data/media/0/Android/data/<pkg>)
  * 7. Ext 2: Secondary MicroSD partition storage ($sdBase/Android/data/<pkg>)
  */
+@androidx.compose.runtime.Immutable
 data class AppStorageBreakdown(
     val apkBytes: Long = 0L,
     val dexBytes: Long = 0L,

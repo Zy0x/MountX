@@ -318,6 +318,13 @@ fun DashboardContent(
                         )
                     }
                     item {
+                        SmartSpaceAdvisoryBanner(
+                            internalStorage = internalStorageInfo,
+                            games = games,
+                            onOptimizeClick = onNavigateToGames
+                        )
+                    }
+                    item {
                         SmartMasterControlCard(
                             games = games,
                             mountedCount = status.mountedGamesCount,
@@ -380,6 +387,13 @@ fun DashboardContent(
                         onInstallModuleClick = { showModuleInstallDialog = true },
                         onEmergencyUnmountClick = onEmergencyUnmountClick,
                         onDiagnoseClick = onNavigateToStorage
+                    )
+                }
+                item {
+                    SmartSpaceAdvisoryBanner(
+                        internalStorage = internalStorageInfo,
+                        games = games,
+                        onOptimizeClick = onNavigateToGames
                     )
                 }
                 item {
@@ -910,6 +924,113 @@ private fun ContextualAlertBanner(
 
         else -> {
             // Normal happy path: zero banner clutter
+        }
+    }
+}
+
+// ── Smart Space Advisory Banner ──
+
+@Composable
+private fun SmartSpaceAdvisoryBanner(
+    internalStorage: InternalStorageInfo?,
+    games: List<GameEntry>,
+    onOptimizeClick: () -> Unit
+) {
+    if (internalStorage == null || internalStorage.totalBytes <= 0) return
+    val freeRatio = internalStorage.freeBytes.toFloat() / internalStorage.totalBytes.toFloat()
+    val isLowSpace = freeRatio < 0.10f || internalStorage.freeBytes < 4L * 1024 * 1024 * 1024
+    if (!isLowSpace) return
+
+    val unmountedCandidates = remember(games) {
+        games.filter { game ->
+            val size = if (game.dataSizeBytes > 0L) game.dataSizeBytes else game.mountPoints.sumOf { it.sizeBytes }
+            game.mountStatus != MountStatus.MOUNTED && size >= 500L * 1024 * 1024
+        }
+    }
+    if (unmountedCandidates.isEmpty()) return
+
+    val reclaimableBytes = remember(unmountedCandidates) {
+        unmountedCandidates.sumOf { game ->
+            if (game.dataSizeBytes > 0L) game.dataSizeBytes else game.mountPoints.sumOf { it.sizeBytes }
+        }
+    }
+    if (reclaimableBytes <= 0L) return
+
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val isCritical = freeRatio < 0.05f || internalStorage.freeBytes < 2L * 1024 * 1024 * 1024
+
+    val accentColor = if (isCritical) {
+        if (isDark) SunsetAmber else WarmAmberLight
+    } else {
+        if (isDark) HyperCyan else ElectricCyanBright
+    }
+    val containerColor = if (isCritical) {
+        if (isDark) AmberGlow else WarmAmberContainerLight
+    } else {
+        if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+    }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = accentColor.copy(alpha = 0.18f),
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Storage,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.dashboard_space_advisory_title),
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(
+                        R.string.dashboard_space_advisory_desc,
+                        FormatUtils.formatBytes(reclaimableBytes),
+                        unmountedCandidates.size
+                    ),
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = onOptimizeClick,
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.height(34.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.dashboard_space_advisory_action),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color.Black else Color.White
+                    )
+                )
+            }
         }
     }
 }

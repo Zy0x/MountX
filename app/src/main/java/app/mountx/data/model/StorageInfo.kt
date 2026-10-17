@@ -32,6 +32,7 @@ enum class MigrationTarget {
 }
 
 /** Information about the MicroSD storage partition */
+@androidx.compose.runtime.Immutable
 data class StorageInfo(
     val blockDevice: String,
     val mountPoint: String,
@@ -46,6 +47,7 @@ data class StorageInfo(
 }
 
 /** Internal device storage telemetry (/data) */
+@androidx.compose.runtime.Immutable
 data class InternalStorageInfo(
     val totalBytes: Long = 0L,
     val usedBytes: Long = 0L,
@@ -70,6 +72,7 @@ enum class DiskHealthStatus {
 }
 
 /** Detailed partition metadata from /proc/partitions, blkid, and /proc/mounts */
+@androidx.compose.runtime.Immutable
 data class PartitionInfo(
     val path: String,
     val name: String,
@@ -106,6 +109,7 @@ data class PartitionInfo(
 }
 
 /** Physical MicroSD / USB OTG disk hardware metadata */
+@androidx.compose.runtime.Immutable
 data class SdCardDiskInfo(
     val devicePath: String = "/dev/block/mmcblk0",
     val diskName: String = "mmcblk0",

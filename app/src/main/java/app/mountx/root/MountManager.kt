@@ -205,6 +205,15 @@ class MountManager {
             RootShell.exec("chmod -R 775 \"/data/user/$appUserId/${game.packageName}\" 2>/dev/null")
             RootShell.exec("chmod 771 \"/data/user/$appUserId/${game.packageName}/databases\" 2>/dev/null")
 
+            // Whitelist MountX in system Doze/battery optimization so background transfers & watchdog never get killed
+            RootShell.exec("dumpsys deviceidle whitelist +app.mountx 2>/dev/null")
+
+            // Auto-heal storage permissions on Android 11+ so games never crash with EACCES or OBB download error
+            RootShell.exec("appops set \"${game.packageName}\" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null")
+            RootShell.exec("appops set \"${game.packageName}\" LEGACY_STORAGE allow 2>/dev/null")
+            RootShell.exec("pm grant \"${game.packageName}\" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null")
+            RootShell.exec("pm grant \"${game.packageName}\" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null")
+
             // Step 1: Memeriksa Direktori MicroSD
             onProgress?.invoke(
                 OperationProgress(
@@ -421,6 +430,7 @@ class MountManager {
                                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
                                 }
+                                RootShell.exec("mount --make-shared \"$targetPath\" 2>/dev/null")
                             }
                         }
                     }
@@ -448,6 +458,7 @@ class MountManager {
                                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
                                 }
+                                RootShell.exec("mount --make-shared \"$targetPath\" 2>/dev/null")
                             }
                         }
                     }
@@ -592,6 +603,7 @@ class MountManager {
                 }
 
                 if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
+                    RootShell.exec("mount --make-shared \"$nsTarget\" 2>/dev/null")
                     anyMounted = true
                 }
             }

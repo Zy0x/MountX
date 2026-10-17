@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
  * Represents an application entry managed by MountX.
  * Stored in Room database table 'apps'.
  */
+@androidx.compose.runtime.Immutable
 @Entity(tableName = "apps")
 data class AppEntry(
     @PrimaryKey val packageName: String,

@@ -1167,6 +1167,11 @@
     <string name="migration_sd_data_detected">Existing Data Detected on MicroSD</string>
     <string name="migration_action_hint_transfer">Moves local internal data to MicroSD. Best if this app has not been migrated yet or contains fresh save data.</string>
     <string name="migration_action_hint_direct">Bypasses copying and binds existing MicroSD directories directly. Fast and ideal if files were pre-copied or already present.</string>
+
+    <!-- Smart Space Advisory -->
+    <string name="dashboard_space_advisory_title">Low Internal Storage</string>
+    <string name="dashboard_space_advisory_desc">Reclaim up to %1$s of internal storage by migrating %2$d large apps to MicroSD.</string>
+    <string name="dashboard_space_advisory_action">Optimize</string>
 </resources>
 
 

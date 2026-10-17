@@ -17,6 +17,7 @@ enum class MountPointCategory {
 /**
  * Represents a single bind-mount or virtual container target for an application.
  */
+@androidx.compose.runtime.Immutable
 data class MountPointConfig(
     val id: String,
     val category: MountPointCategory,

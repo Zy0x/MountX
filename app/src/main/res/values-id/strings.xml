@@ -1151,6 +1151,11 @@
     <string name="migration_sd_data_detected">Data Terdeteksi di MicroSD</string>
     <string name="migration_action_hint_transfer">Memindahkan data lokal internal ke MicroSD. Paling cocok jika aplikasi belum pernah dipindahkan atau memiliki data baru.</string>
     <string name="migration_action_hint_direct">Melewati proses penyalinan dan langsung mengaitkan direktori MicroSD yang sudah ada. Cepat dan ideal jika data sudah disalin sebelumnya.</string>
+
+    <!-- Smart Space Advisory -->
+    <string name="dashboard_space_advisory_title">Penyimpanan Internal Menipis</string>
+    <string name="dashboard_space_advisory_desc">Hemat hingga %1$s penyimpanan internal dengan memindahkan %2$d aplikasi besar ke MicroSD.</string>
+    <string name="dashboard_space_advisory_action">Optimalkan</string>
 </resources>
 
 
