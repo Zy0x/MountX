@@ -272,10 +272,48 @@ class AppsViewModel @Inject constructor(
     val isRestoring: StateFlow<Boolean> = _isRestoring.asStateFlow()
     private val _isUnmounting = MutableStateFlow(false)
     val isUnmounting: StateFlow<Boolean> = _isUnmounting.asStateFlow()
+    private val _isPurging = MutableStateFlow(false)
+    val isPurging: StateFlow<Boolean> = _isPurging.asStateFlow()
     private val _restoreProgress = MutableStateFlow(0f)
     val restoreProgress: StateFlow<Float> = _restoreProgress.asStateFlow()
     private val _restoreMessage = MutableStateFlow("")
     val restoreMessage: StateFlow<String> = _restoreMessage.asStateFlow()
+
+    fun purgeGamePermanently(
+        context: Context,
+        packageName: String,
+        onComplete: ((Boolean, String?) -> Unit)? = null
+    ) {
+        if (_pendingOperations.value.contains(packageName)) return
+        _pendingOperations.update { it + packageName }
+        viewModelScope.launch {
+            try {
+                _isRestoring.value = false
+                _isUnmounting.value = false
+                _isPurging.value = true
+                _restoreProgress.value = 0f
+                _restoreMessage.value = context.getString(app.mountx.R.string.dialog_delete_purging_desc)
+                val sdBase = appPreferences.sdBasePath.first()
+                val result = gameRepository.purgeGamePermanently(
+                    context = context,
+                    packageName = packageName,
+                    sdBase = sdBase
+                ) { progress, msg ->
+                    _restoreProgress.value = progress
+                    _restoreMessage.value = msg
+                }
+                _isPurging.value = false
+                _restoreProgress.value = 0f
+                _restoreMessage.value = ""
+                _storageBreakdownMap.update { it - packageName }
+                refresh()
+                scanDiscoveredGames()
+                onComplete?.invoke(result.isSuccess, result.exceptionOrNull()?.message)
+            } finally {
+                _pendingOperations.update { it - packageName }
+            }
+        }
+    }
 
     fun removeGame(packageName: String) {
         viewModelScope.launch {
@@ -769,6 +807,25 @@ class AppsViewModel @Inject constructor(
 
     fun dismissDiscovered() {
         _discoveredGames.value = emptyList()
+    }
+
+    fun deleteDiscoveredGame(game: DiscoveredGame) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            gameRepository.deleteDiscoveredGame(game, sdBase)
+            scanDiscoveredGames()
+        }
+    }
+
+    fun deleteAllOrphanGames(orphans: List<DiscoveredGame>, onFinished: () -> Unit = {}) {
+        viewModelScope.launch {
+            val sdBase = appPreferences.sdBasePath.first()
+            for (g in orphans) {
+                gameRepository.deleteDiscoveredGame(g, sdBase)
+            }
+            scanDiscoveredGames()
+            onFinished()
+        }
     }
 
     fun restructureAllGames(games: List<DiscoveredGame>, onFinished: () -> Unit = {}) {

@@ -515,6 +515,37 @@ class DiskCatalogManager @Inject constructor(
     }
 
     /**
+     * Permanently wipes discovered/orphaned game data from MicroSD and removes from catalog.json.
+     */
+    suspend fun deleteDiscoveredGame(sdBase: String, game: DiscoveredGame): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val pkg = game.packageName
+            RootShell.exec("am force-stop \"$pkg\" 2>/dev/null")
+
+            // Remove standard and legacy paths on MicroSD
+            RootShell.exec("rm -rf \"$sdBase/MountX/Android/data/$pkg\" 2>/dev/null")
+            RootShell.exec("rm -rf \"$sdBase/MountX/Android/obb/$pkg\" 2>/dev/null")
+            RootShell.exec("rm -rf \"$sdBase/MountX/Android/media/$pkg\" 2>/dev/null")
+            RootShell.exec("rm -rf \"$sdBase/Android/data/$pkg\" 2>/dev/null")
+            RootShell.exec("rm -rf \"$sdBase/Android/obb/$pkg\" 2>/dev/null")
+            RootShell.exec("rm -rf \"$sdBase/Android/media/$pkg\" 2>/dev/null")
+
+            if (!game.originalPath.isNullOrBlank() && game.originalPath != "/" && game.originalPath != sdBase) {
+                RootShell.exec("rm -rf \"${game.originalPath}\" 2>/dev/null")
+            }
+
+            for (mp in game.mountPoints) {
+                if (mp.sourcePath.isNotBlank() && mp.sourcePath != "/" && mp.sourcePath != sdBase) {
+                    RootShell.exec("rm -rf \"${mp.sourcePath}\" 2>/dev/null")
+                }
+            }
+
+            removeGameFromCatalog(sdBase, pkg)
+            AppLogger.success("DiskCatalog", "Permanently removed discovered game data from MicroSD: $pkg")
+        }
+    }
+
+    /**
      * Atomically restructures game data from non-standard or legacy locations into the
      * standard MountX directory structure ($sdBase/MountX/Android/data & obb).
      * If source and destination are on the same filesystem, this completes in 0.1 seconds via mv.

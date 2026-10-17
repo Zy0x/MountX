@@ -1156,6 +1156,24 @@
     <string name="dashboard_space_advisory_title">Penyimpanan Internal Menipis</string>
     <string name="dashboard_space_advisory_desc">Hemat hingga %1$s penyimpanan internal dengan memindahkan %2$d aplikasi besar ke MicroSD.</string>
     <string name="dashboard_space_advisory_action">Optimalkan</string>
+
+    <!-- Permanent Deletion & Orphan MicroSD Data Management -->
+    <string name="dialog_delete_purge_btn">Hapus Permanen dari MicroSD</string>
+    <string name="dialog_delete_purge_desc">Lepas kaitan dan musnahkan berkas data game dari MicroSD untuk membebaskan ruang. Tindakan ini tidak dapat dibatalkan.</string>
+    <string name="dialog_delete_purge_confirm_title">Hapus Permanen Data Game?</string>
+    <string name="dialog_delete_purge_confirm_desc">Apakah Anda yakin ingin menghapus seluruh data %1$s dari MicroSD secara permanen? %2$s ruang akan dibebaskan.</string>
+    <string name="dialog_delete_purging_title">Menghapus Data...</string>
+    <string name="dialog_delete_purging_desc">Menghapus berkas dari MicroSD secara permanen...</string>
+    <string name="dialog_delete_success_purged">%1$s dan seluruh data MicroSD berhasil dihapus permanen.</string>
+    <string name="dialog_delete_stopping_process">Menghentikan proses latar belakang...</string>
+    <string name="dialog_delete_purging_data">Menghapus berkas data game dari MicroSD...</string>
+    <string name="dialog_delete_cleaning_db">Membersihkan basis data &amp; konfigurasi modul...</string>
+    <string name="portability_btn_clean_orphans">Bersihkan Data Yatim (%1$s)</string>
+    <string name="portability_dialog_clean_orphans_title">Bersihkan %1$d Data Game Yatim?</string>
+    <string name="portability_dialog_clean_orphans_desc">Berkas data game ini tersimpan di MicroSD, namun aplikasinya tidak terpasang di perangkat Anda. Menghapus berkas ini akan membebaskan %1$s.</string>
+    <string name="portability_orphan_badge">Tak Terpasang</string>
+    <string name="portability_btn_delete_single">Hapus Sekarang</string>
+    <string name="portability_clean_orphans_success">Data game yatim berhasil dibersihkan.</string>
 </resources>
 
 

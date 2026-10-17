@@ -18,9 +18,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FolderCopy
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,6 +34,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,14 +65,17 @@ fun DeleteAppConfirmDialog(
     internalFreeBytes: Long,
     isRestoring: Boolean,
     isUnmounting: Boolean = false,
+    isPurging: Boolean = false,
     restoreProgress: Float,
     restoreMessage: String,
     onConfirmRestoreAndDelete: () -> Unit,
     onConfirmUnmountAndDelete: () -> Unit,
+    onConfirmPermanentDelete: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    var showPurgeConfirm by remember { mutableStateOf(false) }
     val isStorageSufficient = internalFreeBytes >= (requiredRestoreBytes + 250_000_000L) || requiredRestoreBytes == 0L
-    val isProcessing = isRestoring || isUnmounting
+    val isProcessing = isRestoring || isUnmounting || isPurging
 
     Dialog(
         onDismissRequest = {
@@ -256,6 +266,155 @@ fun DeleteAppConfirmDialog(
                             )
                         }
                     }
+                } else if (isPurging) {
+                    // ── PURGING PROGRESS STATE ──
+                    val crimsonColor = adaptiveCrimson()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.5.dp,
+                            color = crimsonColor
+                        )
+                        Column {
+                            Text(
+                                text = stringResource(R.string.dialog_delete_purging_title),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = restoreMessage.ifBlank { stringResource(R.string.dialog_delete_purging_desc) },
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                fontWeight = FontWeight.SemiBold,
+                                color = crimsonColor
+                            )
+                        }
+                    }
+
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp),
+                        color = crimsonColor,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(crimsonColor.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteForever,
+                                    contentDescription = null,
+                                    tint = crimsonColor,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.dialog_delete_purging_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else if (showPurgeConfirm) {
+                    // ── INNER CONFIRMATION FOR PERMANENT PURGE ──
+                    val crimsonColor = adaptiveCrimson()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(crimsonColor.copy(alpha = 0.14f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteForever,
+                                contentDescription = null,
+                                tint = crimsonColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = stringResource(R.string.dialog_delete_purge_confirm_title),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = appName,
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                fontWeight = FontWeight.SemiBold,
+                                color = crimsonColor
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = stringResource(
+                            R.string.dialog_delete_purge_confirm_desc,
+                            appName,
+                            FormatUtils.formatBytes(requiredRestoreBytes)
+                        ),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showPurgeConfirm = false },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.custom_path_cancel),
+                                fontSize = 12.sp
+                            )
+                        }
+                        Button(
+                            onClick = onConfirmPermanentDelete,
+                            colors = ButtonDefaults.buttonColors(containerColor = crimsonColor),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.dialog_delete_purge_btn),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
                 } else {
                     // ── NORMAL SELECTION STATE ──
                     Row(
@@ -385,7 +544,7 @@ fun DeleteAppConfirmDialog(
                         }
                     }
 
-                    // Option 2: Unmount Only & Delete
+                    // Option 2: Unmount Only & Keep on MicroSD
                     Card(
                         onClick = onConfirmUnmountAndDelete,
                         shape = RoundedCornerShape(12.dp),
@@ -414,6 +573,57 @@ fun DeleteAppConfirmDialog(
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
                                     text = stringResource(R.string.dialog_delete_unmount_desc),
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // Option 3: Permanently Delete from MicroSD & Internal
+                    Card(
+                        onClick = { showPurgeConfirm = true },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, adaptiveCrimson().copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteForever,
+                                contentDescription = null,
+                                tint = adaptiveCrimson(),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.dialog_delete_purge_btn),
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = adaptiveCrimson()
+                                    )
+                                    if (requiredRestoreBytes > 0) {
+                                        Text(
+                                            text = FormatUtils.formatBytes(requiredRestoreBytes),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = adaptiveCrimson()
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = stringResource(R.string.dialog_delete_purge_desc),
                                     fontSize = 10.5.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     lineHeight = 14.sp

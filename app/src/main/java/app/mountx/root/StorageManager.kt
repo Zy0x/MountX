@@ -2212,9 +2212,12 @@ class StorageManager {
                         // If internal is empty/skeleton (<= 64KB) and destination on SD already has real data (> 1MB), skip redundant copy!
                         if (currentSrcSize <= 64 * 1024L && currentDestSize > 1024 * 1024L) {
                             AppLogger.info("StorageManager", "Data is already present on MicroSD ($currentDestSize bytes) and internal is empty ($currentSrcSize bytes). Skipping redundant copy; ensuring permissions.")
-                            RootShell.exec("chown -R $uid:1023 \"$sourcePath\"")
-                            RootShell.exec("chmod -R 777 \"$sourcePath\"")
-                            RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\"")
+                            val destInspection = inspectStorageTarget(sourcePath)
+                            if (!destInspection.isNonPosix) {
+                                RootShell.exec("chown -R $uid:1023 \"$sourcePath\" 2>/dev/null")
+                                RootShell.exec("chmod -R 777 \"$sourcePath\" 2>/dev/null")
+                                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\" 2>/dev/null")
+                            }
                             continue
                         }
 

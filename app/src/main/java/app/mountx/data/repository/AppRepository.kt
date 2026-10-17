@@ -325,6 +325,70 @@ class AppRepository @Inject constructor(
         }
     }
 
+    suspend fun purgeGamePermanently(
+        context: Context,
+        packageName: String,
+        sdBase: String = "/data/sdext2",
+        onProgress: (Float, String) -> Unit = { _, _ -> }
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        RootShell.rootExecutionMutex.withLock {
+            runCatching {
+                onProgress(0.1f, context.getString(app.mountx.R.string.dialog_delete_stopping_process))
+                RootShell.exec("am force-stop \"$packageName\"")
+
+                val game = gameDao.getGameByPackage(packageName)
+                if (game != null) {
+                    if (game.mountStatus == MountStatus.MOUNTED) {
+                        onProgress(0.3f, context.getString(app.mountx.R.string.dialog_delete_unmounting_title))
+                        mountManager.unmountGame(game)
+                    }
+
+                    onProgress(0.5f, context.getString(app.mountx.R.string.dialog_delete_purging_data))
+                    for (point in game.mountPoints) {
+                        val ptUserId = app.mountx.root.MountManager.resolveUserId(point.targetPath)
+                        val rel = app.mountx.root.MountManager.extractRelativePath(point.targetPath)
+                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                            RootShell.exec("umount -f -l \"$ns/emulated/$ptUserId/$rel\" 2>/dev/null")
+                            RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                        }
+                        RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
+
+                        // Delete physical source data from MicroSD
+                        if (point.sourcePath.isNotBlank() && point.sourcePath != "/" && point.sourcePath != sdBase) {
+                            RootShell.exec("rm -rf \"${point.sourcePath}\" 2>/dev/null")
+                        }
+                    }
+
+                    // Also remove standard MountX directories for this package on MicroSD
+                    RootShell.exec("rm -rf \"$sdBase/MountX/Android/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/MountX/Android/obb/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/MountX/Android/media/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/Android/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/Android/obb/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/Android/media/$packageName\" 2>/dev/null")
+
+                    val gameUserId = game.mountPoints.firstOrNull()?.let { app.mountx.root.MountManager.resolveUserId(it.targetPath) } ?: 0
+                    // Recreate clean valid empty directories so app won't crash if opened
+                    RootShell.exec("mkdir -p \"/data/media/$gameUserId/Android/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("mkdir -p \"/data/media/$gameUserId/Android/obb/$packageName\" 2>/dev/null")
+                    RootShell.exec("chown -R 1023:1023 \"/data/media/$gameUserId/Android/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("chown -R 1023:1023 \"/data/media/$gameUserId/Android/obb/$packageName\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/obb/$packageName\" 2>/dev/null")
+                }
+
+                onProgress(0.9f, context.getString(app.mountx.R.string.dialog_delete_cleaning_db))
+                gameDao.deleteGame(packageName)
+                syncModuleGamelist()
+                diskCatalogManager.removeGameFromCatalog(sdBase, packageName)
+                syncDiskCatalog(sdBase)
+                mountNotificationManager.syncActiveMountNotification()
+                onProgress(1.0f, "")
+                AppLogger.success("Apps", "Permanently purged app and MicroSD data: $packageName")
+            }
+        }
+    }
+
     suspend fun mountGame(
         game: GameEntry,
         sdBase: String = "/data/sdext2",
@@ -689,6 +753,10 @@ class AppRepository @Inject constructor(
         onProgress: (Float, String) -> Unit = { _, _ -> }
     ): Result<Unit> = withContext(Dispatchers.IO) {
         diskCatalogManager.restructureGameToStandard(sdBase, game, onProgress)
+    }
+
+    suspend fun deleteDiscoveredGame(game: DiscoveredGame, sdBase: String): Result<Unit> = withContext(Dispatchers.IO) {
+        diskCatalogManager.deleteDiscoveredGame(sdBase, game)
     }
 
     suspend fun refreshMountStatuses() = withContext(Dispatchers.IO) {

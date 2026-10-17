@@ -23,11 +23,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
@@ -66,6 +68,7 @@ import app.mountx.ui.theme.ForestGreenLight
 import app.mountx.ui.theme.NeonCrimson
 import app.mountx.ui.theme.TerracottaRedLight
 import app.mountx.ui.theme.WarmAmberLight
+import app.mountx.ui.theme.adaptiveCrimson
 import app.mountx.util.FormatUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -123,6 +126,7 @@ fun AppsScreen(
     var selectedGameForDetail by remember { mutableStateOf<GameEntry?>(null) }
     var gameToDelete by remember { mutableStateOf<GameEntry?>(null) }
     var configuringApp by remember { mutableStateOf<InstalledAppInfo?>(null) }
+    var showCleanOrphansDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(vmSelectedGame) {
         if (vmSelectedGame != null) {
@@ -324,6 +328,7 @@ fun AppsScreen(
             onImportAllDiscovered = { viewModel.importAllDiscoveredGames() },
             onDismissDiscovered = { viewModel.dismissDiscovered() },
             onRestructureDiscovered = { showRestructureDialog = true },
+            onCleanOrphanDiscovered = { showCleanOrphansDialog = true },
             searchQuery = searchQuery,
             filterStatus = filterStatus,
             sortOption = sortOption,
@@ -366,6 +371,7 @@ fun AppsScreen(
     // Delete Confirmation Dialog
     val isRestoring by viewModel.isRestoring.collectAsState()
     val isUnmounting by viewModel.isUnmounting.collectAsState()
+    val isPurging by viewModel.isPurging.collectAsState()
     val restoreProgress by viewModel.restoreProgress.collectAsState()
     val restoreMessage by viewModel.restoreMessage.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -378,6 +384,7 @@ fun AppsScreen(
             internalFreeBytes = android.os.Environment.getDataDirectory().freeSpace,
             isRestoring = isRestoring,
             isUnmounting = isUnmounting,
+            isPurging = isPurging,
             restoreProgress = restoreProgress,
             restoreMessage = restoreMessage,
             onConfirmRestoreAndDelete = {
@@ -418,7 +425,116 @@ fun AppsScreen(
                     }
                 }
             },
-            onDismiss = { if (!isRestoring && !isUnmounting) gameToDelete = null }
+            onConfirmPermanentDelete = {
+                val appLabel = game.displayName.ifBlank { game.packageName }
+                viewModel.purgeGamePermanently(context, game.packageName) { success, errorMsg ->
+                    gameToDelete = null
+                    if (success) {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.dialog_delete_success_purged, appLabel),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.dialog_delete_failed_removed, appLabel, errorMsg ?: ""),
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            },
+            onDismiss = { if (!isRestoring && !isUnmounting && !isPurging) gameToDelete = null }
+        )
+    }
+
+    if (showCleanOrphansDialog) {
+        val orphans = discoveredGames.filter { !it.isInstalledOnDevice }
+        val totalOrphanBytes = orphans.sumOf { it.sizeBytes }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showCleanOrphansDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteSweep,
+                    contentDescription = null,
+                    tint = adaptiveCrimson()
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.portability_dialog_clean_orphans_title, orphans.size),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.portability_dialog_clean_orphans_desc,
+                            FormatUtils.formatBytes(totalOrphanBytes)
+                        ),
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 140.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(8.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            orphans.forEach { og ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = og.displayName,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = FormatUtils.formatBytes(og.sizeBytes),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                                        color = adaptiveCrimson()
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showCleanOrphansDialog = false
+                        viewModel.deleteAllOrphanGames(orphans) {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.portability_clean_orphans_success),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = adaptiveCrimson())
+                ) {
+                    Text(
+                        text = stringResource(R.string.portability_btn_delete_single),
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showCleanOrphansDialog = false }) {
+                    Text(text = stringResource(R.string.custom_path_cancel))
+                }
+            }
         )
     }
 
@@ -484,7 +600,8 @@ fun GamesContent(
     discoveredGames: List<DiscoveredGame> = emptyList(),
     onImportAllDiscovered: () -> Unit = {},
     onDismissDiscovered: () -> Unit = {},
-    onRestructureDiscovered: () -> Unit = {}
+    onRestructureDiscovered: () -> Unit = {},
+    onCleanOrphanDiscovered: () -> Unit = {}
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
     var showUnmountAllConfirm by remember { mutableStateOf(false) }
@@ -720,7 +837,8 @@ fun GamesContent(
                     discoveredGames = discoveredGames,
                     onImportAll = onImportAllDiscovered,
                     onDismiss = onDismissDiscovered,
-                    onRestructure = onRestructureDiscovered
+                    onRestructure = onRestructureDiscovered,
+                    onCleanOrphans = onCleanOrphanDiscovered
                 )
             }
 
@@ -1183,6 +1301,7 @@ private fun DiscoveredGamesBanner(
     onImportAll: () -> Unit,
     onDismiss: () -> Unit,
     onRestructure: () -> Unit = {},
+    onCleanOrphans: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -1239,19 +1358,32 @@ private fun DiscoveredGamesBanner(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 discoveredGames.forEach { dg ->
+                    val isOrphan = !dg.isInstalledOnDevice
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        color = if (isOrphan) adaptiveCrimson().copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, if (isOrphan) adaptiveCrimson().copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     ) {
-                        Text(
-                            text = dg.displayName,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = MaterialTheme.colorScheme.onSurface,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = dg.displayName,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (isOrphan) {
+                                Text(
+                                    text = "(${stringResource(R.string.portability_orphan_badge)})",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                    color = adaptiveCrimson()
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1271,6 +1403,40 @@ private fun DiscoveredGamesBanner(
                         style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+
+                val orphanGames = discoveredGames.filter { !it.isInstalledOnDevice }
+                if (orphanGames.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Button(
+                        onClick = onCleanOrphans,
+                        modifier = Modifier.height(30.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = adaptiveCrimson(),
+                            contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(
+                                R.string.portability_btn_clean_orphans,
+                                FormatUtils.formatBytes(orphanGames.sumOf { it.sizeBytes })
+                            ),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+                    }
                 }
 
                 val hasRestructure = discoveredGames.any { it.needsRestructure }

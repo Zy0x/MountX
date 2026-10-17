@@ -1172,6 +1172,24 @@
     <string name="dashboard_space_advisory_title">Low Internal Storage</string>
     <string name="dashboard_space_advisory_desc">Reclaim up to %1$s of internal storage by migrating %2$d large apps to MicroSD.</string>
     <string name="dashboard_space_advisory_action">Optimize</string>
+
+    <!-- Permanent Deletion & Orphan MicroSD Data Management -->
+    <string name="dialog_delete_purge_btn">Permanently Delete Data</string>
+    <string name="dialog_delete_purge_desc">Unmount and completely wipe game data from MicroSD to free up space. This action cannot be undone.</string>
+    <string name="dialog_delete_purge_confirm_title">Permanently Delete Game Data?</string>
+    <string name="dialog_delete_purge_confirm_desc">Are you sure you want to permanently delete all data for %1$s from MicroSD? %2$s will be freed.</string>
+    <string name="dialog_delete_purging_title">Deleting Data...</string>
+    <string name="dialog_delete_purging_desc">Permanently removing files from MicroSD...</string>
+    <string name="dialog_delete_success_purged">%1$s and all MicroSD data have been permanently removed.</string>
+    <string name="dialog_delete_stopping_process">Stopping background processes...</string>
+    <string name="dialog_delete_purging_data">Removing game data files from MicroSD...</string>
+    <string name="dialog_delete_cleaning_db">Cleaning up database and module configs...</string>
+    <string name="portability_btn_clean_orphans">Clean Orphan Data (%1$s)</string>
+    <string name="portability_dialog_clean_orphans_title">Clean %1$d Orphaned Game Folders?</string>
+    <string name="portability_dialog_clean_orphans_desc">These game data folders exist on MicroSD, but the corresponding apps are not installed on your device. Deleting them will free %1$s.</string>
+    <string name="portability_orphan_badge">Not Installed</string>
+    <string name="portability_btn_delete_single">Delete Now</string>
+    <string name="portability_clean_orphans_success">Orphaned game data deleted successfully.</string>
 </resources>
 
 
