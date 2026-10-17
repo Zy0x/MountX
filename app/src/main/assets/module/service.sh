@@ -630,6 +630,17 @@ load_mountpoints() {
             continue
         fi
 
+        # Verify package is actually installed on system (skip if uninstalled to avoid Play Store reinstall error)
+        if [ -n "${pkg}" ] && [ "${cat}" != "CUSTOM" ]; then
+            if ! pm path "${pkg}" >/dev/null 2>&1; then
+                log_warn "  [${pkg}] App is not installed on system. Skipping mount to prevent Play Store INSTALL_FAILED_INTERNAL_ERROR."
+                if mountpoint -q "${dst}" 2>/dev/null; then
+                    umount -f -l "${dst}" 2>/dev/null
+                fi
+                continue
+            fi
+        fi
+
         # Extract relative path to inspect user-facing runtime namespace
         local rel=""
         case "${dst}" in
@@ -768,6 +779,11 @@ load_gamelist() {
 process_game() {
     local pkg="$1"
     local mode="$2"
+
+    if ! pm path "${pkg}" >/dev/null 2>&1; then
+        log_warn "  [${pkg}] App is not installed on system. Skipping legacy mount to prevent Play Store reinstall errors."
+        return
+    fi
 
     local int_data="/data/media/0/Android/data/${pkg}"
     local int_obb="/data/media/0/Android/obb/${pkg}"

@@ -2044,6 +2044,11 @@ class StorageManager {
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            val pm = try {
+                app.mountx.MountXApp.instance.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+            } catch (_: Exception) { null }
+            val wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "MountX:MigrationWakeLock")
+            wakeLock?.acquire(2 * 60 * 60 * 1000L)
             val isToSd = direction == MoveDirection.TO_SD
             val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
             val title = if (isToSd) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal"
@@ -2500,6 +2505,9 @@ class StorageManager {
             )
             Unit
             } finally {
+                if (wakeLock?.isHeld == true) {
+                    try { wakeLock.release() } catch (_: Exception) {}
+                }
                 // Ensure target package is always unsuspended
                 RootShell.exec("pm unsuspend \"$packageName\" 2>/dev/null")
             }
@@ -2531,6 +2539,11 @@ class StorageManager {
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            val pm = try {
+                app.mountx.MountXApp.instance.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+            } catch (_: Exception) { null }
+            val wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "MountX:LegacyMigrationWakeLock")
+            wakeLock?.acquire(2 * 60 * 60 * 1000L)
             isCancellationRequested = false
             val isToSd = direction == MoveDirection.TO_SD
             val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
@@ -2853,6 +2866,9 @@ class StorageManager {
                 )
                 Unit
             } finally {
+                if (wakeLock?.isHeld == true) {
+                    try { wakeLock.release() } catch (_: Exception) {}
+                }
                 // Ensure target package is always unsuspended
                 RootShell.exec("pm unsuspend \"$packageName\" 2>/dev/null")
             }

@@ -31,8 +31,14 @@ class MountXApp : Application() {
         }
     }
 
+    companion object {
+        lateinit var instance: MountXApp
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
         // Configure libsu for root shell access
         Shell.enableVerboseLogging = BuildConfig.DEBUG
         Shell.setDefaultBuilder(

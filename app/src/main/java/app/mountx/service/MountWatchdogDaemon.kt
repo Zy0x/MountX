@@ -242,6 +242,14 @@ class MountWatchdogDaemon @Inject constructor(
         AppLogger.info("Watchdog", "Registered game $packageName was uninstalled from Android.")
         mountManager.unmountGame(game)
         gameDao.updateMountStatus(packageName, MountStatus.UNMOUNTED)
+
+        // Clear any lingering mountpoint in runtime namespaces to prevent Play Store reinstall errors
+        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+            RootShell.exec("umount -f -l \"$ns/emulated/0/Android/data/$packageName\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"$ns/emulated/0/Android/obb/$packageName\" 2>/dev/null")
+        }
+        RootShell.exec("umount -f -l \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
+        RootShell.exec("umount -f -l \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
     }
 
     /**
