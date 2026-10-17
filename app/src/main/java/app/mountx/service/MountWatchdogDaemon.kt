@@ -31,7 +31,8 @@ class MountWatchdogDaemon @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gameDao: GameDao,
     private val mountManager: MountManager,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val appRepository: dagger.Lazy<app.mountx.data.repository.AppRepository>
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -55,10 +56,17 @@ class MountWatchdogDaemon @Inject constructor(
                     }
                 }
                 Intent.ACTION_MEDIA_MOUNTED -> {
-                    // External storage just connected: immediate canary check to catch
-                    // hot-plug scenarios (SystemSyncMonitor handles the full remount;
-                    // we do a quick canary pass here for fast recovery of namespace mounts)
+                    // External storage just connected: ensure base partition is mounted, then canary check
                     scope.launch {
+                        val sdBase = appPreferences.sdBasePath.first()
+                        val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+                        if (!isSdBaseMounted) {
+                            AppLogger.info("Watchdog", "MEDIA_MOUNTED: Base SD partition ($sdBase) not mounted, attempting base mount...")
+                            val configuredBlock = appPreferences.sdBlockDevice.first().trim()
+                            if (configuredBlock.isNotBlank() && RootShell.exists(configuredBlock)) {
+                                RootShell.exec("mkdir -p \"$sdBase\" && mount -o rw,noatime \"$configuredBlock\" \"$sdBase\" 2>/dev/null")
+                            }
+                        }
                         AppLogger.info("Watchdog", "MEDIA_MOUNTED received, running immediate canary check...")
                         checkAndRemountCanaries()
                     }
@@ -89,10 +97,23 @@ class MountWatchdogDaemon @Inject constructor(
                     }
                 }
                 Intent.ACTION_PACKAGE_REMOVED -> {
+                    val isReplacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
+                    val pkg = intent.data?.schemeSpecificPart
+                    if (!pkg.isNullOrBlank()) {
+                        if (isReplacing) {
+                            AppLogger.info("Watchdog", "Package $pkg is being updated/replaced by installer. Preserving active mounts.")
+                        } else {
+                            scope.launch {
+                                handlePackageRemoved(pkg)
+                            }
+                        }
+                    }
+                }
+                Intent.ACTION_PACKAGE_REPLACED -> {
                     val pkg = intent.data?.schemeSpecificPart
                     if (!pkg.isNullOrBlank()) {
                         scope.launch {
-                            handlePackageRemoved(pkg)
+                            handlePackageReplaced(pkg)
                         }
                     }
                 }
@@ -114,6 +135,7 @@ class MountWatchdogDaemon @Inject constructor(
         }
         val pkgFilter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
             addDataScheme("package")
         }
 
@@ -250,6 +272,62 @@ class MountWatchdogDaemon @Inject constructor(
         }
         RootShell.exec("umount -f -l \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
         RootShell.exec("umount -f -l \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+    }
+
+    /**
+     * Handle package replacement / update from Google Play Store or APK installer.
+     * Prevents Play Store update breakage, auto-updates relocated /data/app hashes,
+     * re-authorizes storage permissions, and restores active bind mounts seamlessly.
+     */
+    private suspend fun handlePackageReplaced(packageName: String) {
+        val game = gameDao.getGameByPackage(packageName) ?: return
+        AppLogger.info("Watchdog", "Package update detected for registered game: $packageName. Verifying mounts & permissions...")
+        val sdBase = appPreferences.sdBasePath.first()
+
+        // 1. Auto-heal storage permissions for updated package
+        RootShell.exec("appops set \"$packageName\" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null")
+        RootShell.exec("appops set \"$packageName\" LEGACY_STORAGE allow 2>/dev/null")
+        RootShell.exec("pm grant \"$packageName\" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null")
+        RootShell.exec("pm grant \"$packageName\" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null")
+
+        // 2. Dynamic APK Directory Relocation Handler for APP_PACKAGE (/data/app)
+        var updatedGame = game
+        val appPkgMount = game.mountPoints.firstOrNull { it.category == app.mountx.data.model.MountPointCategory.APP_PACKAGE && it.enabled }
+        if (appPkgMount != null) {
+            val apkPathRes = RootShell.exec("pm path \"$packageName\" 2>/dev/null | head -n 1")
+            if (apkPathRes.isSuccess && apkPathRes.output.contains("package:")) {
+                val fullApkPath = apkPathRes.output.substringAfter("package:").trim()
+                val newApkDir = java.io.File(fullApkPath).parent ?: ""
+                if (newApkDir.isNotBlank() && newApkDir != appPkgMount.targetPath) {
+                    AppLogger.warn("Watchdog", "APK directory hash changed for $packageName after update: ${appPkgMount.targetPath} -> $newApkDir")
+                    // Unmount stale old target
+                    RootShell.exec("umount -f -l \"${appPkgMount.targetPath}\" 2>/dev/null")
+                    val updatedMountPoints = game.mountPoints.map { mp ->
+                        if (mp.category == app.mountx.data.model.MountPointCategory.APP_PACKAGE) {
+                            mp.copy(targetPath = newApkDir)
+                        } else mp
+                    }
+                    updatedGame = game.copy(mountPoints = updatedMountPoints)
+                    gameDao.updateGame(updatedGame)
+                    runCatching { appRepository.get().syncModuleConfig() }
+                }
+            }
+        }
+
+        // 3. Seamless mount restoration
+        if (updatedGame.isEnabled && updatedGame.mountStatus == MountStatus.MOUNTED) {
+            val isCanaryOk = mountManager.verifyCanary(packageName, updatedGame)
+            if (!isCanaryOk) {
+                AppLogger.info("Watchdog", "Restoring mounts for updated package: $packageName")
+                val mountRes = mountManager.mountGame(updatedGame, sdBase)
+                if (mountRes.isSuccess) {
+                    gameDao.updateMountStatus(packageName, MountStatus.MOUNTED)
+                    AppLogger.success("Watchdog", "Successfully restored mounts for updated package: $packageName")
+                } else {
+                    AppLogger.error("Watchdog", "Failed to restore mounts for updated package: $packageName")
+                }
+            }
+        }
     }
 
     /**

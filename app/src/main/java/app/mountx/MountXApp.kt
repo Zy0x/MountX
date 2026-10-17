@@ -33,6 +33,9 @@ class MountXApp : Application() {
     @Inject
     lateinit var appPreferences: app.mountx.util.AppPreferences
 
+    @Inject
+    lateinit var systemSyncMonitor: app.mountx.service.SystemSyncMonitor
+
     class ShellInitializer : Shell.Initializer() {
         override fun onInit(context: android.content.Context, shell: Shell): Boolean {
             shell.newJob().add("case \":\$PATH:\" in *\":/data/adb/modules/MountX/bin:\"*) ;; *) export PATH=\"/data/adb/modules/MountX/bin:/data/adb/modules/mountx/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac").exec()
@@ -87,8 +90,9 @@ class MountXApp : Application() {
             } catch (_: Exception) {}
         }
 
-        // Start passive event-driven watchdog daemon
+        // Start passive event-driven watchdog daemon and system sync monitor
         watchdogDaemon.start()
+        systemSyncMonitor.startMonitoring()
 
         // Asynchronously check and synchronize Magisk/KernelSU/APatch module silently
         CoroutineScope(Dispatchers.IO).launch {

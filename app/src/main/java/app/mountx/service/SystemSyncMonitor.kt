@@ -123,8 +123,9 @@ class SystemSyncMonitor @Inject constructor(
                     }
                 }
                 Intent.ACTION_PACKAGE_REMOVED -> {
+                    val isReplacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
                     val pkg = intent.data?.schemeSpecificPart
-                    if (!pkg.isNullOrBlank()) {
+                    if (!pkg.isNullOrBlank() && !isReplacing) {
                         scope.launch {
                             _events.emit(SystemSyncEvent.PackageRemoved(pkg))
                         }

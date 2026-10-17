@@ -200,10 +200,11 @@ class MountManager {
             val uid = identity.uid
             val gid = identity.gid
 
-            // Set ownership on internal data directory & databases
-            RootShell.exec("chown -R $uid:$gid \"/data/user/$appUserId/${game.packageName}\" 2>/dev/null")
-            RootShell.exec("chmod -R 775 \"/data/user/$appUserId/${game.packageName}\" 2>/dev/null")
-            RootShell.exec("chmod 771 \"/data/user/$appUserId/${game.packageName}/databases\" 2>/dev/null")
+            // Fast non-recursive ownership on internal sandbox directory & databases
+            val sandboxDir = "/data/user/$appUserId/${game.packageName}"
+            RootShell.exec("chown $uid:$gid \"$sandboxDir\" 2>/dev/null")
+            RootShell.exec("chmod 775 \"$sandboxDir\" 2>/dev/null")
+            RootShell.exec("chmod 771 \"$sandboxDir/databases\" 2>/dev/null")
 
             // Whitelist MountX in system Doze/battery optimization so background transfers & watchdog never get killed
             RootShell.exec("dumpsys deviceidle whitelist +app.mountx 2>/dev/null")
@@ -371,9 +372,18 @@ class MountManager {
                             true
                         }
                         MountPointCategory.APP_PACKAGE -> {
+                            // Dynamic verification: resolve active APK directory via pm path in case update relocated the hash directory
+                            val currentApkPathRes = RootShell.exec("pm path \"${game.packageName}\" 2>/dev/null | head -n 1")
+                            val currentApkDir = if (currentApkPathRes.isSuccess && currentApkPathRes.output.contains("package:")) {
+                                val fullPath = currentApkPathRes.output.substringAfter("package:").trim()
+                                java.io.File(fullPath).parent ?: ""
+                            } else ""
+                            val effectiveTarget = if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
+
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
-                            val res = RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"${mp.targetPath}\"")
-                            RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
+                            RootShell.exec("mkdir -p \"$effectiveTarget\" 2>/dev/null")
+                            val res = RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"$effectiveTarget\"")
+                            RootShell.exec("restorecon -FR \"$effectiveTarget\" 2>/dev/null")
                             res.isSuccess
                         }
                     }
@@ -409,9 +419,13 @@ class MountManager {
                 }
 
                 if (hasData) {
-                    RootShell.exec("chown -R $uid:1023 \"$dataSrcPath\" 2>/dev/null")
-                    RootShell.exec("chmod -R 777 \"$dataSrcPath\" 2>/dev/null")
-                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
+                    val fsType = RootShell.execForOutput("stat -f -c %T \"$dataSrcPath\" 2>/dev/null").trim().lowercase()
+                    val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || dataSrcPath.startsWith("/mnt/media_rw")
+                    if (!isNonPosix) {
+                        RootShell.exec("chown $uid:1023 \"$dataSrcPath\" 2>/dev/null")
+                        RootShell.exec("chmod 777 \"$dataSrcPath\" 2>/dev/null")
+                        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
+                    }
                     RootShell.exec("touch \"$dataSrcPath/.mountx_canary\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"/data/media/$appUserId/$dataRelPath\" 2>/dev/null")
 
@@ -426,7 +440,9 @@ class MountManager {
                                     RootShell.exec("restorecon -R \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("chmod 775 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("chown $uid:$gid \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
+                                    if (!isNonPosix) {
+                                        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
+                                    }
                                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
                                 }
@@ -437,9 +453,13 @@ class MountManager {
                 }
 
                 if (hasObb) {
-                    RootShell.exec("chown -R $uid:1023 \"$obbSrcPath\" 2>/dev/null")
-                    RootShell.exec("chmod -R 777 \"$obbSrcPath\" 2>/dev/null")
-                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+                    val fsType = RootShell.execForOutput("stat -f -c %T \"$obbSrcPath\" 2>/dev/null").trim().lowercase()
+                    val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || obbSrcPath.startsWith("/mnt/media_rw")
+                    if (!isNonPosix) {
+                        RootShell.exec("chown $uid:1023 \"$obbSrcPath\" 2>/dev/null")
+                        RootShell.exec("chmod 777 \"$obbSrcPath\" 2>/dev/null")
+                        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+                    }
                     RootShell.exec("touch \"$obbSrcPath/.mountx_canary\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"/data/media/$appUserId/$obbRelPath\" 2>/dev/null")
 
@@ -519,24 +539,31 @@ class MountManager {
         isMedia: Boolean,
         autoCreateSource: Boolean = true
     ): Boolean {
+        val fsType = RootShell.execForOutput("stat -f -c %T \"${mp.sourcePath}\" 2>/dev/null").trim().lowercase()
+        val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || mp.sourcePath.startsWith("/mnt/media_rw")
+
         if (!RootShell.exists(mp.sourcePath)) {
             if (autoCreateSource) {
                 AppLogger.info("MountManager", "Source path ${mp.sourcePath} does not exist on target storage. Creating directory for direct mount.")
                 RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
-                RootShell.exec("chown -R $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
-                RootShell.exec("chmod -R 777 \"${mp.sourcePath}\" 2>/dev/null")
-                RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                if (!isNonPosix) {
+                    RootShell.exec("chown $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
+                    RootShell.exec("chmod 777 \"${mp.sourcePath}\" 2>/dev/null")
+                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                }
                 RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
             } else {
                 AppLogger.warn("MountManager", "Source path ${mp.sourcePath} does not exist on SD storage. Skipping mount to prevent hiding internal data.")
                 return false
             }
+        } else {
+            if (!isNonPosix) {
+                RootShell.exec("chown $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
+                RootShell.exec("chmod 777 \"${mp.sourcePath}\" 2>/dev/null")
+                RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+            }
+            RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
         }
-
-        RootShell.exec("chown -R $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
-        RootShell.exec("chmod -R 777 \"${mp.sourcePath}\" 2>/dev/null")
-        RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
-        RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
 
         // Extract relative path from target path across any user profile
         val relPath = extractRelativePath(mp.targetPath)
@@ -546,9 +573,6 @@ class MountManager {
         // When /data/media has an active mount on another filesystem, sdcardfs on /storage/emulated
         // throws EXDEV on any pathname lookup for that child directory.
         RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
-
-        val fsType = RootShell.execForOutput("stat -f -c %T \"${mp.sourcePath}\" 2>/dev/null").trim().lowercase()
-        val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || mp.sourcePath.startsWith("/mnt/media_rw")
 
         // Pre-resolve source block device and active mounts snapshot once to eliminate 20+ redundant shell calls across 11 namespaces
         val reqDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").lines()
@@ -724,10 +748,15 @@ class MountManager {
                                 AppLogger.info("MountManager", "Detached loop device: $loopDev")
                             }
                         } else {
-                            val userNamespaces = getTargetNamespaces(targetUserId)
-                            val relPath = extractRelativePath(mp.targetPath)
-                            for (ns in userNamespaces) {
-                                RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                            if (mp.category == MountPointCategory.APP_PACKAGE || mp.targetPath.startsWith("/data/app")) {
+                                RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                            } else {
+                                val userNamespaces = getTargetNamespaces(targetUserId)
+                                val relPath = extractRelativePath(mp.targetPath)
+                                for (ns in userNamespaces) {
+                                    RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                                }
+                                RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
                             }
                         }
                     }

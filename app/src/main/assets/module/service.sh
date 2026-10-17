@@ -641,6 +641,21 @@ load_mountpoints() {
             fi
         fi
 
+        # Dynamic APK hash path auto-resolution for APP_PACKAGE across Play Store updates
+        if [ "${cat}" = "APP_PACKAGE" ] && [ -n "${pkg}" ]; then
+            live_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed -n 's/^package://p' | tr -d '\r')
+            if [ -n "${live_apk_path}" ]; then
+                live_apk_dir=$(dirname "${live_apk_path}")
+                if [ -n "${live_apk_dir}" ] && [ "${live_apk_dir}" != "${dst}" ]; then
+                    log_warn "  [${pkg}] APP_PACKAGE relocated by system update: ${dst} -> ${live_apk_dir}"
+                    if mountpoint -q "${dst}" 2>/dev/null; then
+                        umount -f -l "${dst}" 2>/dev/null
+                    fi
+                    dst="${live_apk_dir}"
+                fi
+            fi
+        fi
+
         # Extract relative path to inspect user-facing runtime namespace
         local rel=""
         case "${dst}" in

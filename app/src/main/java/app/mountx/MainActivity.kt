@@ -75,7 +75,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        systemSyncMonitor.stopMonitoring()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
