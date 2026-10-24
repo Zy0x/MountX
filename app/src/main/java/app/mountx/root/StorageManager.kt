@@ -1093,11 +1093,44 @@ class StorageManager {
             // 2. Resolve block device dynamically if path shifted on reboot or was unassigned
             var targetDev = blockDevice.trim()
             if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
+                // 1. Try reading SD_BLOCK from module config.conf
+                val moduleConfBlock = RootShell.execForOutput("grep -E '^SD_BLOCK=' /data/adb/modules/MountX/config.conf /data/adb/modules/mountx/config.conf /data/adb/modules/Mountify/config.conf 2>/dev/null | head -n 1 | cut -d= -f2").trim()
+                if (moduleConfBlock.isNotBlank() && RootShell.exists(moduleConfBlock)) {
+                    targetDev = moduleConfBlock
+                }
+            }
+
+            if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
+                // 2. Direct blkid probe for f2fs partition on mmcblk
+                val f2fsBlkid = RootShell.execForOutput("blkid /dev/block/mmcblk* 2>/dev/null | grep 'TYPE=\"f2fs\"' | head -n 1 | cut -d: -f1").trim()
+                if (f2fsBlkid.isNotBlank() && RootShell.exists(f2fsBlkid)) {
+                    targetDev = f2fsBlkid
+                }
+            }
+
+            if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
                 val partitions = detectPartitions(mountPoint)
-                val candidate = partitions.firstOrNull { it.isTargetMount }
+                // 3. Look for unmounted F2FS partition (avoid picking vold-mounted ext4 mmcblk0p1)
+                val unmountedF2fs = partitions.firstOrNull { p ->
+                    p.mountPoint.isNullOrBlank() && p.fsType.equals("f2fs", ignoreCase = true) && RootShell.exists(p.path)
+                }
+                // 4. Look for unmounted partition on mmcblk (preferring larger capacity)
+                val unmountedMmc = partitions.filter { p ->
+                    p.mountPoint.isNullOrBlank() && p.path.contains("mmcblk") && RootShell.exists(p.path)
+                }.maxByOrNull { it.sizeBytes }
+                // 5. Look for unmounted ext4 partition
+                val unmountedExt4 = partitions.firstOrNull { p ->
+                    p.mountPoint.isNullOrBlank() && p.fsType.equals("ext4", ignoreCase = true) && RootShell.exists(p.path)
+                }
+
+                val candidate = unmountedF2fs
+                    ?: unmountedMmc
+                    ?: unmountedExt4
+                    ?: partitions.firstOrNull { it.path.contains("mmcblk0p3") && RootShell.exists(it.path) }
+                    ?: partitions.firstOrNull { it.isTargetMount }
                     ?: partitions.firstOrNull { it.mountPoint == mountPoint }
-                    ?: partitions.firstOrNull { it.fsType.equals("f2fs", ignoreCase = true) || it.fsType.equals("ext4", ignoreCase = true) }
-                    ?: partitions.firstOrNull { it.path.contains("mmcblk") || it.path.contains("sd") }
+                    ?: partitions.firstOrNull { (it.fsType.equals("f2fs", ignoreCase = true) || it.fsType.equals("ext4", ignoreCase = true)) && RootShell.exists(it.path) }
+
                 if (candidate != null && RootShell.exists(candidate.path)) {
                     targetDev = candidate.path
                 }

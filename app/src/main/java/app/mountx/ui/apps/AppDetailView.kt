@@ -1004,7 +1004,7 @@ private fun StorageTabContent(
     }
 
     val isRealDataOnSd = safeBreakdown.ext2Bytes > 0L
-    val isMounted = safeBreakdown.isExt1Mounted || (game.mountStatus == MountStatus.MOUNTED && isRealDataOnSd)
+    val isMounted = safeBreakdown.isExt1Mounted || game.mountStatus == MountStatus.MOUNTED
 
     val categories = remember(safeBreakdown, isMounted, mountPoints, packageInfo, sdBase, availableDisks) {
         val prioritizedPoints = mountPoints.sortedWith(
@@ -1605,9 +1605,9 @@ private fun StorageTabContent(
                     // Right: Alternating Mount / Unmount / Migrate button
                     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                     val hasInternalData = safeBreakdown.ext1Bytes > 0L || game.dataSizeBytes > 0L
-                    val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION || (!isMounted && !isRealDataOnSd && hasInternalData)
+                    val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION
 
-                    if (!isMounted && isRealDataOnSd && !isNeedMigration) {
+                    if (!isMounted && !isNeedMigration) {
                         Button(
                             onClick = onMount,
                             shape = RoundedCornerShape(10.dp),

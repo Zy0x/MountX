@@ -854,24 +854,30 @@ class AppRepository @Inject constructor(
                 !isStorageAttached -> MountStatus.DISK_DETACHED
                 isMounted -> MountStatus.MOUNTED
                 else -> {
-                    val extData = "/data/sdext2/MountX/Android/data/${g.packageName}"
-                    val extObb = "/data/sdext2/MountX/Android/obb/${g.packageName}"
-                    val hasCustomSd = g.mountPoints.any { existingPaths.contains(it.sourcePath) }
-                    val hasSd = hasCustomSd || existingPaths.contains(extData) || existingPaths.contains(extObb)
-                    if (hasSd) {
+                    if (!isSdBaseMounted) {
+                        // When sdBase is unmounted, partition contents cannot be inspected.
+                        // Never flag games as NEED_MIGRATION while partition is unmounted.
                         MountStatus.UNMOUNTED
-                    } else if (g.mountStatus == MountStatus.NEED_MIGRATION) {
-                        MountStatus.NEED_MIGRATION
                     } else {
-                        val internalData = "/data/media/0/Android/data/${g.packageName}"
-                        val internalObb = "/data/media/0/Android/obb/${g.packageName}"
-                        val hasInternal = existingPaths.contains(internalData) || existingPaths.contains(internalObb)
-                        if (hasInternal) {
-                            MountStatus.NEED_MIGRATION
-                        } else if (g.mountStatus == MountStatus.ERROR) {
-                            MountStatus.ERROR
-                        } else {
+                        val extData = "/data/sdext2/MountX/Android/data/${g.packageName}"
+                        val extObb = "/data/sdext2/MountX/Android/obb/${g.packageName}"
+                        val hasCustomSd = g.mountPoints.any { existingPaths.contains(it.sourcePath) }
+                        val hasSd = hasCustomSd || existingPaths.contains(extData) || existingPaths.contains(extObb)
+                        if (hasSd) {
                             MountStatus.UNMOUNTED
+                        } else if (g.mountStatus == MountStatus.NEED_MIGRATION) {
+                            MountStatus.NEED_MIGRATION
+                        } else {
+                            val internalData = "/data/media/0/Android/data/${g.packageName}"
+                            val internalObb = "/data/media/0/Android/obb/${g.packageName}"
+                            val hasInternal = existingPaths.contains(internalData) || existingPaths.contains(internalObb)
+                            if (hasInternal) {
+                                MountStatus.NEED_MIGRATION
+                            } else if (g.mountStatus == MountStatus.ERROR) {
+                                MountStatus.ERROR
+                            } else {
+                                MountStatus.UNMOUNTED
+                            }
                         }
                     }
                 }
@@ -1057,7 +1063,8 @@ class AppRepository @Inject constructor(
             }
 
             // Auto-detect NEED_MIGRATION status for unmounted game with internal data and empty SD
-            if (game != null && !isDataMountedReal && !isObbMountedReal) {
+            val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+            if (game != null && !isDataMountedReal && !isObbMountedReal && isSdBaseMounted) {
                 val hasInternal = internalDataSize > 512 * 1024L || internalObbSize > 512 * 1024L
                 val sdEmpty = extDataBytesSum <= 128 * 1024L && extObbBytesSum <= 128 * 1024L
                 if (hasInternal && sdEmpty) {

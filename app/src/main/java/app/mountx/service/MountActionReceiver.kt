@@ -35,6 +35,16 @@ class MountActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
         AppLogger.info("MountActionReceiver", "Received action: $action")
+        when (action) {
+            ACTION_MOUNT_ALL -> {
+                MountService.startMountAll(context)
+                return
+            }
+            ACTION_UNMOUNT_ALL -> {
+                MountService.startUnmountAll(context)
+                return
+            }
+        }
         val pendingResult = goAsync()
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -42,14 +52,6 @@ class MountActionReceiver : BroadcastReceiver() {
                 when (action) {
                     ACTION_SYNC_NOTIFICATION -> {
                         gameRepository.refreshMountStatuses()
-                        mountNotificationManager.syncActiveMountNotification()
-                    }
-                    ACTION_UNMOUNT_ALL -> {
-                        gameRepository.unmountAll()
-                        mountNotificationManager.syncActiveMountNotification()
-                    }
-                    ACTION_MOUNT_ALL -> {
-                        gameRepository.mountAll()
                         mountNotificationManager.syncActiveMountNotification()
                     }
                 }

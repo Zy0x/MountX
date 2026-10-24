@@ -151,6 +151,13 @@ class SystemSyncMonitor @Inject constructor(
             addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
             addDataScheme("file")
         }
+        val mediaFilterNoScheme = IntentFilter().apply {
+            addAction(Intent.ACTION_MEDIA_MOUNTED)
+            addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+            addAction(Intent.ACTION_MEDIA_EJECT)
+            addAction(Intent.ACTION_MEDIA_REMOVED)
+            addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
+        }
         val diskErrorFilter = IntentFilter(ACTION_DISK_ERROR)
         val pkgFilter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -164,6 +171,12 @@ class SystemSyncMonitor @Inject constructor(
                 context,
                 systemReceiver,
                 mediaFilter,
+                ContextCompat.RECEIVER_EXPORTED
+            )
+            ContextCompat.registerReceiver(
+                context,
+                systemReceiver,
+                mediaFilterNoScheme,
                 ContextCompat.RECEIVER_EXPORTED
             )
             ContextCompat.registerReceiver(
@@ -193,7 +206,20 @@ class SystemSyncMonitor @Inject constructor(
                 try {
                     val games = gameDao.getAllGamesSync()
                     val hasMountedGames = games.any { it.mountStatus == MountStatus.MOUNTED }
-                    if (hasMountedGames) {
+                    val hasDetachedGames = games.any { it.mountStatus == MountStatus.DISK_DETACHED }
+
+                    if (hasDetachedGames && !hasMountedGames) {
+                        // Check if physical MicroSD has been re-inserted
+                        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+                        val hasMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
+                        val hasCustomDiskAlive = games.filter { it.mountStatus == MountStatus.DISK_DETACHED }
+                            .flatMap { it.mountPoints }
+                            .any { mp -> mp.diskUuid != null && RootShell.execForOutput("blkid | grep -i \"${mp.diskUuid}\"").isNotBlank() }
+                        if (hasMmc || hasCustomDiskAlive) {
+                            AppLogger.info("SystemSyncMonitor", "Health loop detected storage reconnection! Initiating recovery...")
+                            handleStorageMounted(context)
+                        }
+                    } else if (hasMountedGames) {
                         val hasFlag = RootShell.exists("/dev/.mountx_disk_error")
                         val isDmesgError = if (!hasFlag) {
                             val dmesgRes = RootShell.exec("dmesg 2>/dev/null | tail -n 25 | grep -iE 'Buffer I/O error|DATCRCERR|CMDCRCERR|autok fail|autok error'")
@@ -350,6 +376,11 @@ class SystemSyncMonitor @Inject constructor(
         // 2. Instant lazy unmount across all namespaces dynamically
         try {
             mountManager.unmountAll(sdBase)
+            // Emergency eject is NOT a user-intentional unmount!
+            // unmountAll() touches /dev/.mountx_unmounted to prevent auto-remount during explicit user unmount.
+            // On physical ejection, we MUST remove this flag so that when the card is re-inserted,
+            // auto-remount can proceed!
+            RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
             RootShell.exec("umount -f -l \"$sdBase\" 2>/dev/null")
             if (sdBase != "/data/sdext2") {
                 mountManager.unmountAll("/data/sdext2")
@@ -445,21 +476,24 @@ class SystemSyncMonitor @Inject constructor(
         val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
         val blockDevice = runCatching { appPreferences.sdBlockDevice.first() }.getOrDefault("")
 
+        // Clear unmounted flag as card was just inserted/connected
+        RootShell.exec("rm -f /dev/.mountx_unmounted /dev/.mountx_disk_error 2>/dev/null")
+
         // Re-mount SD partition if not already mounted
         val isSdMounted = RootShell.exec("mountpoint -q \"$sdBase\" 2>/dev/null && echo YES").output.contains("YES")
-        if (!isSdMounted && blockDevice.isNotBlank()) {
+        if (!isSdMounted) {
             AppLogger.info("SystemSyncMonitor", "SD not mounted, triggering MountService...")
             MountService.startMountAll(ctx)
             delay(5_000L) // give MountService time to work
         }
 
-        // Re-bind all DISK_DETACHED games
+        // Re-bind all DISK_DETACHED / UNMOUNTED games
         var remountedCount = 0
         try {
             val games = gameDao.getAllGamesSync()
             for (game in games) {
                 if (!game.isEnabled) continue
-                if (game.mountStatus == MountStatus.DISK_DETACHED || game.mountStatus == MountStatus.MOUNTED) {
+                if (game.mountStatus == MountStatus.DISK_DETACHED || game.mountStatus == MountStatus.MOUNTED || game.mountStatus == MountStatus.UNMOUNTED) {
                     val result = mountManager.mountGame(game, sdBase)
                     if (result.isSuccess) {
                         gameDao.updateMountStatus(game.packageName, MountStatus.MOUNTED)

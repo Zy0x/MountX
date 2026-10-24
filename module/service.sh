@@ -164,6 +164,17 @@ mount_sd() {
             return 0
         fi
 
+if [ ! -b "${SD_BLOCK}" ]; then
+            # Dynamic fallback: check if mmcblk0p3 exists, or find f2fs partition on mmcblk
+            if [ -b "/dev/block/mmcblk0p3" ]; then
+                SD_BLOCK="/dev/block/mmcblk0p3"
+            else
+                local f2fs_dev
+                f2fs_dev=$(blkid /dev/block/mmcblk* 2>/dev/null | grep 'TYPE="f2fs"' | head -n 1 | cut -d: -f1)
+                [ -n "${f2fs_dev}" ] && SD_BLOCK="${f2fs_dev}"
+            fi
+        fi
+
         if [ -b "${SD_BLOCK}" ]; then
             mkdir -p "${SD_BASE}"
 
@@ -866,6 +877,10 @@ mount_watchdog() {
         echo "${p}"
     }
     ZYGOTE_PID_LAST=$(_get_zygote_pid)
+    local LAST_DISK_ATTACHED=0
+    local blk_dev="${SD_BLOCK}"
+    [ -z "${blk_dev}" ] && blk_dev="/dev/block/mmcblk0p3"
+    { [ -b "${blk_dev}" ] || [ -b "/dev/block/mmcblk0" ]; } && LAST_DISK_ATTACHED=1
     log_info "[Watchdog] Starting. PID=$$, Zygote64=${ZYGOTE_PID_LAST:-N/A}, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
 
     # ── Helper: perform lightweight mount integrity check ─────────────────────
@@ -874,7 +889,40 @@ mount_watchdog() {
         [ -f "${MODULE_DIR}/disable" ] && { log_info "[Watchdog] Module disabled. Exiting."; exit 0; }
         [ -f "${MODULE_DIR}/remove" ]  && { log_info "[Watchdog] Module removing. Exiting."; exit 0; }
 
-        # Intentional unmount guard: if user unmounted via MountX UI or notification, do not re-mount
+        # 0. Hotplug Connection Sentinel:
+        # Detect if a previously missing/detached disk has just been plugged into the phone
+        local current_disk_attached=0
+        { [ -b "${blk_dev}" ] || [ -b "/dev/block/mmcblk0" ]; } && current_disk_attached=1
+
+        if [ ${current_disk_attached} -eq 1 ] && [ ${LAST_DISK_ATTACHED} -eq 0 ]; then
+            log_info "[Watchdog] MicroSD hotplug insertion detected! Card just plugged in."
+            rm -f "/dev/.mountx_unmounted" "/dev/.mountx_disk_error"
+            LAST_DISK_ATTACHED=1
+            sleep 3
+
+            if [ ! -b "${blk_dev}" ] && [ -b "/dev/block/mmcblk0p3" ]; then
+                blk_dev="/dev/block/mmcblk0p3"
+                SD_BLOCK="/dev/block/mmcblk0p3"
+            fi
+
+            log_info "[Watchdog] Auto-mounting ${blk_dev} to ${SD_BASE} after hotplug..."
+            mount_sd
+            if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+                log_info "[Watchdog] SD_BASE mounted after hotplug. Applying bind mounts..."
+                cleanup_stale_mounts
+                apply_io_tweaks
+                load_mountpoints 2>/dev/null || true
+                am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+                CONSECUTIVE_OK=0
+                CHECK_INTERVAL=120
+                return 0
+            else
+                log_error "[Watchdog] Failed to mount ${blk_dev} to ${SD_BASE} after hotplug."
+            fi
+        fi
+        LAST_DISK_ATTACHED=${current_disk_attached}
+
+        # Intentional unmount guard: if user unmounted via MountX UI or notification (while card is still attached), do not re-mount
         [ -f "/dev/.mountx_unmounted" ] && return 0
 
         # Hard 24h timeout (reboot cycle will restart us)
@@ -1030,8 +1078,10 @@ mount_watchdog() {
         fi
 
         CONSECUTIVE_OK=$((CONSECUTIVE_OK + 1))
-        # Exponential backoff: stable system → check less frequently (save battery)
-        if [ ${CONSECUTIVE_OK} -ge 5 ] && [ ${CHECK_INTERVAL} -lt ${MAX_INTERVAL} ]; then
+        # If disk is currently detached, poll rapidly (4s) so hotplug is caught instantly
+        if [ ${current_disk_attached} -eq 0 ]; then
+            CHECK_INTERVAL=4
+        elif [ ${CONSECUTIVE_OK} -ge 5 ] && [ ${CHECK_INTERVAL} -lt ${MAX_INTERVAL} ]; then
             CHECK_INTERVAL=$((CHECK_INTERVAL + 60))
             [ ${CHECK_INTERVAL} -gt ${MAX_INTERVAL} ] && CHECK_INTERVAL=${MAX_INTERVAL}
             log_info "[Watchdog] System stable (${CONSECUTIVE_OK} checks OK). Interval → ${CHECK_INTERVAL}s."

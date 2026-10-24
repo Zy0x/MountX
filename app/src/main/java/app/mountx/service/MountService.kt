@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import app.mountx.R
 import app.mountx.data.repository.GameRepository
 import app.mountx.data.repository.StorageRepository
+import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -93,7 +94,19 @@ class MountService : Service() {
                         val blockDevice = appPreferences.sdBlockDevice.first()
 
                         updateNotification(getString(R.string.notif_mounting_games))
-                        storageRepository.mountSdPartition(blockDevice, sdBase)
+                        // Clear intentional unmount flag when mounting all games
+                        RootShell.exec("rm -f /dev/.mountx_unmounted /dev/.mountx_disk_error 2>/dev/null")
+
+                        val mountRes = storageRepository.mountSdPartition(blockDevice, sdBase)
+                        if (mountRes.isSuccess && blockDevice.isBlank()) {
+                            // Automatically persist the active block device if it was previously unset
+                            val activeDev = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
+                                .firstOrNull { it.contains(" $sdBase ") }
+                                ?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
+                            if (activeDev.startsWith("/dev/block/")) {
+                                appPreferences.setSdBlockDevice(activeDev)
+                            }
+                        }
 
                         // Module-first parity: Refresh mount statuses first so any games already mounted
                         // by root module service.sh are recognized and not stacked
