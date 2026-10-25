@@ -24,7 +24,14 @@ class BootReceiver : BroadcastReceiver() {
     lateinit var mountNotificationManager: MountNotificationManager
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+        val action = intent.action
+        if (action == Intent.ACTION_BOOT_COMPLETED ||
+            action == Intent.ACTION_LOCKED_BOOT_COMPLETED ||
+            action == Intent.ACTION_USER_UNLOCKED ||
+            action == "android.intent.action.QUICKBOOT_POWERON" ||
+            action == "com.htc.intent.action.QUICKBOOT_POWERON" ||
+            action == Intent.ACTION_MY_PACKAGE_REPLACED
+        ) {
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {

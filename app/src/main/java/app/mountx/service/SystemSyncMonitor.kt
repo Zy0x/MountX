@@ -220,6 +220,35 @@ class SystemSyncMonitor @Inject constructor(
                             handleStorageMounted(context)
                         }
                     } else if (hasMountedGames) {
+                        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+                        val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+
+                        // Passive Subsystem / Zygote Soft-Restart Integrity Check:
+                        // If DB thinks games are MOUNTED, but either SD base or sample app namespace was dropped,
+                        // trigger silent background remount!
+                        if (!isSdBaseMounted) {
+                            val hasMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
+                            if (hasMmc) {
+                                AppLogger.warn("SystemSyncMonitor", "SD_BASE unmounted unexpectedly while games are active. Initiating auto-recovery...")
+                                MountService.startMountAll(context)
+                            }
+                        } else {
+                            val sampleGame = games.firstOrNull { it.mountStatus == MountStatus.MOUNTED && it.isEnabled }
+                            if (sampleGame != null) {
+                                val sampleTarget = when (sampleGame.mode) {
+                                    app.mountx.data.model.MountMode.FILES -> "/storage/emulated/0/Android/data/${sampleGame.packageName}/files"
+                                    app.mountx.data.model.MountMode.PKG -> "/storage/emulated/0/Android/data/${sampleGame.packageName}"
+                                }
+                                val isSampleMounted = RootShell.isMountpoint(sampleTarget) ||
+                                        RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${sampleGame.packageName}") ||
+                                        RootShell.isMountpoint("/data/media/0/Android/data/${sampleGame.packageName}")
+                                if (!isSampleMounted) {
+                                    AppLogger.warn("SystemSyncMonitor", "Canary mount missing for ${sampleGame.displayName} (soft restart detected). Initiating auto-recovery...")
+                                    MountService.startMountAll(context)
+                                }
+                            }
+                        }
+
                         val hasFlag = RootShell.exists("/dev/.mountx_disk_error")
                         val isDmesgError = if (!hasFlag) {
                             val dmesgRes = RootShell.exec("dmesg 2>/dev/null | tail -n 25 | grep -iE 'Buffer I/O error|DATCRCERR|CMDCRCERR|autok fail|autok error'")

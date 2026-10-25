@@ -408,9 +408,16 @@ bind_mount_to_runtime_namespaces() {
 
     local app_uid=""
     if [ -n "${pkg}" ]; then
-        app_uid=$(dumpsys package "${pkg}" 2>/dev/null | grep -F "userId=" | head -n 1 | sed -n 's/.*userId=\([0-9]*\).*/\1/p')
-        if [ -z "${app_uid}" ]; then
-            app_uid=$(pm list packages -U --user "${user_id}" 2>/dev/null | grep -F "package:${pkg}" | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+        if [ -d "/data/data/${pkg}" ]; then
+            app_uid=$(stat -c %u "/data/data/${pkg}" 2>/dev/null)
+        elif [ -d "/data/user/${user_id}/${pkg}" ]; then
+            app_uid=$(stat -c %u "/data/user/${user_id}/${pkg}" 2>/dev/null)
+        fi
+        if [ -z "${app_uid}" ] || [ "${app_uid}" -lt 10000 ] 2>/dev/null; then
+            app_uid=$(dumpsys package "${pkg}" 2>/dev/null | grep -F "userId=" | head -n 1 | sed -n 's/.*userId=\([0-9]*\).*/\1/p')
+            if [ -z "${app_uid}" ]; then
+                app_uid=$(pm list packages -U --user "${user_id}" 2>/dev/null | grep -F "package:${pkg}" | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+            fi
         fi
     fi
     [ -z "${app_uid}" ] && app_uid=10000
@@ -618,6 +625,48 @@ mount_disk_by_uuid() {
     fi
 }
 
+# ── Helpers for Framework & Package Status ────────────────────────────────────
+wait_for_framework() {
+    local max_wait=30
+    local elapsed=0
+    while [ ${elapsed} -lt ${max_wait} ]; do
+        if service check activity 2>/dev/null | grep -q "found" && \
+           service check package 2>/dev/null | grep -q "found"; then
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 1
+}
+
+is_package_installed() {
+    local pkg="$1"
+    [ -z "${pkg}" ] && return 1
+
+    # Fast Check 1: App data directory on internal storage
+    if [ -d "/data/data/${pkg}" ] || [ -d "/data/user/0/${pkg}" ]; then
+        return 0
+    fi
+
+    # Fast Check 2: App APK directory in /data/app/
+    if ls -d /data/app/*/"${pkg}"* >/dev/null 2>&1 || ls -d /data/app/"${pkg}"* >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # Check 3: If package manager service is running and responsive
+    if service check package 2>/dev/null | grep -q "found"; then
+        if pm path "${pkg}" >/dev/null 2>&1; then
+            return 0
+        fi
+        # Package manager is online and confirmed package does not exist
+        return 1
+    fi
+
+    # PMS is offline/restarting, and app was registered in MountX -> keep it safe!
+    return 0
+}
+
 # ── Modern Multi-Target Array (mountpoints.conf) ──────────────────────────────
 load_mountpoints() {
     if [ ! -f "${MOUNTPOINTS_FILE}" ]; then
@@ -643,7 +692,7 @@ load_mountpoints() {
 
         # Verify package is actually installed on system (skip if uninstalled to avoid Play Store reinstall error)
         if [ -n "${pkg}" ] && [ "${cat}" != "CUSTOM" ]; then
-            if ! pm path "${pkg}" >/dev/null 2>&1; then
+            if ! is_package_installed "${pkg}"; then
                 log_warn "  [${pkg}] App is not installed on system. Skipping mount to prevent Play Store INSTALL_FAILED_INTERNAL_ERROR."
                 if mountpoint -q "${dst}" 2>/dev/null; then
                     umount -f -l "${dst}" 2>/dev/null
@@ -806,7 +855,7 @@ process_game() {
     local pkg="$1"
     local mode="$2"
 
-    if ! pm path "${pkg}" >/dev/null 2>&1; then
+    if ! is_package_installed "${pkg}"; then
         log_warn "  [${pkg}] App is not installed on system. Skipping legacy mount to prevent Play Store reinstall errors."
         return
     fi
@@ -847,6 +896,29 @@ process_game() {
         bind_mount_to_runtime_namespaces "${sd_media}" "${int_media}" "${pkg}" "0"
     fi
 }
+
+# ── Unified Pipeline Mount Executor ──────────────────────────────────────────
+apply_all_mounts() {
+    local loaded_pipeline=0
+    if load_mountpoints; then
+        loaded_pipeline=1
+    fi
+
+    if [ ${loaded_pipeline} -eq 0 ]; then
+        log_info "Running fallback gamelist processor..."
+        load_gamelist
+        if [ -n "${GAME_PKGS}" ]; then
+            local i=1
+            for pkg in ${GAME_PKGS}; do
+                local mode
+                mode=$(echo "${GAME_MODES}" | cut -d' ' -f"${i}")
+                process_game "${pkg}" "${mode}"
+                i=$((i + 1))
+            done
+        fi
+    fi
+}
+
 
 # ── Mount Watchdog Daemon (event-driven, zero-drain background) ───────────────
 # Runs in background after initial mount. Uses inotifywait when available
@@ -911,10 +983,11 @@ mount_watchdog() {
                 log_info "[Watchdog] SD_BASE mounted after hotplug. Applying bind mounts..."
                 cleanup_stale_mounts
                 apply_io_tweaks
-                load_mountpoints 2>/dev/null || true
+                apply_all_mounts
                 am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+                am broadcast -a app.mountx.ACTION_MOUNT_ALL -p app.mountx >/dev/null 2>&1
                 CONSECUTIVE_OK=0
-                CHECK_INTERVAL=120
+                CHECK_INTERVAL=60
                 return 0
             else
                 log_error "[Watchdog] Failed to mount ${blk_dev} to ${SD_BASE} after hotplug."
@@ -930,20 +1003,7 @@ mount_watchdog() {
         now=$(date +%s)
         [ $((now - START_TS)) -gt 86400 ] && { log_info "[Watchdog] 24h limit reached. Exiting cleanly."; exit 0; }
 
-        # Battery guard: do not stress on critical battery unless charging
-        local bat_status
-        bat_status=$(cat /sys/class/power_supply/battery/status 2>/dev/null || echo "Discharging")
-        local bat
-        bat=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo 100)
-        case "${bat}" in
-            ''|*[!0-9]*) bat=100 ;;
-        esac
-        if [ "${bat_status}" != "Charging" ] && [ "${bat_status}" != "Full" ]; then
-            if [ "${bat}" -lt 10 ] 2>/dev/null; then
-                echo "[Watchdog] Battery critical (${bat}%), skipping check." >> "${WATCHDOG_LOG}" 2>/dev/null
-                return 0
-            fi
-        fi
+        # Mount integrity checks always run regardless of battery level to prevent unmounts
 
         # Check 0: Physical disk I/O & controller health probe
         local io_error=0
@@ -1000,9 +1060,13 @@ mount_watchdog() {
             mount_sd
             if mountpoint -q "${SD_BASE}" 2>/dev/null; then
                 log_info "[Watchdog] SD_BASE re-mounted. Re-applying bind mounts..."
-                load_mountpoints 2>/dev/null || true
+                cleanup_stale_mounts
+                apply_io_tweaks
+                apply_all_mounts
+                am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+                am broadcast -a app.mountx.ACTION_MOUNT_ALL -p app.mountx >/dev/null 2>&1
                 CONSECUTIVE_OK=0
-                CHECK_INTERVAL=120
+                CHECK_INTERVAL=60
                 return 0
             else
                 log_error "[Watchdog] SD_BASE re-mount failed."
@@ -1052,14 +1116,25 @@ mount_watchdog() {
         fi
 
         if [ ${soft_restart} -eq 1 ]; then
-            log_info "[Watchdog] Soft restart recovery: waiting 5s for Zygote to stabilize, then re-applying all mounts..."
-            sleep 5
-            # Wait for sys.boot_completed to be 1 again (Zygote restores it after recovery)
-            local wait_tries=0
-            while [ "$(getprop sys.boot_completed | tr -d '\r')" != "1" ] && [ ${wait_tries} -lt 15 ]; do
-                sleep 2
-                wait_tries=$((wait_tries + 1))
+            log_warn "[Watchdog] Soft restart recovery: waiting for framework (AMS/PMS) and storage readiness..."
+            wait_for_framework
+
+            # Wait for storage readiness
+            local s_tries=0
+            while [ ${s_tries} -lt 15 ]; do
+                if mountpoint -q "/storage/emulated" 2>/dev/null && [ -d "/storage/emulated/0" ]; then
+                    break
+                fi
+                sleep 1
+                s_tries=$((s_tries + 1))
             done
+            sleep 2
+
+            # Ensure SD_BASE is mounted
+            if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+                mount_sd
+            fi
+
             # Sweep away any stale base /data/media and runtime mounts to clear sdcardfs EXDEV locks
             while read dev mnt rest; do
                 case "${mnt}" in
@@ -1068,12 +1143,17 @@ mount_watchdog() {
                         ;;
                 esac
             done < /proc/mounts
-            load_mountpoints 2>/dev/null || true
-            # Notify the app to re-sync its mount status UI
+
+            cleanup_stale_mounts
+            apply_io_tweaks
+            apply_all_mounts
+
+            # Notify the app to re-sync its mount status and trigger background recovery
             am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
-            log_info "[Watchdog] Soft restart recovery complete. Mounts re-applied."
+            am broadcast -a app.mountx.ACTION_MOUNT_ALL -p app.mountx >/dev/null 2>&1
+            log_info "[Watchdog] Soft restart recovery complete. All mounts re-applied."
             CONSECUTIVE_OK=0
-            CHECK_INTERVAL=120
+            CHECK_INTERVAL=60
             return 0
         fi
 
@@ -1088,13 +1168,42 @@ mount_watchdog() {
         fi
     }
 
-    # ── Conservative polling loop (120s baseline, exponential backoff) ────────
-    # NOTE: Never use inotifywait on /proc/mounts as procfs events cause recursive
-    # mount cascades that can freeze the Linux VFS layer and reboot the device.
-    log_info "[Watchdog] Using conservative timer loop (${CHECK_INTERVAL}s interval)."
+    # ── High-Responsiveness Timer Loop with Sliced Sleep ──────────────────────
+    # Sleeps in 5s slices while rapidly monitoring Zygote PID and physical disk
+    # attachment so that soft reboots, subsystem crashes, and hotplug events
+    # are caught and recovered within <= 5s, without CPU/battery penalty.
+    log_info "[Watchdog] Using sliced sleep loop (5s slice, ${CHECK_INTERVAL}s health check)."
+    local slice=5
+    local elapsed=0
     while true; do
-        sleep "${CHECK_INTERVAL}"
-        check_mounts
+        sleep "${slice}"
+        elapsed=$((elapsed + slice))
+
+        # Check 1: Rapid Zygote PID change detection (soft reboot / framework restart)
+        local fast_zygote
+        fast_zygote=$(_get_zygote_pid)
+        if [ -n "${fast_zygote}" ] && [ -n "${ZYGOTE_PID_LAST}" ] && [ "${fast_zygote}" != "${ZYGOTE_PID_LAST}" ]; then
+            log_warn "[Watchdog] Immediate Zygote PID change detected: ${ZYGOTE_PID_LAST} -> ${fast_zygote}!"
+            elapsed=0
+            check_mounts
+            continue
+        fi
+
+        # Check 2: Rapid physical disk attachment detection (hotplug)
+        local fast_disk=0
+        { [ -b "${blk_dev}" ] || [ -b "/dev/block/mmcblk0" ]; } && fast_disk=1
+        if [ ${fast_disk} -ne ${LAST_DISK_ATTACHED} ]; then
+            log_info "[Watchdog] Immediate disk attachment change detected: ${LAST_DISK_ATTACHED} -> ${fast_disk}!"
+            elapsed=0
+            check_mounts
+            continue
+        fi
+
+        # Check 3: Full scheduled integrity & I/O check
+        if [ ${elapsed} -ge ${CHECK_INTERVAL} ]; then
+            elapsed=0
+            check_mounts
+        fi
     done
 }
 
@@ -1134,24 +1243,7 @@ main() {
     touch "${SD_BASE}/MountX/Android/data/.nomedia" 2>/dev/null
     touch "${SD_BASE}/MountX/Android/obb/.nomedia" 2>/dev/null
 
-    local loaded_pipeline=0
-    if load_mountpoints; then
-        loaded_pipeline=1
-    fi
-
-    if [ ${loaded_pipeline} -eq 0 ]; then
-        log_info "Running fallback gamelist processor..."
-        load_gamelist
-        if [ -n "${GAME_PKGS}" ]; then
-            local i=1
-            for pkg in ${GAME_PKGS}; do
-                local mode
-                mode=$(echo "${GAME_MODES}" | cut -d' ' -f"${i}")
-                process_game "${pkg}" "${mode}"
-                i=$((i + 1))
-            done
-        fi
-    fi
+    apply_all_mounts
 
     # Touch boot status marker so BootReceiver/UI can recognize completion
     touch "${BOOT_FLAG_FILE}" 2>/dev/null
