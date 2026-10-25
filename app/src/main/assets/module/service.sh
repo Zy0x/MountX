@@ -940,12 +940,14 @@ mount_watchdog() {
     # both toybox and busybox ps implementations (busybox ps $2 is USER, not PID).
     _get_zygote_pid() {
         local p
-        p=$(pidof zygote64 2>/dev/null | awk '{print $1}')
-        [ -z "${p}" ] && p=$(pidof zygote 2>/dev/null | awk '{print $1}')
-        if [ -z "${p}" ]; then
-            p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote64$" | awk '{print $1}' | head -n 1)
-            [ -z "${p}" ] && p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote$" | awk '{print $1}' | head -n 1)
+        p=$(pidof zygote64 2>/dev/null)
+        [ -z "${p}" ] && p=$(pidof zygote 2>/dev/null)
+        if [ -n "${p}" ]; then
+            echo "${p%% *}"
+            return 0
         fi
+        p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote64$" | awk '{print $1}' | head -n 1)
+        [ -z "${p}" ] && p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote$" | awk '{print $1}' | head -n 1)
         echo "${p}"
     }
     ZYGOTE_PID_LAST=$(_get_zygote_pid)
