@@ -24,7 +24,10 @@ google-services.json
 
 # Local isolated build cache & emulator
 .build-cache/
+# Release build outputs (local)
+release-output/
 *.apk
+*.zip
 
 # Internal developer docs & AI agent instructions - NEVER COMMIT
 AGENTS.md
