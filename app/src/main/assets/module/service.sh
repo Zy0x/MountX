@@ -929,7 +929,7 @@ mount_watchdog() {
     START_TS=$(date +%s)
     local CONSECUTIVE_OK=0
     local CHECK_INTERVAL=120
-    local MAX_INTERVAL=600
+    local MAX_INTERVAL=120
     local WATCHDOG_LOG="${MODULE_DIR}/mountx_watchdog.log"
 
     # ── Capture Zygote PID at start for soft-restart detection ───────────────
@@ -1000,10 +1000,7 @@ mount_watchdog() {
         # Intentional unmount guard: if user unmounted via MountX UI or notification (while card is still attached), do not re-mount
         [ -f "/dev/.mountx_unmounted" ] && return 0
 
-        # Hard 24h timeout (reboot cycle will restart us)
-        local now
-        now=$(date +%s)
-        [ $((now - START_TS)) -gt 86400 ] && { log_info "[Watchdog] 24h limit reached. Exiting cleanly."; exit 0; }
+        # Immortal watchdog: runs continuously without artificial uptime limits
 
         # Mount integrity checks always run regardless of battery level to prevent unmounts
 
@@ -1138,9 +1135,15 @@ mount_watchdog() {
             fi
 
             # Sweep away any stale base /data/media and runtime mounts to clear sdcardfs EXDEV locks
-            while read dev mnt rest; do
+            while read -r dev mnt rest; do
                 case "${mnt}" in
-                    /data/media/*/Android/data/*|/data/media/*/Android/obb/*|/storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*)
+                    /data/media/*/Android/data/*|/data/media/*/Android/obb/*|\
+                    /storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*|\
+                    /mnt/runtime/*/emulated/*/Android/data/*|/mnt/runtime/*/emulated/*/Android/obb/*|\
+                    /mnt/user/*/emulated/*/Android/data/*|/mnt/user/*/emulated/*/Android/obb/*|\
+                    /mnt/pass_through/*/emulated/*/Android/data/*|/mnt/pass_through/*/emulated/*/Android/obb/*|\
+                    /mnt/androidwritable/*/emulated/*/Android/data/*|/mnt/androidwritable/*/emulated/*/Android/obb/*|\
+                    /mnt/installer/*/emulated/*/Android/data/*|/mnt/installer/*/emulated/*/Android/obb/*)
                         umount -f -l "${mnt}" 2>/dev/null
                         ;;
                 esac
@@ -1174,7 +1177,17 @@ mount_watchdog() {
     # Sleeps in 5s slices while rapidly monitoring Zygote PID and physical disk
     # attachment so that soft reboots, subsystem crashes, and hotplug events
     # are caught and recovered within <= 5s, without CPU/battery penalty.
-    log_info "[Watchdog] Using sliced sleep loop (5s slice, ${CHECK_INTERVAL}s health check)."
+    # Sample canary paths for rapid runtime namespace check
+    local canary_dst=""
+    local canary_pkg=""
+    if [ -f "${MOUNTPOINTS_FILE}" ]; then
+        local first_line
+        first_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
+        canary_dst=$(echo "${first_line}" | cut -d'|' -f4)
+        canary_pkg=$(echo "${first_line}" | cut -d'|' -f1)
+    fi
+
+    log_info "[Watchdog] Using sliced sleep loop (5s slice, ${CHECK_INTERVAL}s health check, canary=${canary_pkg:-none})."
     local slice=5
     local elapsed=0
     while true; do
@@ -1191,6 +1204,22 @@ mount_watchdog() {
             continue
         fi
 
+        # Check 1.5: Rapid Runtime Namespace Canary Check (FUSE/sdcardfs EXDEV dead-lock guard)
+        # If the base mount (/data/media) exists but runtime namespaces (/mnt/runtime) dropped to 0,
+        # Android storage subsystem reset without Zygote PID change. Catch and recover within <= 5s.
+        if [ -n "${canary_pkg}" ] && [ -n "${canary_dst}" ]; then
+            if grep -qF " ${canary_dst} " /proc/mounts 2>/dev/null; then
+                local fast_ns_count
+                fast_ns_count=$(grep "/mnt/runtime.*${canary_pkg}" /proc/mounts 2>/dev/null | wc -l)
+                if [ "${fast_ns_count}" -eq 0 ]; then
+                    log_warn "[Watchdog] Immediate namespace drop detected for ${canary_pkg} (count=0)! Triggering recovery..."
+                    elapsed=0
+                    check_mounts
+                    continue
+                fi
+            fi
+        fi
+
         # Check 2: Rapid physical disk attachment detection (hotplug)
         local fast_disk=0
         { [ -b "${blk_dev}" ] || [ -b "/dev/block/mmcblk0" ]; } && fast_disk=1
@@ -1205,6 +1234,13 @@ mount_watchdog() {
         if [ ${elapsed} -ge ${CHECK_INTERVAL} ]; then
             elapsed=0
             check_mounts
+            # Refresh canary target from mountpoints.conf
+            if [ -f "${MOUNTPOINTS_FILE}" ]; then
+                local first_line
+                first_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
+                canary_dst=$(echo "${first_line}" | cut -d'|' -f4)
+                canary_pkg=$(echo "${first_line}" | cut -d'|' -f1)
+            fi
         fi
     done
 }
@@ -1261,9 +1297,20 @@ main() {
     # Whitelist MountX in system Doze/battery optimization so background transfers never get killed
     dumpsys deviceidle whitelist +app.mountx 2>/dev/null
 
-    # Launch watchdog daemon in background (event-driven, minimal battery impact)
-    mount_watchdog &
-    log_info "Mount watchdog daemon launched in background (PID=$!)"
+# ── Immortal Watchdog Supervisor ──────────────────────────────────────────────
+watchdog_supervisor() {
+    log_info "[Supervisor] Starting immortal watchdog supervisor (PID=$$)..."
+    while true; do
+        mount_watchdog
+        local exit_code=$?
+        log_warn "[Supervisor] mount_watchdog exited with code ${exit_code}! Respawning in 3s..."
+        sleep 3
+    done
+}
+
+    # Launch immortal watchdog supervisor in background (event-driven, minimal battery impact)
+    watchdog_supervisor &
+    log_info "Mount watchdog supervisor launched in background (PID=$!)"
 }
 
 main
