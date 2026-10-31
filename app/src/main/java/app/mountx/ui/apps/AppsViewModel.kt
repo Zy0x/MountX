@@ -553,7 +553,7 @@ class AppsViewModel @Inject constructor(
                             // Mark moved points as disabled, update game status to UNMOUNTED
                             val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
                             val updatedPoints = currentPoints.map { pt ->
-                                if (effectivePoints.any { it.id == pt.id || it.category == pt.category }) {
+                                if (effectivePoints.any { it.isSameTargetAs(pt) }) {
                                     pt.copy(enabled = false)
                                 } else {
                                     pt
@@ -570,11 +570,11 @@ class AppsViewModel @Inject constructor(
                             // TO_SD
                             val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
                             val existingUpdated = currentPoints.map { pt ->
-                                val moved = effectivePoints.firstOrNull { it.id == pt.id || it.category == pt.category }
+                                val moved = effectivePoints.firstOrNull { it.isSameTargetAs(pt) }
                                 if (moved != null) moved.copy(enabled = true) else pt
                             }
                             val missingPoints = effectivePoints.filter { ep ->
-                                existingUpdated.none { it.id == ep.id || it.category == ep.category }
+                                existingUpdated.none { it.isSameTargetAs(ep) }
                             }.map { it.copy(enabled = true) }
                             val finalPoints = existingUpdated + missingPoints
                             val updated = game.copy(

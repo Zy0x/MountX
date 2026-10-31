@@ -86,6 +86,9 @@ class MountService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.notif_mounting_games)))
+        } catch (_: Exception) {}
         when (intent?.action) {
             ACTION_MOUNT_ALL -> {
                 serviceScope.launch {

@@ -52,6 +52,11 @@ data class MountPointConfig(
                     sourcePath.contains("/Android/obb", ignoreCase = true) ||
                     id.contains("obb", ignoreCase = true) -> MountPointCategory.OBB_STORAGE
 
+            category == MountPointCategory.CACHE_SHADERS ||
+                    targetPath.contains("/cache", ignoreCase = true) ||
+                    sourcePath.contains("/cache", ignoreCase = true) ||
+                    id.contains("cache", ignoreCase = true) -> MountPointCategory.CACHE_SHADERS
+
             targetPath.contains("/Android/data", ignoreCase = true) ||
                     sourcePath.contains("/Android/data", ignoreCase = true) ||
                     id.contains("data", ignoreCase = true) ||
@@ -69,6 +74,24 @@ data class MountPointConfig(
             category == MountPointCategory.GAME_ASSETS -> MountPointCategory.EXTERNAL_DATA
             else -> category
         }
+    }
+
+    /**
+     * Determines whether two MountPointConfigs represent the exact same functional storage target,
+     * cleanly distinguishing between APK packages and native libraries (/lib).
+     */
+    fun isSameTargetAs(other: MountPointConfig): Boolean {
+        if (this.id == other.id) return true
+        if (this.targetPath.isNotBlank() && other.targetPath.isNotBlank() &&
+            this.targetPath.trimEnd('/') == other.targetPath.trimEnd('/')) return true
+        val catA = this.resolveCategory()
+        val catB = other.resolveCategory()
+        if (catA == MountPointCategory.APP_PACKAGE && catB == MountPointCategory.APP_PACKAGE) {
+            val aIsLib = this.id == "lib" || this.targetPath.contains("/lib") || this.sourcePath.contains("/lib")
+            val bIsLib = other.id == "lib" || other.targetPath.contains("/lib") || other.sourcePath.contains("/lib")
+            return aIsLib == bIsLib
+        }
+        return catA == catB && catA != MountPointCategory.CUSTOM
     }
 
     /**

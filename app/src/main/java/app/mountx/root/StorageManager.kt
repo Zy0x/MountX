@@ -1481,7 +1481,7 @@ class StorageManager(
                         if (RootShell.exists(imgFile)) {
                             val tempMount = "/dev/mountx_temp_${packageName}"
                             RootShell.exec("mkdir -p \"$tempMount\"")
-                            val loopDev = RootShell.exec("losetup -f --show \"$imgFile\" 2>/dev/null").output.trim()
+                            val loopDev = MountManager.attachLoopDevice(imgFile)
                             if (loopDev.isNotEmpty()) {
                                 RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
                                 RootShell.exec("mkdir -p \"${point.targetPath}\"")
@@ -2259,7 +2259,7 @@ class StorageManager(
                             }
                             val tempMount = "/dev/mountx_temp_${packageName}"
                             RootShell.exec("mkdir -p \"$tempMount\"")
-                            val loopDev = RootShell.exec("losetup -f --show \"$imgFile\" 2>/dev/null").output.trim()
+                            val loopDev = MountManager.attachLoopDevice(imgFile)
                             if (loopDev.isNotEmpty()) {
                                 RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
                                 if (RootShell.exists(targetPath)) {
@@ -2282,7 +2282,12 @@ class StorageManager(
                                     accumulatedBytes += currentSrcSize
                                     RootShell.exec("chown -R $uid:$gid \"$tempMount\" 2>/dev/null")
                                     RootShell.exec("chmod -R 775 \"$tempMount\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$tempMount\" 2>/dev/null")
+                                    val origContext = RootShell.execForOutput("stat -c %C \"$targetPath\" 2>/dev/null").trim()
+                                    if (origContext.isNotBlank() && origContext.contains("app_data_file")) {
+                                        RootShell.exec("chcon -R \"$origContext\" \"$tempMount\" 2>/dev/null")
+                                    } else {
+                                        RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$tempMount\" 2>/dev/null")
+                                    }
                                     if (!RootShell.isMountpoint(targetPath)) {
                                         RootShell.exec("rm -rf \"$targetPath\"/* \"$targetPath\"/.[!.]* 2>/dev/null")
                                     }
@@ -2338,11 +2343,16 @@ class StorageManager(
                                     RootShell.exec("chown -R 1000:1000 \"$sourcePath\" 2>/dev/null")
                                     RootShell.exec("chmod -R 755 \"$sourcePath\" 2>/dev/null")
                                     RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$sourcePath\" 2>/dev/null")
-                                } else if (point.category == MountPointCategory.PRIVATE_INTERNAL) {
-                                    if (!isContainer) {
+                                } else if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.category == MountPointCategory.CACHE_SHADERS) {
+                                    if (!isContainer && !destInspection.isNonPosix) {
                                         RootShell.exec("chown -R $uid:$gid \"$sourcePath\" 2>/dev/null")
                                         RootShell.exec("chmod -R 775 \"$sourcePath\" 2>/dev/null")
-                                        RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$sourcePath\" 2>/dev/null")
+                                        val origContext = RootShell.execForOutput("stat -c %C \"$targetPath\" 2>/dev/null").trim()
+                                        if (origContext.isNotBlank() && origContext.contains("app_data_file")) {
+                                            RootShell.exec("chcon -R \"$origContext\" \"$sourcePath\" 2>/dev/null")
+                                        } else {
+                                            RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$sourcePath\" 2>/dev/null")
+                                        }
                                     }
                                 } else if (!destInspection.isNonPosix) {
                                     RootShell.exec("chown -R $uid:1023 \"$sourcePath\" 2>/dev/null")
@@ -2418,7 +2428,7 @@ class StorageManager(
                             if (RootShell.exists(imgFile)) {
                                 val tempMount = "/dev/mountx_temp_${packageName}"
                                 RootShell.exec("mkdir -p \"$tempMount\"")
-                                val loopDev = RootShell.exec("losetup -f --show \"$imgFile\" 2>/dev/null").output.trim()
+                                val loopDev = MountManager.attachLoopDevice(imgFile)
                                 if (loopDev.isNotEmpty()) {
                                     RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
                                     RootShell.exec("mkdir -p \"$targetPath\"")

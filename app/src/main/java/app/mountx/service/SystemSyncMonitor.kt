@@ -47,6 +47,8 @@ sealed class SystemSyncEvent {
  * Executes emergency safeguards (process kill + lazy unmount) upon sudden MicroSD ejection or hardware I/O error.
  */
 @Singleton
+private var lastCanaryRecoveryTime = 0L
+
 class SystemSyncMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gameDao: GameDao,
@@ -235,16 +237,32 @@ class SystemSyncMonitor @Inject constructor(
                         } else {
                             val sampleGame = games.firstOrNull { it.mountStatus == MountStatus.MOUNTED && it.isEnabled }
                             if (sampleGame != null) {
-                                val sampleTarget = when (sampleGame.mode) {
-                                    app.mountx.data.model.MountMode.FILES -> "/storage/emulated/0/Android/data/${sampleGame.packageName}/files"
-                                    app.mountx.data.model.MountMode.PKG -> "/storage/emulated/0/Android/data/${sampleGame.packageName}"
+                                val isSampleMounted = if (sampleGame.mountPoints.isNotEmpty()) {
+                                    val enabledPoints = sampleGame.mountPoints.filter { it.enabled }
+                                    enabledPoints.isEmpty() || enabledPoints.any { pt ->
+                                        val cleanTarget = pt.targetPath.trimEnd('/')
+                                        val rel = MountManager.extractRelativePath(pt.targetPath).trimEnd('/')
+                                        RootShell.isMountpoint(cleanTarget) ||
+                                                RootShell.isMountpoint("/storage/emulated/0/$rel") ||
+                                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel") ||
+                                                RootShell.isMountpoint("/data/media/0/$rel")
+                                    }
+                                } else {
+                                    val sampleTarget = when (sampleGame.mode) {
+                                        app.mountx.data.model.MountMode.FILES -> "/storage/emulated/0/Android/data/${sampleGame.packageName}/files"
+                                        app.mountx.data.model.MountMode.PKG -> "/storage/emulated/0/Android/data/${sampleGame.packageName}"
+                                    }
+                                    RootShell.isMountpoint(sampleTarget) ||
+                                            RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${sampleGame.packageName}") ||
+                                            RootShell.isMountpoint("/data/media/0/Android/data/${sampleGame.packageName}")
                                 }
-                                val isSampleMounted = RootShell.isMountpoint(sampleTarget) ||
-                                        RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${sampleGame.packageName}") ||
-                                        RootShell.isMountpoint("/data/media/0/Android/data/${sampleGame.packageName}")
                                 if (!isSampleMounted) {
-                                    AppLogger.warn("SystemSyncMonitor", "Canary mount missing for ${sampleGame.displayName} (soft restart detected). Initiating auto-recovery...")
-                                    MountService.startMountAll(context)
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastCanaryRecoveryTime > 60_000L) {
+                                        lastCanaryRecoveryTime = now
+                                        AppLogger.warn("SystemSyncMonitor", "Canary mount missing for ${sampleGame.displayName} (soft restart detected). Initiating auto-recovery...")
+                                        MountService.startMountAll(context)
+                                    }
                                 }
                             }
                         }

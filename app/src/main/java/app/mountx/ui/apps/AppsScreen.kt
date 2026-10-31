@@ -200,11 +200,21 @@ fun AppsScreen(
             },
             onMoveMountPoints = { dir, pts, targetDisk, targetPartition, conflictStrategy ->
                 val basePath = targetPartition?.mountPoint ?: targetDisk?.mountPath
-                val newEntry = draftGame.copy(mountPoints = pts)
+                val currentPoints = draftGame.mountPoints
+                val mergedPoints = currentPoints.map { pt ->
+                    val matching = pts.firstOrNull { it.isSameTargetAs(pt) }
+                    if (matching != null) matching.copy(enabled = true) else pt
+                }.toMutableList()
+                for (newPt in pts) {
+                    if (mergedPoints.none { it.isSameTargetAs(newPt) }) {
+                        mergedPoints.add(newPt.copy(enabled = true))
+                    }
+                }
+                val newEntry = draftGame.copy(mountPoints = mergedPoints)
                 viewModel.addGameWithMountPoints(
                     packageName = draftGame.packageName,
                     displayName = draftGame.displayName,
-                    mountPoints = pts,
+                    mountPoints = mergedPoints,
                     initialSizeBytes = draftGame.dataSizeBytes
                 )
                 viewModel.moveMountPoints(draftGame.packageName, pts, dir, basePath, conflictStrategy)
@@ -213,14 +223,24 @@ fun AppsScreen(
                 viewModel.selectGameForDetail(newEntry)
             },
             onDirectMountMountPoints = { pts, basePath ->
-                val newEntry = draftGame.copy(mountPoints = pts)
+                val currentPoints = draftGame.mountPoints
+                val mergedPoints = currentPoints.map { pt ->
+                    val matching = pts.firstOrNull { it.isSameTargetAs(pt) }
+                    if (matching != null) matching.copy(enabled = true) else pt
+                }.toMutableList()
+                for (newPt in pts) {
+                    if (mergedPoints.none { it.isSameTargetAs(newPt) }) {
+                        mergedPoints.add(newPt.copy(enabled = true))
+                    }
+                }
+                val newEntry = draftGame.copy(mountPoints = mergedPoints)
                 viewModel.addGameWithMountPoints(
                     packageName = draftGame.packageName,
                     displayName = draftGame.displayName,
-                    mountPoints = pts,
+                    mountPoints = mergedPoints,
                     initialSizeBytes = draftGame.dataSizeBytes
                 )
-                viewModel.directMount(draftGame.packageName, pts, basePath)
+                viewModel.directMount(draftGame.packageName, mergedPoints, basePath)
                 configuringApp = null
                 selectedGameForDetail = newEntry
                 viewModel.selectGameForDetail(newEntry)

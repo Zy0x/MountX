@@ -37,6 +37,7 @@ class MountNotificationManager @Inject constructor(
     private val notificationManager = context.getSystemService(NotificationManager::class.java)
 
     companion object {
+        private var lastRecoveryAttemptTime = 0L
         const val CHANNEL_ACTIVE_STATUS = "mountx_active_status"
         const val CHANNEL_EMERGENCY_ALERTS = "mountx_emergency_alerts"
         const val CHANNEL_OPERATIONS = "mountx_operations"
@@ -134,27 +135,37 @@ class MountNotificationManager @Inject constructor(
                 // Real-time VFS Mount Integrity & Soft-Restart Recovery
                 val sampleGame = mountedGames.firstOrNull()
                 val isKernelMountAlive = if (sampleGame != null) {
-                    val relPath = if (sampleGame.mountPoints.isNotEmpty()) {
-                        sampleGame.mountPoints.firstOrNull { it.enabled }?.targetPath?.let { MountManager.extractRelativePath(it) } ?: "Android/data/${sampleGame.packageName}"
+                    if (sampleGame.mountPoints.isNotEmpty()) {
+                        val enabledPoints = sampleGame.mountPoints.filter { it.enabled }
+                        enabledPoints.isEmpty() || enabledPoints.any { pt ->
+                            val cleanTarget = pt.targetPath.trimEnd('/')
+                            val rel = MountManager.extractRelativePath(pt.targetPath).trimEnd('/')
+                            val mountCount = RootShell.execForOutput("grep -cE '($cleanTarget|$rel)' /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
+                            mountCount > 0
+                        }
                     } else {
-                        "Android/data/${sampleGame.packageName}"
+                        val relPath = "Android/data/${sampleGame.packageName}"
+                        val mountCount = RootShell.execForOutput("grep -c \"$relPath\" /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
+                        mountCount > 0
                     }
-                    val mountCount = RootShell.execForOutput("grep -c \"$relPath\" /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
-                    mountCount > 0
                 } else true
 
                 if (!isKernelMountAlive && !RootShell.exists("/dev/.mountx_unmounted")) {
-                    AppLogger.warn("Notification", "Active mount notification detected VFS mount loss (soft restart). Triggering instant background recovery...")
-                    val recoveringBuilder = NotificationCompat.Builder(context, CHANNEL_ACTIVE_STATUS)
-                        .setSmallIcon(R.drawable.ic_notification)
-                        .setColor(0xFFFF9100.toInt())
-                        .setContentTitle(context.getString(R.string.notif_recovering_mounts))
-                        .setContentText(context.getString(R.string.notif_mounting_games))
-                        .setOngoing(true)
-                        .setContentIntent(openPendingIntent)
-                    notificationManager.notify(ACTIVE_NOTIF_ID, recoveringBuilder.build())
+                    val now = System.currentTimeMillis()
+                    if (now - lastRecoveryAttemptTime > 60_000L) {
+                        lastRecoveryAttemptTime = now
+                        AppLogger.warn("Notification", "Active mount notification detected VFS mount loss (soft restart). Triggering background recovery...")
+                        val recoveringBuilder = NotificationCompat.Builder(context, CHANNEL_ACTIVE_STATUS)
+                            .setSmallIcon(R.drawable.ic_notification)
+                            .setColor(0xFFFF9100.toInt())
+                            .setContentTitle(context.getString(R.string.notif_recovering_mounts))
+                            .setContentText(context.getString(R.string.notif_mounting_games))
+                            .setOngoing(true)
+                            .setContentIntent(openPendingIntent)
+                        notificationManager.notify(ACTIVE_NOTIF_ID, recoveringBuilder.build())
 
-                    MountService.startMountAll(context)
+                        MountService.startMountAll(context)
+                    }
                     return@launch
                 }
 

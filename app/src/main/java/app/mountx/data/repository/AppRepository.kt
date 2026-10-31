@@ -457,11 +457,11 @@ class AppRepository @Inject constructor(
 
                 val currentPoints = game.mountPoints
                 val updatedPoints = currentPoints.map { pt ->
-                    val matching = points.firstOrNull { it.id == pt.id || it.resolveCategory() == pt.resolveCategory() }
+                    val matching = points.firstOrNull { it.isSameTargetAs(pt) }
                     if (matching != null) matching.copy(enabled = true) else pt
                 }.toMutableList()
                 for (newPt in points) {
-                    if (updatedPoints.none { it.id == newPt.id || it.resolveCategory() == newPt.resolveCategory() }) {
+                    if (updatedPoints.none { it.isSameTargetAs(newPt) }) {
                         updatedPoints.add(newPt.copy(enabled = true))
                     }
                 }
@@ -1336,9 +1336,13 @@ class AppRepository @Inject constructor(
         var ext2MediaBytes = 0L
 
         val activeMounts = mountManager.getActiveMountpointsSet()
-        val isDataMountedReal = activeMounts.contains(ext1Data.trimEnd('/'))
-        val isObbMountedReal = activeMounts.contains(ext1Obb.trimEnd('/'))
-        val isMediaMountedReal = activeMounts.contains(ext1Media.trimEnd('/'))
+        val isDataMountedReal = activeMounts.any { it.startsWith(ext1Data) || it.startsWith("/storage/emulated/0/Android/data/$packageName") }
+        val isObbMountedReal = activeMounts.any { it.startsWith(ext1Obb) || it.startsWith("/storage/emulated/0/Android/obb/$packageName") }
+        val isMediaMountedReal = activeMounts.any { it.startsWith(ext1Media) || it.startsWith("/storage/emulated/0/Android/media/$packageName") }
+        val isApkMountedReal = activeMounts.any { it.startsWith("/data/app/") && it.contains(packageName) && !it.endsWith("/lib") }
+        val isLibMountedReal = activeMounts.any { it.startsWith("/data/app/") && it.contains(packageName) && it.endsWith("/lib") }
+        val isPrivateMountedReal = activeMounts.contains("/data/user/0/$packageName") || activeMounts.contains("/data/data/$packageName")
+        val isCacheMountedReal = activeMounts.contains("/data/user/0/$packageName/cache") || activeMounts.contains("/data/data/$packageName/cache")
 
         // Build candidate paths for all known external storages (both MountX and legacy)
         val candidateExtDataPaths = externalBases.flatMap { listOf("$it/MountX/Android/data/$packageName", "$it/Android/data/$packageName") }.toMutableList()
@@ -1460,10 +1464,14 @@ class AppRepository @Inject constructor(
             ext2ObbBytes = ext2ObbBytes,
             ext2MediaBytes = ext2MediaBytes,
             customBytes = customBytesSum,
-            isExt1Mounted = isExt1MountedReal,
+            isExt1Mounted = isExt1MountedReal || isApkMountedReal || isLibMountedReal || isPrivateMountedReal || isCacheMountedReal,
             isDataMounted = isDataMountedReal,
             isObbMounted = isObbMountedReal,
-            isMediaMounted = isMediaMountedReal
+            isMediaMounted = isMediaMountedReal,
+            isApkMounted = isApkMountedReal,
+            isLibMounted = isLibMountedReal,
+            isPrivateMounted = isPrivateMountedReal,
+            isCacheMounted = isCacheMountedReal
         )
     }
 

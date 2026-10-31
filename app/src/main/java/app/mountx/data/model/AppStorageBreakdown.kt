@@ -31,7 +31,11 @@ data class AppStorageBreakdown(
     val isExt1Mounted: Boolean = false,
     val isDataMounted: Boolean = false,
     val isObbMounted: Boolean = false,
-    val isMediaMounted: Boolean = false
+    val isMediaMounted: Boolean = false,
+    val isApkMounted: Boolean = false,
+    val isLibMounted: Boolean = false,
+    val isPrivateMounted: Boolean = false,
+    val isCacheMounted: Boolean = false
 ) {
     /** System & private storage (/data/app + /data/data) */
     val internalBytes: Long

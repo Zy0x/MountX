@@ -107,9 +107,48 @@ class MountManager(
          *      /storage/emulated/999/Android/obb/com.bar -> Android/obb/com.bar
          *      /sdcard/Download/1DM -> Download/1DM
          */
+        /**
+         * Attaches a container image file to an available loop device.
+         * Compatible with both BusyBox (where --show is unsupported) and Toybox.
+         * Returns the attached loop device path (e.g. /dev/block/loop0) or empty string on failure.
+         */
+        suspend fun attachLoopDevice(containerPath: String): String {
+            RootShell.exec("chmod 777 \"$containerPath\" 2>/dev/null")
+            val existing = RootShell.execForOutput("losetup -a 2>/dev/null | grep \"$containerPath\" | cut -d':' -f1").lines().firstOrNull()?.trim().orEmpty()
+            if (existing.isNotBlank() && (existing.startsWith("/dev/block/loop") || existing.startsWith("/dev/loop"))) {
+                return existing
+            }
+            val freeLoop = RootShell.execForOutput("losetup -f 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
+            if (freeLoop.isNotBlank() && (freeLoop.startsWith("/dev/block/loop") || freeLoop.startsWith("/dev/loop"))) {
+                RootShell.exec("losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null || losetup -f \"$containerPath\" 2>/dev/null")
+                val verify = RootShell.execForOutput("losetup -a 2>/dev/null | grep \"$containerPath\" | cut -d':' -f1").lines().firstOrNull()?.trim().orEmpty()
+                if (verify.isNotBlank()) return verify
+                return freeLoop
+            }
+            val toyboxOut = RootShell.execForOutput("/system/bin/toybox losetup -fs \"$containerPath\" 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
+            if (toyboxOut.isNotBlank() && (toyboxOut.startsWith("/dev/block/loop") || toyboxOut.startsWith("/dev/loop"))) {
+                return toyboxOut
+            }
+            return ""
+        }
+
+        /**
+         * Detaches all loop devices attached to a container image path.
+         */
+        suspend fun detachLoopDevice(containerPath: String) {
+            val imgName = java.io.File(containerPath).name
+            val loopDevs = RootShell.execForOutput(
+                "losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1"
+            ).lines().map { it.trim() }.filter { it.isNotBlank() }
+            for (ld in loopDevs) {
+                RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
+                AppLogger.info("MountManager", "Detached loop device: $ld")
+            }
+        }
+
         fun extractRelativePath(path: String): String {
             return path
-                .replace(Regex("^/(?:storage/emulated|data/media|mnt/user|data/user)/\\d+(?:/primary)?/?"), "")
+                .replace(Regex("^/(?:storage/emulated|data/media|mnt/user)(?:/\\d+)?(?:/primary)?/?"), "")
                 .removePrefix("/sdcard/")
                 .removePrefix("/")
         }
@@ -367,7 +406,37 @@ class MountManager(
                             res
                         }
                         MountPointCategory.CACHE_SHADERS -> {
-                            mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false, autoCreateSource = autoCreateSource)
+                            if (mp.targetPath.startsWith("/data/user/") || mp.targetPath.startsWith("/data/data/")) {
+                                RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
+                                RootShell.exec("mkdir -p \"${mp.targetPath}\" 2>/dev/null")
+                                val fsType = RootShell.execForOutput("stat -f -c %T \"${mp.sourcePath}\" 2>/dev/null").trim().lowercase()
+                                val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || mp.sourcePath.startsWith("/mnt/media_rw")
+                                if (!isNonPosix) {
+                                    RootShell.exec("chown -R $uid:$gid \"${mp.sourcePath}\" 2>/dev/null")
+                                    RootShell.exec("chmod -R 775 \"${mp.sourcePath}\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                                }
+                                val res = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"${mp.targetPath}\"")
+                                if (res.isSuccess || RootShell.isMountpoint(mp.targetPath)) {
+                                    RootShell.exec("chown -R $uid:$gid \"${mp.targetPath}\" 2>/dev/null")
+                                    RootShell.exec("chmod -R 775 \"${mp.targetPath}\" 2>/dev/null")
+                                    RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
+                                    val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
+                                        mp.targetPath.replace("/data/user/0/", "/data/data/")
+                                    } else if (mp.targetPath.startsWith("/data/data/")) {
+                                        mp.targetPath.replace("/data/data/", "/data/user/0/")
+                                    } else null
+                                    if (altTarget != null && RootShell.exists(altTarget) && !RootShell.isMountpoint(altTarget)) {
+                                        RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$altTarget\" 2>/dev/null")
+                                        RootShell.exec("restorecon -FR \"$altTarget\" 2>/dev/null")
+                                    }
+                                    true
+                                } else {
+                                    false
+                                }
+                            } else {
+                                mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false, autoCreateSource = autoCreateSource)
+                            }
                         }
                         MountPointCategory.CUSTOM -> {
                             val res = mountDirectoryTarget(mp, uid, gid, mpNamespaces, isMedia = false, autoCreateSource = autoCreateSource)
@@ -393,9 +462,16 @@ class MountManager(
 
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
                             RootShell.exec("mkdir -p \"$effectiveTarget\" 2>/dev/null")
-                            val res = RootShell.exec("mount -o bind,exec \"${mp.sourcePath}\" \"$effectiveTarget\"")
-                            RootShell.exec("restorecon -FR \"$effectiveTarget\" 2>/dev/null")
-                            res.isSuccess
+                            val res = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$effectiveTarget\"")
+                            if (res.isSuccess || RootShell.isMountpoint(effectiveTarget)) {
+                                RootShell.exec("mount -o remount,bind,exec \"$effectiveTarget\" 2>/dev/null")
+                                RootShell.exec("chown -R 1000:1000 \"$effectiveTarget\" 2>/dev/null")
+                                RootShell.exec("chmod -R 755 \"$effectiveTarget\" 2>/dev/null")
+                                RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$effectiveTarget\" 2>/dev/null")
+                                true
+                            } else {
+                                false
+                            }
                         }
                     }
                     if (mounted) {
@@ -670,22 +746,36 @@ class MountManager(
             AppLogger.info("MountManager", "Created virtual ext4 container: $containerPath ($sizeInMb MB)")
         }
 
-        // 2. Attach loop device with string trimming
-        val losetupOut = RootShell.execForOutput("losetup -f --show \"$containerPath\" 2>/dev/null | tr -d '\\r\\n'")
-        if (losetupOut.isBlank() || !losetupOut.startsWith("/dev/block/loop")) {
-            AppLogger.error("MountManager", "Failed to setup loop device for container: $losetupOut")
+        // 2. Attach loop device if not already attached (BusyBox & Toybox compatible)
+        val loopDev = attachLoopDevice(containerPath)
+        if (loopDev.isBlank()) {
+            AppLogger.error("MountManager", "Failed to setup loop device for container: $containerPath")
             return
         }
-        val loopDev = losetupOut.trim()
 
-        // 3. Mount ext4 partition to /data/user/0/$packageName
+        // 3. Mount ext4 partition to /data/user/0/$packageName and mirror to /data/data/$packageName
         val target = "/data/user/0/$packageName"
         RootShell.exec("mkdir -p \"$target\" 2>/dev/null")
-        RootShell.exec("mount -t ext4 -o rw,noatime \"$loopDev\" \"$target\" 2>/dev/null")
-        RootShell.exec("chown -R $uid:$gid \"$target\" 2>/dev/null")
-        RootShell.exec("chmod -R 775 \"$target\" 2>/dev/null")
-        RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$target\" 2>/dev/null")
-        AppLogger.success("MountManager", "Mounted virtual ext4 container $loopDev -> $target")
+        val mountRes = RootShell.exec("mount -t ext4 -o rw,noatime \"$loopDev\" \"$target\" 2>/dev/null")
+        if (mountRes.isSuccess || RootShell.isMountpoint(target)) {
+            val dataDataTarget = "/data/data/$packageName"
+            if (RootShell.exists(dataDataTarget) && !RootShell.isMountpoint(dataDataTarget)) {
+                RootShell.exec("mount -o bind \"$target\" \"$dataDataTarget\" 2>/dev/null")
+            }
+            RootShell.exec("chown -R $uid:$gid \"$target\" 2>/dev/null")
+            RootShell.exec("chmod -R 775 \"$target\" 2>/dev/null")
+            RootShell.exec("restorecon -FR \"$target\" 2>/dev/null")
+            if (RootShell.exists(dataDataTarget)) {
+                RootShell.exec("restorecon -FR \"$dataDataTarget\" 2>/dev/null")
+            }
+            val dataCeTarget = "/data_mirror/data_ce/null/0/$packageName"
+            if (RootShell.exists(dataCeTarget)) {
+                RootShell.exec("restorecon -FR \"$dataCeTarget\" 2>/dev/null")
+            }
+            AppLogger.success("MountManager", "Mounted virtual ext4 container $loopDev -> $target")
+        } else {
+            AppLogger.error("MountManager", "Failed to mount ext4 loop container $loopDev -> $target: ${mountRes.output}")
+        }
     }
 
     /**
@@ -752,24 +842,46 @@ class MountManager(
                             RootShell.exec("sync")
                             RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
                             RootShell.exec("umount -f -l \"/data/data/${game.packageName}\" 2>/dev/null")
-                            val loopDev = RootShell.execForOutput(
-                                "losetup -a 2>/dev/null | grep \"${game.packageName}_data.img\" | cut -d':' -f1 | tr -d '\\r\\n'"
-                            )
-                            if (loopDev.isNotBlank()) {
-                                RootShell.exec("losetup -d \"$loopDev\" 2>/dev/null")
-                                AppLogger.info("MountManager", "Detached loop device: $loopDev")
+                            val imgName = mp.containerImgPath?.let { java.io.File(it).name } ?: "${game.packageName}_data.img"
+                            val loopDevs = RootShell.execForOutput(
+                                "losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1"
+                            ).lines().map { it.trim() }.filter { it.isNotBlank() }
+                            for (ld in loopDevs) {
+                                RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
+                                AppLogger.info("MountManager", "Detached loop device: $ld")
                             }
-                        } else {
-                            if (mp.category == MountPointCategory.APP_PACKAGE || mp.targetPath.startsWith("/data/app")) {
-                                RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                        } else if (mp.category == MountPointCategory.APP_PACKAGE || mp.targetPath.startsWith("/data/app")) {
+                            val currentApkPathRes = RootShell.exec("pm path \"${game.packageName}\" 2>/dev/null | head -n 1")
+                            val currentApkDir = if (currentApkPathRes.isSuccess && currentApkPathRes.output.contains("package:")) {
+                                val fullPath = currentApkPathRes.output.substringAfter("package:").trim()
+                                java.io.File(fullPath).parent ?: ""
+                            } else ""
+                            val effectiveTarget = if (mp.targetPath.contains("/lib")) {
+                                if (currentApkDir.isNotBlank()) "$currentApkDir/lib" else mp.targetPath
                             } else {
-                                val userNamespaces = getTargetNamespaces(targetUserId)
-                                val relPath = extractRelativePath(mp.targetPath)
-                                for (ns in userNamespaces) {
-                                    RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
-                                }
-                                RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                                if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
                             }
+                            RootShell.exec("umount -f -l \"$effectiveTarget\" 2>/dev/null")
+                            RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                            RootShell.exec("restorecon -FR \"$effectiveTarget\" 2>/dev/null")
+                        } else if (mp.category == MountPointCategory.CACHE_SHADERS && (mp.targetPath.startsWith("/data/user/") || mp.targetPath.startsWith("/data/data/"))) {
+                            RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                            val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
+                                mp.targetPath.replace("/data/user/0/", "/data/data/")
+                            } else if (mp.targetPath.startsWith("/data/data/")) {
+                                mp.targetPath.replace("/data/data/", "/data/user/0/")
+                            } else null
+                            if (altTarget != null) {
+                                RootShell.exec("umount -f -l \"$altTarget\" 2>/dev/null")
+                            }
+                            RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
+                        } else {
+                            val userNamespaces = getTargetNamespaces(targetUserId)
+                            val relPath = extractRelativePath(mp.targetPath)
+                            for (ns in userNamespaces) {
+                                RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                            }
+                            RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
                         }
                     }
                 }
@@ -908,12 +1020,38 @@ class MountManager(
                     RootShell.exec("sync")
                     RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"/data/data/${game.packageName}\" 2>/dev/null")
-                    val loopDev = RootShell.execForOutput(
-                        "losetup -a 2>/dev/null | grep \"${game.packageName}_data.img\" | cut -d':' -f1 | tr -d '\\r\\n'"
-                    )
-                    if (loopDev.isNotBlank()) {
-                        RootShell.exec("losetup -d \"$loopDev\" 2>/dev/null")
+                    val imgName = mp.containerImgPath?.let { java.io.File(it).name } ?: "${game.packageName}_data.img"
+                    val loopDevs = RootShell.execForOutput(
+                        "losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1"
+                    ).lines().map { it.trim() }.filter { it.isNotBlank() }
+                    for (ld in loopDevs) {
+                        RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
                     }
+                } else if (mp.category == MountPointCategory.APP_PACKAGE || mp.targetPath.startsWith("/data/app")) {
+                    val currentApkPathRes = RootShell.exec("pm path \"${game.packageName}\" 2>/dev/null | head -n 1")
+                    val currentApkDir = if (currentApkPathRes.isSuccess && currentApkPathRes.output.contains("package:")) {
+                        val fullPath = currentApkPathRes.output.substringAfter("package:").trim()
+                        java.io.File(fullPath).parent ?: ""
+                    } else ""
+                    val effectiveTarget = if (mp.targetPath.contains("/lib")) {
+                        if (currentApkDir.isNotBlank()) "$currentApkDir/lib" else mp.targetPath
+                    } else {
+                        if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
+                    }
+                    RootShell.exec("umount -f -l \"$effectiveTarget\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                    RootShell.exec("restorecon -FR \"$effectiveTarget\" 2>/dev/null")
+                } else if (mp.category == MountPointCategory.CACHE_SHADERS && (mp.targetPath.startsWith("/data/user/") || mp.targetPath.startsWith("/data/data/"))) {
+                    RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                    val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
+                        mp.targetPath.replace("/data/user/0/", "/data/data/")
+                    } else if (mp.targetPath.startsWith("/data/data/")) {
+                        mp.targetPath.replace("/data/data/", "/data/user/0/")
+                    } else null
+                    if (altTarget != null) {
+                        RootShell.exec("umount -f -l \"$altTarget\" 2>/dev/null")
+                    }
+                    RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                 } else {
                     val userNamespaces = getTargetNamespaces(targetUserId)
                     val relPath = extractRelativePath(mp.targetPath)
