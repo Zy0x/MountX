@@ -42,15 +42,17 @@ class UpdateChecker @Inject constructor(
                 )
             }
 
-            // 1. First attempt: CDN / Raw static JSON (unlimited rate-limit edge caching)
-            val cdnInfo = fetchFromStaticCdn(JSDELIVR_URL)
-                ?: fetchFromStaticCdn(RAW_CDN_URL)
-
-            val updateInfo = if (cdnInfo != null) {
-                cdnInfo
+            val updateInfo = if (force) {
+                // Manual check: Prioritize live GitHub Releases API / fresh raw JSON to bypass edge CDN caching
+                runCatching { fetchFromGitHubApi() }.getOrNull()
+                    ?: fetchFromStaticCdn("$RAW_CDN_URL?t=$now")
+                    ?: fetchFromStaticCdn(JSDELIVR_URL)
+                    ?: error("Failed to fetch update info")
             } else {
-                // 2. Fallback: GitHub Releases REST API
-                fetchFromGitHubApi()
+                // Background check: Prioritize CDN to respect GitHub API rate limits across devices
+                fetchFromStaticCdn(JSDELIVR_URL)
+                    ?: fetchFromStaticCdn(RAW_CDN_URL)
+                    ?: fetchFromGitHubApi()
             }
 
             // Record successful check timestamp

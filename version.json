@@ -1,7 +1,7 @@
 {
-  "version": "2.2.46",
-  "versionCode": 20246,
-  "summary": "Storage migration robustness, partition tools overhaul & bilingual parity polish.",
-  "changelog": "• Refined storage partition tools\n• Enhanced backup and restore reliability\n• Comprehensive bilingual parity across English and Indonesian",
+  "version": "2.2.47",
+  "versionCode": 20247,
+  "summary": "Immortal Watchdog Daemon, Storage Engine 3.0, 5s Namespace Canary Recovery & EXDEV Elimination.",
+  "changelog": "• Immortal watchdog daemon with automatic 3s supervisor respawn\n• Rapid 5s runtime namespace canary check preventing EXDEV storage errors\n• Storage Engine 3.0 supporting MicroSD, USB SSD, and OTG drives\n• Sub-second cold-start optimizations and Play Store install protection",
   "apkUrl": "https://github.com/Zy0x/MountX/releases/latest"
 }
