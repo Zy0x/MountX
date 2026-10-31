@@ -1505,7 +1505,11 @@ class StorageManager(
                             val parentInternal = java.io.File(tgt).parent ?: "/data/media/0"
                             RootShell.exec("mkdir -p \"$parentInternal\"")
                             RootShell.exec("cp -a -f \"$src\" \"$tgt\"")
-                            RootShell.exec("chmod -R 775 \"$tgt\" 2>/dev/null")
+                            if (point.category == MountPointCategory.PRIVATE_INTERNAL || tgt.startsWith("/data/user/") || tgt.startsWith("/data/data/")) {
+                                RootShell.exec("chmod 700 \"$tgt\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$tgt\" 2>/dev/null")
+                            } else {
+                                RootShell.exec("chmod -R 775 \"$tgt\" 2>/dev/null")
+                            }
                             RootShell.exec("restorecon -FR \"$tgt\" 2>/dev/null")
                             if (!RootShell.isMountpoint(tgt) && src.trimEnd('/') != tgt.trimEnd('/')) {
                                 RootShell.exec("rm -rf \"$src\"")
@@ -1776,7 +1780,27 @@ class StorageManager(
 
         // Passed all guards: clean directory contents completely without leaving residual files
         AppLogger.info("StorageManager", "Safe clean approved for $sourcePathToClean (Verified independent from $destPathPreserved)")
-        RootShell.exec("find \"$sourcePathToClean\" -mindepth 1 -delete 2>/dev/null || rm -rf \"$sourcePathToClean\"/* \"$sourcePathToClean\"/.[0-9a-zA-Z]* 2>/dev/null")
+        RootShell.exec("find \"$sourcePathToClean\" -depth -mindepth 1 -delete 2>/dev/null || rm -rf \"$sourcePathToClean\"/* \"$sourcePathToClean\"/.[!.]* 2>/dev/null")
+        if (sourcePathToClean.startsWith("/data/user/") || sourcePathToClean.startsWith("/data/data/")) {
+            val appUid = RootShell.exec(
+                "stat -c '%u' \"$sourcePathToClean\" 2>/dev/null || pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
+            ).output.trim().toIntOrNull() ?: 10000
+            RootShell.exec("chown $appUid:$appUid \"$sourcePathToClean\" 2>/dev/null")
+            RootShell.exec("chmod 700 \"$sourcePathToClean\" 2>/dev/null")
+            val altData = if (sourcePathToClean.startsWith("/data/user/0/")) {
+                sourcePathToClean.replace("/data/user/0/", "/data/data/")
+            } else if (sourcePathToClean.startsWith("/data/data/")) {
+                sourcePathToClean.replace("/data/data/", "/data/user/0/")
+            } else null
+            if (altData != null && RootShell.exists(altData) && !RootShell.isMountpoint(altData)) {
+                val isSymlink = RootShell.exec("test -L \"$altData\"").isSuccess
+                if (!isSymlink) {
+                    RootShell.exec("find \"$altData\" -depth -mindepth 1 -delete 2>/dev/null || rm -rf \"$altData\"/* \"$altData\"/.[!.]* 2>/dev/null")
+                    RootShell.exec("chown $appUid:$appUid \"$altData\" 2>/dev/null")
+                    RootShell.exec("chmod 700 \"$altData\" 2>/dev/null")
+                }
+            }
+        }
         return true
     }
 
@@ -1919,6 +1943,8 @@ class StorageManager(
                 export PATH="/data/adb/modules/MountX/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:${'$'}PATH"
                 echo -900 > "/proc/${'$'}${'$'}/oom_score_adj" 2>/dev/null || true
                 mkdir -p "$destDir"
+                INIT_USED=${'$'}(df -k "$destDir" 2>/dev/null | tail -n 1 | tr -s ' ' | cut -d' ' -f3)
+                [ -z "${'$'}INIT_USED" ] && INIT_USED=0
                 $tarCmd -cf - -C "$sourceDir" $derefFlag . 2>"$errFile" | $tarCmd -xf - -C "$destDir" $extractFlags 2>>"$errFile" &
                 CP_PID=${'$'}!
                 echo -900 > "/proc/${'$'}CP_PID/oom_score_adj" 2>/dev/null || true
@@ -1938,11 +1964,12 @@ class StorageManager(
                         fi
                         sleep 0.5
                     else
-                        SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
-                        if [ -n "${'$'}SZ_KB" ]; then
-                            echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
+                        CUR_USED=${'$'}(df -k "$destDir" 2>/dev/null | tail -n 1 | tr -s ' ' | cut -d' ' -f3)
+                        if [ -n "${'$'}CUR_USED" ] && [ "${'$'}CUR_USED" -ge "${'$'}INIT_USED" ]; then
+                            DIFF_BYTES=${'$'}(( (CUR_USED - INIT_USED) * 1024 ))
+                            echo "PROGRESS_BYTES:${'$'}DIFF_BYTES"
                         fi
-                        sleep 1.5
+                        sleep 1.0
                     fi
                 done
                 
@@ -1966,6 +1993,8 @@ class StorageManager(
                 export PATH="/data/adb/modules/MountX/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:${'$'}PATH"
                 echo -900 > "/proc/${'$'}${'$'}/oom_score_adj" 2>/dev/null || true
                 mkdir -p "$destDir"
+                INIT_USED=${'$'}(df -k "$destDir" 2>/dev/null | tail -n 1 | tr -s ' ' | cut -d' ' -f3)
+                [ -z "${'$'}INIT_USED" ] && INIT_USED=0
                 $baseCpCmd 2>"$errFile" &
                 CP_PID=${'$'}!
                 echo -900 > "/proc/${'$'}CP_PID/oom_score_adj" 2>/dev/null || true
@@ -1985,11 +2014,12 @@ class StorageManager(
                         fi
                         sleep 0.5
                     else
-                        SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
-                        if [ -n "${'$'}SZ_KB" ]; then
-                            echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
+                        CUR_USED=${'$'}(df -k "$destDir" 2>/dev/null | tail -n 1 | tr -s ' ' | cut -d' ' -f3)
+                        if [ -n "${'$'}CUR_USED" ] && [ "${'$'}CUR_USED" -ge "${'$'}INIT_USED" ]; then
+                            DIFF_BYTES=${'$'}(( (CUR_USED - INIT_USED) * 1024 ))
+                            echo "PROGRESS_BYTES:${'$'}DIFF_BYTES"
                         fi
-                        sleep 1.5
+                        sleep 1.0
                     fi
                 done
                 
@@ -2225,6 +2255,22 @@ class StorageManager(
                     RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
                 }
                 RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+                if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.isEffectivelyVirtualContainer()) {
+                    RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/$packageName\" 2>/dev/null")
+                    val imgName = point.containerImgPath?.let { java.io.File(it).name } ?: "${packageName}_data.img"
+                    val loopDevs = RootShell.execForOutput("losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1")
+                        .lines().map { it.trim() }.filter { it.isNotBlank() }
+                    for (ld in loopDevs) {
+                        RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
+                    }
+                } else if (point.category == MountPointCategory.APP_PACKAGE) {
+                    RootShell.exec("umount -f -l \"$targetPath/lib\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"$targetPath/lib/arm64\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"$targetPath/lib/armeabi-v7a\" 2>/dev/null")
+                }
 
                 // Pre-Flight Hard-Lock for TO_INTERNAL: fail-fast if unmount did not succeed
                 if (direction == MoveDirection.TO_INTERNAL) {
@@ -2300,24 +2346,39 @@ class StorageManager(
                                     )
                                     accumulatedBytes += currentSrcSize
                                     RootShell.exec("chown -R $uid:$gid \"$tempMount\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 775 \"$tempMount\" 2>/dev/null")
+                                    RootShell.exec("chmod 700 \"$tempMount\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$tempMount\" 2>/dev/null")
+                                    RootShell.exec("find \"$tempMount\" -type d -exec chmod 700 {} + 2>/dev/null")
+                                    RootShell.exec("find \"$tempMount\" -type f -exec chmod 600 {} + 2>/dev/null")
                                     val origContext = RootShell.execForOutput("stat -c %C \"$targetPath\" 2>/dev/null").trim()
                                     if (origContext.isNotBlank() && origContext.contains("app_data_file")) {
                                         RootShell.exec("chcon -R \"$origContext\" \"$tempMount\" 2>/dev/null")
                                     } else {
                                         RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$tempMount\" 2>/dev/null")
                                     }
-                                    val realDataDir = "/data/data/$packageName"
-                                    if (!RootShell.isMountpoint(targetPath) && !RootShell.isMountpoint(realDataDir)) {
-                                        RootShell.exec("find \"$targetPath\" -mindepth 1 -delete 2>/dev/null || rm -rf \"$targetPath\"/* \"$targetPath\"/.[0-9a-zA-Z]* 2>/dev/null")
-                                        if (RootShell.exists(realDataDir) && realDataDir != targetPath && !RootShell.isMountpoint(realDataDir)) {
-                                            RootShell.exec("find \"$realDataDir\" -mindepth 1 -delete 2>/dev/null || rm -rf \"$realDataDir\"/* \"$realDataDir\"/.[0-9a-zA-Z]* 2>/dev/null")
-                                        }
-                                    }
+
+                                    // Step 3: Cleanup internal memory
+                                    onProgress?.invoke(
+                                        OperationProgress(
+                                            type = opType,
+                                            title = title,
+                                            subtitle = packageName,
+                                            currentStepIndex = 3,
+                                            totalSteps = steps.size,
+                                            stepDescriptions = steps,
+                                            bytesProcessed = totalMigrationBytes,
+                                            totalBytes = totalMigrationBytes,
+                                            speedBytesPerSec = 0L,
+                                            etaSeconds = 0L,
+                                            progressPercent = 0.95f,
+                                            currentItemName = categoryName,
+                                            isFinished = false
+                                        )
+                                    )
+                                    safeCleanSourceDirectory(targetPath, tempMount, packageName)
                                 }
                                 RootShell.exec("sync")
-                                RootShell.exec("umount -l \"$tempMount\"")
-                                RootShell.exec("losetup -d \"$loopDev\"")
+                                RootShell.exec("umount \"$tempMount\" 2>/dev/null || umount -l \"$tempMount\" 2>/dev/null")
+                                MountManager.detachLoopDevice(imgFile)
                             }
                             RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
                         } else {
@@ -2366,10 +2427,19 @@ class StorageManager(
                                     RootShell.exec("chown -R 1000:1000 \"$sourcePath\" 2>/dev/null")
                                     RootShell.exec("chmod -R 755 \"$sourcePath\" 2>/dev/null")
                                     RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$sourcePath\" 2>/dev/null")
+                                    // Safeguard: if lib was migrated prior to APK, merge the lib files into the APK directory on SD
+                                    val sdLibPath = "$sdBase/MountX/lib/$packageName"
+                                    if (RootShell.exists(sdLibPath) && !point.targetPath.contains("/lib")) {
+                                        RootShell.exec("mkdir -p \"$sourcePath/lib\" 2>/dev/null")
+                                        RootShell.exec("cp -a -f \"$sdLibPath/.\" \"$sourcePath/lib/\" 2>/dev/null")
+                                        RootShell.exec("chown -R 1000:1000 \"$sourcePath/lib\" 2>/dev/null")
+                                        RootShell.exec("chmod -R 755 \"$sourcePath/lib\" 2>/dev/null")
+                                        RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$sourcePath/lib\" 2>/dev/null")
+                                    }
                                 } else if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.category == MountPointCategory.CACHE_SHADERS) {
                                     if (!isContainer && !destInspection.isNonPosix) {
                                         RootShell.exec("chown -R $uid:$gid \"$sourcePath\" 2>/dev/null")
-                                        RootShell.exec("chmod -R 775 \"$sourcePath\" 2>/dev/null")
+                                        RootShell.exec("chmod 700 \"$sourcePath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$sourcePath\" 2>/dev/null")
                                         val origContext = RootShell.execForOutput("stat -c %C \"$targetPath\" 2>/dev/null").trim()
                                         if (origContext.isNotBlank() && origContext.contains("app_data_file")) {
                                             RootShell.exec("chcon -R \"$origContext\" \"$sourcePath\" 2>/dev/null")
@@ -2558,10 +2628,10 @@ class StorageManager(
                 }
             }
 
-            // Restore internal app sandbox directory permissions across user profile
+            // Restore internal app sandbox directory permissions across user profile (Strict 0700 sandbox isolation)
             val appUserId = activePoints.firstOrNull()?.let { MountManager.resolveUserId(it.targetPath) } ?: 0
             RootShell.exec("chown -R $uid:$uid \"/data/user/$appUserId/$packageName\" 2>/dev/null")
-            RootShell.exec("chmod -R 775 \"/data/user/$appUserId/$packageName\" 2>/dev/null")
+            RootShell.exec("chmod 700 \"/data/user/$appUserId/$packageName\" 2>/dev/null && chmod -R u+rwX,go-rwx \"/data/user/$appUserId/$packageName\" 2>/dev/null")
             RootShell.exec("restorecon -FR \"/data/user/$appUserId/$packageName\" 2>/dev/null")
             RootShell.exec("restorecon -FR \"/data/media/$appUserId/Android/data/$packageName\" 2>/dev/null")
             RootShell.exec("restorecon -FR \"/data/media/$appUserId/Android/obb/$packageName\" 2>/dev/null")
@@ -2912,9 +2982,9 @@ class StorageManager(
                             }
                         }
 
-                        // Restore internal app sandbox directory permissions
+                        // Restore internal app sandbox directory permissions (Strict 0700 sandbox isolation)
                         RootShell.exec("chown -R $uid:$uid \"/data/user/0/$packageName\" 2>/dev/null")
-                        RootShell.exec("chmod -R 775 \"/data/user/0/$packageName\" 2>/dev/null")
+                        RootShell.exec("chmod 700 \"/data/user/0/$packageName\" 2>/dev/null && chmod -R u+rwX,go-rwx \"/data/user/0/$packageName\" 2>/dev/null")
                         RootShell.exec("restorecon -FR \"/data/user/0/$packageName\" 2>/dev/null")
                         RootShell.exec("restorecon -FR \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
                         RootShell.exec("restorecon -FR \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")

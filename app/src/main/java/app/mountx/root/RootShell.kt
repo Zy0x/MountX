@@ -4,6 +4,7 @@ import app.mountx.data.model.ShellResult
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -64,6 +65,8 @@ object RootShell {
 
     /**
      * Execute a shell command and stream stdout lines in real-time.
+     * Uses an isolated, dedicated OS root process to prevent locking the global libsu Shell
+     * and guarantees all stdout reading happens strictly on Dispatchers.IO (zero UI thread ANR).
      */
     suspend fun execStreaming(
         cmd: String,
@@ -71,36 +74,61 @@ object RootShell {
         onStdoutLine: (String) -> Unit
     ): ShellResult = withContext(Dispatchers.IO) {
         val timedResult = withTimeoutOrNull(timeoutMillis) {
-            val dedicatedShell = try {
-                Shell.Builder.create()
-                    .setFlags(Shell.FLAG_MOUNT_MASTER)
-                    .setTimeout(30)
-                    .build("su")
-            } catch (e: Exception) {
-                AppLogger.warn("RootShell", "Failed to create dedicated shell for execStreaming: ${e.message}")
-                null
-            }
-            val outList = object : com.topjohnwu.superuser.CallbackList<String>(Dispatchers.IO.asExecutor()) {
-                override fun onAddElement(s: String?) {
-                    if (s != null) {
-                        onStdoutLine(s)
+            val stdoutList = mutableListOf<String>()
+            val stderrList = mutableListOf<String>()
+            var exitCode = 1
+            var process: Process? = null
+
+            try {
+                val fullCmd = "$ENV_SETUP$cmd"
+                val suCmds = listOf(
+                    arrayOf("su", "-M", "-c", fullCmd),
+                    arrayOf("su", "-mm", "-c", fullCmd),
+                    arrayOf("su", "-c", fullCmd)
+                )
+
+                for (suCmd in suCmds) {
+                    try {
+                        process = Runtime.getRuntime().exec(suCmd)
+                        break
+                    } catch (_: Exception) {}
+                }
+
+                if (process == null) {
+                    AppLogger.error("RootShell", "Failed to spawn standalone su process for execStreaming")
+                    return@withTimeoutOrNull ShellResult(emptyList(), listOf("Failed to spawn su process"), 1)
+                }
+
+                val p = process
+                val errReaderJob = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        p.errorStream.bufferedReader().useLines { lines ->
+                            lines.forEach { stderrList.add(it) }
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                p.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        stdoutList.add(line)
+                        onStdoutLine(line)
                     }
                 }
+
+                errReaderJob.join()
+                exitCode = p.waitFor()
+            } catch (e: Exception) {
+                AppLogger.error("RootShell", "execStreaming error: ${e.message}")
+                stderrList.add(e.message ?: "Unknown error")
+                try { process?.destroyForcibly() } catch (_: Exception) {}
+            } finally {
+                try { process?.destroy() } catch (_: Exception) {}
             }
-            val errList = ArrayList<String>()
-            val result = if (dedicatedShell != null) {
-                try {
-                    dedicatedShell.newJob().add("$ENV_SETUP$cmd").to(outList, errList).exec()
-                } finally {
-                    try { dedicatedShell.close() } catch (_: Exception) {}
-                }
-            } else {
-                Shell.cmd("$ENV_SETUP$cmd").to(outList, errList).exec()
-            }
+
             ShellResult(
-                stdout = outList,
-                stderr = errList,
-                code = if (result.isSuccess) 0 else 1
+                stdout = stdoutList,
+                stderr = stderrList,
+                code = exitCode
             )
         }
 

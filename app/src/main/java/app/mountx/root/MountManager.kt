@@ -148,22 +148,19 @@ class MountManager(
                     return "/dev/block/$loopName"
                 }
             }
-            // 2. Check losetup -j (standard)
-            val losetupJ = RootShell.execForOutput("losetup -j \"$containerPath\" 2>/dev/null | cut -d':' -f1").lines().firstOrNull()?.trim().orEmpty()
-            if (losetupJ.isNotBlank() && (losetupJ.startsWith("/dev/block/loop") || losetupJ.startsWith("/dev/loop"))) {
-                return losetupJ
-            }
-            // 3. Fallback to losetup -a with container filename
+            val bb = resolveBusybox()
+            val losetupBin = if (bb != null) "$bb losetup" else "losetup"
+            // 2. Fallback check losetup -a with container filename prefix (max 28 chars to bypass 64-char limit)
             val imgName = java.io.File(containerPath).name
-            val existing = RootShell.execForOutput("losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1").lines().firstOrNull()?.trim().orEmpty()
+            val shortPattern = if (imgName.length > 28) imgName.take(28) else imgName
+            val existing = RootShell.execForOutput("$losetupBin -a 2>/dev/null | grep \"$shortPattern\" | head -n 1 | cut -d':' -f1").trim()
             if (existing.isNotBlank() && (existing.startsWith("/dev/block/loop") || existing.startsWith("/dev/loop"))) {
                 return existing
             }
-            val bb = resolveBusybox()
-            val losetupBin = if (bb != null) "$bb losetup" else "losetup"
+            // 3. Find free loop and associate
             val freeLoop = RootShell.execForOutput("$losetupBin -f 2>/dev/null || losetup -f 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
             if (freeLoop.isNotBlank() && (freeLoop.startsWith("/dev/block/loop") || freeLoop.startsWith("/dev/loop"))) {
-                RootShell.exec("$losetupBin \"$freeLoop\" \"$containerPath\" 2>/dev/null || $losetupBin -f \"$containerPath\" 2>/dev/null || losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null")
+                RootShell.exec("$losetupBin \"$freeLoop\" \"$containerPath\" 2>/dev/null || losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null")
                 val verifySysfs = RootShell.execForOutput(
                     "grep -s -l \"$containerPath\" /sys/block/loop*/loop/backing_file 2>/dev/null | head -n 1"
                 ).trim()
@@ -172,10 +169,6 @@ class MountManager(
                     if (loopName.startsWith("loop")) return "/dev/block/$loopName"
                 }
                 return freeLoop
-            }
-            val bbOut = RootShell.execForOutput("$losetupBin -fs \"$containerPath\" 2>/dev/null || /system/bin/toybox losetup -fs \"$containerPath\" 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
-            if (bbOut.isNotBlank() && (bbOut.startsWith("/dev/block/loop") || bbOut.startsWith("/dev/loop"))) {
-                return bbOut
             }
             return ""
         }
@@ -306,11 +299,11 @@ class MountManager(
             val uid = identity.uid
             val gid = identity.gid
 
-            // Fast non-recursive ownership on internal sandbox directory & databases
+            // Fast non-recursive ownership on internal sandbox directory & databases (Strict 0700 sandbox isolation)
             val sandboxDir = "/data/user/$appUserId/${game.packageName}"
             RootShell.exec("chown $uid:$gid \"$sandboxDir\" 2>/dev/null")
-            RootShell.exec("chmod 775 \"$sandboxDir\" 2>/dev/null")
-            RootShell.exec("chmod 771 \"$sandboxDir/databases\" 2>/dev/null")
+            RootShell.exec("chmod 700 \"$sandboxDir\" 2>/dev/null")
+            RootShell.exec("chmod 700 \"$sandboxDir/databases\" 2>/dev/null")
 
             // Whitelist MountX in system Doze/battery optimization so background transfers & watchdog never get killed
             RootShell.exec("dumpsys deviceidle whitelist +app.mountx 2>/dev/null")
@@ -320,6 +313,15 @@ class MountManager(
             RootShell.exec("appops set \"${game.packageName}\" LEGACY_STORAGE allow 2>/dev/null")
             RootShell.exec("pm grant \"${game.packageName}\" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null")
             RootShell.exec("pm grant \"${game.packageName}\" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null")
+
+            // APatch stealth isolation: automatically add app to APatch exclusion list so RASP/anti-tamper engines (Promon, etc.) never detect root hooks
+            RootShell.exec("""
+                if [ -f /data/adb/ap/package_config ]; then
+                    if ! grep -q "^${game.packageName}," /data/adb/ap/package_config 2>/dev/null; then
+                        echo "${game.packageName},1,0,$uid,0," >> /data/adb/ap/package_config
+                    fi
+                fi
+            """.trimIndent())
 
             // Step 1: Memeriksa Direktori MicroSD
             onProgress?.invoke(
@@ -473,13 +475,13 @@ class MountManager(
                                 val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || mp.sourcePath.startsWith("/mnt/media_rw")
                                 if (!isNonPosix) {
                                     RootShell.exec("chown -R $uid:$gid \"${mp.sourcePath}\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 775 \"${mp.sourcePath}\" 2>/dev/null")
+                                    RootShell.exec("chmod 700 \"${mp.sourcePath}\" 2>/dev/null && chmod -R u+rwX,go-rwx \"${mp.sourcePath}\" 2>/dev/null")
                                     RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
                                 }
                                 val res = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"${mp.targetPath}\"")
                                 if (res.isSuccess || RootShell.isMountpoint(mp.targetPath)) {
                                     RootShell.exec("chown -R $uid:$gid \"${mp.targetPath}\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 775 \"${mp.targetPath}\" 2>/dev/null")
+                                    RootShell.exec("chmod 700 \"${mp.targetPath}\" 2>/dev/null && chmod -R u+rwX,go-rwx \"${mp.targetPath}\" 2>/dev/null")
                                     RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                                     val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
                                         mp.targetPath.replace("/data/user/0/", "/data/data/")
@@ -514,23 +516,40 @@ class MountManager(
                                 val fullPath = currentApkPathRes.output.substringAfter("package:").trim()
                                 java.io.File(fullPath).parent ?: ""
                             } else ""
-                            val effectiveTarget = if (mp.targetPath.contains("/lib")) {
-                                if (currentApkDir.isNotBlank()) "$currentApkDir/lib" else mp.targetPath
-                            } else {
-                                if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
-                            }
+                            val isLib = mp.targetPath.contains("/lib", ignoreCase = true) || mp.id.contains("lib", ignoreCase = true)
 
-                            RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
-                            RootShell.exec("mkdir -p \"$effectiveTarget\" 2>/dev/null")
-                            val res = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$effectiveTarget\"")
-                            if (res.isSuccess || RootShell.isMountpoint(effectiveTarget)) {
-                                RootShell.exec("mount -o remount,bind,exec \"$effectiveTarget\" 2>/dev/null")
-                                RootShell.exec("chown -R 1000:1000 \"$effectiveTarget\" 2>/dev/null")
-                                RootShell.exec("chmod -R 755 \"$effectiveTarget\" 2>/dev/null")
-                                RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$effectiveTarget\" 2>/dev/null")
+                            // If parent package is already mounted, skip redundant lib mount
+                            if (isLib && currentApkDir.isNotBlank() && RootShell.isMountpoint(currentApkDir)) {
+                                AppLogger.info("MountManager", "App package already mounted at $currentApkDir, skipping redundant lib mount")
                                 true
                             } else {
-                                false
+                                val (finalSource, finalTarget) = if (isLib) {
+                                    val hasArm64Source = RootShell.exists("${mp.sourcePath}/arm64")
+                                    val targetIsArm64 = mp.targetPath.contains("/arm64") || RootShell.exists("$currentApkDir/lib/arm64")
+                                    if (hasArm64Source && targetIsArm64) {
+                                        "${mp.sourcePath}/arm64" to (if (currentApkDir.isNotBlank()) "$currentApkDir/lib/arm64" else mp.targetPath)
+                                    } else if (currentApkDir.isNotBlank()) {
+                                        mp.sourcePath to "$currentApkDir/lib"
+                                    } else {
+                                        mp.sourcePath to mp.targetPath
+                                    }
+                                } else {
+                                    val target = if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
+                                    mp.sourcePath to target
+                                }
+
+                                RootShell.exec("mkdir -p \"$finalSource\" 2>/dev/null")
+                                RootShell.exec("mkdir -p \"$finalTarget\" 2>/dev/null")
+                                val res = RootShell.exec("mount -o bind \"$finalSource\" \"$finalTarget\"")
+                                if (res.isSuccess || RootShell.isMountpoint(finalTarget)) {
+                                    RootShell.exec("mount -o remount,bind,exec \"$finalTarget\" 2>/dev/null")
+                                    RootShell.exec("chown -R 1000:1000 \"$finalTarget\" 2>/dev/null")
+                                    RootShell.exec("chmod -R 755 \"$finalTarget\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$finalTarget\" 2>/dev/null")
+                                    true
+                                } else {
+                                    false
+                                }
                             }
                         }
                     }
@@ -816,22 +835,42 @@ class MountManager(
         // 3. Mount ext4 partition to /data/user/0/$packageName and mirror to /data/data/$packageName
         val target = "/data/user/0/$packageName"
         RootShell.exec("mkdir -p \"$target\" 2>/dev/null")
-        val mountRes = RootShell.exec("mount -t ext4 -o rw,noatime \"$loopDev\" \"$target\" 2>/dev/null")
+        val mountRes = RootShell.exec("mount -t ext4 -o rw,nosuid,nodev,noatime \"$loopDev\" \"$target\" 2>/dev/null")
         if (mountRes.isSuccess || RootShell.isMountpoint(target)) {
             val dataDataTarget = "/data/data/$packageName"
             if (RootShell.exists(dataDataTarget) && !RootShell.isMountpoint(dataDataTarget)) {
                 RootShell.exec("mount -o bind \"$target\" \"$dataDataTarget\" 2>/dev/null")
             }
+            val dataCeTarget = "/data_mirror/data_ce/null/0/$packageName"
+            if (RootShell.exists(dataCeTarget) && !RootShell.isMountpoint(dataCeTarget)) {
+                RootShell.exec("mount -o bind \"$target\" \"$dataCeTarget\" 2>/dev/null")
+            }
             RootShell.exec("chown -R $uid:$gid \"$target\" 2>/dev/null")
-            RootShell.exec("chmod -R 775 \"$target\" 2>/dev/null")
-            RootShell.exec("restorecon -FR \"$target\" 2>/dev/null")
+            RootShell.exec("chmod 700 \"$target\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$target\" 2>/dev/null")
+            RootShell.exec("find \"$target\" -type d -exec chmod 700 {} + 2>/dev/null")
+            RootShell.exec("find \"$target\" -type f -exec chmod 600 {} + 2>/dev/null")
+            RootShell.exec("restorecon -FR \"$target\" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 \"$target\" 2>/dev/null")
             if (RootShell.exists(dataDataTarget)) {
                 RootShell.exec("restorecon -FR \"$dataDataTarget\" 2>/dev/null")
             }
-            val dataCeTarget = "/data_mirror/data_ce/null/0/$packageName"
             if (RootShell.exists(dataCeTarget)) {
                 RootShell.exec("restorecon -FR \"$dataCeTarget\" 2>/dev/null")
             }
+            // Self-healing: ensure direct boot storage and ART profile directories exist to prevent Zygote Signal 11 crash
+            RootShell.exec("""
+                if [ ! -d "/data/user_de/0/$packageName" ]; then
+                    mkdir -p "/data/user_de/0/$packageName/cache" "/data/user_de/0/$packageName/code_cache" 2>/dev/null
+                    chown -R $uid:$gid "/data/user_de/0/$packageName" 2>/dev/null
+                    chmod 700 "/data/user_de/0/$packageName" 2>/dev/null
+                    restorecon -FR "/data/user_de/0/$packageName" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/0/$packageName" 2>/dev/null
+                fi
+                if [ ! -d "/data/misc/profiles/cur/0/$packageName" ]; then
+                    mkdir -p "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
+                    chown $uid:$gid "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
+                    chmod 700 "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
+                    chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
+                fi
+            """.trimIndent())
             AppLogger.success("MountManager", "Mounted virtual ext4 container $loopDev -> $target")
         } else {
             AppLogger.error("MountManager", "Failed to mount ext4 loop container $loopDev -> $target: ${mountRes.output}")

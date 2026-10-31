@@ -381,14 +381,22 @@ apply_permissions() {
     [ ! -d "${sandbox_dir}" ] && sandbox_dir="/data/data/${pkg}"
 
     # Sandbox integrity: fast non-recursive check (avoids boot freeze)
+    # Strictly maintain canonical 0700 sandbox isolation to prevent RASP anti-tamper crashes
     if [ -d "${sandbox_dir}" ]; then
         local cur_sb_u
         cur_sb_u=$(stat -c '%u' "${sandbox_dir}" 2>/dev/null)
         if [ "${cur_sb_u}" != "${app_uid}" ]; then
             chown "${app_uid}:${app_uid}" "${sandbox_dir}" 2>/dev/null
         fi
-        chmod 775 "${sandbox_dir}" 2>/dev/null
-        [ -d "${sandbox_dir}/databases" ] && chmod 771 "${sandbox_dir}/databases" 2>/dev/null
+        chmod 700 "${sandbox_dir}" 2>/dev/null
+        [ -d "${sandbox_dir}/databases" ] && chmod 700 "${sandbox_dir}/databases" 2>/dev/null
+    fi
+
+    # APatch stealth isolation: automatically add app to APatch exclusion list so RASP/anti-tamper engines never detect root hooks
+    if [ -f /data/adb/ap/package_config ]; then
+        if ! grep -q "^${pkg}," /data/adb/ap/package_config 2>/dev/null; then
+            echo "${pkg},1,0,${app_uid},0," >> /data/adb/ap/package_config 2>/dev/null
+        fi
     fi
 
     # MicroSD target permissions: app_uid, GID 1023 (media_rw), mode 777, SELinux media_rw_data_file
@@ -501,8 +509,7 @@ bind_mount_to_runtime_namespaces() {
                 "/mnt/pass_through/${USER_ID}/emulated/${USER_ID}" \
                 "/mnt/user/${USER_ID}/primary" \
                 "/mnt/user/${USER_ID}/emulated/${USER_ID}" \
-                "/storage/emulated/${USER_ID}" \
-                "/data/media/${USER_ID}"
+                "/storage/emulated/${USER_ID}"
             do
                 if [ -d "${R}" ]; then
                     case "${R}" in
@@ -517,7 +524,7 @@ bind_mount_to_runtime_namespaces() {
                             ;;
                     esac
                     TARGET="${R}/${REL}"
-                    if ! mountpoint -q "${TARGET}" 2>/dev/null; then
+                    if ! mountpoint -q "${TARGET}" 2>/dev/null && ! grep -qF " ${TARGET} " /proc/mounts 2>/dev/null; then
                         mkdir -p "${TARGET}" 2>/dev/null
                         do_mount "${SRC}" "${TARGET}"
                     fi
@@ -848,17 +855,43 @@ load_mountpoints() {
                         break
                     fi
                 done
+                local losetup_bin="losetup"
+                [ -x "${MODULE_DIR}/bin/busybox" ] && losetup_bin="${MODULE_DIR}/bin/busybox losetup"
                 if [ -z "${ldev}" ]; then
-                    ldev=$(losetup -f 2>/dev/null)
+                    ldev=$(${losetup_bin} -f 2>/dev/null || losetup -f 2>/dev/null)
                     if [ -n "${ldev}" ]; then
-                        losetup "${ldev}" "${src}" 2>/dev/null || ldev=$(losetup -fs "${src}" 2>/dev/null)
+                        ${losetup_bin} "${ldev}" "${src}" 2>/dev/null || ldev=$(${losetup_bin} -fs "${src}" 2>/dev/null) || losetup "${ldev}" "${src}" 2>/dev/null
                     fi
                 fi
                 if [ -n "${ldev}" ]; then
                     mkdir -p "${dst}" 2>/dev/null
                     mount -t ext4 -o rw,noatime "${ldev}" "${dst}" 2>/dev/null
                     if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
-                        apply_permissions "${pkg}" "${dst}" "${user_id}"
+                        local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                        [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                        chown "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                        chmod 700 "${dst}" 2>/dev/null
+                        chmod -R u+rwX,go-rwx "${dst}" 2>/dev/null
+                        find "${dst}" -type d -exec chmod 700 {} + 2>/dev/null
+                        find "${dst}" -type f -exec chmod 600 {} + 2>/dev/null
+                        restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                        if [ -d "/data/data/${pkg}" ] && ! grep -qF " /data/data/${pkg} " /proc/mounts 2>/dev/null; then
+                            mount -o bind "${dst}" "/data/data/${pkg}" 2>/dev/null
+                        fi
+                        if [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}" ] && ! grep -qF " /data_mirror/data_ce/null/${user_id}/${pkg} " /proc/mounts 2>/dev/null; then
+                            mount -o bind "${dst}" "/data_mirror/data_ce/null/${user_id}/${pkg}" 2>/dev/null
+                        fi
+                        # Self-healing: ensure direct boot storage and ART profile directories exist to prevent Zygote crash
+                        mkdir -p "/data/user_de/${user_id}/${pkg}/cache" "/data/user_de/${user_id}/${pkg}/code_cache" 2>/dev/null
+                        chown "${app_uid}:${app_uid}" "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                        chmod 700 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                        restorecon -FR "/data/user_de/${user_id}/${pkg}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                        if [ ! -d "/data/misc/profiles/cur/${user_id}/${pkg}" ]; then
+                            mkdir -p "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                            chown "${app_uid}:${app_uid}" "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                            chmod 700 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                            chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                        fi
                         log_info "  [${pkg}] Loop container mounted: ${ldev} -> ${dst}"
                         entries=$((entries + 1))
                         continue
@@ -871,6 +904,29 @@ load_mountpoints() {
         # NEVER pass to bind_mount_to_runtime_namespaces
         case "${cat}" in
             APP_PACKAGE)
+                # Dynamic APK target resolution & lib subfolder verification
+                local real_apk_path
+                real_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed 's/^package://')
+                if [ -n "${real_apk_path}" ]; then
+                    local real_apk_dir
+                    real_apk_dir=$(dirname "${real_apk_path}")
+                    if echo "${dst}" | grep -q "/lib"; then
+                        # If parent app package is already mounted, do not double-mount lib!
+                        if grep -qF " ${real_apk_dir} " /proc/mounts 2>/dev/null; then
+                            log_info "  [${pkg}] App package already mounted at ${real_apk_dir}; skipping redundant lib mount"
+                            entries=$((entries + 1))
+                            continue
+                        fi
+                        if [ -d "${src}/arm64" ] && [ -d "${real_apk_dir}/lib/arm64" ]; then
+                            dst="${real_apk_dir}/lib/arm64"
+                            src="${src}/arm64"
+                        elif [ -d "${real_apk_dir}/lib" ]; then
+                            dst="${real_apk_dir}/lib"
+                        fi
+                    else
+                        dst="${real_apk_dir}"
+                    fi
+                fi
                 mkdir -p "${dst}" 2>/dev/null
                 mount -o bind "${src}" "${dst}" 2>/dev/null
                 mount --make-shared "${dst}" 2>/dev/null
