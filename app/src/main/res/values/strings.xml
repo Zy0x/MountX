@@ -1211,6 +1211,21 @@
     <!-- Storage Headroom Advisory -->
     <string name="dashboard_low_headroom_warning">Low MicroSD headroom (&lt; 3 GB free). In-game patch updates may fail.</string>
     <string name="dashboard_low_headroom_warning_usb">Low USB storage headroom (&lt; 3 GB free). In-game patch updates may fail.</string>
+    <!-- System Integrity & Dynamic Storage Recovery -->
+    <string name="error_no_sd_directory_found">No external storage directory found to mount. Please ensure application data has been moved to external storage.</string>
+    <string name="error_game_data_not_found">Neither data nor obb source path exists on external storage for %1$s</string>
+    <string name="candidate_private_desc">Private application internal data. Large directories (&gt; 1 GB) use a Virtual Ext4 Loop container.</string>
+    <string name="candidate_private_locked_desc">Locked: Private data under 1 GB must remain on internal flash to preserve SQLite WAL database integrity.</string>
+    <string name="candidate_private_locked_reason">Directory size under 1 GB is locked for database stability</string>
+    <string name="candidate_app_package_desc">APK binaries and native libraries (.so) in /data/app/. Requires a Linux-compatible MicroSD partition (ext4/f2fs) and SELinux protection.</string>
+    <string name="trim_success_message">Unused block trimming completed successfully.</string>
+    <string name="format_unmount_failed">Failed to unmount active storage mounts for %1$s. Partition is busy.</string>
+    <string name="repartition_fdisk_fallback">sgdisk syntax unsupported by current ROM. Successfully fell back to busybox fdisk.</string>
+    <string name="notif_recovering_mounts">System restart detected. Recovering active mounts in background...</string>
+    <string name="category_data_game">Game Data</string>
+    <string name="category_data_private">Private Data</string>
+    <string name="trim_warning_needs_fsck">Warning: One or more partitions require filesystem integrity repair (fsck).</string>
+    <string name="trim_not_supported">Partition driver or filesystem does not currently support TRIM/discard operations.</string>
 </resources>
 
 

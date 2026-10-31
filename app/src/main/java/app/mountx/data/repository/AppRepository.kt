@@ -31,11 +31,14 @@ import kotlinx.coroutines.sync.withLock
 import app.mountx.data.db.AppDao
 import app.mountx.data.model.AppEntry
 import app.mountx.service.MountNotificationManager
+import dagger.hilt.android.qualifiers.ApplicationContext
+import app.mountx.R
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class AppRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val appDao: AppDao,
     private val mountManager: MountManager,
     private val diskCatalogManager: DiskCatalogManager,
@@ -1643,7 +1646,7 @@ class AppRepository @Inject constructor(
                     id = "private_internal",
                     category = app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL,
                     title = "Private Data (/data/data)",
-                    description = "Data internal aplikasi. Folder gajah (> 1 GB) menggunakan Virtual Ext4 Loop Container.",
+                    description = context.getString(R.string.candidate_private_desc),
                     relativePath = "data/user/0/$packageName",
                     internalPath = privateDataDir,
                     sdPath = "$sdBase/.mountx/containers/${packageName}_data.img",
@@ -1660,14 +1663,14 @@ class AppRepository @Inject constructor(
                     id = "private_internal_locked",
                     category = app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL,
                     title = "Private Data (/data/data)",
-                    description = "Terkunci: Data internal < 1 GB wajib berada di internal flash untuk mencegah error SQLite WAL database lock.",
+                    description = context.getString(R.string.candidate_private_locked_desc),
                     relativePath = "data/user/0/$packageName",
                     internalPath = privateDataDir,
                     sdPath = "$sdBase/.mountx/containers/${packageName}_data.img",
                     sizeBytes = privateSize,
                     defaultEnabled = false,
                     isLocked = true,
-                    lockReason = "Ukuran < 1 GB dikunci demi keselamatan database",
+                    lockReason = context.getString(R.string.candidate_private_locked_reason),
                     childItems = emptyList()
                 )
             )
@@ -1681,7 +1684,7 @@ class AppRepository @Inject constructor(
                     id = "app_package_experimental",
                     category = app.mountx.data.model.MountPointCategory.APP_PACKAGE,
                     title = "App Package (APK & Native Libs)",
-                    description = "Biner APK dan file library (.so) di /data/app/. Membutuhkan partisi MicroSD bertipe Linux (ext4/f2fs) dan proteksi SELinux.",
+                    description = context.getString(R.string.candidate_app_package_desc),
                     relativePath = "data/app/$packageName",
                     internalPath = apkDir,
                     sdPath = "$sdBase/Android/app/$packageName",

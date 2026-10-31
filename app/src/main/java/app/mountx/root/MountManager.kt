@@ -1,5 +1,8 @@
 package app.mountx.root
 
+import android.content.Context
+import app.mountx.R
+
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountPointCategory
@@ -35,7 +38,11 @@ class MultiDiskCollisionException(
  * Handles mounting and unmounting game & application data directories using bind mounts
  * and Virtual Ext4 Loop Containers for Universal Smart Directory Classification.
  */
-class MountManager {
+class MountManager(
+    private val context: Context? = null
+) {
+
+    private fun getAppContext(): Context = context ?: app.mountx.MountXApp.instance
 
     /** Resolves all active Android user IDs (User 0, Dual Apps 999, Work Profile 10+, etc.) */
     suspend fun getActiveUserIds(): List<Int> = withContext(Dispatchers.IO) {
@@ -392,7 +399,7 @@ class MountManager {
                     }
                 }
                 if (totalMountedTargets == 0) {
-                    throw IllegalStateException("Tidak ada direktori MicroSD yang ditemukan untuk di-mount. Pastikan data game sudah dipindahkan ke MicroSD.")
+                    throw IllegalStateException(getAppContext().getString(R.string.error_no_sd_directory_found))
                 }
             } else {
                 // ── LEGACY FALLBACK (Mode PKG or FILES) ──
@@ -411,7 +418,7 @@ class MountManager {
                 val hasObb = RootShell.exists(obbSrcPath)
 
                 if (!hasData && !hasObb) {
-                    error("Neither data nor obb source path exists on MicroSD for ${game.packageName}")
+                    error(getAppContext().getString(R.string.error_game_data_not_found, game.packageName))
                 }
 
                 if (game.mode == MountMode.FILES) {
@@ -518,7 +525,7 @@ class MountManager {
             onProgress?.invoke(
                 OperationProgress(
                     type = OperationType.MOUNT,
-                    title = "Mengaitkan Data Game (Mount)",
+                    title = getAppContext().getString(R.string.op_title_mount),
                     subtitle = "${game.displayName} • ${game.packageName}",
                     isFinished = true,
                     isSuccess = false,
@@ -687,14 +694,15 @@ class MountManager {
     ): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
+                val ctx = getAppContext()
                 val steps = listOf(
-                    "Menghentikan Proses Aplikasi",
-                    "Melepaskan Kaitan VFS Namespaces",
-                    "Memulihkan Konteks SELinux",
-                    "Pelepasan Selesai"
+                    ctx.getString(R.string.op_unmount_step_stopping),
+                    ctx.getString(R.string.op_unmount_step_unmounting),
+                    ctx.getString(R.string.op_unmount_step_restoring_context),
+                    ctx.getString(R.string.op_unmount_step_finished)
                 )
                 val opType = OperationType.UNMOUNT
-                val title = "Melepaskan Kaitan (Unmount)"
+                val title = ctx.getString(R.string.op_title_unmount)
                 val subtitle = "${game.displayName} • ${game.packageName}"
 
                 // Step 0: Stop app
@@ -831,7 +839,7 @@ class MountManager {
                 onProgress?.invoke(
                     OperationProgress(
                         type = OperationType.UNMOUNT,
-                        title = "Melepaskan Kaitan (Unmount)",
+                        title = getAppContext().getString(R.string.op_title_unmount),
                         subtitle = "${game.displayName} • ${game.packageName}",
                         isFinished = true,
                         isSuccess = false,
@@ -934,7 +942,7 @@ class MountManager {
             onProgress?.invoke(
                 OperationProgress(
                     type = OperationType.UNMOUNT,
-                    title = "Melepaskan Kaitan Kategori",
+                    title = getAppContext().getString(R.string.op_title_unmount),
                     subtitle = "${game.displayName} • ${points.size} Kategori",
                     isFinished = true,
                     isSuccess = false,

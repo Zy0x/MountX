@@ -1115,6 +1115,15 @@ mount_watchdog() {
         fi
 
         if [ ${soft_restart} -eq 1 ]; then
+            log_warn "[Watchdog] Soft restart recovery: pre-emptively stopping mounted app processes..."
+            if [ -f "${MOUNTPOINTS_FILE}" ]; then
+                while IFS='|' read -r _p _rest || [ -n "${_p}" ]; do
+                    case "${_p}" in
+                        ""|\#*) continue ;;
+                        *) am force-stop "${_p}" 2>/dev/null ;;
+                    esac
+                done < "${MOUNTPOINTS_FILE}"
+            fi
             log_warn "[Watchdog] Soft restart recovery: waiting for framework (AMS/PMS) and storage readiness..."
             wait_for_framework
 

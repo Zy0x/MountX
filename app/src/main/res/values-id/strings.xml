@@ -1195,6 +1195,21 @@
     <!-- Storage Headroom Advisory -->
     <string name="dashboard_low_headroom_warning">Sisa ruang MicroSD menipis (&lt; 3 GB). Update patch di dalam game mungkin gagal.</string>
     <string name="dashboard_low_headroom_warning_usb">Sisa ruang USB menipis (&lt; 3 GB). Update patch di dalam game mungkin gagal.</string>
+    <!-- System Integrity & Dynamic Storage Recovery -->
+    <string name="error_no_sd_directory_found">Tidak ada direktori MicroSD yang ditemukan untuk di-mount. Pastikan data aplikasi sudah dipindahkan ke MicroSD.</string>
+    <string name="error_game_data_not_found">Jalur data maupun obb tidak ditemukan di penyimpanan eksternal untuk %1$s</string>
+    <string name="candidate_private_desc">Data internal aplikasi. Folder besar (&gt; 1 GB) menggunakan Virtual Ext4 Loop Container.</string>
+    <string name="candidate_private_locked_desc">Terkunci: Data internal &lt; 1 GB wajib berada di internal flash demi stabilitas database SQLite WAL.</string>
+    <string name="candidate_private_locked_reason">Ukuran &lt; 1 GB dikunci demi keselamatan database</string>
+    <string name="candidate_app_package_desc">Biner APK dan file library (.so) di /data/app/. Membutuhkan partisi MicroSD bertipe Linux (ext4/f2fs) dan proteksi SELinux.</string>
+    <string name="trim_success_message">Proses pembebasan blok memori tidak terpakai selesai.</string>
+    <string name="format_unmount_failed">Gagal melepas kaitan aktif untuk %1$s. Partisi sedang sibuk.</string>
+    <string name="repartition_fdisk_fallback">Sintaks sgdisk tidak didukung oleh ROM saat ini. Berhasil beralih otomatis ke busybox fdisk.</string>
+    <string name="notif_recovering_mounts">Mendeteksi restart sistem. Memulihkan kaitan MicroSD di latar belakang...</string>
+    <string name="category_data_game">Data Game</string>
+    <string name="category_data_private">Data Privat</string>
+    <string name="trim_warning_needs_fsck">Peringatan: Satu atau lebih partisi memerlukan perbaikan integritas filesystem (fsck).</string>
+    <string name="trim_not_supported">Driver partisi atau filesystem saat ini tidak mendukung operasi TRIM/discard.</string>
 </resources>
 
 

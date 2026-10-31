@@ -12,6 +12,7 @@ import app.mountx.R
 import app.mountx.data.db.GameDao
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountStatus
+import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
 import app.mountx.util.FormatUtils
@@ -129,6 +130,33 @@ class MountNotificationManager @Inject constructor(
                     context, 0, openIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
+
+                // Real-time VFS Mount Integrity & Soft-Restart Recovery
+                val sampleGame = mountedGames.firstOrNull()
+                val isKernelMountAlive = if (sampleGame != null) {
+                    val relPath = if (sampleGame.mountPoints.isNotEmpty()) {
+                        sampleGame.mountPoints.firstOrNull { it.enabled }?.targetPath?.let { MountManager.extractRelativePath(it) } ?: "Android/data/${sampleGame.packageName}"
+                    } else {
+                        "Android/data/${sampleGame.packageName}"
+                    }
+                    val mountCount = RootShell.execForOutput("grep -c \"$relPath\" /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
+                    mountCount > 0
+                } else true
+
+                if (!isKernelMountAlive && !RootShell.exists("/dev/.mountx_unmounted")) {
+                    AppLogger.warn("Notification", "Active mount notification detected VFS mount loss (soft restart). Triggering instant background recovery...")
+                    val recoveringBuilder = NotificationCompat.Builder(context, CHANNEL_ACTIVE_STATUS)
+                        .setSmallIcon(R.drawable.ic_notification)
+                        .setColor(0xFFFF9100.toInt())
+                        .setContentTitle(context.getString(R.string.notif_recovering_mounts))
+                        .setContentText(context.getString(R.string.notif_mounting_games))
+                        .setOngoing(true)
+                        .setContentIntent(openPendingIntent)
+                    notificationManager.notify(ACTIVE_NOTIF_ID, recoveringBuilder.build())
+
+                    MountService.startMountAll(context)
+                    return@launch
+                }
 
                 val unmountAllIntent = Intent(context, MountActionReceiver::class.java).apply {
                     action = MountActionReceiver.ACTION_UNMOUNT_ALL

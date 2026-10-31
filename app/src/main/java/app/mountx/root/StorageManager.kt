@@ -1,5 +1,8 @@
 package app.mountx.root
 
+import android.content.Context
+import app.mountx.R
+
 import app.mountx.data.model.BenchmarkResult
 import app.mountx.data.model.DiskHardwareDetails
 import app.mountx.data.model.DiskHealthStatus
@@ -78,7 +81,10 @@ data class StorageInspectionResult(
  * Handles device discovery, mounting/unmounting partitions, formatting (f2fs/ext4/etc),
  * and migrating physical game data between internal storage and MicroSD.
  */
-class StorageManager {
+class StorageManager(
+    private val context: Context? = null
+) {
+    private fun getAppContext(): Context = context ?: app.mountx.MountXApp.instance
 
     @Volatile
     private var activeTransferPid: Int? = null
@@ -1534,8 +1540,30 @@ class StorageManager {
         label: String = "sdext2"
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            // Unmount first if currently mounted
-            RootShell.exec("umount -f \"$blockDevice\" 2>/dev/null")
+            // 1. Comprehensive unmount of all mountpoints referencing this block device
+            val procMounts = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
+            for (line in procMounts) {
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size >= 2) {
+                    val dev = parts[0]
+                    val mnt = parts[1]
+                    if (dev == blockDevice || dev.startsWith(blockDevice) || mnt.contains(blockDevice.substringAfterLast('/'))) {
+                        RootShell.exec("umount -f -l \"$mnt\" 2>/dev/null")
+                    }
+                }
+            }
+
+            // 2. Kill any processes keeping open handles on the block device
+            RootShell.exec("fuser -k -9 \"$blockDevice\" 2>/dev/null")
+
+            // 3. Issue Vold / Framework unmount request to drop Android storage locks
+            RootShell.exec("sm unmount \"$blockDevice\" 2>/dev/null")
+
+            // 4. Forceful lazy unmount directly on the block device
+            RootShell.exec("umount -f -l \"$blockDevice\" 2>/dev/null")
+
+            // 5. Brief settle delay for kernel VFS release
+            delay(250)
 
             val cmd = when (fsType) {
                 FilesystemType.F2FS -> "(make_f2fs -l \"$label\" -f \"$blockDevice\" 2>&1 || mkfs.f2fs -l \"$label\" -f \"$blockDevice\" 2>&1)"
@@ -1575,29 +1603,36 @@ class StorageManager {
             // 2. Wipe existing partition table signatures
             RootShell.exec("sgdisk -Z \"$diskPath\" 2>/dev/null || wipefs -a \"$diskPath\" 2>/dev/null || dd if=/dev/zero of=\"$diskPath\" bs=1M count=8 conv=notrunc 2>/dev/null")
 
-            // 3. Create fresh partition table using sgdisk (or fdisk fallback)
+            // 3. Create fresh partition table using sgdisk (or seamless busybox fdisk fallback)
             val sgdiskCheck = RootShell.exec("which sgdisk 2>/dev/null").output.trim()
+            var sgdiskSuccess = false
+
             if (sgdiskCheck.isNotBlank()) {
-                RootShell.exec("sgdisk -o \"$diskPath\"")
+                val zapRes = RootShell.exec("sgdisk -o \"$diskPath\" 2>/dev/null")
+                if (zapRes.isSuccess) {
+                    var allCreated = true
+                    partitions.forEachIndexed { index, cfg ->
+                        val partNum = index + 1
+                        val isLast = index == partitions.size - 1
 
-                partitions.forEachIndexed { index, cfg ->
-                    val partNum = index + 1
-                    val isLast = index == partitions.size - 1
+                        val typeCode = when (cfg.fsType) {
+                            FilesystemType.FAT32, FilesystemType.EXFAT -> "0700"
+                            else -> "8300"
+                        }
 
-                    // Type code: 0700 for FAT32/exFAT (Basic Data), 8300 for Linux filesystem (F2FS/Ext4)
-                    val typeCode = when (cfg.fsType) {
-                        FilesystemType.FAT32, FilesystemType.EXFAT -> "0700"
-                        else -> "8300"
+                        val sizeParam = if (isLast) "0" else "+${cfg.sizeKb}K"
+                        val createCmd = "sgdisk -n $partNum:0:$sizeParam -t $partNum:$typeCode -c $partNum:\"${cfg.label}\" \"$diskPath\""
+                        val res = RootShell.exec(createCmd)
+                        if (!res.isSuccess || res.output.contains("invalid option") || res.output.contains("Error")) {
+                            allCreated = false
+                        }
                     }
-
-                    val sizeParam = if (isLast) "0" else "+${cfg.sizeKb}K"
-                    val createCmd = "sgdisk -n $partNum:0:$sizeParam -t $partNum:$typeCode -c $partNum:\"${cfg.label}\" \"$diskPath\""
-                    val res = RootShell.exec(createCmd)
-                    if (!res.isSuccess) {
-                        error("Failed creating partition $partNum via sgdisk: ${res.output}")
-                    }
+                    sgdiskSuccess = allCreated
                 }
-            } else {
+            }
+
+            if (!sgdiskSuccess) {
+                AppLogger.warn("StorageManager", "sgdisk unavailable or unsupported on custom ROM. Falling back to busybox fdisk script...")
                 // Fallback via fdisk script
                 val fdiskScript = StringBuilder("o\\n") // create new empty DOS partition table
                 var currentPart = 1
@@ -1610,7 +1645,7 @@ class StorageManager {
                         val sizeM = (cfg.sizeKb / 1024L).coerceAtLeast(1L)
                         fdiskScript.append("+$sizeM" + "M\\n")
                     }
-                    if (cfg.fsType == FilesystemType.FAT32) {
+                    if (cfg.fsType == FilesystemType.FAT32 || cfg.fsType == FilesystemType.EXFAT) {
                         fdiskScript.append("t\\n")
                         if (partitions.size > 1) fdiskScript.append("$currentPart\\n")
                         fdiskScript.append("c\\n")
@@ -1631,7 +1666,7 @@ class StorageManager {
             // 5. Format each newly created partition
             partitions.forEachIndexed { index, cfg ->
                 val partNum = index + 1
-                val partDev = "${diskPath}p$partNum"
+                val partDev = if (diskPath.last().isDigit()) "${diskPath}p$partNum" else "$diskPath$partNum"
 
                 var attempts = 0
                 while (attempts < 6 && !RootShell.exists(partDev)) {
@@ -2133,12 +2168,12 @@ class StorageManager {
                 val sourcePath = point.sourcePath
                 val targetPath = point.targetPath
                 val categoryName = when (point.category) {
-                    MountPointCategory.EXTERNAL_DATA -> "Data Game"
+                    MountPointCategory.EXTERNAL_DATA -> getAppContext().getString(R.string.category_data_game)
                     MountPointCategory.OBB_STORAGE -> "OBB Resource"
                     MountPointCategory.GAME_ASSETS -> "Game Assets"
                     MountPointCategory.MEDIA_DOWNLOADS -> "Media & Downloads"
                     MountPointCategory.CACHE_SHADERS -> "Cache & Shaders"
-                    MountPointCategory.PRIVATE_INTERNAL -> "Data Privat"
+                    MountPointCategory.PRIVATE_INTERNAL -> getAppContext().getString(R.string.category_data_private)
                     MountPointCategory.APP_PACKAGE -> "Package App"
                     MountPointCategory.CUSTOM -> "Custom Path"
                 }
@@ -3013,9 +3048,9 @@ class StorageManager {
             }
 
             val summary = when {
-                anyNeedsCleaning -> "Peringatan: Satu atau lebih partisi memerlukan perbaikan integritas filesystem (fsck)."
-                results.all { it.notImplemented } -> "Driver partisi atau filesystem saat ini tidak mendukung operasi TRIM/discard."
-                else -> "Proses pembebasan blok memori tidak terpakai selesai."
+                anyNeedsCleaning -> getAppContext().getString(R.string.trim_warning_needs_fsck)
+                results.all { it.notImplemented } -> getAppContext().getString(R.string.trim_not_supported)
+                else -> getAppContext().getString(R.string.trim_success_message)
             }
 
             GlobalTrimReport(

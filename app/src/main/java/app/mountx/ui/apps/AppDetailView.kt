@@ -742,7 +742,7 @@ private fun buildTargetMountPoints(
                     "media" -> pt.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS
                     "apk" -> pt.resolveCategory() == MountPointCategory.APP_PACKAGE
                     "lib" -> pt.targetPath.contains("/lib", ignoreCase = true)
-                    "private" -> pt.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+                    "private", "private_internal" -> pt.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
                     "cache" -> pt.resolveCategory() == MountPointCategory.CACHE_SHADERS
                     else -> pt.id == catId
                 }
@@ -819,12 +819,14 @@ private fun buildTargetMountPoints(
                     targetPath = "/data/app/$pkg/lib",
                     enabled = true
                 )
-                "private" -> MountPointConfig(
+                "private", "private_internal" -> MountPointConfig(
                     id = "private_$pkg",
                     category = MountPointCategory.PRIVATE_INTERNAL,
-                    sourcePath = "$sdBase/MountX/data/$pkg",
-                    targetPath = "/data/data/$pkg",
-                    enabled = true
+                    sourcePath = "$sdBase/.mountx/containers/${pkg}_data.img",
+                    targetPath = "/data/user/0/$pkg",
+                    enabled = true,
+                    isVirtualContainer = true,
+                    containerImgPath = "$sdBase/.mountx/containers/${pkg}_data.img"
                 )
                 "cache" -> MountPointConfig(
                     id = "cache_$pkg",
