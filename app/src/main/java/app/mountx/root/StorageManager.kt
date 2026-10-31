@@ -1768,9 +1768,9 @@ class StorageManager(
             AppLogger.warn("StorageManager", "ANTI-DELETION WARNING: Both source ($sourcePathToClean) and destination ($destPathPreserved) share block device $devSource.")
         }
 
-        // Passed all guards: clean directory contents
+        // Passed all guards: clean directory contents completely without leaving residual files
         AppLogger.info("StorageManager", "Safe clean approved for $sourcePathToClean (Verified independent from $destPathPreserved)")
-        RootShell.exec("rm -rf \"$sourcePathToClean\"/* \"$sourcePathToClean\"/.[!.]* 2>/dev/null")
+        RootShell.exec("find \"$sourcePathToClean\" -mindepth 1 -delete 2>/dev/null || rm -rf \"$sourcePathToClean\"/* \"$sourcePathToClean\"/.[0-9a-zA-Z]* 2>/dev/null")
         return true
     }
 
@@ -1911,9 +1911,11 @@ class StorageManager(
             val tarCmd = if (busyboxBin != null) "$busyboxBin tar" else "tar"
             """
                 export PATH="/data/adb/modules/MountX/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:${'$'}PATH"
+                echo -900 > "/proc/${'$'}${'$'}/oom_score_adj" 2>/dev/null || true
                 mkdir -p "$destDir"
                 ( ( $tarCmd -cf - -C "$sourceDir" $derefFlag . 2>"$errFile" | $tarCmd -xf - -C "$destDir" $extractFlags 2>>"$errFile" ) || ( cp -a -f "$sourceDir/." "$destDir/" 2>>"$errFile" ) ) &
                 CP_PID=${'$'}!
+                echo -900 > "/proc/${'$'}CP_PID/oom_score_adj" 2>/dev/null || true
                 echo "STARTED:${'$'}CP_PID"
                 
                 while kill -0 ${'$'}CP_PID 2>/dev/null; do
@@ -1921,7 +1923,7 @@ class StorageManager(
                     if [ -n "${'$'}SZ_KB" ]; then
                         echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
                     fi
-                    sleep 0.3
+                    sleep 1.0
                 done
                 
                 wait ${'$'}CP_PID
@@ -1936,9 +1938,11 @@ class StorageManager(
             }
             """
                 export PATH="/data/adb/modules/MountX/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:${'$'}PATH"
+                echo -900 > "/proc/${'$'}${'$'}/oom_score_adj" 2>/dev/null || true
                 mkdir -p "$destDir"
                 $baseCpCmd 2>"$errFile" &
                 CP_PID=${'$'}!
+                echo -900 > "/proc/${'$'}CP_PID/oom_score_adj" 2>/dev/null || true
                 echo "STARTED:${'$'}CP_PID"
                 
                 HAS_PROC_IO=0
@@ -1953,7 +1957,7 @@ class StorageManager(
                         if [ -n "${'$'}W_BYTES" ]; then
                             echo "PROGRESS_BYTES:${'$'}W_BYTES"
                         fi
-                        sleep 0.3
+                        sleep 0.5
                     else
                         SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
                         if [ -n "${'$'}SZ_KB" ]; then
@@ -1980,10 +1984,6 @@ class StorageManager(
                 val trimmed = line.trim()
                 if (trimmed.startsWith("STARTED:")) {
                     activeTransferPid = trimmed.removePrefix("STARTED:").trim().toIntOrNull()
-                    activeTransferPid?.let { pid ->
-                        // Prevent Android Low Memory Killer from interrupting migration subshell
-                        Shell.cmd("echo -900 > /proc/$pid/oom_score_adj 2>/dev/null").exec()
-                    }
                 } else if (trimmed.startsWith("PROGRESS_BYTES:")) {
                     val b = trimmed.removePrefix("PROGRESS_BYTES:").trim().toLongOrNull()
                     if (b != null && b > 0L) {
@@ -2288,8 +2288,12 @@ class StorageManager(
                                     } else {
                                         RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$tempMount\" 2>/dev/null")
                                     }
-                                    if (!RootShell.isMountpoint(targetPath)) {
-                                        RootShell.exec("rm -rf \"$targetPath\"/* \"$targetPath\"/.[!.]* 2>/dev/null")
+                                    val realDataDir = "/data/data/$packageName"
+                                    if (!RootShell.isMountpoint(targetPath) && !RootShell.isMountpoint(realDataDir)) {
+                                        RootShell.exec("find \"$targetPath\" -mindepth 1 -delete 2>/dev/null || rm -rf \"$targetPath\"/* \"$targetPath\"/.[0-9a-zA-Z]* 2>/dev/null")
+                                        if (RootShell.exists(realDataDir) && realDataDir != targetPath && !RootShell.isMountpoint(realDataDir)) {
+                                            RootShell.exec("find \"$realDataDir\" -mindepth 1 -delete 2>/dev/null || rm -rf \"$realDataDir\"/* \"$realDataDir\"/.[0-9a-zA-Z]* 2>/dev/null")
+                                        }
                                     }
                                 }
                                 RootShell.exec("sync")

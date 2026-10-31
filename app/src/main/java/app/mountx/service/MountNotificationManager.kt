@@ -491,11 +491,19 @@ class MountNotificationManager @Inject constructor(
         }
     }
 
+    private var lastProgressNotificationTime = 0L
+
     /**
      * Updates an ongoing notification with real-time transfer progress (speed, ETA, percent).
      * Gives users full visibility even when MountX is in background or screen is locked.
+     * Throttles IPC notifications to at most once per 500ms to prevent Android NotificationManagerService ANR.
      */
     fun postOperationProgressNotification(progress: app.mountx.data.model.OperationProgress) {
+        val now = System.currentTimeMillis()
+        if (!progress.isFinished && (now - lastProgressNotificationTime < 500L)) {
+            return
+        }
+        lastProgressNotificationTime = now
         scope.launch {
             try {
                 createNotificationChannels()

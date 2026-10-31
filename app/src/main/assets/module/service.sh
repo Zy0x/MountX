@@ -735,7 +735,20 @@ load_mountpoints() {
                 local exp_dev
                 exp_dev=$(blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
                 [ -z "${exp_dev}" ] && exp_dev=$(toybox blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
-                if [ -n "${exp_dev}" ] && [ -n "${cur_dev}" ] && [ "${cur_dev}" != "${exp_dev}" ]; then
+                
+                # Check if cur_dev is a loop device backing the container on this disk
+                local is_loop_match=0
+                case "${cur_dev}" in
+                    /dev/block/loop*|/dev/loop*)
+                        local loop_bf
+                        loop_bf=$(cat "/sys/block/$(basename "${cur_dev}")/loop/backing_file" 2>/dev/null)
+                        if [ -n "${loop_bf}" ] && [ "${loop_bf}" = "${src}" ]; then
+                            is_loop_match=1
+                        fi
+                        ;;
+                esac
+
+                if [ "${is_loop_match}" = "0" ] && [ -n "${exp_dev}" ] && [ -n "${cur_dev}" ] && [ "${cur_dev}" != "${exp_dev}" ]; then
                     log_warn "  [${pkg}] Target ${dst} mounted from ${cur_dev}, but configured UUID=${disk_uuid} expects ${exp_dev}. Unmounting stale device mount..."
                     umount -f -l "${dst}" 2>/dev/null
                 elif [ -n "${rel}" ] && ! grep -qF " /storage/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null && ! grep -qF " /mnt/runtime/default/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null; then
@@ -761,7 +774,7 @@ load_mountpoints() {
         # ── Smart Multi-Disk Auto-Mount ────────────────────────────────────────
         # If source path doesn't exist but disk_uuid is present, try to auto-mount
         # the target disk using its UUID so the source becomes accessible.
-        if [ ! -d "${src}" ] && [ -n "${disk_uuid}" ]; then
+        if [ ! -e "${src}" ] && [ -n "${disk_uuid}" ]; then
             log_info "  [${pkg}] Source missing: ${src}; attempting auto-mount via UUID=${disk_uuid}"
 
             # Derive the disk mount base from the source path
@@ -797,10 +810,39 @@ load_mountpoints() {
         fi
 
         # Re-check after potential auto-mount
-        if [ ! -d "${src}" ]; then
-            log_warn "  [${pkg}] Source directory still missing after auto-mount attempt: ${src}; skipping."
+        if [ ! -e "${src}" ]; then
+            log_warn "  [${pkg}] Source path still missing after auto-mount attempt: ${src}; skipping."
             continue
         fi
+
+        # If source is a virtual ext4 loop container (.img)
+        case "${src}" in
+            *.img)
+                local ldev=""
+                for bf in /sys/block/loop*/loop/backing_file; do
+                    if [ -f "${bf}" ] && [ "$(cat "${bf}" 2>/dev/null)" = "${src}" ]; then
+                        ldev="/dev/block/$(basename "$(dirname "$(dirname "${bf}")")")"
+                        break
+                    fi
+                done
+                if [ -z "${ldev}" ]; then
+                    ldev=$(losetup -f 2>/dev/null)
+                    if [ -n "${ldev}" ]; then
+                        losetup "${ldev}" "${src}" 2>/dev/null || ldev=$(losetup -fs "${src}" 2>/dev/null)
+                    fi
+                fi
+                if [ -n "${ldev}" ]; then
+                    mkdir -p "${dst}" 2>/dev/null
+                    mount -t ext4 -o rw,noatime "${ldev}" "${dst}" 2>/dev/null
+                    if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
+                        apply_permissions "${pkg}" "${dst}" "${user_id}"
+                        log_info "  [${pkg}] Loop container mounted: ${ldev} -> ${dst}"
+                        entries=$((entries + 1))
+                        continue
+                    fi
+                fi
+                ;;
+        esac
 
         # Smart .nomedia localized scoping
         if [ "${preserve_media}" = "1" ] || [ "${cat}" = "MEDIA_DOWNLOADS" ] || [ "${cat}" = "CUSTOM" ]; then
