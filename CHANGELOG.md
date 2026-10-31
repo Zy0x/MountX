@@ -5,6 +5,35 @@ All notable changes to MountX will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [2.2.47] - 2026-10-31
+
+### Added
+- **Immortal Watchdog Daemon & Resilient Process Supervisor**:
+  - Eliminated the legacy 24-hour timeout in `service.sh`, allowing the background daemon to run continuously across multi-day device uptimes.
+  - Implemented an immortal supervisor loop that automatically detects unexpected terminations and respawns the watchdog within 3 seconds.
+  - Added rapid runtime namespace canary monitoring running in 5-second slices to detect dropped user-facing mount points and recover within <= 5 seconds.
+  - Implemented comprehensive runtime namespace sweeping before remounting, permanently eliminating `sdcardfs` cross-device link (`EXDEV`) errors that caused game storage path warnings.
+- **Storage Engine 3.0 & Multi-Storage Support**:
+  - Introduced adaptive hybrid mounting pipeline supporting MicroSD, external USB SSDs, and OTG drives.
+  - Added orphaned game data cleaner and permanent external data purging options.
+  - Added Google Play Store install protection that automatically unmounts uninstalled packages to prevent `INSTALL_FAILED_INTERNAL_ERROR`.
+- **System Integration & UX Enhancements**:
+  - Added Quick Settings Tile for one-tap mount status toggle and system monitoring.
+  - Added Android App Shortcuts for rapid game access and storage management.
+  - Implemented Safe Launch Guard with low storage headroom warnings and pre-launch integrity checks.
+  - Added native pull-to-refresh gestures across application and storage detail screens.
+  - Added clean in-app update overlay dialog with GitHub release navigation.
+
+### Changed & Improved
+- **Cold-Start & Initialization Performance**:
+  - Implemented pre-warming for the `libsu` root shell, Room database, DataStore preferences, and icon cache during app initialization for instantaneous startup.
+  - Optimized storage scan performance by batching disk probes, caching repository states, and filtering internal UFS/eMMC devices, reducing load times from 5-8s to sub-second.
+  - Eliminated process fork overhead in Zygote PID detection.
+- **Mount & Notification Synchronization**:
+  - Hardened mount propagation for Android 14 through Android 17.
+  - Enhanced real-time notification shade synchronization with active kernel mount states.
+  - Protected heavy file migrations with WakeLock and background safety checks.
+
 ## [2.2.46] - 2026-10-06
 
 ### Added
