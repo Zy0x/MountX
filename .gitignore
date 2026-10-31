@@ -12,6 +12,7 @@
 *.keystore
 *.b64
 keystore.properties
+KEYSTORE_SETUP.md
 
 # Captures
 /capture
