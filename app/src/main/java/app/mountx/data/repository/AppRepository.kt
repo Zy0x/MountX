@@ -1671,6 +1671,7 @@ class AppRepository @Inject constructor(
                     defaultEnabled = false,
                     isLocked = true,
                     lockReason = context.getString(R.string.candidate_private_locked_reason),
+                    isVirtualContainer = true,
                     childItems = emptyList()
                 )
             )

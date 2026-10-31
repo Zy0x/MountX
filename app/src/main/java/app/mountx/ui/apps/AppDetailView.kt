@@ -263,14 +263,17 @@ fun AppDetailView(
             game.mountPoints
         } else if (candidateDirectories.isNotEmpty()) {
             candidateDirectories.map { cd ->
+                val isContainer = cd.isVirtualContainer ||
+                    cd.category == app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL ||
+                    cd.sdPath.endsWith(".img")
                 MountPointConfig(
                     id = cd.id,
                     category = cd.category,
                     sourcePath = cd.sdPath,
                     targetPath = cd.internalPath,
                     enabled = cd.defaultEnabled,
-                    isVirtualContainer = cd.isVirtualContainer,
-                    containerImgPath = if (cd.isVirtualContainer) cd.sdPath else null,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = if (isContainer) cd.sdPath else null,
                     sizeBytes = cd.sizeBytes
                 )
             }
@@ -749,39 +752,53 @@ private fun buildTargetMountPoints(
             }
 
         if (existing != null) {
-            val updatedSource = when (existing.resolveCategory()) {
-                MountPointCategory.EXTERNAL_DATA -> {
+            val isContainer = existing.isEffectivelyVirtualContainer() ||
+                catId in listOf("private", "private_internal") ||
+                existing.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+            val containerPath = if (isContainer) "$sdBase/.mountx/containers/${pkg}_data.img" else null
+            val updatedSource = when {
+                isContainer -> containerPath!!
+                existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> {
                     if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
                         existing.sourcePath
                     } else {
                         resolveSdPath(sdBase, "MountX/Android/data/$pkg")
                     }
                 }
-                MountPointCategory.OBB_STORAGE -> {
+                existing.resolveCategory() == MountPointCategory.OBB_STORAGE -> {
                     if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
                         existing.sourcePath
                     } else {
                         resolveSdPath(sdBase, "MountX/Android/obb/$pkg")
                     }
                 }
-                MountPointCategory.MEDIA_DOWNLOADS -> {
+                existing.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS -> {
                     if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
                         existing.sourcePath
                     } else {
                         resolveSdPath(sdBase, "MountX/Android/media/$pkg")
                     }
                 }
-                MountPointCategory.APP_PACKAGE -> "$sdBase/MountX/app/$pkg"
-                MountPointCategory.GAME_ASSETS -> resolveSdPath(sdBase, "MountX/Android/data/$pkg/files")
+                existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> "$sdBase/MountX/app/$pkg"
+                existing.resolveCategory() == MountPointCategory.GAME_ASSETS -> resolveSdPath(sdBase, "MountX/Android/data/$pkg/files")
                 else -> existing.sourcePath
             }
-            val updatedTarget = when (existing.resolveCategory()) {
-                MountPointCategory.EXTERNAL_DATA -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/data/$pkg" else existing.targetPath
-                MountPointCategory.OBB_STORAGE -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/obb/$pkg" else existing.targetPath
-                MountPointCategory.MEDIA_DOWNLOADS -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/media/$pkg" else existing.targetPath
+            val updatedTarget = when {
+                isContainer -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg"
+                existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/data/$pkg" else existing.targetPath
+                existing.resolveCategory() == MountPointCategory.OBB_STORAGE -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/obb/$pkg" else existing.targetPath
+                existing.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/media/$pkg" else existing.targetPath
                 else -> existing.targetPath
             }
-            result.add(existing.copy(sourcePath = updatedSource, targetPath = updatedTarget, enabled = true))
+            result.add(
+                existing.copy(
+                    sourcePath = updatedSource,
+                    targetPath = updatedTarget,
+                    enabled = true,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath
+                )
+            )
         } else {
             val synthesized = when (catId) {
                 "data" -> MountPointConfig(

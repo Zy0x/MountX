@@ -1446,8 +1446,10 @@ class StorageManager(
                 // Pre-Flight Free Space Guard (Reserve 1GB safety headroom for Android OS)
                 var totalSrcBytes = 0L
                 for (point in mountPoints) {
-                    val src = if (point.isVirtualContainer) {
-                        point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
+                    val isContainer = point.isEffectivelyVirtualContainer()
+                    val src = if (isContainer) {
+                        point.containerImgPath?.ifBlank { null }
+                            ?: (if (point.sourcePath.endsWith(".img")) point.sourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
                     } else {
                         point.sourcePath
                     }
@@ -1472,8 +1474,10 @@ class StorageManager(
                     val folderName = point.targetPath.substringAfterLast('/')
                     onProgress(progressBase, "Memulihkan berkas: $folderName...")
 
-                    if (point.isVirtualContainer) {
-                        val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
+                    val isContainer = point.isEffectivelyVirtualContainer()
+                    if (isContainer) {
+                        val imgFile = point.containerImgPath?.ifBlank { null }
+                            ?: (if (point.sourcePath.endsWith(".img")) point.sourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
                         if (RootShell.exists(imgFile)) {
                             val tempMount = "/dev/mountx_temp_${packageName}"
                             RootShell.exec("mkdir -p \"$tempMount\"")
@@ -1482,6 +1486,7 @@ class StorageManager(
                                 RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
                                 RootShell.exec("mkdir -p \"${point.targetPath}\"")
                                 RootShell.exec("cp -a \"$tempMount\"/* \"${point.targetPath}\"/ 2>/dev/null")
+                                RootShell.exec("sync")
                                 RootShell.exec("umount -l \"$tempMount\"")
                                 RootShell.exec("losetup -d \"$loopDev\"")
                             }
@@ -1769,6 +1774,21 @@ class StorageManager(
         return true
     }
 
+    private suspend fun resolveBusyboxPath(): String? {
+        val candidates = listOf(
+            "/data/adb/modules/MountX/bin/busybox",
+            "/data/adb/ap/bin/busybox",
+            "/data/adb/ksu/bin/busybox",
+            "/data/adb/magisk/busybox",
+            "busybox"
+        )
+        for (candidate in candidates) {
+            val check = RootShell.exec("$candidate tar --help 2>&1 | grep -q 'Create' && echo YES || echo NO").output.trim()
+            if (check == "YES") return candidate
+        }
+        return null
+    }
+
     private suspend fun copyWithRealtimeProgress(
         sourceDir: String,
         destDir: String,
@@ -1827,7 +1847,8 @@ class StorageManager(
         checkFat32FileLimit(sourceDir, inspection.isFat32)
 
         // 2. Adaptive Engine Selection (Streaming Tar Pipeline vs Direct Block I/O)
-        val hasBusyboxTar = RootShell.exec("busybox tar --help 2>&1 | grep -q 'Create' && echo YES || echo NO").output.trim() == "YES"
+        val busyboxBin = resolveBusyboxPath()
+        val hasBusyboxTar = busyboxBin != null
         val engine = if (hasBusyboxTar && conflictStrategy != ConflictStrategy.MERGE) {
             MigrationEngineType.STREAMING_TAR
         } else {
@@ -1882,14 +1903,17 @@ class StorageManager(
         val timestamp = System.currentTimeMillis()
         val scriptFile = "/data/local/tmp/mountx_mig_$timestamp.sh"
         val exitFile = "/data/local/tmp/mountx_mig_exit_$timestamp.txt"
+        val errFile = "/data/local/tmp/mountx_mig_err_$timestamp.txt"
 
         val runnerScript = if (engine == MigrationEngineType.STREAMING_TAR) {
             val derefFlag = if (inspection.isNonPosix) "-h" else ""
             val extractFlags = if (inspection.isNonPosix) "--overwrite -o --no-same-permissions" else "--overwrite"
+            val tarCmd = busyboxBin ?: "busybox"
             """
+                export PATH="/data/adb/modules/MountX/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:${'$'}PATH"
                 mkdir -p "$destDir"
-                busybox tar -cf - -C "$sourceDir" $derefFlag . 2>/dev/null | (
-                    busybox tar -xf - -C "$destDir" $extractFlags 2>/dev/null &
+                $tarCmd tar -cf - -C "$sourceDir" $derefFlag . 2>"$errFile" | (
+                    $tarCmd tar -xf - -C "$destDir" $extractFlags 2>>"$errFile" &
                     RECV_PID=${'$'}!
                     echo "STARTED:${'$'}RECV_PID"
                     
@@ -1927,8 +1951,9 @@ class StorageManager(
                 else -> "cp -a -f \"$sourceDir/.\" \"$destDir/\""
             }
             """
+                export PATH="/data/adb/modules/MountX/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:${'$'}PATH"
                 mkdir -p "$destDir"
-                $baseCpCmd &
+                $baseCpCmd 2>"$errFile" &
                 CP_PID=${'$'}!
                 echo "STARTED:${'$'}CP_PID"
                 
@@ -1998,7 +2023,10 @@ class StorageManager(
                     AppLogger.info("StorageManager", "Recovered migration exit code from $exitFile: $copyExitCode")
                 }
             }
-            RootShell.exec("rm -f \"$scriptFile\" \"$exitFile\" 2>/dev/null")
+            val errDetail = if (copyExitCode != 0 && RootShell.exists(errFile)) {
+                RootShell.execForOutput("cat \"$errFile\" 2>/dev/null").trim()
+            } else ""
+            RootShell.exec("rm -f \"$scriptFile\" \"$exitFile\" \"$errFile\" 2>/dev/null")
             activeTransferPid = null
         }
 
@@ -2027,7 +2055,8 @@ class StorageManager(
             if (!existedInitially) {
                 RootShell.exec("rm -rf \"$destDir\"")
             }
-            error("Failed to copy $sourceDir to $destDir (exit code $copyExitCode): ${streamRes.stderr.joinToString("\n")}")
+            val fullErr = if (streamRes.stderr.isNotEmpty()) streamRes.stderr.joinToString("\n") else ""
+            error("Failed to copy $sourceDir to $destDir (exit code $copyExitCode): $fullErr")
         }
 
         // Integrity Verification: Verify destination contains data before source can be deleted
@@ -2161,6 +2190,7 @@ class StorageManager(
                 val uid = RootShell.exec(
                     "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
                 ).output.trim().toIntOrNull() ?: 10000
+                val gid = uid
 
             var accumulatedBytes = 0L
 
@@ -2231,14 +2261,16 @@ class StorageManager(
                             continue
                         }
 
-                        if (point.isVirtualContainer) {
-                            val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
+                        val isContainer = point.isEffectivelyVirtualContainer()
+                        if (isContainer) {
+                            val imgFile = point.containerImgPath?.ifBlank { null }
+                                ?: (if (point.sourcePath.endsWith(".img")) point.sourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
                             val imgParent = java.io.File(imgFile).parent ?: "$sdBase/.mountx/containers"
                             RootShell.exec("mkdir -p \"$imgParent\"")
                             if (!RootShell.exists(imgFile)) {
                                 val sizeMb = ((currentSrcSize / (1024 * 1024)) + 256).coerceAtLeast(512)
                                 RootShell.exec("dd if=/dev/zero of=\"$imgFile\" bs=1M count=0 seek=$sizeMb")
-                                RootShell.exec("mkfs.ext4 -F \"$imgFile\"")
+                                RootShell.exec("mkfs.ext4 -F \"$imgFile\" || mke2fs -F -t ext4 \"$imgFile\"")
                             }
                             val tempMount = "/dev/mountx_temp_${packageName}"
                             RootShell.exec("mkdir -p \"$tempMount\"")
@@ -2262,10 +2294,15 @@ class StorageManager(
                                         conflictStrategy = conflictStrategy,
                                         onProgress = onProgress
                                     )
+                                    accumulatedBytes += currentSrcSize
+                                    RootShell.exec("chown -R $uid:$gid \"$tempMount\" 2>/dev/null")
+                                    RootShell.exec("chmod -R 775 \"$tempMount\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$tempMount\" 2>/dev/null")
                                     if (!RootShell.isMountpoint(targetPath)) {
                                         RootShell.exec("rm -rf \"$targetPath\"/* \"$targetPath\"/.[!.]* 2>/dev/null")
                                     }
                                 }
+                                RootShell.exec("sync")
                                 RootShell.exec("umount -l \"$tempMount\"")
                                 RootShell.exec("losetup -d \"$loopDev\"")
                             }
@@ -2379,8 +2416,10 @@ class StorageManager(
                             continue
                         }
 
-                        if (point.isVirtualContainer) {
-                            val imgFile = point.containerImgPath ?: "$sdBase/.mountx/containers/${packageName}_data.img"
+                        val isContainer = point.isEffectivelyVirtualContainer()
+                        if (isContainer) {
+                            val imgFile = point.containerImgPath?.ifBlank { null }
+                                ?: (if (point.sourcePath.endsWith(".img")) point.sourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
                             if (RootShell.exists(imgFile)) {
                                 val tempMount = "/dev/mountx_temp_${packageName}"
                                 RootShell.exec("mkdir -p \"$tempMount\"")
@@ -2404,6 +2443,8 @@ class StorageManager(
                                         conflictStrategy = conflictStrategy,
                                         onProgress = onProgress
                                     )
+                                    accumulatedBytes += currentSrcSize
+                                    RootShell.exec("sync")
                                     RootShell.exec("umount -l \"$tempMount\"")
                                     RootShell.exec("losetup -d \"$loopDev\"")
                                 }

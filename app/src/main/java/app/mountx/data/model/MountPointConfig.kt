@@ -32,6 +32,17 @@ data class MountPointConfig(
     val preserveMedia: Boolean = false
 ) {
     /**
+     * Determines whether this target requires a virtual Ext4 loopback container
+     * (e.g. for /data/data or .img container files).
+     */
+    fun isEffectivelyVirtualContainer(): Boolean {
+        return isVirtualContainer ||
+                resolveCategory() == MountPointCategory.PRIVATE_INTERNAL ||
+                sourcePath.endsWith(".img") ||
+                (!containerImgPath.isNullOrBlank())
+    }
+
+    /**
      * Resolves normalized category based on targetPath and ID to prevent misclassification
      * (e.g., obb paths labeled as GAME_ASSETS).
      */
