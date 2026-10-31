@@ -105,7 +105,7 @@ object ModuleManager {
                 rm -f $MODULE_DIR/disable $MODULE_DIR/remove
                 chmod -R 755 $MODULE_DIR
                 chmod 644 $MODULE_DIR/module.prop $MODULE_DIR/config.conf $MODULE_DIR/banner.png 2>/dev/null || true
-                chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh $MODULE_DIR/customize.sh 2>/dev/null || true
+                chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh $MODULE_DIR/customize.sh $MODULE_DIR/post-fs-data.sh 2>/dev/null || true
                 if [ -d "$MODULE_DIR/bin" ]; then
                     chmod -R 755 "$MODULE_DIR/bin" 2>/dev/null || true
                     if [ -f "$MODULE_DIR/bin/busybox" ]; then

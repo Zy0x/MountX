@@ -91,9 +91,18 @@ log_warn()  { log "WARN " "$@"; }
 log_error() { log "ERROR" "$@"; }
 
 # ── Initialise log for this boot ──────────────────────────────────────────────
+# Read dynamic version from module.prop
+MOD_VER=$(grep -E '^version=' "${MODULE_DIR}/module.prop" 2>/dev/null | cut -d= -f2 | tr -d '\r\n')
+[ -z "${MOD_VER}" ] && MOD_VER="v2.2.47"
+
+# Log rotation: prevent infinite log growth (> 2MB)
+if [ -f "${LOG_FILE}" ] && [ "$(stat -c%s "${LOG_FILE}" 2>/dev/null || echo 0)" -gt 2097152 ]; then
+    tail -n 500 "${LOG_FILE}" > "${LOG_FILE}.tmp" 2>/dev/null && mv -f "${LOG_FILE}.tmp" "${LOG_FILE}" 2>/dev/null
+fi
+
 {
     echo "============================================================"
-    echo " MountX service started (v2.2.39) — $(date)"
+    echo " MountX service started (${MOD_VER}) — $(date)"
     echo "============================================================"
 } >> "${LOG_FILE}"
 
@@ -405,6 +414,20 @@ bind_mount_to_runtime_namespaces() {
     local pkg="$3"
     local user_id="$4"
     [ -z "${user_id}" ] && user_id="0"
+
+    case "${dst}" in
+        /storage/emulated/*|/data/media/*|/sdcard/*|*/Android/*)
+            ;;
+        *)
+            # Non-emulated system destination (e.g. /data/app, /data/user): mount directly to dst only!
+            su -mm -c "
+                mkdir -p \"${dst}\" 2>/dev/null
+                mount -o bind \"${src}\" \"${dst}\" 2>/dev/null
+                mount --make-shared \"${dst}\" 2>/dev/null
+            "
+            return 0
+            ;;
+    esac
 
     local app_uid=""
     if [ -n "${pkg}" ]; then
@@ -841,6 +864,31 @@ load_mountpoints() {
                         continue
                     fi
                 fi
+                ;;
+        esac
+
+        # APP_PACKAGE and CACHE_SHADERS must be bind-mounted directly to dst
+        # NEVER pass to bind_mount_to_runtime_namespaces
+        case "${cat}" in
+            APP_PACKAGE)
+                mkdir -p "${dst}" 2>/dev/null
+                mount -o bind "${src}" "${dst}" 2>/dev/null
+                mount --make-shared "${dst}" 2>/dev/null
+                chown -R 1000:1000 "${dst}" 2>/dev/null
+                chmod -R 755 "${dst}" 2>/dev/null
+                chcon -R u:object_r:apk_data_file:s0 "${dst}" 2>/dev/null
+                log_info "  [${pkg}] App package bind-mounted directly: ${src} -> ${dst}"
+                entries=$((entries + 1))
+                continue
+                ;;
+            CACHE_SHADERS)
+                mkdir -p "${dst}" 2>/dev/null
+                mount -o bind "${src}" "${dst}" 2>/dev/null
+                mount --make-shared "${dst}" 2>/dev/null
+                apply_permissions "${pkg}" "${dst}" "${user_id}"
+                log_info "  [${pkg}] Cache shaders bind-mounted directly: ${src} -> ${dst}"
+                entries=$((entries + 1))
+                continue
                 ;;
         esac
 
