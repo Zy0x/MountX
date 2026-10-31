@@ -3,6 +3,7 @@ package app.mountx.root
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.os.Environment
+import app.mountx.R
 import app.mountx.data.model.RootSolution
 import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
@@ -101,16 +102,31 @@ object ModuleManager {
             val stagingPath = cacheDir.absolutePath
             val installCmd = """
                 mkdir -p $MODULE_DIR
+                # 1. Preserve existing user configuration if already present
+                [ -f "$MODULE_DIR/config.conf" ] && cp -f "$MODULE_DIR/config.conf" /data/local/tmp/mountx_cfg.bak 2>/dev/null || true
+                [ -f "$MODULE_DIR/gamelist.conf" ] && cp -f "$MODULE_DIR/gamelist.conf" /data/local/tmp/mountx_game.bak 2>/dev/null || true
+
                 cp -rf $stagingPath/* $MODULE_DIR/
+
+                # 2. Restore preserved user configuration
+                [ -f /data/local/tmp/mountx_cfg.bak ] && { cp -f /data/local/tmp/mountx_cfg.bak "$MODULE_DIR/config.conf"; rm -f /data/local/tmp/mountx_cfg.bak; } || true
+                [ -f /data/local/tmp/mountx_game.bak ] && { cp -f /data/local/tmp/mountx_game.bak "$MODULE_DIR/gamelist.conf"; rm -f /data/local/tmp/mountx_game.bak; } || true
+
+                # 3. Zero-Residue Policy: Purge installation-only files and legacy artifacts
+                rm -rf $MODULE_DIR/META-INF 2>/dev/null || true
+                rm -f $MODULE_DIR/customize.sh $MODULE_DIR/MountX.apk 2>/dev/null || true
+                rm -rf /data/adb/modules/Mountify /data/adb/modules_update/Mountify 2>/dev/null || true
+                rm -f /data/local/tmp/MountX* /data/local/tmp/mountx* 2>/dev/null || true
+
                 rm -f $MODULE_DIR/disable $MODULE_DIR/remove
                 chmod -R 755 $MODULE_DIR
                 chmod 644 $MODULE_DIR/module.prop $MODULE_DIR/config.conf $MODULE_DIR/banner.png 2>/dev/null || true
-                chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh $MODULE_DIR/customize.sh $MODULE_DIR/post-fs-data.sh 2>/dev/null || true
+                chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh $MODULE_DIR/post-fs-data.sh 2>/dev/null || true
                 if [ -d "$MODULE_DIR/bin" ]; then
                     chmod -R 755 "$MODULE_DIR/bin" 2>/dev/null || true
                     if [ -f "$MODULE_DIR/bin/busybox" ]; then
                         chmod 755 "$MODULE_DIR/bin/busybox" 2>/dev/null || true
-                        for tool in fstrim awk flock blkid losetup fdisk; do
+                        for tool in fstrim awk flock blkid losetup fdisk tar; do
                             [ ! -e "$MODULE_DIR/bin/${'$'}tool" ] && ln -sf "$MODULE_DIR/bin/busybox" "$MODULE_DIR/bin/${'$'}tool" 2>/dev/null || true
                         done
                     fi
@@ -145,7 +161,7 @@ object ModuleManager {
 
             RootDetector.getRootAndModuleInfo(forceRefresh = true)
             AppLogger.success(TAG, "MountX module installed and activated directly via Root")
-            "Modul MountX berhasil dipasang dan diaktifkan!"
+            context.getString(R.string.module_install_direct_success)
         }
     }
 

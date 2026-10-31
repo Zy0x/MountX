@@ -1250,6 +1250,13 @@
 
     <!-- Migration Safety -->
     <string name="error_migration_unmount_failed_before_restore">KRITIS: Gagal melepas mount pada %1$s sebelum pemulihan ke internal. Dibatalkan demi mencegah kehilangan data asli di MicroSD.</string>
+    <!-- Module Management & Direct Installation -->
+    <string name="module_install_direct_success">Modul MountX berhasil dipasang dan diaktifkan!</string>
+    <string name="module_enable_success">Modul berhasil diaktifkan kembali!</string>
+    <string name="module_op_failed">Gagal: %1$s</string>
+    <string name="module_export_success">ZIP tersimpan di Download: %1$s</string>
+    <string name="module_export_failed">Gagal ekspor: %1$s</string>
+    <string name="module_op_processing">Memproses…</string>
 </resources>
 
 
