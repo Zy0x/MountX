@@ -135,9 +135,10 @@ class MountManager(
             if (existing.isNotBlank() && (existing.startsWith("/dev/block/loop") || existing.startsWith("/dev/loop"))) {
                 return existing
             }
-            val freeLoop = RootShell.execForOutput("losetup -f 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
+            val bbCmd = "if [ -x /data/adb/modules/MountX/bin/busybox ]; then /data/adb/modules/MountX/bin/busybox; else busybox; fi"
+            val freeLoop = RootShell.execForOutput("BB=$($bbCmd); \$BB losetup -f 2>/dev/null || losetup -f 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
             if (freeLoop.isNotBlank() && (freeLoop.startsWith("/dev/block/loop") || freeLoop.startsWith("/dev/loop"))) {
-                RootShell.exec("losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null || losetup -f \"$containerPath\" 2>/dev/null")
+                RootShell.exec("BB=$($bbCmd); \$BB losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null || \$BB losetup -f \"$containerPath\" 2>/dev/null || losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null")
                 val verifySysfs = RootShell.execForOutput(
                     "grep -s -l \"$containerPath\" /sys/block/loop*/loop/backing_file 2>/dev/null | head -n 1"
                 ).trim()
@@ -147,9 +148,9 @@ class MountManager(
                 }
                 return freeLoop
             }
-            val toyboxOut = RootShell.execForOutput("/system/bin/toybox losetup -fs \"$containerPath\" 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
-            if (toyboxOut.isNotBlank() && (toyboxOut.startsWith("/dev/block/loop") || toyboxOut.startsWith("/dev/loop"))) {
-                return toyboxOut
+            val bbOut = RootShell.execForOutput("BB=$($bbCmd); \$BB losetup -fs \"$containerPath\" 2>/dev/null || /system/bin/toybox losetup -fs \"$containerPath\" 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
+            if (bbOut.isNotBlank() && (bbOut.startsWith("/dev/block/loop") || bbOut.startsWith("/dev/loop"))) {
+                return bbOut
             }
             return ""
         }
