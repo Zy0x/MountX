@@ -228,7 +228,9 @@ class SystemSyncMonitor @Inject constructor(
                         // Passive Subsystem / Zygote Soft-Restart Integrity Check:
                         // If DB thinks games are MOUNTED, but either SD base or sample app namespace was dropped,
                         // trigger silent background remount!
-                        if (!isSdBaseMounted) {
+                        if (RootShell.exists("/dev/.mountx_unmounted") || RootShell.exists("/dev/.mountx_migrating")) {
+                            // Intentional user unmount or active migration in progress: skip auto-recovery
+                        } else if (!isSdBaseMounted) {
                             val hasMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
                             if (hasMmc) {
                                 AppLogger.warn("SystemSyncMonitor", "SD_BASE unmounted unexpectedly while games are active. Initiating auto-recovery...")

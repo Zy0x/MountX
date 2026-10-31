@@ -190,11 +190,11 @@ fun ModuleInstallDialog(
                             onClick = {
                                 scope.launch {
                                     isOperating = true
-                                    operationMessage = "Memproses..."
+                                    operationMessage = context.getString(R.string.module_op_processing)
                                     try {
                                         if (isDisabledState) {
                                             ModuleManager.enableModule().getOrThrow()
-                                            Toast.makeText(context, "Modul berhasil diaktifkan kembali!", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, context.getString(R.string.module_enable_success), Toast.LENGTH_SHORT).show()
                                         } else {
                                             val msg = ModuleManager.installModuleDirectly(context).getOrThrow()
                                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
@@ -202,7 +202,7 @@ fun ModuleInstallDialog(
                                         onModuleInstalledOrEnabled()
                                         onDismiss()
                                     } catch (e: Exception) {
-                                        Toast.makeText(context, "Gagal: ${e.message}", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, context.getString(R.string.module_op_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
                                     } finally {
                                         isOperating = false
                                     }
@@ -281,13 +281,9 @@ fun ModuleInstallDialog(
                                     isOperating = true
                                     try {
                                         val file = ModuleManager.exportModuleZip(context).getOrThrow()
-                                        Toast.makeText(
-                                            context,
-                                            "ZIP tersimpan di Download: ${file.name}",
-                                            Toast.LENGTH_LONG
-                                        ).show()
+                                        Toast.makeText(context, context.getString(R.string.module_export_success, file.name), Toast.LENGTH_LONG).show()
                                     } catch (e: Exception) {
-                                        Toast.makeText(context, "Gagal ekspor: ${e.message}", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, context.getString(R.string.module_export_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
                                     } finally {
                                         isOperating = false
                                     }

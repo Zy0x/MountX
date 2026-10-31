@@ -1609,8 +1609,8 @@ class AppRepository @Inject constructor(
             CandidateDirectory(
                 id = "external_data",
                 category = app.mountx.data.model.MountPointCategory.EXTERNAL_DATA,
-                title = "Data (Android/data)",
-                description = "Data aset dan unduhan in-game (/Android/data). Komponen terbesar game.",
+                title = context.getString(R.string.candidate_data_title),
+                description = context.getString(R.string.candidate_data_desc),
                 relativePath = "Android/data/$packageName/files",
                 internalPath = internalFiles,
                 sdPath = sdFiles,
@@ -1628,8 +1628,8 @@ class AppRepository @Inject constructor(
             CandidateDirectory(
                 id = "obb_storage",
                 category = app.mountx.data.model.MountPointCategory.OBB_STORAGE,
-                title = "OBB (Android/obb)",
-                description = "Berkas arsip paket instalasi game (/Android/obb). Aman dimount ke MicroSD.",
+                title = context.getString(R.string.candidate_obb_title),
+                description = context.getString(R.string.candidate_obb_desc),
                 relativePath = "Android/obb/$packageName",
                 internalPath = internalObb,
                 sdPath = sdObb,
@@ -1646,8 +1646,8 @@ class AppRepository @Inject constructor(
             CandidateDirectory(
                 id = "media_downloads",
                 category = app.mountx.data.model.MountPointCategory.MEDIA_DOWNLOADS,
-                title = "Media & Unduhan (Android/media & Publik)",
-                description = "Folder media publik dan unduhan. Otomatis menyertakan berkas .nomedia di MicroSD.",
+                title = context.getString(R.string.candidate_media_title),
+                description = context.getString(R.string.candidate_media_desc),
                 relativePath = "Android/media/$packageName",
                 internalPath = internalMedia,
                 sdPath = sdMedia,
@@ -1663,8 +1663,8 @@ class AppRepository @Inject constructor(
             CandidateDirectory(
                 id = "cache_shaders",
                 category = app.mountx.data.model.MountPointCategory.CACHE_SHADERS,
-                title = "Cache & Temporary (Android/data/cache)",
-                description = "Cache dan file sementara. Disarankan tetap di internal UFS agar tidak memicu micro-stuttering.",
+                title = context.getString(R.string.candidate_cache_title),
+                description = context.getString(R.string.candidate_cache_desc),
                 relativePath = "Android/data/$packageName/cache",
                 internalPath = internalCache,
                 sdPath = sdCache,
@@ -1682,7 +1682,7 @@ class AppRepository @Inject constructor(
                 CandidateDirectory(
                     id = "private_internal",
                     category = app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL,
-                    title = "Private Data (/data/data)",
+                    title = context.getString(R.string.candidate_private_title),
                     description = context.getString(R.string.candidate_private_desc),
                     relativePath = "data/user/0/$packageName",
                     internalPath = privateDataDir,
@@ -1699,7 +1699,7 @@ class AppRepository @Inject constructor(
                 CandidateDirectory(
                     id = "private_internal_locked",
                     category = app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL,
-                    title = "Private Data (/data/data)",
+                    title = context.getString(R.string.candidate_private_title),
                     description = context.getString(R.string.candidate_private_locked_desc),
                     relativePath = "data/user/0/$packageName",
                     internalPath = privateDataDir,
@@ -1721,7 +1721,7 @@ class AppRepository @Inject constructor(
                 CandidateDirectory(
                     id = "app_package_experimental",
                     category = app.mountx.data.model.MountPointCategory.APP_PACKAGE,
-                    title = "App Package (APK & Native Libs)",
+                    title = context.getString(R.string.candidate_app_package_title),
                     description = context.getString(R.string.candidate_app_package_desc),
                     relativePath = "data/app/$packageName",
                     internalPath = apkDir,

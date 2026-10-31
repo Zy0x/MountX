@@ -1226,6 +1226,53 @@
     <string name="category_data_private">Private Data</string>
     <string name="trim_warning_needs_fsck">Warning: One or more partitions require filesystem integrity repair (fsck).</string>
     <string name="trim_not_supported">Partition driver or filesystem does not currently support TRIM/discard operations.</string>
+    <!-- Candidate Directory Titles & Descriptions -->
+    <string name="candidate_data_title">Data (Android/data)</string>
+    <string name="candidate_data_desc">In-game asset and download data (/Android/data). The largest component of games.</string>
+    <string name="candidate_obb_title">OBB (Android/obb)</string>
+    <string name="candidate_obb_desc">Game installation package archive files (/Android/obb). Safe to mount to MicroSD.</string>
+    <string name="candidate_media_title">Media &amp; Downloads (Android/media &amp; Public)</string>
+    <string name="candidate_media_desc">Public media files and downloads folder. Automatically includes .nomedia file on MicroSD.</string>
+    <string name="candidate_cache_title">Cache &amp; Temporary (Android/data/cache)</string>
+    <string name="candidate_cache_desc">Cache and temporary files. Recommended to remain on internal flash to prevent micro-stuttering.</string>
+    <string name="candidate_private_title">Private Data (/data/data)</string>
+    <string name="candidate_app_package_title">App Package (APK &amp; Native Libs)</string>
+
+    <!-- App Detail Category Item Titles & Subtitles -->
+    <string name="category_item_apk_title">APK</string>
+    <string name="category_item_apk_desc">Application package file</string>
+    <string name="category_item_lib_title">Lib</string>
+    <string name="category_item_lib_desc">Native application libraries</string>
+    <string name="category_item_private_title">Private Data</string>
+    <string name="category_item_private_desc">Internal application data</string>
+    <string name="category_item_cache_title">Cache</string>
+    <string name="category_item_cache_desc">Temporary cache</string>
+    <string name="category_item_data_title">App Data</string>
+    <string name="category_item_data_desc">Primary application data</string>
+    <string name="category_item_obb_title">OBB</string>
+    <string name="category_item_obb_desc">Application expansion file</string>
+    <string name="category_item_media_title">Media &amp; Downloads</string>
+    <string name="category_item_media_desc">Media files &amp; downloads</string>
+    <string name="category_item_on_storage">%1$s • %2$s on %3$s</string>
+    <string name="category_item_custom_title">Custom (%1$s)</string>
+
+    <!-- App Mount Configuration Sheet -->
+    <string name="mount_config_cache_notice">Note: Recommended to keep on internal flash so shader compilation does not stutter.</string>
+    <string name="mount_config_locked_reason_prefix">Reason: %1$s</string>
+    <string name="mount_config_custom_prefix">Custom: %1$s</string>
+    <string name="mount_config_apply_and_link">Apply &amp; Link (%1$s)</string>
+    <string name="mount_config_placeholder_example">Example: Android/data/%1$s/files/assets</string>
+    <string name="mount_config_select_folder">Select Folder</string>
+
+    <!-- Migration Safety -->
+    <string name="error_migration_unmount_failed_before_restore">CRITICAL: Failed to unmount %1$s prior to internal restoration. Aborted to prevent data loss on external storage.</string>
+    <!-- Module Management & Direct Installation -->
+    <string name="module_install_direct_success">MountX module installed and activated successfully!</string>
+    <string name="module_enable_success">Module re-enabled successfully!</string>
+    <string name="module_op_failed">Failed: %1$s</string>
+    <string name="module_export_success">ZIP saved to Downloads: %1$s</string>
+    <string name="module_export_failed">Export failed: %1$s</string>
+    <string name="module_op_processing">Processing…</string>
 </resources>
 
 

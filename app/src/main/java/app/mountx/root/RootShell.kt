@@ -3,6 +3,7 @@ package app.mountx.root
 import app.mountx.data.model.ShellResult
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -70,7 +71,16 @@ object RootShell {
         onStdoutLine: (String) -> Unit
     ): ShellResult = withContext(Dispatchers.IO) {
         val timedResult = withTimeoutOrNull(timeoutMillis) {
-            val outList = object : com.topjohnwu.superuser.CallbackList<String>() {
+            val dedicatedShell = try {
+                Shell.Builder.create()
+                    .setFlags(Shell.FLAG_MOUNT_MASTER)
+                    .setTimeout(30)
+                    .build("su")
+            } catch (e: Exception) {
+                AppLogger.warn("RootShell", "Failed to create dedicated shell for execStreaming: ${e.message}")
+                null
+            }
+            val outList = object : com.topjohnwu.superuser.CallbackList<String>(Dispatchers.IO.asExecutor()) {
                 override fun onAddElement(s: String?) {
                     if (s != null) {
                         onStdoutLine(s)
@@ -78,7 +88,15 @@ object RootShell {
                 }
             }
             val errList = ArrayList<String>()
-            val result = Shell.cmd("$ENV_SETUP$cmd").to(outList, errList).exec()
+            val result = if (dedicatedShell != null) {
+                try {
+                    dedicatedShell.newJob().add("$ENV_SETUP$cmd").to(outList, errList).exec()
+                } finally {
+                    try { dedicatedShell.close() } catch (_: Exception) {}
+                }
+            } else {
+                Shell.cmd("$ENV_SETUP$cmd").to(outList, errList).exec()
+            }
             ShellResult(
                 stdout = outList,
                 stderr = errList,

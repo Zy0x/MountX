@@ -87,6 +87,10 @@ class StorageManager(
     private fun getAppContext(): Context = context ?: app.mountx.MountXApp.instance
 
     @Volatile
+    var isTransferActive: Boolean = false
+        private set
+
+    @Volatile
     private var activeTransferPid: Int? = null
 
     @Volatile
@@ -1747,11 +1751,13 @@ class StorageManager(
             AppLogger.error("StorageManager", "ANTI-DELETION LOCK: $sourcePathToClean is still a mountpoint! Refusing delete to protect real data.")
             return false
         }
-        val relPath = MountManager.extractRelativePath(sourcePathToClean)
-        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage/emulated/0", "/data/media/0")) {
-            if (RootShell.isMountpoint("$ns/$relPath")) {
-                AppLogger.error("StorageManager", "ANTI-DELETION LOCK: Namespace $ns/$relPath is still mounted! Refusing delete.")
-                return false
+        if (!sourcePathToClean.startsWith("/data/app") && !sourcePathToClean.startsWith("/data/user") && !sourcePathToClean.startsWith("/data/data")) {
+            val relPath = MountManager.extractRelativePath(sourcePathToClean)
+            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage/emulated/0", "/data/media/0")) {
+                if (RootShell.isMountpoint("$ns/$relPath")) {
+                    AppLogger.error("StorageManager", "ANTI-DELETION LOCK: Namespace $ns/$relPath is still mounted! Refusing delete.")
+                    return false
+                }
             }
         }
 
@@ -1913,21 +1919,41 @@ class StorageManager(
                 export PATH="/data/adb/modules/MountX/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:${'$'}PATH"
                 echo -900 > "/proc/${'$'}${'$'}/oom_score_adj" 2>/dev/null || true
                 mkdir -p "$destDir"
-                ( ( $tarCmd -cf - -C "$sourceDir" $derefFlag . 2>"$errFile" | $tarCmd -xf - -C "$destDir" $extractFlags 2>>"$errFile" ) || ( cp -a -f "$sourceDir/." "$destDir/" 2>>"$errFile" ) ) &
+                $tarCmd -cf - -C "$sourceDir" $derefFlag . 2>"$errFile" | $tarCmd -xf - -C "$destDir" $extractFlags 2>>"$errFile" &
                 CP_PID=${'$'}!
                 echo -900 > "/proc/${'$'}CP_PID/oom_score_adj" 2>/dev/null || true
                 echo "STARTED:${'$'}CP_PID"
                 
+                HAS_PROC_IO=0
+                if [ -d "/proc/${'$'}CP_PID" ] && [ -f "/proc/${'$'}CP_PID/io" ]; then
+                    HAS_PROC_IO=1
+                fi
+                
                 while kill -0 ${'$'}CP_PID 2>/dev/null; do
-                    SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
-                    if [ -n "${'$'}SZ_KB" ]; then
-                        echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
+                    if [ "${'$'}HAS_PROC_IO" = "1" ] || [ -f "/proc/${'$'}CP_PID/io" ]; then
+                        HAS_PROC_IO=1
+                        W_BYTES=${'$'}(grep wchar /proc/${'$'}CP_PID/io 2>/dev/null | cut -d' ' -f2)
+                        if [ -n "${'$'}W_BYTES" ]; then
+                            echo "PROGRESS_BYTES:${'$'}W_BYTES"
+                        fi
+                        sleep 0.5
+                    else
+                        SZ_KB=${'$'}(du -s -k "$destDir" 2>/dev/null | cut -f1)
+                        if [ -n "${'$'}SZ_KB" ]; then
+                            echo "PROGRESS_FALLBACK:${'$'}((SZ_KB * 1024))"
+                        fi
+                        sleep 1.5
                     fi
-                    sleep 1.0
                 done
                 
                 wait ${'$'}CP_PID
                 EXIT_CODE=${'$'}?
+                
+                if [ "${'$'}EXIT_CODE" -ne 0 ]; then
+                    cp -a -f "$sourceDir/." "$destDir/" 2>>"$errFile"
+                    EXIT_CODE=${'$'}?
+                fi
+                
                 echo "${'$'}EXIT_CODE" > "$exitFile"
                 echo "COPY_EXIT:${'$'}EXIT_CODE"
             """.trimIndent()
@@ -2067,6 +2093,8 @@ class StorageManager(
         conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        isTransferActive = true
+        RootShell.exec("touch /dev/.mountx_migrating")
         runCatching {
             val pm = try {
                 app.mountx.MountXApp.instance.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
@@ -2075,22 +2103,13 @@ class StorageManager(
             wakeLock?.acquire(2 * 60 * 60 * 1000L)
             val isToSd = direction == MoveDirection.TO_SD
             val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
-            val title = if (isToSd) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal"
-            val steps = if (isToSd) {
-                listOf(
-                    "Menyiapkan Data & Direktori",
-                    "Menyalin Berkas ke MicroSD",
-                    "Memverifikasi Integritas & Izin",
-                    "Membersihkan Memori Internal"
-                )
-            } else {
-                listOf(
-                    "Menyiapkan Pemulihan",
-                    "Menyalin Berkas ke Internal",
-                    "Memulihkan Izin & SELinux",
-                    "Membersihkan Berkas di MicroSD"
-                )
-            }
+            val title = if (isToSd) getAppContext().getString(R.string.op_title_move_sd) else getAppContext().getString(R.string.op_title_restore_internal)
+            val steps = listOf(
+                getAppContext().getString(R.string.op_step_preparing),
+                getAppContext().getString(R.string.op_step_copying),
+                getAppContext().getString(R.string.op_step_verifying),
+                getAppContext().getString(R.string.op_step_cleaning)
+            )
 
             val activePoints = mountPoints.filter { it.enabled }.ifEmpty {
                 // Resilient fallback: If all points were disabled but migration was triggered, activate them
@@ -2222,7 +2241,7 @@ class StorageManager(
                     }
 
                     if (RootShell.isMountpoint(targetPath)) {
-                        val errMsg = "CRITICAL: Gagal melepas mount pada $targetPath sebelum pemindahan ke internal. Operasi dibatalkan demi mencegah kehilangan data asli di MicroSD."
+                        val errMsg = getAppContext().getString(R.string.error_migration_unmount_failed_before_restore, targetPath)
                         AppLogger.error("StorageManager", errMsg)
                         throw IllegalStateException(errMsg)
                     }
@@ -2568,6 +2587,8 @@ class StorageManager(
             )
             Unit
             } finally {
+                isTransferActive = false
+                RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
                 if (wakeLock?.isHeld == true) {
                     try { wakeLock.release() } catch (_: Exception) {}
                 }
@@ -2610,22 +2631,13 @@ class StorageManager(
             isCancellationRequested = false
             val isToSd = direction == MoveDirection.TO_SD
             val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
-            val title = if (isToSd) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal"
-            val steps = if (isToSd) {
-                listOf(
-                    "Menyiapkan Data & Direktori",
-                    "Menyalin Berkas ke MicroSD",
-                    "Memverifikasi Integritas & Izin",
-                    "Membersihkan Memori Internal"
-                )
-            } else {
-                listOf(
-                    "Menyiapkan Pemulihan",
-                    "Menyalin Berkas ke Internal",
-                    "Memulihkan Izin & SELinux",
-                    "Membersihkan Berkas di MicroSD"
-                )
-            }
+            val title = if (isToSd) getAppContext().getString(R.string.op_title_move_sd) else getAppContext().getString(R.string.op_title_restore_internal)
+            val steps = listOf(
+                getAppContext().getString(R.string.op_step_preparing),
+                getAppContext().getString(R.string.op_step_copying),
+                getAppContext().getString(R.string.op_step_verifying),
+                getAppContext().getString(R.string.op_step_cleaning)
+            )
 
             val targetBase = if (isToSd) sdBase else "/data"
             val targetFsInfo = inspectStorageTarget(targetBase)
@@ -2929,6 +2941,8 @@ class StorageManager(
                 )
                 Unit
             } finally {
+                isTransferActive = false
+                RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
                 if (wakeLock?.isHeld == true) {
                     try { wakeLock.release() } catch (_: Exception) {}
                 }
