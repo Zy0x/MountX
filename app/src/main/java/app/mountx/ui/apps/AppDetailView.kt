@@ -14,6 +14,10 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
@@ -759,10 +763,11 @@ private fun buildTargetMountPoints(
             val updatedSource = when {
                 isContainer -> containerPath!!
                 existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> {
+                    val subFolder = if (existing.targetPath.endsWith("/files")) "MountX/Android/data/$pkg/files" else "MountX/Android/data/$pkg"
                     if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
                         existing.sourcePath
                     } else {
-                        resolveSdPath(sdBase, "MountX/Android/data/$pkg")
+                        resolveSdPath(sdBase, subFolder)
                     }
                 }
                 existing.resolveCategory() == MountPointCategory.OBB_STORAGE -> {
@@ -1309,13 +1314,14 @@ private fun StorageTabContent(
 
     val chartBreakdown = safeBreakdown
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
         // ── CONCENTRIC DONUT CHART & 3-TIER LEGEND CARD ──
         Card(
             shape = RoundedCornerShape(12.dp),
@@ -1714,18 +1720,43 @@ private fun StorageTabContent(
                     }
                 }
             }
-        } else {
-            // Selection Mode: Decoupled Actions (Kaitkan Langsung, Pindahkan Data, Lepas Kaitan, Batal)
-            val anySelectedMounted = remember(selectedCategoryIds, categories, mountPoints, isMounted) {
-                selectedCategoryIds.any { id ->
-                    val catItem = categories.firstOrNull { it.id == id }
-                    val pt = mountPoints.firstOrNull { it.id == id || it.resolveCategory() == catItem?.mountCategory }
-                    pt?.enabled == true || (isMounted && catItem?.isMicroSd == true)
-                }
-            }
+        }
 
+        if (isSelectionMode) {
+            Spacer(modifier = Modifier.height(140.dp).navigationBarsPadding())
+        } else {
+            Spacer(modifier = Modifier.height(20.dp).navigationBarsPadding())
+        }
+    }
+
+    // Sticky Selection Mode Action Bar (Pinned to Bottom with Shadow & Navigation Padding)
+    AnimatedVisibility(
+        visible = isSelectionMode,
+        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        modifier = Modifier.align(Alignment.BottomCenter)
+    ) {
+        val anySelectedMounted = remember(selectedCategoryIds, categories, mountPoints, isMounted) {
+            selectedCategoryIds.any { id ->
+                val catItem = categories.firstOrNull { it.id == id }
+                val pt = mountPoints.firstOrNull { it.id == id || it.resolveCategory() == catItem?.mountCategory }
+                pt?.enabled == true || (isMounted && catItem?.isMicroSd == true)
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            shadowElevation = 10.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Header Row: Selected Count + Cancel Action
@@ -1841,9 +1872,8 @@ private fun StorageTabContent(
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
     }
+}
 
     // ── SMART STORAGE & PARTITION MODAL BOTTOM SHEET ──
     if (showTargetModal) {
