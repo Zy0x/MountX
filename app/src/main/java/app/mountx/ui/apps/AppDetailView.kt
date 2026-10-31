@@ -1069,23 +1069,99 @@ private fun StorageTabContent(
 
         val existingApkPoint = prioritizedPoints.firstOrNull { it.id == "apk" || (it.resolveCategory() == MountPointCategory.APP_PACKAGE && !it.targetPath.contains("/lib")) }
         val (isApkUsb, apkDiskLabel) = getDiskDetails(existingApkPoint?.sourcePath ?: "", existingApkPoint?.diskUuid)
-        val isApkCatMounted = safeBreakdown.isApkMounted
-        val isApkSd = isApkCatMounted || (existingApkPoint != null && existingApkPoint.sizeBytes > 0L)
+        val isApkCatMounted = safeBreakdown.isApkMounted || (isMounted && existingApkPoint?.enabled == true)
+        val (apkBytes, apkSubtitle, isApkSd) = when {
+            isApkCatMounted -> {
+                val size = if (safeBreakdown.ext2ApkBytes > 0L) safeBreakdown.ext2ApkBytes else safeBreakdown.apkBytes
+                Triple(size, "File instalasi aplikasi", true)
+            }
+            safeBreakdown.ext2ApkBytes > 0L && safeBreakdown.apkBytes > 64 * 1024L -> {
+                val targetName = if (isApkUsb) (apkDiskLabel ?: "USB OTG") else "MicroSD"
+                Triple(
+                    safeBreakdown.apkBytes,
+                    "File instalasi aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2ApkBytes)} di $targetName",
+                    false
+                )
+            }
+            safeBreakdown.ext2ApkBytes > 0L && safeBreakdown.apkBytes <= 4096L -> {
+                Triple(safeBreakdown.ext2ApkBytes, "File instalasi aplikasi", true)
+            }
+            else -> {
+                Triple(safeBreakdown.apkBytes, "File instalasi aplikasi", false)
+            }
+        }
 
         val existingLibPoint = prioritizedPoints.firstOrNull { it.id == "lib" || (it.resolveCategory() == MountPointCategory.APP_PACKAGE && it.targetPath.contains("/lib")) }
         val (isLibUsb, libDiskLabel) = getDiskDetails(existingLibPoint?.sourcePath ?: "", existingLibPoint?.diskUuid)
-        val isLibCatMounted = safeBreakdown.isLibMounted
-        val isLibSd = isLibCatMounted || (existingLibPoint != null && existingLibPoint.sizeBytes > 0L)
+        val isLibCatMounted = safeBreakdown.isLibMounted || (isMounted && existingLibPoint?.enabled == true)
+        val (libBytes, libSubtitle, isLibSd) = when {
+            isLibCatMounted -> {
+                val size = if (safeBreakdown.ext2LibBytes > 0L) safeBreakdown.ext2LibBytes else safeBreakdown.libBytes
+                Triple(size, "Pustaka asli aplikasi", true)
+            }
+            safeBreakdown.ext2LibBytes > 0L && safeBreakdown.libBytes > 64 * 1024L -> {
+                val targetName = if (isLibUsb) (libDiskLabel ?: "USB OTG") else "MicroSD"
+                Triple(
+                    safeBreakdown.libBytes,
+                    "Pustaka asli aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2LibBytes)} di $targetName",
+                    false
+                )
+            }
+            safeBreakdown.ext2LibBytes > 0L && safeBreakdown.libBytes <= 4096L -> {
+                Triple(safeBreakdown.ext2LibBytes, "Pustaka asli aplikasi", true)
+            }
+            else -> {
+                Triple(safeBreakdown.libBytes, "Pustaka asli aplikasi", false)
+            }
+        }
 
         val existingPrivatePoint = prioritizedPoints.firstOrNull { it.id == "private" || it.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL }
         val (isPrivateUsb, privateDiskLabel) = getDiskDetails(existingPrivatePoint?.sourcePath ?: "", existingPrivatePoint?.diskUuid)
-        val isPrivateCatMounted = safeBreakdown.isPrivateMounted
-        val isPrivateSd = isPrivateCatMounted || (existingPrivatePoint != null && existingPrivatePoint.sizeBytes > 0L)
+        val isPrivateCatMounted = safeBreakdown.isPrivateMounted || (isMounted && existingPrivatePoint?.enabled == true)
+        val (privateBytes, privateSubtitle, isPrivateSd) = when {
+            isPrivateCatMounted -> {
+                val size = if (safeBreakdown.ext2PrivateBytes > 0L) safeBreakdown.ext2PrivateBytes else safeBreakdown.dataBytes
+                Triple(size, "Data aplikasi (internal)", true)
+            }
+            safeBreakdown.ext2PrivateBytes > 0L && safeBreakdown.dataBytes > 64 * 1024L -> {
+                val targetName = if (isPrivateUsb) (privateDiskLabel ?: "USB OTG") else "MicroSD"
+                Triple(
+                    safeBreakdown.dataBytes,
+                    "Data aplikasi (internal) • ${FormatUtils.formatExactBytes(safeBreakdown.ext2PrivateBytes)} di $targetName",
+                    false
+                )
+            }
+            safeBreakdown.ext2PrivateBytes > 0L && safeBreakdown.dataBytes <= 4096L -> {
+                Triple(safeBreakdown.ext2PrivateBytes, "Data aplikasi (internal)", true)
+            }
+            else -> {
+                Triple(safeBreakdown.dataBytes, "Data aplikasi (internal)", false)
+            }
+        }
 
         val existingCachePoint = prioritizedPoints.firstOrNull { it.id == "cache" || it.resolveCategory() == MountPointCategory.CACHE_SHADERS }
         val (isCacheUsb, cacheDiskLabel) = getDiskDetails(existingCachePoint?.sourcePath ?: "", existingCachePoint?.diskUuid)
-        val isCacheCatMounted = safeBreakdown.isCacheMounted
-        val isCacheSd = isCacheCatMounted || (existingCachePoint != null && existingCachePoint.sizeBytes > 0L)
+        val isCacheCatMounted = safeBreakdown.isCacheMounted || (isMounted && existingCachePoint?.enabled == true)
+        val (cacheBytes, cacheSubtitle, isCacheSd) = when {
+            isCacheCatMounted -> {
+                val size = if (safeBreakdown.ext2CacheBytes > 0L) safeBreakdown.ext2CacheBytes else safeBreakdown.cacheBytes
+                Triple(size, "Cache sementara", true)
+            }
+            safeBreakdown.ext2CacheBytes > 0L && safeBreakdown.cacheBytes > 64 * 1024L -> {
+                val targetName = if (isCacheUsb) (cacheDiskLabel ?: "USB OTG") else "MicroSD"
+                Triple(
+                    safeBreakdown.cacheBytes,
+                    "Cache sementara • ${FormatUtils.formatExactBytes(safeBreakdown.ext2CacheBytes)} di $targetName",
+                    false
+                )
+            }
+            safeBreakdown.ext2CacheBytes > 0L && safeBreakdown.cacheBytes <= 4096L -> {
+                Triple(safeBreakdown.ext2CacheBytes, "Cache sementara", true)
+            }
+            else -> {
+                Triple(safeBreakdown.cacheBytes, "Cache sementara", false)
+            }
+        }
 
         val existingDataPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
         val (isDataUsb, dataDiskLabel) = getDiskDetails(existingDataPoint?.sourcePath ?: "", existingDataPoint?.diskUuid)
@@ -1236,8 +1312,8 @@ private fun StorageTabContent(
             UnifiedCategoryItem(
                 id = "apk",
                 title = "APK",
-                subtitle = "File instalasi aplikasi",
-                bytes = safeBreakdown.apkBytes,
+                subtitle = apkSubtitle,
+                bytes = apkBytes,
                 icon = Icons.Default.Android,
                 iconTint = Color(0xFF00897B),
                 isMicroSd = isApkSd,
@@ -1246,7 +1322,9 @@ private fun StorageTabContent(
                 internalPath = apkInternalDir,
                 internalBytes = if (isApkCatMounted) 0L else safeBreakdown.apkBytes,
                 sdPath = existingApkPoint?.sourcePath ?: "$sdBase/MountX/app/$pkg",
-                sdBytes = if (isApkCatMounted) safeBreakdown.apkBytes else (existingApkPoint?.sizeBytes ?: 0L),
+                sdBytes = if (isApkCatMounted) {
+                    if (safeBreakdown.ext2ApkBytes > 0L) safeBreakdown.ext2ApkBytes else safeBreakdown.apkBytes
+                } else safeBreakdown.ext2ApkBytes,
                 isCategoryMounted = isApkCatMounted,
                 userId = resolveUserIdFromPath(apkInternalDir),
                 isUsbOtg = isApkUsb,
@@ -1255,8 +1333,8 @@ private fun StorageTabContent(
             UnifiedCategoryItem(
                 id = "lib",
                 title = "Lib",
-                subtitle = "Pustaka asli aplikasi",
-                bytes = safeBreakdown.libBytes,
+                subtitle = libSubtitle,
+                bytes = libBytes,
                 icon = Icons.Default.Build,
                 iconTint = Color(0xFFFB8C00),
                 isMicroSd = isLibSd,
@@ -1265,7 +1343,9 @@ private fun StorageTabContent(
                 internalPath = libSrc,
                 internalBytes = if (isLibCatMounted) 0L else safeBreakdown.libBytes,
                 sdPath = existingLibPoint?.sourcePath ?: "$sdBase/MountX/lib/$pkg",
-                sdBytes = if (isLibCatMounted) safeBreakdown.libBytes else (existingLibPoint?.sizeBytes ?: 0L),
+                sdBytes = if (isLibCatMounted) {
+                    if (safeBreakdown.ext2LibBytes > 0L) safeBreakdown.ext2LibBytes else safeBreakdown.libBytes
+                } else safeBreakdown.ext2LibBytes,
                 isCategoryMounted = isLibCatMounted,
                 userId = resolveUserIdFromPath(libSrc),
                 isUsbOtg = isLibUsb,
@@ -1274,8 +1354,8 @@ private fun StorageTabContent(
             UnifiedCategoryItem(
                 id = "private",
                 title = "Data Privat",
-                subtitle = "Data aplikasi (internal)",
-                bytes = safeBreakdown.dataBytes,
+                subtitle = privateSubtitle,
+                bytes = privateBytes,
                 icon = Icons.Default.Lock,
                 iconTint = Color(0xFF43A047),
                 isMicroSd = isPrivateSd,
@@ -1284,7 +1364,9 @@ private fun StorageTabContent(
                 internalPath = "/data/user/0/$pkg",
                 internalBytes = if (isPrivateCatMounted) 0L else safeBreakdown.dataBytes,
                 sdPath = existingPrivatePoint?.sourcePath ?: "$sdBase/.mountx/containers/${pkg}_data.img",
-                sdBytes = if (isPrivateCatMounted) safeBreakdown.dataBytes else (existingPrivatePoint?.sizeBytes ?: 0L),
+                sdBytes = if (isPrivateCatMounted) {
+                    if (safeBreakdown.ext2PrivateBytes > 0L) safeBreakdown.ext2PrivateBytes else safeBreakdown.dataBytes
+                } else safeBreakdown.ext2PrivateBytes,
                 isCategoryMounted = isPrivateCatMounted,
                 userId = 0,
                 isUsbOtg = isPrivateUsb,
@@ -1293,8 +1375,8 @@ private fun StorageTabContent(
             UnifiedCategoryItem(
                 id = "cache",
                 title = "Cache",
-                subtitle = "Cache sementara",
-                bytes = safeBreakdown.cacheBytes,
+                subtitle = cacheSubtitle,
+                bytes = cacheBytes,
                 icon = Icons.Default.Cached,
                 iconTint = Color(0xFFFFA000),
                 isMicroSd = isCacheSd,
@@ -1303,7 +1385,9 @@ private fun StorageTabContent(
                 internalPath = "/data/user/0/$pkg/cache",
                 internalBytes = if (isCacheCatMounted) 0L else safeBreakdown.cacheBytes,
                 sdPath = existingCachePoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg/cache"),
-                sdBytes = if (isCacheCatMounted) safeBreakdown.cacheBytes else (existingCachePoint?.sizeBytes ?: 0L),
+                sdBytes = if (isCacheCatMounted) {
+                    if (safeBreakdown.ext2CacheBytes > 0L) safeBreakdown.ext2CacheBytes else safeBreakdown.cacheBytes
+                } else safeBreakdown.ext2CacheBytes,
                 isCategoryMounted = isCacheCatMounted,
                 userId = 0,
                 isUsbOtg = isCacheUsb,
@@ -1974,6 +2058,15 @@ private fun StorageTabContent(
                         MountPointCategory.MEDIA_DOWNLOADS -> if (isToInternal) {
                             if (isMounted) 0L else safeBreakdown.ext1MediaBytes
                         } else safeBreakdown.ext2MediaBytes
+                        MountPointCategory.APP_PACKAGE -> if (isToInternal) {
+                            if (isMounted) 0L else if (pt.targetPath.contains("/lib")) safeBreakdown.libBytes else safeBreakdown.apkBytes
+                        } else if (pt.targetPath.contains("/lib")) safeBreakdown.ext2LibBytes else safeBreakdown.ext2ApkBytes
+                        MountPointCategory.PRIVATE_INTERNAL -> if (isToInternal) {
+                            if (isMounted) 0L else safeBreakdown.dataBytes
+                        } else safeBreakdown.ext2PrivateBytes
+                        MountPointCategory.CACHE_SHADERS -> if (isToInternal) {
+                            if (isMounted) 0L else safeBreakdown.cacheBytes
+                        } else safeBreakdown.ext2CacheBytes
                         else -> 0L
                     }
                 }
