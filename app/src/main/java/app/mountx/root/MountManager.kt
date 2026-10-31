@@ -385,7 +385,11 @@ class MountManager(
                                 val fullPath = currentApkPathRes.output.substringAfter("package:").trim()
                                 java.io.File(fullPath).parent ?: ""
                             } else ""
-                            val effectiveTarget = if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
+                            val effectiveTarget = if (mp.targetPath.contains("/lib")) {
+                                if (currentApkDir.isNotBlank()) "$currentApkDir/lib" else mp.targetPath
+                            } else {
+                                if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
+                            }
 
                             RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
                             RootShell.exec("mkdir -p \"$effectiveTarget\" 2>/dev/null")

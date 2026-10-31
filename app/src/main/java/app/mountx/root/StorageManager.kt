@@ -2334,7 +2334,17 @@ class StorageManager(
                                 )
 
                                 val destInspection = inspectStorageTarget(sourcePath)
-                                if (!destInspection.isNonPosix) {
+                                if (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) {
+                                    RootShell.exec("chown -R 1000:1000 \"$sourcePath\" 2>/dev/null")
+                                    RootShell.exec("chmod -R 755 \"$sourcePath\" 2>/dev/null")
+                                    RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$sourcePath\" 2>/dev/null")
+                                } else if (point.category == MountPointCategory.PRIVATE_INTERNAL) {
+                                    if (!isContainer) {
+                                        RootShell.exec("chown -R $uid:$gid \"$sourcePath\" 2>/dev/null")
+                                        RootShell.exec("chmod -R 775 \"$sourcePath\" 2>/dev/null")
+                                        RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$sourcePath\" 2>/dev/null")
+                                    }
+                                } else if (!destInspection.isNonPosix) {
                                     RootShell.exec("chown -R $uid:1023 \"$sourcePath\" 2>/dev/null")
                                     RootShell.exec("chmod -R 777 \"$sourcePath\" 2>/dev/null")
                                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$sourcePath\" 2>/dev/null")

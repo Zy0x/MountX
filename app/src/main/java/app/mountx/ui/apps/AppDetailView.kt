@@ -729,10 +729,16 @@ private fun buildTargetMountPoints(
     selectedCategoryIds: Set<String>,
     currentMountPoints: List<MountPointConfig>,
     game: GameEntry,
-    sdBase: String
+    sdBase: String,
+    packageInfo: android.content.pm.PackageInfo? = null
 ): List<MountPointConfig> {
     val result = mutableListOf<MountPointConfig>()
     val pkg = game.packageName
+    val apkSrc = packageInfo?.applicationInfo?.sourceDir
+    val apkDir = if (!apkSrc.isNullOrBlank()) {
+        if (apkSrc.endsWith(".apk")) java.io.File(apkSrc).parent ?: apkSrc else apkSrc
+    } else "/data/app/$pkg"
+    val libDir = packageInfo?.applicationInfo?.nativeLibraryDir ?: "$apkDir/lib"
 
     for (catId in selectedCategoryIds) {
         val existing = currentMountPoints
@@ -784,12 +790,25 @@ private fun buildTargetMountPoints(
                         resolveSdPath(sdBase, "MountX/Android/media/$pkg")
                     }
                 }
-                existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> "$sdBase/MountX/app/$pkg"
+                existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> {
+                    if (catId == "lib" || existing.id.startsWith("lib_") || existing.targetPath.contains("/lib")) {
+                        "$sdBase/MountX/lib/$pkg"
+                    } else {
+                        "$sdBase/MountX/app/$pkg"
+                    }
+                }
                 existing.resolveCategory() == MountPointCategory.GAME_ASSETS -> resolveSdPath(sdBase, "MountX/Android/data/$pkg/files")
                 else -> existing.sourcePath
             }
             val updatedTarget = when {
                 isContainer -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg"
+                existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> {
+                    if (catId == "lib" || existing.id.startsWith("lib_") || existing.targetPath.contains("/lib")) {
+                        if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/data/app/$pkg/lib")) existing.targetPath else libDir
+                    } else {
+                        if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/data/app/$pkg")) existing.targetPath else apkDir
+                    }
+                }
                 existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/data/$pkg" else existing.targetPath
                 existing.resolveCategory() == MountPointCategory.OBB_STORAGE -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/obb/$pkg" else existing.targetPath
                 existing.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/media/$pkg" else existing.targetPath
@@ -831,14 +850,14 @@ private fun buildTargetMountPoints(
                     id = "apk_$pkg",
                     category = MountPointCategory.APP_PACKAGE,
                     sourcePath = "$sdBase/MountX/app/$pkg",
-                    targetPath = "/data/app/$pkg",
+                    targetPath = apkDir,
                     enabled = true
                 )
                 "lib" -> MountPointConfig(
                     id = "lib_$pkg",
-                    category = MountPointCategory.PRIVATE_INTERNAL,
+                    category = MountPointCategory.APP_PACKAGE,
                     sourcePath = "$sdBase/MountX/lib/$pkg",
-                    targetPath = "/data/app/$pkg/lib",
+                    targetPath = libDir,
                     enabled = true
                 )
                 "private", "private_internal" -> MountPointConfig(
@@ -854,7 +873,7 @@ private fun buildTargetMountPoints(
                     id = "cache_$pkg",
                     category = MountPointCategory.CACHE_SHADERS,
                     sourcePath = "$sdBase/MountX/Android/data/$pkg/cache",
-                    targetPath = "/sdcard/Android/data/$pkg/cache",
+                    targetPath = "/data/user/0/$pkg/cache",
                     enabled = true
                 )
                 else -> null
@@ -1220,7 +1239,7 @@ private fun StorageTabContent(
                 iconTint = Color(0xFFFB8C00),
                 isMicroSd = false,
                 isRisk = true,
-                mountCategory = MountPointCategory.PRIVATE_INTERNAL,
+                mountCategory = MountPointCategory.APP_PACKAGE,
                 internalPath = libSrc,
                 internalBytes = safeBreakdown.libBytes,
                 sdPath = "$sdBase/MountX/lib/$pkg",
@@ -1899,7 +1918,7 @@ private fun StorageTabContent(
             onConfirmMove = { dir, targetDisk, targetPartition ->
                 showTargetModal = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase)
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo)
                 val isToInternal = dir == MoveDirection.TO_INTERNAL
                 val totalBytes = targetPoints.sumOf { pt ->
                     val cat = pt.resolveCategory()
@@ -1948,7 +1967,7 @@ private fun StorageTabContent(
                 showTargetModal = false
                 isSelectionMode = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase)
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo)
 
                 val internalBytes = targetPoints.sumOf { pt ->
                     when (pt.resolveCategory()) {
@@ -2017,7 +2036,7 @@ private fun StorageTabContent(
             onRequestUnmount = {
                 val catId = currentInspectItem.id
                 inspectingCategory = null
-                val targetPoints = buildTargetMountPoints(setOf(catId), mountPoints, game, sdBase)
+                val targetPoints = buildTargetMountPoints(setOf(catId), mountPoints, game, sdBase, packageInfo)
                 onUnmountMountPoints(targetPoints)
             },
             onRequestDelete = {
@@ -2148,7 +2167,7 @@ private fun StorageTabContent(
     // ── BATCH UNMOUNT CONFIRMATION DIALOG ──
     if (showBatchUnmountConfirmDialog) {
         val pointsToUnmount = remember(selectedCategoryIds, mountPoints, game, sdBase) {
-            buildTargetMountPoints(selectedCategoryIds, mountPoints, game, sdBase)
+            buildTargetMountPoints(selectedCategoryIds, mountPoints, game, sdBase, packageInfo)
         }
         val unmountTextColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
         AlertDialog(
