@@ -1039,8 +1039,8 @@ mount_watchdog() {
         fi
         LAST_DISK_ATTACHED=${current_disk_attached}
 
-        # Intentional unmount guard: if user unmounted via MountX UI or notification (while card is still attached), do not re-mount
-        [ -f "/dev/.mountx_unmounted" ] && return 0
+        # Intentional unmount or active migration guard: do not re-mount while transferring/unmounted
+        [ -f "/dev/.mountx_unmounted" ] || [ -f "/dev/.mountx_migrating" ] && return 0
 
         # Immortal watchdog: runs continuously without artificial uptime limits
 

@@ -333,7 +333,7 @@ fun AppMountConfigSheet(
                                 if (candidate.category == MountPointCategory.CACHE_SHADERS) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Catatan: Disarankan tetap di internal flash agar kompilasi shader grafis tidak stutter.",
+                                        text = stringResource(R.string.mount_config_cache_notice),
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Medium),
                                         color = electricAmber
                                     )
@@ -342,7 +342,7 @@ fun AppMountConfigSheet(
                                 if (candidate.isLocked && candidate.lockReason != null) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Alasan: ${candidate.lockReason}",
+                                        text = stringResource(R.string.mount_config_locked_reason_prefix, candidate.lockReason),
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
                                         color = neonCrimson
                                     )
@@ -366,7 +366,7 @@ fun AppMountConfigSheet(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Kustom: ${cp.id}",
+                                        text = stringResource(R.string.mount_config_custom_prefix, cp.id),
                                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 13.sp),
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
@@ -423,7 +423,7 @@ fun AppMountConfigSheet(
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f).height(48.dp)
                 ) {
-                    Text("Batal", fontSize = 13.sp)
+                    Text(stringResource(R.string.common_cancel), fontSize = 13.sp)
                 }
 
                 Button(
@@ -461,7 +461,7 @@ fun AppMountConfigSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Terapkan & Tautkan (${FormatUtils.formatBytes(totalSelectedBytes)})",
+                            text = stringResource(R.string.mount_config_apply_and_link, FormatUtils.formatBytes(totalSelectedBytes)),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
@@ -513,12 +513,12 @@ fun AppMountConfigSheet(
                     OutlinedTextField(
                         value = customPathInput,
                         onValueChange = { customPathInput = it },
-                        placeholder = { Text("Contoh: Android/data/${appInfo.packageName}/files/assets", fontSize = 12.sp) },
+                        placeholder = { Text(stringResource(R.string.mount_config_placeholder_example, appInfo.packageName), fontSize = 12.sp) },
                         trailingIcon = {
                             IconButton(onClick = { showRootPicker = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Folder,
-                                    contentDescription = "Pilih Folder",
+                                    contentDescription = stringResource(R.string.mount_config_select_folder),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }

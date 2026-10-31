@@ -87,6 +87,10 @@ class StorageManager(
     private fun getAppContext(): Context = context ?: app.mountx.MountXApp.instance
 
     @Volatile
+    var isTransferActive: Boolean = false
+        private set
+
+    @Volatile
     private var activeTransferPid: Int? = null
 
     @Volatile
@@ -2067,6 +2071,8 @@ class StorageManager(
         conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        isTransferActive = true
+        RootShell.exec("touch /dev/.mountx_migrating")
         runCatching {
             val pm = try {
                 app.mountx.MountXApp.instance.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
@@ -2075,22 +2081,13 @@ class StorageManager(
             wakeLock?.acquire(2 * 60 * 60 * 1000L)
             val isToSd = direction == MoveDirection.TO_SD
             val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
-            val title = if (isToSd) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal"
-            val steps = if (isToSd) {
-                listOf(
-                    "Menyiapkan Data & Direktori",
-                    "Menyalin Berkas ke MicroSD",
-                    "Memverifikasi Integritas & Izin",
-                    "Membersihkan Memori Internal"
-                )
-            } else {
-                listOf(
-                    "Menyiapkan Pemulihan",
-                    "Menyalin Berkas ke Internal",
-                    "Memulihkan Izin & SELinux",
-                    "Membersihkan Berkas di MicroSD"
-                )
-            }
+            val title = if (isToSd) getAppContext().getString(R.string.op_title_move_sd) else getAppContext().getString(R.string.op_title_restore_internal)
+            val steps = listOf(
+                getAppContext().getString(R.string.op_step_preparing),
+                getAppContext().getString(R.string.op_step_copying),
+                getAppContext().getString(R.string.op_step_verifying),
+                getAppContext().getString(R.string.op_step_cleaning)
+            )
 
             val activePoints = mountPoints.filter { it.enabled }.ifEmpty {
                 // Resilient fallback: If all points were disabled but migration was triggered, activate them
@@ -2222,7 +2219,7 @@ class StorageManager(
                     }
 
                     if (RootShell.isMountpoint(targetPath)) {
-                        val errMsg = "CRITICAL: Gagal melepas mount pada $targetPath sebelum pemindahan ke internal. Operasi dibatalkan demi mencegah kehilangan data asli di MicroSD."
+                        val errMsg = getAppContext().getString(R.string.error_migration_unmount_failed_before_restore, targetPath)
                         AppLogger.error("StorageManager", errMsg)
                         throw IllegalStateException(errMsg)
                     }
@@ -2568,6 +2565,8 @@ class StorageManager(
             )
             Unit
             } finally {
+                isTransferActive = false
+                RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
                 if (wakeLock?.isHeld == true) {
                     try { wakeLock.release() } catch (_: Exception) {}
                 }
@@ -2610,22 +2609,13 @@ class StorageManager(
             isCancellationRequested = false
             val isToSd = direction == MoveDirection.TO_SD
             val opType = if (isToSd) OperationType.MOVE_TO_SD else OperationType.RESTORE_TO_INTERNAL
-            val title = if (isToSd) "Memindahkan Data ke MicroSD" else "Mengembalikan Data ke Internal"
-            val steps = if (isToSd) {
-                listOf(
-                    "Menyiapkan Data & Direktori",
-                    "Menyalin Berkas ke MicroSD",
-                    "Memverifikasi Integritas & Izin",
-                    "Membersihkan Memori Internal"
-                )
-            } else {
-                listOf(
-                    "Menyiapkan Pemulihan",
-                    "Menyalin Berkas ke Internal",
-                    "Memulihkan Izin & SELinux",
-                    "Membersihkan Berkas di MicroSD"
-                )
-            }
+            val title = if (isToSd) getAppContext().getString(R.string.op_title_move_sd) else getAppContext().getString(R.string.op_title_restore_internal)
+            val steps = listOf(
+                getAppContext().getString(R.string.op_step_preparing),
+                getAppContext().getString(R.string.op_step_copying),
+                getAppContext().getString(R.string.op_step_verifying),
+                getAppContext().getString(R.string.op_step_cleaning)
+            )
 
             val targetBase = if (isToSd) sdBase else "/data"
             val targetFsInfo = inspectStorageTarget(targetBase)
@@ -2929,6 +2919,8 @@ class StorageManager(
                 )
                 Unit
             } finally {
+                isTransferActive = false
+                RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
                 if (wakeLock?.isHeld == true) {
                     try { wakeLock.release() } catch (_: Exception) {}
                 }

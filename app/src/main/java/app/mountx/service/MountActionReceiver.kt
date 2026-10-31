@@ -26,6 +26,9 @@ class MountActionReceiver : BroadcastReceiver() {
     @Inject
     lateinit var systemSyncMonitor: SystemSyncMonitor
 
+    @Inject
+    lateinit var storageManager: app.mountx.root.StorageManager
+
     companion object {
         const val ACTION_SYNC_NOTIFICATION = "app.mountx.ACTION_SYNC_NOTIFICATION"
         const val ACTION_UNMOUNT_ALL = "app.mountx.ACTION_UNMOUNT_ALL"
@@ -49,17 +52,25 @@ class MountActionReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                when (action) {
-                    ACTION_SYNC_NOTIFICATION -> {
-                        gameRepository.refreshMountStatuses()
-                        mountNotificationManager.syncActiveMountNotification()
+                kotlinx.coroutines.withTimeoutOrNull(10_000L) {
+                    when (action) {
+                        ACTION_SYNC_NOTIFICATION -> {
+                            if (!storageManager.isTransferActive) {
+                                gameRepository.refreshMountStatuses()
+                                mountNotificationManager.syncActiveMountNotification()
+                            } else {
+                                AppLogger.info("MountActionReceiver", "Transfer is active; skipping refreshMountStatuses to avoid lock contention.")
+                            }
+                        }
                     }
                 }
             } catch (t: Throwable) {
                 AppLogger.error("MountActionReceiver", "Failed to handle action $action: ${t.message}")
             } finally {
                 systemSyncMonitor.notifyRefreshAll()
-                pendingResult.finish()
+                try {
+                    pendingResult.finish()
+                } catch (_: Exception) {}
             }
         }
     }

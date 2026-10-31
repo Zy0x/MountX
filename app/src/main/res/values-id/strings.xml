@@ -1210,6 +1210,46 @@
     <string name="category_data_private">Data Privat</string>
     <string name="trim_warning_needs_fsck">Peringatan: Satu atau lebih partisi memerlukan perbaikan integritas filesystem (fsck).</string>
     <string name="trim_not_supported">Driver partisi atau filesystem saat ini tidak mendukung operasi TRIM/discard.</string>
+    <!-- Candidate Directory Titles & Descriptions -->
+    <string name="candidate_data_title">Data (Android/data)</string>
+    <string name="candidate_data_desc">Data aset dan unduhan in-game (/Android/data). Komponen terbesar game.</string>
+    <string name="candidate_obb_title">OBB (Android/obb)</string>
+    <string name="candidate_obb_desc">Berkas arsip paket instalasi game (/Android/obb). Aman dimount ke MicroSD.</string>
+    <string name="candidate_media_title">Media &amp; Unduhan (Android/media &amp; Publik)</string>
+    <string name="candidate_media_desc">Folder media publik dan unduhan. Otomatis menyertakan berkas .nomedia di MicroSD.</string>
+    <string name="candidate_cache_title">Cache &amp; Sementara (Android/data/cache)</string>
+    <string name="candidate_cache_desc">Cache dan file sementara. Disarankan tetap di internal flash agar tidak memicu micro-stuttering.</string>
+    <string name="candidate_private_title">Data Privat (/data/data)</string>
+    <string name="candidate_app_package_title">Paket Aplikasi (APK &amp; Lib Asli)</string>
+
+    <!-- App Detail Category Item Titles & Subtitles -->
+    <string name="category_item_apk_title">APK</string>
+    <string name="category_item_apk_desc">File instalasi aplikasi</string>
+    <string name="category_item_lib_title">Lib</string>
+    <string name="category_item_lib_desc">Pustaka asli aplikasi</string>
+    <string name="category_item_private_title">Data Privat</string>
+    <string name="category_item_private_desc">Data aplikasi (internal)</string>
+    <string name="category_item_cache_title">Cache</string>
+    <string name="category_item_cache_desc">Cache sementara</string>
+    <string name="category_item_data_title">Data Aplikasi</string>
+    <string name="category_item_data_desc">Data utama aplikasi</string>
+    <string name="category_item_obb_title">OBB</string>
+    <string name="category_item_obb_desc">File ekspansi aplikasi</string>
+    <string name="category_item_media_title">Media &amp; Unduhan</string>
+    <string name="category_item_media_desc">Berkas media &amp; unduhan</string>
+    <string name="category_item_on_storage">%1$s • %2$s di %3$s</string>
+    <string name="category_item_custom_title">Kustom (%1$s)</string>
+
+    <!-- App Mount Configuration Sheet -->
+    <string name="mount_config_cache_notice">Catatan: Disarankan tetap di internal flash agar kompilasi shader grafis tidak stutter.</string>
+    <string name="mount_config_locked_reason_prefix">Alasan: %1$s</string>
+    <string name="mount_config_custom_prefix">Kustom: %1$s</string>
+    <string name="mount_config_apply_and_link">Terapkan &amp; Tautkan (%1$s)</string>
+    <string name="mount_config_placeholder_example">Contoh: Android/data/%1$s/files/assets</string>
+    <string name="mount_config_select_folder">Pilih Folder</string>
+
+    <!-- Migration Safety -->
+    <string name="error_migration_unmount_failed_before_restore">KRITIS: Gagal melepas mount pada %1$s sebelum pemulihan ke internal. Dibatalkan demi mencegah kehilangan data asli di MicroSD.</string>
 </resources>
 
 

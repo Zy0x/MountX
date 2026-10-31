@@ -522,6 +522,9 @@ class AppsViewModel @Inject constructor(
                     rawPoints
                 }
 
+                // Flag migration in progress to prevent background watchdog auto-recovery from interfering
+                RootShell.exec("touch /dev/.mountx_migrating")
+
                 // Force stop active process before migration
                 RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
 
@@ -604,6 +607,7 @@ class AppsViewModel @Inject constructor(
             } finally {
                 _isMovingData.value = false
                 _pendingOperations.update { it - packageName }
+                RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
             }
         }
     }
@@ -649,6 +653,7 @@ class AppsViewModel @Inject constructor(
             } finally {
                 _isMovingData.value = false
                 _pendingOperations.update { it - packageName }
+                RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
             }
         }
     }

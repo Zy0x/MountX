@@ -112,6 +112,30 @@ class MountManager(
          * Compatible with both BusyBox (where --show is unsupported) and Toybox.
          * Returns the attached loop device path (e.g. /dev/block/loop0) or empty string on failure.
          */
+        suspend fun resolveBusybox(): String? {
+            val candidates = listOf(
+                "/data/adb/modules/MountX/bin/busybox",
+                "/data/adb/ap/bin/busybox",
+                "/data/adb/ksu/bin/busybox",
+                "/data/adb/magisk/busybox"
+            )
+            for (p in candidates) {
+                if (RootShell.exec("[ -x \"$p\" ] && echo YES || echo NO").output.trim() == "YES") {
+                    return p
+                }
+            }
+            val whichRes = RootShell.execForOutput("which busybox 2>/dev/null").trim()
+            if (whichRes.isNotBlank() && whichRes.contains("busybox")) {
+                return whichRes
+            }
+            return null
+        }
+
+        /**
+         * Creates a loop device for a container image.
+         * Resolves through sysfs backing_file first, then checks losetup -j/-a,
+         * and prefers busybox losetup to bypass Toybox's 64-char path limitation.
+         */
         suspend fun attachLoopDevice(containerPath: String): String {
             RootShell.exec("chmod 777 \"$containerPath\" 2>/dev/null")
             // 1. Check sysfs backing_file first (Android kernel truncates lo_file_name in losetup -a to 64 chars)
@@ -135,10 +159,11 @@ class MountManager(
             if (existing.isNotBlank() && (existing.startsWith("/dev/block/loop") || existing.startsWith("/dev/loop"))) {
                 return existing
             }
-            val bbCmd = "if [ -x /data/adb/modules/MountX/bin/busybox ]; then /data/adb/modules/MountX/bin/busybox; else busybox; fi"
-            val freeLoop = RootShell.execForOutput("BB=$($bbCmd); \$BB losetup -f 2>/dev/null || losetup -f 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
+            val bb = resolveBusybox()
+            val losetupBin = if (bb != null) "$bb losetup" else "losetup"
+            val freeLoop = RootShell.execForOutput("$losetupBin -f 2>/dev/null || losetup -f 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
             if (freeLoop.isNotBlank() && (freeLoop.startsWith("/dev/block/loop") || freeLoop.startsWith("/dev/loop"))) {
-                RootShell.exec("BB=$($bbCmd); \$BB losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null || \$BB losetup -f \"$containerPath\" 2>/dev/null || losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null")
+                RootShell.exec("$losetupBin \"$freeLoop\" \"$containerPath\" 2>/dev/null || $losetupBin -f \"$containerPath\" 2>/dev/null || losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null")
                 val verifySysfs = RootShell.execForOutput(
                     "grep -s -l \"$containerPath\" /sys/block/loop*/loop/backing_file 2>/dev/null | head -n 1"
                 ).trim()
@@ -148,7 +173,7 @@ class MountManager(
                 }
                 return freeLoop
             }
-            val bbOut = RootShell.execForOutput("BB=$($bbCmd); \$BB losetup -fs \"$containerPath\" 2>/dev/null || /system/bin/toybox losetup -fs \"$containerPath\" 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
+            val bbOut = RootShell.execForOutput("$losetupBin -fs \"$containerPath\" 2>/dev/null || /system/bin/toybox losetup -fs \"$containerPath\" 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
             if (bbOut.isNotBlank() && (bbOut.startsWith("/dev/block/loop") || bbOut.startsWith("/dev/loop"))) {
                 return bbOut
             }
@@ -159,6 +184,8 @@ class MountManager(
          * Detaches all loop devices attached to a container image path.
          */
         suspend fun detachLoopDevice(containerPath: String) {
+            val bb = resolveBusybox()
+            val losetupBin = if (bb != null) "$bb losetup" else "losetup"
             val imgName = java.io.File(containerPath).name
             val sysfsMatches = RootShell.execForOutput(
                 "grep -s -l \"$containerPath\" /sys/block/loop*/loop/backing_file 2>/dev/null"
@@ -166,15 +193,15 @@ class MountManager(
             for (match in sysfsMatches) {
                 val loopName = match.substringBefore("/loop/").substringAfterLast("/")
                 if (loopName.startsWith("loop")) {
-                    RootShell.exec("losetup -d \"/dev/block/$loopName\" 2>/dev/null")
+                    RootShell.exec("$losetupBin -d \"/dev/block/$loopName\" 2>/dev/null || losetup -d \"/dev/block/$loopName\" 2>/dev/null")
                     AppLogger.info("MountManager", "Detached loop device via sysfs: /dev/block/$loopName")
                 }
             }
             val loopDevs = RootShell.execForOutput(
-                "losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1"
+                "$losetupBin -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1"
             ).lines().map { it.trim() }.filter { it.isNotBlank() }
             for (ld in loopDevs) {
-                RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
+                RootShell.exec("$losetupBin -d \"$ld\" 2>/dev/null || losetup -d \"$ld\" 2>/dev/null")
                 AppLogger.info("MountManager", "Detached loop device: $ld")
             }
         }
