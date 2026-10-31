@@ -1908,11 +1908,11 @@ class StorageManager(
         val runnerScript = if (engine == MigrationEngineType.STREAMING_TAR) {
             val derefFlag = if (inspection.isNonPosix) "-h" else ""
             val extractFlags = if (inspection.isNonPosix) "--overwrite -o --no-same-permissions" else "--overwrite"
-            val tarCmd = busyboxBin ?: "busybox"
+            val tarCmd = if (busyboxBin != null) "$busyboxBin tar" else "tar"
             """
                 export PATH="/data/adb/modules/MountX/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/system/bin:/system/xbin:${'$'}PATH"
                 mkdir -p "$destDir"
-                ( $tarCmd -cf - -C "$sourceDir" $derefFlag . 2>"$errFile" | $tarCmd -xf - -C "$destDir" $extractFlags 2>>"$errFile" ) &
+                ( ( $tarCmd -cf - -C "$sourceDir" $derefFlag . 2>"$errFile" | $tarCmd -xf - -C "$destDir" $extractFlags 2>>"$errFile" ) || ( cp -a -f "$sourceDir/." "$destDir/" 2>>"$errFile" ) ) &
                 CP_PID=${'$'}!
                 echo "STARTED:${'$'}CP_PID"
                 
@@ -1971,6 +1971,7 @@ class StorageManager(
         }
 
         var copyExitCode = -1
+        var errDetail = ""
 
         val streamRes = try {
             val writeCmd = "cat << 'MOUNTX_MIG_EOF' > \"$scriptFile\"\n$runnerScript\nMOUNTX_MIG_EOF\nchmod 755 \"$scriptFile\""
@@ -2007,7 +2008,7 @@ class StorageManager(
                     AppLogger.info("StorageManager", "Recovered migration exit code from $exitFile: $copyExitCode")
                 }
             }
-            val errDetail = if (copyExitCode != 0 && RootShell.exists(errFile)) {
+            errDetail = if (copyExitCode != 0 && RootShell.exists(errFile)) {
                 RootShell.execForOutput("cat \"$errFile\" 2>/dev/null").trim()
             } else ""
             RootShell.exec("rm -f \"$scriptFile\" \"$exitFile\" \"$errFile\" 2>/dev/null")
@@ -2039,7 +2040,7 @@ class StorageManager(
             if (!existedInitially) {
                 RootShell.exec("rm -rf \"$destDir\"")
             }
-            val fullErr = if (streamRes.stderr.isNotEmpty()) streamRes.stderr.joinToString("\n") else ""
+            val fullErr = if (errDetail.isNotBlank()) errDetail else if (streamRes.stderr.isNotEmpty()) streamRes.stderr.joinToString("\n") else ""
             error("Failed to copy $sourceDir to $destDir (exit code $copyExitCode): $fullErr")
         }
 
