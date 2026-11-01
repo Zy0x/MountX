@@ -157,10 +157,10 @@ class MountManager(
             if (existing.isNotBlank() && (existing.startsWith("/dev/block/loop") || existing.startsWith("/dev/loop"))) {
                 return existing
             }
-            // 3. Find free loop and associate
+            // 3. Find free loop and associate (try --direct-io=on first for zero double-page-cache overhead)
             val freeLoop = RootShell.execForOutput("$losetupBin -f 2>/dev/null || losetup -f 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
             if (freeLoop.isNotBlank() && (freeLoop.startsWith("/dev/block/loop") || freeLoop.startsWith("/dev/loop"))) {
-                RootShell.exec("$losetupBin \"$freeLoop\" \"$containerPath\" 2>/dev/null || losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null")
+                RootShell.exec("$losetupBin --direct-io=on \"$freeLoop\" \"$containerPath\" 2>/dev/null || $losetupBin \"$freeLoop\" \"$containerPath\" 2>/dev/null || losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null")
                 val verifySysfs = RootShell.execForOutput(
                     "grep -s -l \"$containerPath\" /sys/block/loop*/loop/backing_file 2>/dev/null | head -n 1"
                 ).trim()
@@ -506,8 +506,7 @@ class MountManager(
                             res
                         }
                         MountPointCategory.PRIVATE_INTERNAL -> {
-                            mountVirtualExt4Container(game.packageName, mp, sdBase, uid, gid)
-                            true
+                            mountPrivateInternalData(game.packageName, mp, sdBase, uid, gid)
                         }
                         MountPointCategory.APP_PACKAGE -> {
                             // Dynamic verification: resolve active APK directory via pm path in case update relocated the hash directory
@@ -663,6 +662,8 @@ class MountManager(
                     progressPercent = 0.9f
                 )
             )
+            // Ensure package is unsuspended if it was previously suspended during migration or MicroSD ejection
+            RootShell.exec("pm unsuspend \"${game.packageName}\" 2>/dev/null")
             delay(150)
 
             // Step 4: Selesai
@@ -802,46 +803,93 @@ class MountManager(
     }
 
     /**
-     * Mounts a Virtual Ext4 Loop Container for large /data/data/ private data (> 1GB).
-     * Creates a sparse file using dd (bs=1M count=0 seek=$SIZE_IN_MB) for maximum toybox compatibility,
-     * trims losetup string output, and sets POSIX UID/GID with app_data_file SELinux context.
+     * Mounts PRIVATE_INTERNAL (/data/user/0/<pkg>) using the Adaptive Dual-Engine architecture:
+     * - Engine A (Direct Native Folder): Used on POSIX filesystems (F2FS, EXT4) when $sdBase/MountX/data/<pkg> exists
+     *   or no legacy .img exists. Zero overhead, 100% native speed, unlimited dynamic capacity.
+     * - Engine B (Sparse Dynamic ext4 Loop Container): Used on Non-POSIX filesystems (exFAT, FAT32/vFAT, NTFS)
+     *   or when an existing .img container is present. Uses sparse allocation + --direct-io=on.
+     * Compatible across Android 10 through Android 17 (including /data_mirror/data_ce/null/0 and 4KB/16KB pages).
      */
-    private suspend fun mountVirtualExt4Container(
+    private suspend fun mountPrivateInternalData(
         packageName: String,
         mp: MountPointConfig,
         sdBase: String,
         uid: Int,
         gid: Int
-    ) {
+    ): Boolean {
         val containerDir = "$sdBase/.mountx/containers"
-        val containerPath = mp.containerImgPath ?: "$containerDir/${packageName}_data.img"
-        RootShell.exec("mkdir -p \"$containerDir\" 2>/dev/null")
-
-        // 1. Create sparse file if not exists
-        if (!RootShell.exists(containerPath)) {
-            val sizeInMb = maxOf(1024L, (mp.sizeBytes / (1024 * 1024)) * 12 / 10 + 256)
-            RootShell.exec("dd if=/dev/zero of=\"$containerPath\" bs=1M count=0 seek=$sizeInMb 2>/dev/null")
-            RootShell.exec("mke2fs -F -t ext4 \"$containerPath\" 2>/dev/null")
-            AppLogger.info("MountManager", "Created virtual ext4 container: $containerPath ($sizeInMb MB)")
+        val containerPath = mp.containerImgPath?.ifBlank { null }
+            ?: (if (mp.sourcePath.endsWith(".img", ignoreCase = true)) mp.sourcePath else "$containerDir/${packageName}_data.img")
+        val nativeFolderPath = if (mp.sourcePath.isNotBlank() && !mp.sourcePath.endsWith(".img", ignoreCase = true)) {
+            mp.sourcePath
+        } else {
+            "$sdBase/MountX/data/$packageName"
         }
 
-        // 2. Attach loop device if not already attached (BusyBox & Toybox compatible)
-        val loopDev = attachLoopDevice(containerPath)
-        if (loopDev.isBlank()) {
-            AppLogger.error("MountManager", "Failed to setup loop device for container: $containerPath")
-            return
-        }
+        val fsType = RootShell.execForOutput("stat -f -c %T \"$sdBase\" 2>/dev/null").trim().lowercase()
+        val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || sdBase.startsWith("/mnt/media_rw")
+        val isFat32 = fsType in listOf("vfat", "msdos", "fat32")
 
-        // 3. Mount ext4 partition to /data/user/0/$packageName and mirror to /data/data/$packageName
+        val hasNativeFolder = RootShell.exists(nativeFolderPath)
+        val hasContainerImg = RootShell.exists(containerPath)
+
+        // Choose Engine A (Direct Native Folder) if POSIX and either native folder exists or no legacy container exists
+        val useDirectFolderEngine = !isNonPosix && (hasNativeFolder || !hasContainerImg)
+
         val target = "/data/user/0/$packageName"
+        val dataDataTarget = "/data/data/$packageName"
+        val dataCeTarget = "/data_mirror/data_ce/null/0/$packageName"
         RootShell.exec("mkdir -p \"$target\" 2>/dev/null")
-        val mountRes = RootShell.exec("mount -t ext4 -o rw,nosuid,nodev,noatime \"$loopDev\" \"$target\" 2>/dev/null")
-        if (mountRes.isSuccess || RootShell.isMountpoint(target)) {
-            val dataDataTarget = "/data/data/$packageName"
+
+        val mountSucceeded = if (useDirectFolderEngine) {
+            RootShell.exec("mkdir -p \"$nativeFolderPath\" 2>/dev/null")
+            RootShell.exec("chown -R $uid:$gid \"$nativeFolderPath\" 2>/dev/null")
+            RootShell.exec("chmod 700 \"$nativeFolderPath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$nativeFolderPath\" 2>/dev/null")
+            RootShell.exec("find \"$nativeFolderPath\" -type d -exec chmod 700 {} + 2>/dev/null")
+            RootShell.exec("find \"$nativeFolderPath\" -type f -exec chmod 600 {} + 2>/dev/null")
+            RootShell.exec("restorecon -FR \"$nativeFolderPath\" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 \"$nativeFolderPath\" 2>/dev/null")
+
+            val mountRes = RootShell.exec("mount -o bind \"$nativeFolderPath\" \"$target\" 2>/dev/null")
+            val ok = mountRes.isSuccess || RootShell.isMountpoint(target)
+            if (ok) {
+                AppLogger.success("MountManager", "Mounted Engine A (Direct Native Folder) $nativeFolderPath -> $target")
+            } else {
+                AppLogger.error("MountManager", "Failed to mount Engine A folder $nativeFolderPath -> $target: ${mountRes.output}")
+            }
+            ok
+        } else {
+            RootShell.exec("mkdir -p \"$containerDir\" 2>/dev/null")
+            if (!hasContainerImg) {
+                val virtualSizeMb = if (isFat32) {
+                    maxOf(1024L, ((mp.sizeBytes / (1024 * 1024)) * 12 / 10 + 512)).coerceAtMost(3800L)
+                } else {
+                    maxOf(4096L, ((mp.sizeBytes / (1024 * 1024)) * 15 / 10 + 1024)).coerceAtMost(16384L)
+                }
+                RootShell.exec("truncate -s ${virtualSizeMb}M \"$containerPath\" 2>/dev/null || dd if=/dev/zero of=\"$containerPath\" bs=1M count=0 seek=$virtualSizeMb 2>/dev/null")
+                RootShell.exec("mke2fs -F -t ext4 -b 4096 -m 0 -O ^has_journal -E lazy_itable_init=1 \"$containerPath\" 2>/dev/null || mkfs.ext4 -F -b 4096 -m 0 \"$containerPath\" 2>/dev/null")
+                AppLogger.info("MountManager", "Created Sparse Dynamic ext4 container: $containerPath ($virtualSizeMb MB virtual ceiling)")
+            }
+
+            val loopDev = attachLoopDevice(containerPath)
+            if (loopDev.isBlank()) {
+                AppLogger.error("MountManager", "Failed to setup loop device for container: $containerPath")
+                return false
+            }
+
+            val mountRes = RootShell.exec("mount -t ext4 -o rw,nosuid,nodev,noatime,discard \"$loopDev\" \"$target\" 2>/dev/null || mount -t ext4 -o rw,nosuid,nodev,noatime \"$loopDev\" \"$target\" 2>/dev/null")
+            val ok = mountRes.isSuccess || RootShell.isMountpoint(target)
+            if (ok) {
+                AppLogger.success("MountManager", "Mounted Engine B (Sparse ext4 Container) $loopDev -> $target")
+            } else {
+                AppLogger.error("MountManager", "Failed to mount Engine B loop container $loopDev -> $target: ${mountRes.output}")
+            }
+            ok
+        }
+
+        if (mountSucceeded) {
             if (RootShell.exists(dataDataTarget) && !RootShell.isMountpoint(dataDataTarget)) {
                 RootShell.exec("mount -o bind \"$target\" \"$dataDataTarget\" 2>/dev/null")
             }
-            val dataCeTarget = "/data_mirror/data_ce/null/0/$packageName"
             if (RootShell.exists(dataCeTarget) && !RootShell.isMountpoint(dataCeTarget)) {
                 RootShell.exec("mount -o bind \"$target\" \"$dataCeTarget\" 2>/dev/null")
             }
@@ -871,10 +919,8 @@ class MountManager(
                     chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
                 fi
             """.trimIndent())
-            AppLogger.success("MountManager", "Mounted virtual ext4 container $loopDev -> $target")
-        } else {
-            AppLogger.error("MountManager", "Failed to mount ext4 loop container $loopDev -> $target: ${mountRes.output}")
         }
+        return mountSucceeded
     }
 
     /**
@@ -936,19 +982,16 @@ class MountManager(
                 if (game.mountPoints.isNotEmpty()) {
                     for (mp in game.mountPoints) {
                         val targetUserId = resolveUserId(mp.targetPath)
-                        if (mp.category == MountPointCategory.PRIVATE_INTERNAL || mp.isVirtualContainer) {
-                            // Unmount virtual container with kernel sync and loop detach
+                        if (mp.category == MountPointCategory.PRIVATE_INTERNAL || mp.isEffectivelyVirtualContainer()) {
+                            // Unmount private internal data (Direct Folder or Virtual Loop Container)
                             RootShell.exec("sync")
-                            RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
+                            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$targetUserId/${game.packageName}\" 2>/dev/null")
+                            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/${game.packageName}\" 2>/dev/null")
                             RootShell.exec("umount -f -l \"/data/data/${game.packageName}\" 2>/dev/null")
-                            val imgName = mp.containerImgPath?.let { java.io.File(it).name } ?: "${game.packageName}_data.img"
-                            val loopDevs = RootShell.execForOutput(
-                                "losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1"
-                            ).lines().map { it.trim() }.filter { it.isNotBlank() }
-                            for (ld in loopDevs) {
-                                RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
-                                AppLogger.info("MountManager", "Detached loop device: $ld")
-                            }
+                            RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
+                            val imgPath = mp.containerImgPath?.ifBlank { null }
+                                ?: (if (mp.sourcePath.endsWith(".img", ignoreCase = true)) mp.sourcePath else "${game.packageName}_data.img")
+                            detachLoopDevice(imgPath)
                         } else if (mp.category == MountPointCategory.APP_PACKAGE || mp.targetPath.startsWith("/data/app")) {
                             val currentApkPathRes = RootShell.exec("pm path \"${game.packageName}\" 2>/dev/null | head -n 1")
                             val currentApkDir = if (currentApkPathRes.isSuccess && currentApkPathRes.output.contains("package:")) {
@@ -1115,17 +1158,15 @@ class MountManager(
 
             for (mp in points) {
                 val targetUserId = resolveUserId(mp.targetPath)
-                if (mp.category == MountPointCategory.PRIVATE_INTERNAL || mp.isVirtualContainer) {
+                if (mp.category == MountPointCategory.PRIVATE_INTERNAL || mp.isEffectivelyVirtualContainer()) {
                     RootShell.exec("sync")
-                    RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$targetUserId/${game.packageName}\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/${game.packageName}\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"/data/data/${game.packageName}\" 2>/dev/null")
-                    val imgName = mp.containerImgPath?.let { java.io.File(it).name } ?: "${game.packageName}_data.img"
-                    val loopDevs = RootShell.execForOutput(
-                        "losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1"
-                    ).lines().map { it.trim() }.filter { it.isNotBlank() }
-                    for (ld in loopDevs) {
-                        RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
-                    }
+                    RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
+                    val imgPath = mp.containerImgPath?.ifBlank { null }
+                        ?: (if (mp.sourcePath.endsWith(".img", ignoreCase = true)) mp.sourcePath else "${game.packageName}_data.img")
+                    detachLoopDevice(imgPath)
                 } else if (mp.category == MountPointCategory.APP_PACKAGE || mp.targetPath.startsWith("/data/app")) {
                     val currentApkPathRes = RootShell.exec("pm path \"${game.packageName}\" 2>/dev/null | head -n 1")
                     val currentApkDir = if (currentApkPathRes.isSuccess && currentApkPathRes.output.contains("package:")) {

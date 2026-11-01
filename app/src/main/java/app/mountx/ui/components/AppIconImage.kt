@@ -54,11 +54,15 @@ object AppIconManager {
     private val diskWriteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
     private fun getIconCacheDir(context: Context): File {
-        val dir = File(context.cacheDir, "app_icons")
+        val dir = File(context.filesDir, "app_icons")
         if (!dir.exists()) {
             dir.mkdirs()
         }
         return dir
+    }
+
+    private fun getLegacyCacheDir(context: Context): File {
+        return File(context.cacheDir, "app_icons")
     }
 
     fun registerAppInfos(apps: List<android.content.pm.ApplicationInfo>) {
@@ -74,11 +78,12 @@ object AppIconManager {
         appInfoCache.remove(packageName)
         diskWriteScope.launch {
             try {
-                val diskDir = getIconCacheDir(context)
-                val webpFile = File(diskDir, "$packageName.webp")
-                val pngFile = File(diskDir, "$packageName.png")
-                if (webpFile.exists()) webpFile.delete()
-                if (pngFile.exists()) pngFile.delete()
+                for (diskDir in listOf(getIconCacheDir(context), getLegacyCacheDir(context))) {
+                    val webpFile = File(diskDir, "$packageName.webp")
+                    val pngFile = File(diskDir, "$packageName.png")
+                    if (webpFile.exists()) webpFile.delete()
+                    if (pngFile.exists()) pngFile.delete()
+                }
             } catch (_: Exception) {}
         }
     }
@@ -88,14 +93,25 @@ object AppIconManager {
         val cached = iconCache.get(packageName)
         if (cached != null) return cached
 
-        // L2: Persistent Disk Cache
+        // L2: Persistent Disk Cache (filesDir/app_icons with fallback migration from legacy cacheDir/app_icons)
         try {
             val diskDir = getIconCacheDir(context)
+            val legacyDir = getLegacyCacheDir(context)
             val webpFile = File(diskDir, "$packageName.webp")
             val pngFile = File(diskDir, "$packageName.png")
+            val legacyWebp = File(legacyDir, "$packageName.webp")
+            val legacyPng = File(legacyDir, "$packageName.png")
             val diskFile = when {
                 webpFile.exists() && webpFile.length() > 0 -> webpFile
                 pngFile.exists() && pngFile.length() > 0 -> pngFile
+                legacyWebp.exists() && legacyWebp.length() > 0 -> {
+                    try { legacyWebp.copyTo(webpFile, overwrite = true); legacyWebp.delete() } catch (_: Exception) {}
+                    if (webpFile.exists()) webpFile else legacyWebp
+                }
+                legacyPng.exists() && legacyPng.length() > 0 -> {
+                    try { legacyPng.copyTo(pngFile, overwrite = true); legacyPng.delete() } catch (_: Exception) {}
+                    if (pngFile.exists()) pngFile else legacyPng
+                }
                 else -> null
             }
             if (diskFile != null) {

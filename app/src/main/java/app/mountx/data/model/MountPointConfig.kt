@@ -37,8 +37,7 @@ data class MountPointConfig(
      */
     fun isEffectivelyVirtualContainer(): Boolean {
         return isVirtualContainer ||
-                resolveCategory() == MountPointCategory.PRIVATE_INTERNAL ||
-                sourcePath.endsWith(".img") ||
+                sourcePath.endsWith(".img", ignoreCase = true) ||
                 (!containerImgPath.isNullOrBlank())
     }
 

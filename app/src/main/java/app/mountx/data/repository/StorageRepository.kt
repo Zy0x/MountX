@@ -74,6 +74,10 @@ class StorageRepository @Inject constructor(
     fun getCachedDisks(): List<SdCardDiskInfo> = cachedHierarchy?.disks ?: emptyList()
     fun getCachedPartitions(): List<PartitionInfo> = cachedHierarchy?.partitions ?: emptyList()
 
+    suspend fun inspectStorageTarget(targetDir: String) = withContext(Dispatchers.IO) {
+        storageManager.inspectStorageTarget(targetDir)
+    }
+
     fun invalidateCache() {
         cachedHierarchy = null
         lastScanTimeMillis = 0L

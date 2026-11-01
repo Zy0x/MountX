@@ -860,7 +860,7 @@ load_mountpoints() {
                 if [ -z "${ldev}" ]; then
                     ldev=$(${losetup_bin} -f 2>/dev/null || losetup -f 2>/dev/null)
                     if [ -n "${ldev}" ]; then
-                        ${losetup_bin} "${ldev}" "${src}" 2>/dev/null || ldev=$(${losetup_bin} -fs "${src}" 2>/dev/null) || losetup "${ldev}" "${src}" 2>/dev/null
+                        ${losetup_bin} --direct-io=on "${ldev}" "${src}" 2>/dev/null || ${losetup_bin} "${ldev}" "${src}" 2>/dev/null || ldev=$(${losetup_bin} -fs "${src}" 2>/dev/null) || losetup "${ldev}" "${src}" 2>/dev/null
                     fi
                 fi
                 if [ -n "${ldev}" ]; then
@@ -900,13 +900,61 @@ load_mountpoints() {
                 ;;
         esac
 
-        # APP_PACKAGE and CACHE_SHADERS must be bind-mounted directly to dst
+        # PRIVATE_INTERNAL (Engine A Direct Folder), APP_PACKAGE, and CACHE_SHADERS must be bind-mounted directly to dst
         # NEVER pass to bind_mount_to_runtime_namespaces
         case "${cat}" in
+            PRIVATE_INTERNAL)
+                mkdir -p "${src}" "${dst}" 2>/dev/null
+                local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                [ -z "${app_uid}" ] && app_uid=$(pm list packages -U 2>/dev/null | grep -F "package:${pkg} " | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+                [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                chown -R "${app_uid}:${app_uid}" "${src}" 2>/dev/null
+                chmod 700 "${src}" 2>/dev/null
+                chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
+                find "${src}" -type d -exec chmod 700 {} + 2>/dev/null
+                find "${src}" -type f -exec chmod 600 {} + 2>/dev/null
+                restorecon -FR "${src}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
+                mount -o bind "${src}" "${dst}" 2>/dev/null
+                if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
+                    chown "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                    chmod 700 "${dst}" 2>/dev/null
+                    restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                    if [ -d "/data/data/${pkg}" ] && ! grep -qF " /data/data/${pkg} " /proc/mounts 2>/dev/null; then
+                        mount -o bind "${dst}" "/data/data/${pkg}" 2>/dev/null
+                    fi
+                    if [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}" ] && ! grep -qF " /data_mirror/data_ce/null/${user_id}/${pkg} " /proc/mounts 2>/dev/null; then
+                        mount -o bind "${dst}" "/data_mirror/data_ce/null/${user_id}/${pkg}" 2>/dev/null
+                    fi
+                    mkdir -p "/data/user_de/${user_id}/${pkg}/cache" "/data/user_de/${user_id}/${pkg}/code_cache" 2>/dev/null
+                    chown "${app_uid}:${app_uid}" "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                    chmod 700 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                    restorecon -FR "/data/user_de/${user_id}/${pkg}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                    if [ ! -d "/data/misc/profiles/cur/${user_id}/${pkg}" ]; then
+                        mkdir -p "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                        chown "${app_uid}:${app_uid}" "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                        chmod 700 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                        chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                    fi
+                    log_info "  [${pkg}] Engine A Direct Private Data folder mounted: ${src} -> ${dst}"
+                    entries=$((entries + 1))
+                    continue
+                fi
+                ;;
             APP_PACKAGE)
-                # Dynamic APK target resolution & lib subfolder verification
+                # Dynamic APK target resolution & Self-Healing Package Reconciler
                 local real_apk_path
                 real_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed 's/^package://')
+                if [ -z "${real_apk_path}" ] && [ -f "${src}/base.apk" ]; then
+                    log_info "  [${pkg}] Self-Healing Reconciler: re-registering detached package from ${src}..."
+                    pm install -r -d "${src}"/*.apk >/dev/null 2>&1
+                    real_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed 's/^package://')
+                    if [ -n "${real_apk_path}" ]; then
+                        local new_apk_dir=$(dirname "${real_apk_path}")
+                        find "${new_apk_dir}" -depth -mindepth 1 -delete 2>/dev/null
+                        local new_uid=$(id -u "${pkg}" 2>/dev/null)
+                        [ -n "${new_uid}" ] && [ -d "${SD_BASE}/MountX/data/${pkg}" ] && chown -R "${new_uid}:${new_uid}" "${SD_BASE}/MountX/data/${pkg}" 2>/dev/null
+                    fi
+                fi
                 if [ -n "${real_apk_path}" ]; then
                     local real_apk_dir
                     real_apk_dir=$(dirname "${real_apk_path}")
@@ -933,6 +981,7 @@ load_mountpoints() {
                 chown -R 1000:1000 "${dst}" 2>/dev/null
                 chmod -R 755 "${dst}" 2>/dev/null
                 chcon -R u:object_r:apk_data_file:s0 "${dst}" 2>/dev/null
+                pm unsuspend "${pkg}" >/dev/null 2>&1
                 log_info "  [${pkg}] App package bind-mounted directly: ${src} -> ${dst}"
                 entries=$((entries + 1))
                 continue

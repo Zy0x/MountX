@@ -268,8 +268,7 @@ fun AppDetailView(
         } else if (candidateDirectories.isNotEmpty()) {
             candidateDirectories.map { cd ->
                 val isContainer = cd.isVirtualContainer ||
-                    cd.category == app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL ||
-                    cd.sdPath.endsWith(".img")
+                    cd.sdPath.endsWith(".img", ignoreCase = true)
                 MountPointConfig(
                     id = cd.id,
                     category = cd.category,
@@ -725,12 +724,28 @@ private fun resolveSdPath(sdBase: String, relativeMountXPath: String): String {
     }
 }
 
+private fun isPosixStorageTarget(
+    sdBase: String,
+    availableDisks: List<SdCardDiskInfo> = emptyList(),
+    targetPartition: PartitionInfo? = null
+): Boolean {
+    val fsType = (targetPartition?.fsType
+        ?: availableDisks.flatMap { it.partitions }.firstOrNull { part ->
+            part.mountPoint != null && sdBase.startsWith(part.mountPoint)
+        }?.fsType
+        ?: if (sdBase.startsWith("/data/sdext")) "f2fs" else "").lowercase()
+    return fsType in listOf("ext4", "f2fs", "ext2", "ext3", "btrfs", "xfs")
+}
+
 private fun buildTargetMountPoints(
     selectedCategoryIds: Set<String>,
     currentMountPoints: List<MountPointConfig>,
     game: GameEntry,
     sdBase: String,
-    packageInfo: android.content.pm.PackageInfo? = null
+    packageInfo: android.content.pm.PackageInfo? = null,
+    availableDisks: List<SdCardDiskInfo> = emptyList(),
+    targetPartition: PartitionInfo? = null,
+    direction: MoveDirection = MoveDirection.TO_SD
 ): List<MountPointConfig> {
     val result = mutableListOf<MountPointConfig>()
     val pkg = game.packageName
@@ -739,6 +754,7 @@ private fun buildTargetMountPoints(
         if (apkSrc.endsWith(".apk")) java.io.File(apkSrc).parent ?: apkSrc else apkSrc
     } else "/data/app/$pkg"
     val libDir = packageInfo?.applicationInfo?.nativeLibraryDir ?: "$apkDir/lib"
+    val isPosixTarget = isPosixStorageTarget(sdBase, availableDisks, targetPartition)
 
     for (catId in selectedCategoryIds) {
         val existing = currentMountPoints
@@ -762,12 +778,17 @@ private fun buildTargetMountPoints(
             }
 
         if (existing != null) {
-            val isContainer = existing.isEffectivelyVirtualContainer() ||
-                catId in listOf("private", "private_internal") ||
+            val isPrivateCat = catId in listOf("private", "private_internal") ||
                 existing.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+            val isContainer = when {
+                isPrivateCat && direction == MoveDirection.TO_SD -> !isPosixTarget
+                isPrivateCat && direction == MoveDirection.TO_INTERNAL -> existing.isEffectivelyVirtualContainer()
+                else -> existing.isEffectivelyVirtualContainer()
+            }
             val containerPath = if (isContainer) "$sdBase/.mountx/containers/${pkg}_data.img" else null
             val updatedSource = when {
                 isContainer -> containerPath!!
+                isPrivateCat -> "$sdBase/MountX/data/$pkg"
                 existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> {
                     val subFolder = if (existing.targetPath.endsWith("/files")) "MountX/Android/data/$pkg/files" else "MountX/Android/data/$pkg"
                     if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
@@ -801,7 +822,7 @@ private fun buildTargetMountPoints(
                 else -> existing.sourcePath
             }
             val updatedTarget = when {
-                isContainer -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg"
+                isContainer || isPrivateCat -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg"
                 existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> {
                     if (catId == "lib" || existing.id.startsWith("lib_") || existing.targetPath.contains("/lib")) {
                         if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/data/app/$pkg/lib")) existing.targetPath else libDir
@@ -860,15 +881,19 @@ private fun buildTargetMountPoints(
                     targetPath = libDir,
                     enabled = true
                 )
-                "private", "private_internal" -> MountPointConfig(
-                    id = "private_$pkg",
-                    category = MountPointCategory.PRIVATE_INTERNAL,
-                    sourcePath = "$sdBase/.mountx/containers/${pkg}_data.img",
-                    targetPath = "/data/user/0/$pkg",
-                    enabled = true,
-                    isVirtualContainer = true,
-                    containerImgPath = "$sdBase/.mountx/containers/${pkg}_data.img"
-                )
+                "private", "private_internal" -> {
+                    val useContainer = !isPosixTarget
+                    val privSrc = if (useContainer) "$sdBase/.mountx/containers/${pkg}_data.img" else "$sdBase/MountX/data/$pkg"
+                    MountPointConfig(
+                        id = "private_$pkg",
+                        category = MountPointCategory.PRIVATE_INTERNAL,
+                        sourcePath = privSrc,
+                        targetPath = "/data/user/0/$pkg",
+                        enabled = true,
+                        isVirtualContainer = useContainer,
+                        containerImgPath = if (useContainer) privSrc else null
+                    )
+                }
                 "cache" -> MountPointConfig(
                     id = "cache_$pkg",
                     category = MountPointCategory.CACHE_SHADERS,
@@ -1131,7 +1156,9 @@ private fun StorageTabContent(
         }
 
         val existingPrivatePoint = prioritizedPoints.firstOrNull { it.id == "private" || it.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL }
-        val privateSdPath = existingPrivatePoint?.sourcePath ?: "$sdBase/.mountx/containers/${pkg}_data.img"
+        val isDefaultPosix = isPosixStorageTarget(sdBase, availableDisks)
+        val privateSdPath = existingPrivatePoint?.sourcePath
+            ?: if (isDefaultPosix) "$sdBase/MountX/data/$pkg" else "$sdBase/.mountx/containers/${pkg}_data.img"
         val (isPrivateUsb, privateDiskLabel) = getDiskDetails(privateSdPath, existingPrivatePoint?.diskUuid)
         val isPrivateCatMounted = safeBreakdown.isPrivateMounted || (isMounted && existingPrivatePoint?.enabled == true && safeBreakdown.ext2PrivateBytes > 0L && safeBreakdown.dataBytes <= 4096L)
         val privateDefaultDesc = context.getString(R.string.category_item_private_desc)
@@ -2050,7 +2077,7 @@ private fun StorageTabContent(
             onConfirmMove = { dir, targetDisk, targetPartition ->
                 showTargetModal = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo)
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo, availableDisks, targetPartition, dir)
                 val isToInternal = dir == MoveDirection.TO_INTERNAL
                 val totalBytes = targetPoints.sumOf { pt ->
                     val cat = pt.resolveCategory()
@@ -2111,7 +2138,7 @@ private fun StorageTabContent(
                 showTargetModal = false
                 isSelectionMode = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo)
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo, availableDisks, targetPartition, MoveDirection.TO_SD)
 
                 val internalBytes = targetPoints.sumOf { pt ->
                     when (pt.resolveCategory()) {

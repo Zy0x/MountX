@@ -368,6 +368,10 @@ class AppRepository @Inject constructor(
                     RootShell.exec("rm -rf \"$sdBase/MountX/Android/data/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/MountX/Android/obb/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/MountX/Android/media/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/MountX/data/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/MountX/app/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/MountX/lib/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_data.img\" \"$sdBase/MountX/containers/${packageName}_data.img\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/Android/data/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/Android/obb/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/Android/media/$packageName\" 2>/dev/null")
@@ -1350,7 +1354,7 @@ class AppRepository @Inject constructor(
         val candidateExtMediaPaths = externalBases.flatMap { listOf("$it/MountX/Android/media/$packageName", "$it/Android/media/$packageName") }.toMutableList()
         val candidateExtApkPaths = externalBases.flatMap { listOf("$it/MountX/app/$packageName", "$it/Android/app/$packageName") }.toMutableList()
         val candidateExtLibPaths = externalBases.flatMap { listOf("$it/MountX/lib/$packageName", "$it/Android/lib/$packageName") }.toMutableList()
-        val candidateExtPrivatePaths = externalBases.flatMap { listOf("$it/.mountx/containers/${packageName}_data.img", "$it/MountX/containers/${packageName}_data.img") }.toMutableList()
+        val candidateExtPrivatePaths = externalBases.flatMap { listOf("$it/MountX/data/$packageName", "$it/.mountx/containers/${packageName}_data.img", "$it/MountX/containers/${packageName}_data.img") }.toMutableList()
         val candidateExtCachePaths = externalBases.flatMap { listOf("$it/MountX/Android/data/$packageName/cache", "$it/Android/data/$packageName/cache") }.toMutableList()
         val candidateCustomPaths = mutableListOf<String>()
         game?.mountPoints?.forEach { mp ->
@@ -1674,8 +1678,15 @@ class AppRepository @Inject constructor(
             )
         )
 
-        // 5. PRIVATE_INTERNAL: /data/data/<pkg>
+        // 5. PRIVATE_INTERNAL: /data/data/<pkg> (Adaptive Dual-Engine: Native Folder on POSIX, Sparse .img on Non-POSIX)
         val privateSize = sizeMap[privateDataDir] ?: 0L
+        val targetCap = storageManager.inspectStorageTarget(sdBase)
+        val usePrivateContainer = !targetCap.isPosixCompatible
+        val privateSdTarget = if (usePrivateContainer) {
+            "$sdBase/.mountx/containers/${packageName}_data.img"
+        } else {
+            "$sdBase/MountX/data/$packageName"
+        }
         val oneGb = 1024L * 1024L * 1024L
         if (privateSize >= oneGb) {
             list.add(
@@ -1686,11 +1697,11 @@ class AppRepository @Inject constructor(
                     description = context.getString(R.string.candidate_private_desc),
                     relativePath = "data/user/0/$packageName",
                     internalPath = privateDataDir,
-                    sdPath = "$sdBase/.mountx/containers/${packageName}_data.img",
+                    sdPath = privateSdTarget,
                     sizeBytes = privateSize,
                     defaultEnabled = false,
                     isLocked = false,
-                    isVirtualContainer = true,
+                    isVirtualContainer = usePrivateContainer,
                     childItems = emptyList()
                 )
             )
@@ -1703,12 +1714,12 @@ class AppRepository @Inject constructor(
                     description = context.getString(R.string.candidate_private_locked_desc),
                     relativePath = "data/user/0/$packageName",
                     internalPath = privateDataDir,
-                    sdPath = "$sdBase/.mountx/containers/${packageName}_data.img",
+                    sdPath = privateSdTarget,
                     sizeBytes = privateSize,
                     defaultEnabled = false,
                     isLocked = true,
                     lockReason = context.getString(R.string.candidate_private_locked_reason),
-                    isVirtualContainer = true,
+                    isVirtualContainer = usePrivateContainer,
                     childItems = emptyList()
                 )
             )
@@ -1823,7 +1834,16 @@ class AppRepository @Inject constructor(
                     }
                 }
                 "private" -> {
-                    RootShell.exec("pm clear \"$packageName\"")
+                    if (location == CategoryDeleteLocation.SD_ONLY || location == CategoryDeleteLocation.BOTH) {
+                        RootShell.exec("umount -l \"/data/user/0/$packageName\" \"/data/data/$packageName\" \"/data_mirror/data_ce/null/0/$packageName\" 2>/dev/null")
+                        externalBases.forEach { base ->
+                            RootShell.exec("rm -rf \"$base/MountX/data/$packageName\" 2>/dev/null")
+                            RootShell.exec("rm -f \"$base/.mountx/containers/${packageName}_data.img\" \"$base/MountX/containers/${packageName}_data.img\" 2>/dev/null")
+                        }
+                    }
+                    if (location == CategoryDeleteLocation.INTERNAL_ONLY || location == CategoryDeleteLocation.BOTH) {
+                        RootShell.exec("pm clear \"$packageName\"")
+                    }
                 }
                 "data" -> {
                     val internalPath = "/data/media/0/Android/data/$packageName"

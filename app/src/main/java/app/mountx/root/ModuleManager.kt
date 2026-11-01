@@ -191,7 +191,7 @@ object ModuleManager {
                 ?.toIntOrNull() ?: 0
 
             val currentVersionCode = app.mountx.BuildConfig.VERSION_CODE
-            val binExists = RootShell.exists("$MODULE_DIR/bin/busybox")
+            val binExists = RootShell.exists("$MODULE_DIR/bin/busybox") && RootShell.exists("$MODULE_DIR/post-fs-data.sh")
             if (installedVersionCode < currentVersionCode || !binExists) {
                 AppLogger.info(TAG, "Syncing outdated or incomplete module: installed=$installedVersionCode, current=$currentVersionCode, binExists=$binExists")
                 installModuleDirectly(context)

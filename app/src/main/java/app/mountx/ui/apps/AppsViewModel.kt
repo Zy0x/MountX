@@ -516,10 +516,24 @@ class AppsViewModel @Inject constructor(
                 val rawPoints = if (mountPoints.isNotEmpty()) mountPoints else {
                     game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
                 }
-                val effectivePoints = if (direction == MoveDirection.TO_SD && rawPoints.none { it.enabled }) {
+                val basePoints = if (direction == MoveDirection.TO_SD && rawPoints.none { it.enabled }) {
                     rawPoints.map { it.copy(enabled = true) }
                 } else {
                     rawPoints
+                }
+                val sdInspection = if (direction == MoveDirection.TO_SD) storageRepository.inspectStorageTarget(sdBase) else null
+                val effectivePoints = basePoints.map { pt ->
+                    if (direction == MoveDirection.TO_SD && pt.resolveCategory() == app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL && sdInspection != null) {
+                        val useContainer = sdInspection.isNonPosix
+                        val privSrc = if (useContainer) "$sdBase/.mountx/containers/${packageName}_data.img" else "$sdBase/MountX/data/$packageName"
+                        pt.copy(
+                            sourcePath = privSrc,
+                            isVirtualContainer = useContainer,
+                            containerImgPath = if (useContainer) privSrc else null
+                        )
+                    } else {
+                        pt
+                    }
                 }
 
                 // Flag migration in progress to prevent background watchdog auto-recovery from interfering
