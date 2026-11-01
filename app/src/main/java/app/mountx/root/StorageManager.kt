@@ -1847,6 +1847,7 @@ class StorageManager(
         title: String,
         subtitle: String,
         conflictStrategy: ConflictStrategy = ConflictStrategy.OVERWRITE,
+        excludeTopDirs: List<String> = emptyList(),
         onProgress: ((OperationProgress) -> Unit)?
     ) {
         if (sourceDir.trimEnd('/') == destDir.trimEnd('/')) {
@@ -1918,7 +1919,8 @@ class StorageManager(
             val effectiveSpeed = if (smoothedSpeed > 0L) smoothedSpeed else if (elapsedSec > 0.8) (clampedCopied / elapsedSec).toLong() else 0L
             val remainingBytes = (totalMigrationBytes - totalProcessed).coerceAtLeast(0L)
             val eta = if (effectiveSpeed > 0L) remainingBytes / effectiveSpeed else 0L
-            val prog = if (totalMigrationBytes > 0L) (totalProcessed.toFloat() / totalMigrationBytes.toFloat()).coerceIn(0f, 1f) else 0.5f
+            val rawRatio = if (totalMigrationBytes > 0L) (totalProcessed.toFloat() / totalMigrationBytes.toFloat()).coerceIn(0f, 1f) else 0.5f
+            val prog = (0.04f + 0.86f * rawRatio).coerceIn(0.04f, 0.90f)
 
             onProgress?.invoke(
                 OperationProgress(
@@ -1949,6 +1951,14 @@ class StorageManager(
         val exitFile = "/data/local/tmp/mountx_mig_exit_$timestamp.txt"
         val errFile = "/data/local/tmp/mountx_mig_err_$timestamp.txt"
 
+        val tarExcludeFlags = excludeTopDirs.joinToString(" ") { "--exclude=\"./$it\" --exclude=\"$it\"" }
+        val findExcludeExpr = excludeTopDirs.joinToString(" ") { "! -name '$it'" }
+        val fallbackCopyCmd = if (excludeTopDirs.isNotEmpty()) {
+            "find \"$sourceDir\" -mindepth 1 -maxdepth 1 $findExcludeExpr -exec cp -a -f {} \"$destDir/\" \\;"
+        } else {
+            "cp -a -f \"$sourceDir/.\" \"$destDir/\""
+        }
+
         val runnerScript = if (engine == MigrationEngineType.STREAMING_TAR) {
             val derefFlag = if (inspection.isNonPosix) "-h" else ""
             val extractFlags = if (inspection.isNonPosix) "--overwrite -o --no-same-permissions" else "--overwrite"
@@ -1959,7 +1969,7 @@ class StorageManager(
                 mkdir -p "$destDir"
                 INIT_USED=${'$'}(df -k "$destDir" 2>/dev/null | tail -n 1 | tr -s ' ' | cut -d' ' -f3)
                 [ -z "${'$'}INIT_USED" ] && INIT_USED=0
-                $tarCmd -cf - -C "$sourceDir" $derefFlag . 2>"$errFile" | $tarCmd -xf - -C "$destDir" $extractFlags 2>>"$errFile" &
+                $tarCmd -cf - -C "$sourceDir" $derefFlag $tarExcludeFlags . 2>"$errFile" | $tarCmd -xf - -C "$destDir" $extractFlags 2>>"$errFile" &
                 CP_PID=${'$'}!
                 echo -900 > "/proc/${'$'}CP_PID/oom_score_adj" 2>/dev/null || true
                 echo "STARTED:${'$'}CP_PID"
@@ -1991,7 +2001,7 @@ class StorageManager(
                 EXIT_CODE=${'$'}?
                 
                 if [ "${'$'}EXIT_CODE" -ne 0 ]; then
-                    cp -a -f "$sourceDir/." "$destDir/" 2>>"$errFile"
+                    $fallbackCopyCmd 2>>"$errFile"
                     EXIT_CODE=${'$'}?
                 fi
                 
@@ -1999,7 +2009,9 @@ class StorageManager(
                 echo "COPY_EXIT:${'$'}EXIT_CODE"
             """.trimIndent()
         } else {
-            val baseCpCmd = when (conflictStrategy) {
+            val baseCpCmd = if (excludeTopDirs.isNotEmpty()) {
+                fallbackCopyCmd
+            } else when (conflictStrategy) {
                 ConflictStrategy.MERGE -> "cp -a -u \"$sourceDir/.\" \"$destDir/\""
                 else -> "cp -a -f \"$sourceDir/.\" \"$destDir/\""
             }
@@ -2095,12 +2107,17 @@ class StorageManager(
         // Final point progress
         reportProgress(estimatedPointBytes)
 
+        val expectedSrcBytes = if (excludeTopDirs.isNotEmpty() && estimatedPointBytes > 0L) {
+            estimatedPointBytes
+        } else {
+            getDirSizeBytes(sourceDir)
+        }
+
         // Resilient fallback: If copyExitCode is still -1 but streamRes succeeded and destination size matches source (>= 90%)
         if (copyExitCode == -1 && streamRes.isSuccess) {
-            val srcSz = getDirSizeBytes(sourceDir)
             val dstSz = getDirSizeBytes(destDir)
-            if (dstSz >= (srcSz * 0.90)) {
-                AppLogger.info("StorageManager", "Copy stream completed with exit code -1, but verified $dstSz bytes copied (>= 90% of $srcSz). Marking copy as successful.")
+            if (dstSz >= (expectedSrcBytes * 0.90)) {
+                AppLogger.info("StorageManager", "Copy stream completed with exit code -1, but verified $dstSz bytes copied (>= 90% of $expectedSrcBytes). Marking copy as successful.")
                 copyExitCode = 0
             }
         }
@@ -2115,14 +2132,104 @@ class StorageManager(
         }
 
         // Integrity Verification: Verify destination contains data before source can be deleted
-        val finalSrcBytes = getDirSizeBytes(sourceDir)
         val finalDestBytes = getDirSizeBytes(destDir)
-        if (finalSrcBytes > 1024L * 1024L && finalDestBytes < (finalSrcBytes * 0.90)) {
+        if (expectedSrcBytes > 1024L * 1024L && finalDestBytes < (expectedSrcBytes * 0.90)) {
             if (!existedInitially) {
                 RootShell.exec("rm -rf \"$destDir\"")
             }
-            error("Integritas data gagal diverifikasi! Ukuran tujuan ($finalDestBytes bytes) tidak cocok dengan sumber ($finalSrcBytes bytes). Pemindahan dibatalkan untuk melindungi data.")
+            error("Integritas data gagal diverifikasi! Ukuran tujuan ($finalDestBytes bytes) tidak cocok dengan sumber ($expectedSrcBytes bytes). Pemindahan dibatalkan untuk melindungi data.")
         }
+    }
+
+    private suspend fun unmountPointForMigration(packageName: String, point: MountPointConfig) {
+        val targetPath = point.targetPath
+        val pointUserId = MountManager.resolveUserId(targetPath)
+        val relPath = MountManager.extractRelativePath(targetPath)
+        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+            RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+        }
+        RootShell.exec("umount -f -l \"/data/media/$pointUserId/$relPath\" 2>/dev/null")
+        if (pointUserId == 0) {
+            RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
+        }
+        RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+        if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.category == MountPointCategory.CACHE_SHADERS || point.targetPath.startsWith("/data/user/") || point.targetPath.startsWith("/data/data/") || point.isEffectivelyVirtualContainer()) {
+            RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName/cache\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/data/data/$packageName/cache\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName/cache\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/$packageName/cache\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/dev/mountx_cache_hold_$packageName\" 2>/dev/null")
+            RootShell.exec("rmdir \"/dev/mountx_cache_hold_$packageName\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/data/data/$packageName\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/$packageName\" 2>/dev/null")
+            val imgName = point.containerImgPath?.let { java.io.File(it).name } ?: "${packageName}_data.img"
+            val loopDevs = RootShell.execForOutput("losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1")
+                .lines().map { it.trim() }.filter { it.isNotBlank() }
+            for (ld in loopDevs) {
+                RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
+            }
+        } else if (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) {
+            val apkRootDir = if (targetPath.contains("/lib")) targetPath.substringBefore("/lib") else targetPath
+            RootShell.exec("umount -f -l \"$apkRootDir/lib/arm64\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"$apkRootDir/lib/armeabi-v7a\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"$apkRootDir/lib\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"/dev/mountx_lib_hold_$packageName\" 2>/dev/null")
+            RootShell.exec("rmdir \"/dev/mountx_lib_hold_$packageName\" 2>/dev/null")
+            RootShell.exec("umount -f -l \"$apkRootDir\" 2>/dev/null")
+        }
+    }
+
+    private suspend fun calculateExactBatchPointSizes(
+        packageName: String,
+        activePoints: List<MountPointConfig>,
+        isToSd: Boolean,
+        sdBase: String
+    ): Map<String, Long> {
+        val pointSizesMap = mutableMapOf<String, Long>()
+        for (pt in activePoints) {
+            val isPriv = pt.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+            val isApkRoot = (pt.category == MountPointCategory.APP_PACKAGE || pt.targetPath.startsWith("/data/app")) && !pt.targetPath.contains("/lib") && !pt.id.startsWith("lib")
+            val rawSize = if (isToSd) {
+                val baseSz = getDirSizeBytes(pt.targetPath)
+                if (isApkRoot) {
+                    val libSz = getDirSizeBytes("${pt.targetPath}/lib")
+                    (baseSz - libSz).coerceAtLeast(0L)
+                } else if (isPriv) {
+                    val cacheSz = getDirSizeBytes("${pt.targetPath}/cache")
+                    (baseSz - cacheSz).coerceAtLeast(0L)
+                } else {
+                    baseSz
+                }
+            } else {
+                val effSrc = if (isPriv) {
+                    val candImg = pt.containerImgPath?.ifBlank { null }
+                        ?: (if (pt.sourcePath.endsWith(".img")) pt.sourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
+                    val candNative = "$sdBase/MountX/data/$packageName"
+                    if (RootShell.exists(candNative)) candNative
+                    else if (RootShell.exists(candImg)) candImg
+                    else pt.sourcePath
+                } else {
+                    pt.sourcePath
+                }
+                val baseSz = getDirSizeBytes(effSrc)
+                if (isApkRoot && activePoints.any { it.targetPath.contains("/lib") || it.id.startsWith("lib") }) {
+                    val libInApk = getDirSizeBytes("$effSrc/lib")
+                    (baseSz - libInApk).coerceAtLeast(0L)
+                } else if (isPriv && activePoints.any { it.category == MountPointCategory.CACHE_SHADERS || it.id.startsWith("cache") }) {
+                    val cacheInPriv = getDirSizeBytes("$effSrc/cache")
+                    (baseSz - cacheInPriv).coerceAtLeast(0L)
+                } else {
+                    baseSz
+                }
+            }
+            val finalPtSize = if (rawSize > 0L) rawSize else pt.sizeBytes.coerceAtLeast(4096L)
+            pointSizesMap[pt.id] = finalPtSize
+        }
+        return pointSizesMap
     }
 
     /**
@@ -2188,55 +2295,45 @@ class StorageManager(
                 normalizedPoints.sortedBy { it.targetPath.trimEnd('/').length }
             }
 
-            // Step 0: Preparing - calculate dynamic real sizes
-            var totalMigrationBytes = 0L
-            for (pt in activePoints) {
-                val src = if (isToSd) pt.targetPath else pt.sourcePath
-                val sz = getDirSizeBytes(src)
-                totalMigrationBytes += if (sz > 0L) sz else pt.sizeBytes
-            }
-
-            // Pre-Flight Free Space Guard (Reserve 1GB safety headroom for internal OS stability)
-            val targetBase = if (isToSd) sdBase else "/data"
-            val freeBytes = if (!isToSd) {
-                try {
-                    android.os.StatFs("/data").availableBytes
-                } catch (e: Exception) {
-                    getAvailableFreeBytes("/data")
+            // Monotonic Progress Engine: guarantees zero backward jumps in step index, bytes, or percentage
+            var highestStepIndex = 0
+            var highestBytesProcessed = 0L
+            var highestProgressPercent = 0f
+            var lastKnownSpeed = 0L
+            val monotonicProgress: ((OperationProgress) -> Unit)? = if (onProgress != null) {
+                { rawProg ->
+                    if (rawProg.isFinished) {
+                        onProgress.invoke(rawProg)
+                    } else {
+                        val safeStep = maxOf(highestStepIndex, rawProg.currentStepIndex)
+                        val safeBytes = maxOf(highestBytesProcessed, rawProg.bytesProcessed)
+                        val safePct = maxOf(highestProgressPercent, rawProg.progressPercent)
+                        val safeSpeed = if (rawProg.speedBytesPerSec > 0L) {
+                            lastKnownSpeed = rawProg.speedBytesPerSec
+                            rawProg.speedBytesPerSec
+                        } else {
+                            lastKnownSpeed
+                        }
+                        val remaining = (rawProg.totalBytes - safeBytes).coerceAtLeast(0L)
+                        val safeEta = if (rawProg.etaSeconds > 0L) rawProg.etaSeconds else if (safeSpeed > 0L) remaining / safeSpeed else 0L
+                        highestStepIndex = safeStep
+                        highestBytesProcessed = safeBytes
+                        highestProgressPercent = safePct
+                        onProgress.invoke(
+                            rawProg.copy(
+                                currentStepIndex = safeStep,
+                                bytesProcessed = safeBytes,
+                                progressPercent = safePct,
+                                speedBytesPerSec = safeSpeed,
+                                etaSeconds = safeEta
+                            )
+                        )
+                    }
                 }
-            } else {
-                getAvailableFreeBytes(targetBase)
-            }
-            val clusterSize = RootShell.execForOutput("stat -f -c %S \"$targetBase\" 2>/dev/null").trim().toLongOrNull() ?: 4096L
-            var totalSlackCompensation = 0L
-            if (isToSd) {
-                for (pt in activePoints) {
-                    totalSlackCompensation += calculateSlackHeadroom(pt.targetPath, clusterSize)
-                }
-            }
-            val headroom = if (isToSd) {
-                maxOf(250 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
-            } else {
-                maxOf(250_000_000L, (totalMigrationBytes * 0.05).toLong())
-            }
-            val requiredTotal = totalMigrationBytes + headroom + totalSlackCompensation
+            } else null
 
-            if (totalMigrationBytes > 0L && freeBytes < requiredTotal) {
-                val deficit = requiredTotal - freeBytes
-                val reqMb = requiredTotal / (1024 * 1024)
-                val availMb = freeBytes / (1024 * 1024)
-                val deficitMb = deficit / (1024 * 1024)
-                val targetLabel = if (isToSd) "MicroSD" else "Memori Internal"
-                throw InsufficientStorageException(
-                    requiredBytes = requiredTotal,
-                    availableBytes = freeBytes,
-                    deficitBytes = deficit,
-                    targetName = targetLabel,
-                    message = "Kapasitas ruang di $targetLabel tidak mencukupi! Dibutuhkan: ${reqMb} MB (termasuk kompensasi cluster slack), Tersedia: ${availMb} MB (Kurang ${deficitMb} MB)."
-                )
-            }
-
-            onProgress?.invoke(
+            // Emit Step 0: Preparing while freezing package and unmounting active points for accurate sizing
+            monotonicProgress?.invoke(
                 OperationProgress(
                     type = opType,
                     title = title,
@@ -2245,10 +2342,10 @@ class StorageManager(
                     totalSteps = steps.size,
                     stepDescriptions = steps,
                     bytesProcessed = 0L,
-                    totalBytes = totalMigrationBytes,
+                    totalBytes = activePoints.sumOf { it.sizeBytes },
                     speedBytesPerSec = 0L,
                     etaSeconds = 0L,
-                    progressPercent = 0.05f,
+                    progressPercent = 0.02f,
                     currentItemName = null,
                     canCancel = true,
                     isFinished = false
@@ -2265,390 +2362,269 @@ class StorageManager(
                 ).output.trim().toIntOrNull() ?: 10000
                 val gid = uid
 
-            var accumulatedBytes = 0L
-
-            for (point in activePoints) {
-                val sourcePath = point.sourcePath
-                val targetPath = point.targetPath
-                val categoryName = when (point.category) {
-                    MountPointCategory.EXTERNAL_DATA -> getAppContext().getString(R.string.category_data_game)
-                    MountPointCategory.OBB_STORAGE -> "OBB Resource"
-                    MountPointCategory.GAME_ASSETS -> "Game Assets"
-                    MountPointCategory.MEDIA_DOWNLOADS -> "Media & Downloads"
-                    MountPointCategory.CACHE_SHADERS -> "Cache & Shaders"
-                    MountPointCategory.PRIVATE_INTERNAL -> getAppContext().getString(R.string.category_data_private)
-                    MountPointCategory.APP_PACKAGE -> "Package App"
-                    MountPointCategory.CUSTOM -> "Custom Path"
+                // Upfront Unmount Pass: cleanly detach all target mount points across namespaces so underlying physical sizes are 100% accurate
+                for (point in activePoints) {
+                    unmountPointForMigration(packageName, point)
                 }
 
-                // Safety Guard: Ensure targetPath is NOT an active mount point across any namespaces before copy/cleanup
-                val pointUserId = MountManager.resolveUserId(targetPath)
-                val relPath = MountManager.extractRelativePath(targetPath)
-                for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                    RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
-                }
-                RootShell.exec("umount -f -l \"/data/media/$pointUserId/$relPath\" 2>/dev/null")
-                if (pointUserId == 0) {
-                    RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
-                }
-                RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
-                if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.category == MountPointCategory.CACHE_SHADERS || point.targetPath.startsWith("/data/user/") || point.targetPath.startsWith("/data/data/") || point.isEffectivelyVirtualContainer()) {
-                    RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName/cache\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data/data/$packageName/cache\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName/cache\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/$packageName/cache\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/dev/mountx_cache_hold_$packageName\" 2>/dev/null")
-                    RootShell.exec("rmdir \"/dev/mountx_cache_hold_$packageName\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data/data/$packageName\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/$packageName\" 2>/dev/null")
-                    val imgName = point.containerImgPath?.let { java.io.File(it).name } ?: "${packageName}_data.img"
-                    val loopDevs = RootShell.execForOutput("losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1")
-                        .lines().map { it.trim() }.filter { it.isNotBlank() }
-                    for (ld in loopDevs) {
-                        RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
+                // Step 0: Calculate exact non-overlapping sizes for each category in the batch
+                val pointSizesMap = calculateExactBatchPointSizes(packageName, activePoints, isToSd, sdBase)
+                val totalMigrationBytes = pointSizesMap.values.sum()
+
+                // Pre-Flight Free Space Guard (Reserve safety headroom for stability)
+                val targetBase = if (isToSd) sdBase else "/data"
+                val freeBytes = if (!isToSd) {
+                    try {
+                        android.os.StatFs("/data").availableBytes
+                    } catch (e: Exception) {
+                        getAvailableFreeBytes("/data")
                     }
-                } else if (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) {
-                    val apkRootDir = if (targetPath.contains("/lib")) targetPath.substringBefore("/lib") else targetPath
-                    RootShell.exec("umount -f -l \"$apkRootDir/lib/arm64\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"$apkRootDir/lib/armeabi-v7a\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"$apkRootDir/lib\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/dev/mountx_lib_hold_$packageName\" 2>/dev/null")
-                    RootShell.exec("rmdir \"/dev/mountx_lib_hold_$packageName\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"$apkRootDir\" 2>/dev/null")
+                } else {
+                    getAvailableFreeBytes(targetBase)
                 }
-
-                // Pre-Flight Hard-Lock for TO_INTERNAL: fail-fast if unmount did not succeed
-                if (direction == MoveDirection.TO_INTERNAL) {
-                    var retryCount = 0
-                    while (RootShell.isMountpoint(targetPath) && retryCount < 3) {
-                        retryCount++
-                        AppLogger.warn("StorageManager", "Target $targetPath is still mounted before TO_INTERNAL! Attempting forced lazy unmount (attempt $retryCount)...")
-                        RootShell.exec("sync")
-                        RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
-                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                            RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
-                        }
-                        delay(200)
-                    }
-
-                    if (RootShell.isMountpoint(targetPath)) {
-                        val errMsg = getAppContext().getString(R.string.error_migration_unmount_failed_before_restore, targetPath)
-                        AppLogger.error("StorageManager", errMsg)
-                        throw IllegalStateException(errMsg)
+                val clusterSize = RootShell.execForOutput("stat -f -c %S \"$targetBase\" 2>/dev/null").trim().toLongOrNull() ?: 4096L
+                var totalSlackCompensation = 0L
+                if (isToSd) {
+                    for (pt in activePoints) {
+                        totalSlackCompensation += calculateSlackHeadroom(pt.targetPath, clusterSize)
                     }
                 }
+                val headroom = if (isToSd) {
+                    maxOf(250 * 1024 * 1024L, (totalMigrationBytes * 0.05).toLong())
+                } else {
+                    maxOf(250_000_000L, (totalMigrationBytes * 0.05).toLong())
+                }
+                val requiredTotal = totalMigrationBytes + headroom + totalSlackCompensation
 
-                when (direction) {
-                    MoveDirection.TO_SD -> {
-                        val sdTargetInspection = inspectStorageTarget(sdBase)
-                        val isPrivateCategory = point.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
-                        // Adaptive Dual-Engine:
-                        // Engine A (Direct Native Folder) on POSIX (f2fs/ext4)
-                        // Engine B (Sparse Dynamic ext4 .img) on Non-POSIX (exfat/vfat/ntfs)
-                        val isContainer = if (isPrivateCategory) {
-                            sdTargetInspection.isNonPosix
-                        } else {
-                            point.isEffectivelyVirtualContainer()
-                        }
-                        val effectiveSourcePath = if (isPrivateCategory) {
-                            if (isContainer) "$sdBase/.mountx/containers/${packageName}_data.img"
-                            else "$sdBase/MountX/data/$packageName"
-                        } else {
-                            sourcePath
-                        }
+                if (totalMigrationBytes > 0L && freeBytes < requiredTotal) {
+                    val deficit = requiredTotal - freeBytes
+                    val reqMb = requiredTotal / (1024 * 1024)
+                    val availMb = freeBytes / (1024 * 1024)
+                    val deficitMb = deficit / (1024 * 1024)
+                    val targetLabel = if (isToSd) "MicroSD" else "Memori Internal"
+                    throw InsufficientStorageException(
+                        requiredBytes = requiredTotal,
+                        availableBytes = freeBytes,
+                        deficitBytes = deficit,
+                        targetName = targetLabel,
+                        message = "Kapasitas ruang di $targetLabel tidak mencukupi! Dibutuhkan: ${reqMb} MB (termasuk kompensasi cluster slack), Tersedia: ${availMb} MB (Kurang ${deficitMb} MB)."
+                    )
+                }
 
-                        val currentSrcSize = getDirSizeBytes(targetPath).let { if (it > 0L) it else point.sizeBytes }
-                        val currentDestSize = getDirSizeBytes(effectiveSourcePath)
+                monotonicProgress?.invoke(
+                    OperationProgress(
+                        type = opType,
+                        title = title,
+                        subtitle = packageName,
+                        currentStepIndex = 0,
+                        totalSteps = steps.size,
+                        stepDescriptions = steps,
+                        bytesProcessed = 0L,
+                        totalBytes = totalMigrationBytes,
+                        speedBytesPerSec = 0L,
+                        etaSeconds = 0L,
+                        progressPercent = 0.04f,
+                        currentItemName = null,
+                        canCancel = true,
+                        isFinished = false
+                    )
+                )
 
-                        // Safety Guard: Already on MicroSD!
-                        // If internal is empty/skeleton (<= 64KB) and destination on SD already has real data (> 1MB), skip redundant copy!
-                        if (currentSrcSize <= 64 * 1024L && currentDestSize > 1024 * 1024L) {
-                            AppLogger.info("StorageManager", "Data is already present on MicroSD ($currentDestSize bytes) and internal is empty ($currentSrcSize bytes). Skipping redundant copy; ensuring permissions.")
-                            if (!isContainer && !sdTargetInspection.isNonPosix) {
-                                if (isPrivateCategory) {
-                                    RootShell.exec("chown -R $uid:$gid \"$effectiveSourcePath\" 2>/dev/null")
-                                    RootShell.exec("chmod 700 \"$effectiveSourcePath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$effectiveSourcePath\" 2>/dev/null")
-                                    RootShell.exec("find \"$effectiveSourcePath\" -type d -exec chmod 700 {} + 2>/dev/null")
-                                    RootShell.exec("find \"$effectiveSourcePath\" -type f -exec chmod 600 {} + 2>/dev/null")
-                                } else {
-                                    RootShell.exec("chown -R $uid:1023 \"$effectiveSourcePath\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 777 \"$effectiveSourcePath\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
-                                }
+                var accumulatedBytes = 0L
+
+                for ((pointIndex, point) in activePoints.withIndex()) {
+                    val isLastPoint = pointIndex == activePoints.size - 1
+                    val sourcePath = point.sourcePath
+                    val targetPath = point.targetPath
+                    val isLibPoint = point.targetPath.contains("/lib") || point.id.startsWith("lib")
+                    val baseCategoryName = when (point.category) {
+                        MountPointCategory.EXTERNAL_DATA -> getAppContext().getString(R.string.category_data_game)
+                        MountPointCategory.OBB_STORAGE -> "OBB Resource"
+                        MountPointCategory.GAME_ASSETS -> "Game Assets"
+                        MountPointCategory.MEDIA_DOWNLOADS -> "Media & Downloads"
+                        MountPointCategory.CACHE_SHADERS -> "Cache & Shaders"
+                        MountPointCategory.PRIVATE_INTERNAL -> getAppContext().getString(R.string.category_data_private)
+                        MountPointCategory.APP_PACKAGE -> if (isLibPoint) "Native Libraries (Lib)" else "APK Package"
+                        MountPointCategory.CUSTOM -> "Custom Path"
+                    }
+                    val categoryName = if (activePoints.size > 1) {
+                        "[${pointIndex + 1}/${activePoints.size}] $baseCategoryName"
+                    } else {
+                        baseCategoryName
+                    }
+                    val plannedPointSize = pointSizesMap[point.id] ?: point.sizeBytes
+
+                    // Ensure targetPath is still unmounted before processing this category
+                    val pointUserId = MountManager.resolveUserId(targetPath)
+                    val relPath = MountManager.extractRelativePath(targetPath)
+                    RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+
+                    // Pre-Flight Hard-Lock for TO_INTERNAL: fail-fast if unmount did not succeed
+                    if (direction == MoveDirection.TO_INTERNAL) {
+                        var retryCount = 0
+                        while (RootShell.isMountpoint(targetPath) && retryCount < 3) {
+                            retryCount++
+                            AppLogger.warn("StorageManager", "Target $targetPath is still mounted before TO_INTERNAL! Attempting forced lazy unmount (attempt $retryCount)...")
+                            RootShell.exec("sync")
+                            RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+                            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                                RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
                             }
-                            continue
+                            delay(200)
                         }
 
-                        if (isContainer) {
-                            val imgFile = point.containerImgPath?.ifBlank { null }
-                                ?: (if (effectiveSourcePath.endsWith(".img")) effectiveSourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
-                            val imgParent = java.io.File(imgFile).parent ?: "$sdBase/.mountx/containers"
-                            RootShell.exec("mkdir -p \"$imgParent\"")
-                            if (!RootShell.exists(imgFile)) {
-                                // Engine B: Sparse Dynamic ext4 Image Allocation
-                                val freeSdMb = (freeBytes / (1024L * 1024L)).coerceAtLeast(1024L)
-                                val minRequiredMb = ((currentSrcSize / (1024L * 1024L)) + 512L).coerceAtLeast(1024L)
-                                val virtualSizeMb = if (sdTargetInspection.isFat32) {
-                                    maxOf(minRequiredMb, minOf(freeSdMb - 256L, 3800L)).coerceAtMost(3800L)
-                                } else {
-                                    maxOf(maxOf(minRequiredMb, 4096L), minOf(freeSdMb - 512L, 16384L))
-                                }
-                                AppLogger.info("StorageManager", "Creating Sparse Dynamic ext4 container ($virtualSizeMb MB virtual ceiling) at $imgFile")
-                                RootShell.exec("truncate -s ${virtualSizeMb}M \"$imgFile\" 2>/dev/null || dd if=/dev/zero of=\"$imgFile\" bs=1M count=0 seek=$virtualSizeMb 2>/dev/null")
-                                RootShell.exec("mke2fs -F -t ext4 -b 4096 -m 0 -O ^has_journal -E lazy_itable_init=1 \"$imgFile\" 2>/dev/null || mkfs.ext4 -F -b 4096 -m 0 \"$imgFile\" 2>/dev/null")
+                        if (RootShell.isMountpoint(targetPath)) {
+                            val errMsg = getAppContext().getString(R.string.error_migration_unmount_failed_before_restore, targetPath)
+                            AppLogger.error("StorageManager", errMsg)
+                            throw IllegalStateException(errMsg)
+                        }
+                    }
+
+                    when (direction) {
+                        MoveDirection.TO_SD -> {
+                            val sdTargetInspection = inspectStorageTarget(sdBase)
+                            val isPrivateCategory = point.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+                            // Adaptive Dual-Engine:
+                            // Engine A (Direct Native Folder) on POSIX (f2fs/ext4)
+                            // Engine B (Sparse Dynamic ext4 .img) on Non-POSIX (exfat/vfat/ntfs)
+                            val isContainer = if (isPrivateCategory) {
+                                sdTargetInspection.isNonPosix
+                            } else {
+                                point.isEffectivelyVirtualContainer()
                             }
-                            val tempMount = "/dev/mountx_temp_${packageName}"
-                            RootShell.exec("mkdir -p \"$tempMount\"")
-                            val loopDev = MountManager.attachLoopDevice(imgFile)
-                            if (loopDev.isNotEmpty()) {
-                                RootShell.exec("mount -t ext4 -o rw,noatime,discard \"$loopDev\" \"$tempMount\" 2>/dev/null || mount -t ext4 \"$loopDev\" \"$tempMount\"")
-                                if (RootShell.exists(targetPath)) {
-                                    copyWithRealtimeProgress(
-                                        sourceDir = targetPath,
-                                        destDir = tempMount,
-                                        categoryName = categoryName,
-                                        pointSizeBytes = currentSrcSize,
-                                        overallProcessedBytes = accumulatedBytes,
-                                        totalMigrationBytes = totalMigrationBytes,
-                                        stepIndex = 1,
-                                        totalSteps = steps.size,
-                                        stepDescriptions = steps,
-                                        opType = opType,
-                                        title = title,
-                                        subtitle = packageName,
-                                        conflictStrategy = conflictStrategy,
-                                        onProgress = onProgress
-                                    )
-                                    accumulatedBytes += currentSrcSize
-                                    RootShell.exec("chown -R $uid:$gid \"$tempMount\" 2>/dev/null")
-                                    RootShell.exec("chmod 700 \"$tempMount\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$tempMount\" 2>/dev/null")
-                                    RootShell.exec("find \"$tempMount\" -type d -exec chmod 700 {} + 2>/dev/null")
-                                    RootShell.exec("find \"$tempMount\" -type f -exec chmod 600 {} + 2>/dev/null")
-                                    val origContext = RootShell.execForOutput("stat -c %C \"$targetPath\" 2>/dev/null").trim()
-                                    if (origContext.isNotBlank() && origContext.contains("app_data_file")) {
-                                        RootShell.exec("chcon -R \"$origContext\" \"$tempMount\" 2>/dev/null")
-                                    } else {
-                                        RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$tempMount\" 2>/dev/null")
-                                    }
-
-                                    // Step 3: Cleanup internal memory
-                                    onProgress?.invoke(
-                                        OperationProgress(
-                                            type = opType,
-                                            title = title,
-                                            subtitle = packageName,
-                                            currentStepIndex = 3,
-                                            totalSteps = steps.size,
-                                            stepDescriptions = steps,
-                                            bytesProcessed = totalMigrationBytes,
-                                            totalBytes = totalMigrationBytes,
-                                            speedBytesPerSec = 0L,
-                                            etaSeconds = 0L,
-                                            progressPercent = 0.95f,
-                                            currentItemName = categoryName,
-                                            isFinished = false
-                                        )
-                                    )
-                                    safeCleanSourceDirectory(targetPath, tempMount, packageName)
-                                }
-                                RootShell.exec("fstrim \"$tempMount\" 2>/dev/null")
-                                RootShell.exec("sync")
-                                RootShell.exec("umount \"$tempMount\" 2>/dev/null || umount -l \"$tempMount\" 2>/dev/null")
-                                MountManager.detachLoopDevice(imgFile)
+                            val effectiveSourcePath = if (isPrivateCategory) {
+                                if (isContainer) "$sdBase/.mountx/containers/${packageName}_data.img"
+                                else "$sdBase/MountX/data/$packageName"
+                            } else {
+                                sourcePath
                             }
-                            RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
-                        } else {
-                            if (RootShell.exists(targetPath)) {
-                                if (isPrivateCategory) {
-                                    // Clean up any legacy .img container when migrating to Engine A Native Folder
-                                    RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_data.img\" \"$sdBase/MountX/containers/${packageName}_data.img\" 2>/dev/null")
-                                }
-                                RootShell.exec("mkdir -p \"$effectiveSourcePath\"")
-                                val isApkOnlyWithoutLib = (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) &&
-                                    !point.targetPath.contains("/lib") &&
-                                    activePoints.none { it.targetPath.contains("/lib") || it.id.startsWith("lib_") }
-                                val isPrivateOnlyWithoutCache = isPrivateCategory &&
-                                    activePoints.none { it.category == MountPointCategory.CACHE_SHADERS || it.id.startsWith("cache_") }
 
-                                if (isApkOnlyWithoutLib) {
-                                    RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec cp -a -f {} \"$effectiveSourcePath/\" \\; 2>/dev/null")
-                                    RootShell.exec("mkdir -p \"$effectiveSourcePath/lib/arm64\" 2>/dev/null")
-                                } else if (isPrivateOnlyWithoutCache) {
-                                    RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec cp -a -f {} \"$effectiveSourcePath/\" \\; 2>/dev/null")
-                                    RootShell.exec("mkdir -p \"$effectiveSourcePath/cache\" \"$effectiveSourcePath/code_cache\" 2>/dev/null")
-                                } else {
-                                    copyWithRealtimeProgress(
-                                        sourceDir = targetPath,
-                                        destDir = effectiveSourcePath,
-                                        categoryName = categoryName,
-                                        pointSizeBytes = currentSrcSize,
-                                        overallProcessedBytes = accumulatedBytes,
-                                        totalMigrationBytes = totalMigrationBytes,
-                                        stepIndex = 1,
-                                        totalSteps = steps.size,
-                                        stepDescriptions = steps,
-                                        opType = opType,
-                                        title = title,
-                                        subtitle = packageName,
-                                        conflictStrategy = conflictStrategy,
-                                        onProgress = onProgress
-                                    )
-                                }
-                                accumulatedBytes += currentSrcSize
+                            val currentSrcSize = plannedPointSize.coerceAtLeast(getDirSizeBytes(targetPath).let { if (it > 0L && !isPrivateCategory && !targetPath.startsWith("/data/app")) it else plannedPointSize })
+                            val currentDestSize = getDirSizeBytes(effectiveSourcePath)
 
-                                // Step 2: Verify & Permissions
-                                onProgress?.invoke(
-                                    OperationProgress(
-                                        type = opType,
-                                        title = title,
-                                        subtitle = packageName,
-                                        currentStepIndex = 2,
-                                        totalSteps = steps.size,
-                                        stepDescriptions = steps,
-                                        bytesProcessed = accumulatedBytes,
-                                        totalBytes = totalMigrationBytes,
-                                        speedBytesPerSec = 0L,
-                                        etaSeconds = 0L,
-                                        progressPercent = 0.85f,
-                                        currentItemName = categoryName,
-                                        isFinished = false
-                                    )
-                                )
-
-                                val destInspection = inspectStorageTarget(effectiveSourcePath)
-                                if (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) {
-                                    RootShell.exec("chown -R 1000:1000 \"$effectiveSourcePath\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 755 \"$effectiveSourcePath\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
-                                } else if (isPrivateCategory || point.category == MountPointCategory.CACHE_SHADERS) {
-                                    if (!destInspection.isNonPosix) {
+                            // Safety Guard: Already on MicroSD!
+                            val actualInternalBytes = getDirSizeBytes(targetPath)
+                            if (actualInternalBytes <= 64 * 1024L && currentDestSize > 1024 * 1024L) {
+                                AppLogger.info("StorageManager", "Data is already present on MicroSD ($currentDestSize bytes) and internal is empty ($actualInternalBytes bytes). Skipping redundant copy; ensuring permissions.")
+                                accumulatedBytes = (accumulatedBytes + plannedPointSize).coerceAtMost(totalMigrationBytes)
+                                if (!isContainer && !sdTargetInspection.isNonPosix) {
+                                    if (isPrivateCategory) {
                                         RootShell.exec("chown -R $uid:$gid \"$effectiveSourcePath\" 2>/dev/null")
                                         RootShell.exec("chmod 700 \"$effectiveSourcePath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$effectiveSourcePath\" 2>/dev/null")
                                         RootShell.exec("find \"$effectiveSourcePath\" -type d -exec chmod 700 {} + 2>/dev/null")
                                         RootShell.exec("find \"$effectiveSourcePath\" -type f -exec chmod 600 {} + 2>/dev/null")
-                                        val origContext = RootShell.execForOutput("stat -c %C \"$targetPath\" 2>/dev/null").trim()
-                                        if (origContext.isNotBlank() && origContext.contains("app_data_file")) {
-                                            RootShell.exec("chcon -R \"$origContext\" \"$effectiveSourcePath\" 2>/dev/null")
-                                        } else {
-                                            RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
-                                        }
-                                    }
-                                } else if (!destInspection.isNonPosix) {
-                                    RootShell.exec("chown -R $uid:1023 \"$effectiveSourcePath\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 777 \"$effectiveSourcePath\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
-                                }
-
-                                // Purge any stale root .nomedia in MountX/Android to ensure media folders aren't hidden from Gallery
-                                val mountXAndroid = "$sdBase/MountX/Android"
-                                if (RootShell.exists(mountXAndroid)) {
-                                    RootShell.exec("rm -f \"$mountXAndroid/.nomedia\" 2>/dev/null")
-                                }
-
-                                // Smart .nomedia preservation for app directories:
-                                if (point.category == MountPointCategory.EXTERNAL_DATA || point.category == MountPointCategory.OBB_STORAGE) {
-                                    RootShell.exec("touch \"$effectiveSourcePath/.nomedia\"")
-                                } else if (point.category == MountPointCategory.MEDIA_DOWNLOADS || point.category == MountPointCategory.CUSTOM) {
-                                    val hadNomediaInTarget = RootShell.exists("$targetPath/.nomedia")
-                                    if (hadNomediaInTarget) {
-                                        RootShell.exec("touch \"$effectiveSourcePath/.nomedia\"")
                                     } else {
-                                        RootShell.exec("rm -f \"$effectiveSourcePath/.nomedia\" 2>/dev/null")
+                                        RootShell.exec("chown -R $uid:1023 \"$effectiveSourcePath\" 2>/dev/null")
+                                        RootShell.exec("chmod -R 777 \"$effectiveSourcePath\" 2>/dev/null")
+                                        RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
                                     }
                                 }
-
-                                // Step 3: Cleanup
-                                onProgress?.invoke(
-                                    OperationProgress(
-                                        type = opType,
-                                        title = title,
-                                        subtitle = packageName,
-                                        currentStepIndex = 3,
-                                        totalSteps = steps.size,
-                                        stepDescriptions = steps,
-                                        bytesProcessed = totalMigrationBytes,
-                                        totalBytes = totalMigrationBytes,
-                                        speedBytesPerSec = 0L,
-                                        etaSeconds = 0L,
-                                        progressPercent = 0.95f,
-                                        currentItemName = categoryName,
-                                        isFinished = false
-                                    )
-                                )
-                                if (isApkOnlyWithoutLib) {
-                                    if (!RootShell.isMountpoint(targetPath)) {
-                                        RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
-                                    }
-                                } else if (isPrivateOnlyWithoutCache) {
-                                    if (!RootShell.isMountpoint(targetPath)) {
-                                        RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec rm -rf {} + 2>/dev/null")
-                                        val altData = "/data/data/$packageName"
-                                        if (altData != targetPath && RootShell.exists(altData) && !RootShell.isMountpoint(altData) && !RootShell.exec("test -L \"$altData\"").isSuccess) {
-                                            RootShell.exec("find \"$altData\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec rm -rf {} + 2>/dev/null")
-                                        }
-                                    }
-                                } else {
-                                    safeCleanSourceDirectory(targetPath, effectiveSourcePath, packageName)
-                                }
+                                continue
                             }
-                        }
-                    }
-                    MoveDirection.TO_INTERNAL -> {
-                        val isPrivateCategory = point.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
-                        val candidateImgFile = point.containerImgPath?.ifBlank { null }
-                            ?: (if (sourcePath.endsWith(".img")) sourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
-                        val candidateNativeFolder = "$sdBase/MountX/data/$packageName"
-                        val isContainer = if (isPrivateCategory) {
-                            RootShell.exists(candidateImgFile) && !RootShell.exists(candidateNativeFolder)
-                        } else {
-                            point.isEffectivelyVirtualContainer()
-                        }
-                        val effectiveSourcePath = if (isPrivateCategory) {
-                            if (isContainer) candidateImgFile
-                            else if (RootShell.exists(candidateNativeFolder)) candidateNativeFolder
-                            else sourcePath
-                        } else {
-                            sourcePath
-                        }
 
-                        val currentSrcSize = getDirSizeBytes(effectiveSourcePath).let { if (it > 0L) it else point.sizeBytes }
-                        val currentDestSize = getDirSizeBytes(targetPath)
-
-                        // Safety Guard 1: Already on Internal!
-                        // If source on SD is empty/skeleton (<= 64KB) and internal already has real data (> 1MB), skip redundant copy!
-                        if (currentSrcSize <= 64 * 1024L && currentDestSize > 1024 * 1024L) {
-                            AppLogger.info("StorageManager", "Data is already present on Internal ($currentDestSize bytes) and MicroSD is empty ($currentSrcSize bytes). Skipping redundant copy TO_INTERNAL.")
-                            RootShell.exec("rm -rf \"$effectiveSourcePath\"")
-                            RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
-                            continue
-                        }
-
-                        // Safety Guard 2: Size ratio guard for OVERWRITE
-                        // If source on SD is <= 64KB and destination in internal has >= 10MB, NEVER let OVERWRITE destroy internal data!
-                        if (currentSrcSize <= 64 * 1024L && currentDestSize >= 10 * 1024 * 1024L) {
-                            AppLogger.error("StorageManager", "CRITICAL SAFETY: Source on SD ($currentSrcSize bytes) is empty/skeleton while internal has $currentDestSize bytes. Aborting overwrite to prevent data loss!")
-                            RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
-                            continue
-                        }
-
-                        if (isContainer) {
-                            val imgFile = candidateImgFile
-                            if (RootShell.exists(imgFile)) {
+                            if (isContainer) {
+                                val imgFile = point.containerImgPath?.ifBlank { null }
+                                    ?: (if (effectiveSourcePath.endsWith(".img")) effectiveSourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
+                                val imgParent = java.io.File(imgFile).parent ?: "$sdBase/.mountx/containers"
+                                RootShell.exec("mkdir -p \"$imgParent\"")
+                                if (!RootShell.exists(imgFile)) {
+                                    // Engine B: Sparse Dynamic ext4 Image Allocation
+                                    val freeSdMb = (freeBytes / (1024L * 1024L)).coerceAtLeast(1024L)
+                                    val minRequiredMb = ((currentSrcSize / (1024L * 1024L)) + 512L).coerceAtLeast(1024L)
+                                    val virtualSizeMb = if (sdTargetInspection.isFat32) {
+                                        maxOf(minRequiredMb, minOf(freeSdMb - 256L, 3800L)).coerceAtMost(3800L)
+                                    } else {
+                                        maxOf(maxOf(minRequiredMb, 4096L), minOf(freeSdMb - 512L, 16384L))
+                                    }
+                                    AppLogger.info("StorageManager", "Creating Sparse Dynamic ext4 container ($virtualSizeMb MB virtual ceiling) at $imgFile")
+                                    RootShell.exec("truncate -s ${virtualSizeMb}M \"$imgFile\" 2>/dev/null || dd if=/dev/zero of=\"$imgFile\" bs=1M count=0 seek=$virtualSizeMb 2>/dev/null")
+                                    RootShell.exec("mke2fs -F -t ext4 -b 4096 -m 0 -O ^has_journal -E lazy_itable_init=1 \"$imgFile\" 2>/dev/null || mkfs.ext4 -F -b 4096 -m 0 \"$imgFile\" 2>/dev/null")
+                                }
                                 val tempMount = "/dev/mountx_temp_${packageName}"
                                 RootShell.exec("mkdir -p \"$tempMount\"")
                                 val loopDev = MountManager.attachLoopDevice(imgFile)
                                 if (loopDev.isNotEmpty()) {
-                                    RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
-                                    RootShell.exec("mkdir -p \"$targetPath\"")
+                                    RootShell.exec("mount -t ext4 -o rw,noatime,discard \"$loopDev\" \"$tempMount\" 2>/dev/null || mount -t ext4 \"$loopDev\" \"$tempMount\"")
+                                    if (RootShell.exists(targetPath)) {
+                                        copyWithRealtimeProgress(
+                                            sourceDir = targetPath,
+                                            destDir = tempMount,
+                                            categoryName = categoryName,
+                                            pointSizeBytes = plannedPointSize,
+                                            overallProcessedBytes = accumulatedBytes,
+                                            totalMigrationBytes = totalMigrationBytes,
+                                            stepIndex = 1,
+                                            totalSteps = steps.size,
+                                            stepDescriptions = steps,
+                                            opType = opType,
+                                            title = title,
+                                            subtitle = packageName,
+                                            conflictStrategy = conflictStrategy,
+                                            onProgress = monotonicProgress
+                                        )
+                                        accumulatedBytes = (accumulatedBytes + plannedPointSize).coerceAtMost(totalMigrationBytes)
+                                        RootShell.exec("chown -R $uid:$gid \"$tempMount\" 2>/dev/null")
+                                        RootShell.exec("chmod 700 \"$tempMount\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$tempMount\" 2>/dev/null")
+                                        RootShell.exec("find \"$tempMount\" -type d -exec chmod 700 {} + 2>/dev/null")
+                                        RootShell.exec("find \"$tempMount\" -type f -exec chmod 600 {} + 2>/dev/null")
+                                        val origContext = RootShell.execForOutput("stat -c %C \"$targetPath\" 2>/dev/null").trim()
+                                        if (origContext.isNotBlank() && origContext.contains("app_data_file")) {
+                                            RootShell.exec("chcon -R \"$origContext\" \"$tempMount\" 2>/dev/null")
+                                        } else {
+                                            RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$tempMount\" 2>/dev/null")
+                                        }
+
+                                        if (isLastPoint) {
+                                            monotonicProgress?.invoke(
+                                                OperationProgress(
+                                                    type = opType,
+                                                    title = title,
+                                                    subtitle = packageName,
+                                                    currentStepIndex = 3,
+                                                    totalSteps = steps.size,
+                                                    stepDescriptions = steps,
+                                                    bytesProcessed = totalMigrationBytes,
+                                                    totalBytes = totalMigrationBytes,
+                                                    speedBytesPerSec = 0L,
+                                                    etaSeconds = 0L,
+                                                    progressPercent = 0.96f,
+                                                    currentItemName = categoryName,
+                                                    isFinished = false
+                                                )
+                                            )
+                                        }
+                                        safeCleanSourceDirectory(targetPath, tempMount, packageName)
+                                    }
+                                    RootShell.exec("fstrim \"$tempMount\" 2>/dev/null")
+                                    RootShell.exec("sync")
+                                    RootShell.exec("umount \"$tempMount\" 2>/dev/null || umount -l \"$tempMount\" 2>/dev/null")
+                                    MountManager.detachLoopDevice(imgFile)
+                                }
+                                RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
+                            } else {
+                                if (RootShell.exists(targetPath)) {
+                                    if (isPrivateCategory) {
+                                        // Clean up any legacy .img container when migrating to Engine A Native Folder
+                                        RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_data.img\" \"$sdBase/MountX/containers/${packageName}_data.img\" 2>/dev/null")
+                                    }
+                                    RootShell.exec("mkdir -p \"$effectiveSourcePath\"")
+                                    val isApkOnlyWithoutLib = (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) &&
+                                        !point.targetPath.contains("/lib") &&
+                                        activePoints.none { it.targetPath.contains("/lib") || it.id.startsWith("lib_") }
+                                    val isPrivateOnlyWithoutCache = isPrivateCategory &&
+                                        activePoints.none { it.category == MountPointCategory.CACHE_SHADERS || it.id.startsWith("cache_") }
+
+                                    val exclusions = when {
+                                        isApkOnlyWithoutLib -> listOf("lib")
+                                        isPrivateOnlyWithoutCache -> listOf("cache", "code_cache")
+                                        else -> emptyList()
+                                    }
+
                                     copyWithRealtimeProgress(
-                                        sourceDir = tempMount,
-                                        destDir = targetPath,
+                                        sourceDir = targetPath,
+                                        destDir = effectiveSourcePath,
                                         categoryName = categoryName,
-                                        pointSizeBytes = currentSrcSize,
+                                        pointSizeBytes = plannedPointSize,
                                         overallProcessedBytes = accumulatedBytes,
                                         totalMigrationBytes = totalMigrationBytes,
                                         stepIndex = 1,
@@ -2658,116 +2634,292 @@ class StorageManager(
                                         title = title,
                                         subtitle = packageName,
                                         conflictStrategy = conflictStrategy,
-                                        onProgress = onProgress
+                                        excludeTopDirs = exclusions,
+                                        onProgress = monotonicProgress
                                     )
-                                    accumulatedBytes += currentSrcSize
-                                    RootShell.exec("sync")
-                                    RootShell.exec("umount -l \"$tempMount\"")
-                                    MountManager.detachLoopDevice(imgFile)
+                                    if (isApkOnlyWithoutLib) {
+                                        RootShell.exec("mkdir -p \"$effectiveSourcePath/lib/arm64\" 2>/dev/null")
+                                    } else if (isPrivateOnlyWithoutCache) {
+                                        RootShell.exec("mkdir -p \"$effectiveSourcePath/cache\" \"$effectiveSourcePath/code_cache\" 2>/dev/null")
+                                    }
+                                    accumulatedBytes = (accumulatedBytes + plannedPointSize).coerceAtMost(totalMigrationBytes)
+
+                                    if (isLastPoint) {
+                                        // Step 2: Verify & Permissions (only transition stepper on final point of batch)
+                                        monotonicProgress?.invoke(
+                                            OperationProgress(
+                                                type = opType,
+                                                title = title,
+                                                subtitle = packageName,
+                                                currentStepIndex = 2,
+                                                totalSteps = steps.size,
+                                                stepDescriptions = steps,
+                                                bytesProcessed = totalMigrationBytes,
+                                                totalBytes = totalMigrationBytes,
+                                                speedBytesPerSec = 0L,
+                                                etaSeconds = 0L,
+                                                progressPercent = 0.93f,
+                                                currentItemName = categoryName,
+                                                isFinished = false
+                                            )
+                                        )
+                                    }
+
+                                    val destInspection = inspectStorageTarget(effectiveSourcePath)
+                                    if (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) {
+                                        RootShell.exec("chown -R 1000:1000 \"$effectiveSourcePath\" 2>/dev/null")
+                                        RootShell.exec("chmod -R 755 \"$effectiveSourcePath\" 2>/dev/null")
+                                        RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
+                                    } else if (isPrivateCategory || point.category == MountPointCategory.CACHE_SHADERS) {
+                                        if (!destInspection.isNonPosix) {
+                                            RootShell.exec("chown -R $uid:$gid \"$effectiveSourcePath\" 2>/dev/null")
+                                            RootShell.exec("chmod 700 \"$effectiveSourcePath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$effectiveSourcePath\" 2>/dev/null")
+                                            RootShell.exec("find \"$effectiveSourcePath\" -type d -exec chmod 700 {} + 2>/dev/null")
+                                            RootShell.exec("find \"$effectiveSourcePath\" -type f -exec chmod 600 {} + 2>/dev/null")
+                                            val origContext = RootShell.execForOutput("stat -c %C \"$targetPath\" 2>/dev/null").trim()
+                                            if (origContext.isNotBlank() && origContext.contains("app_data_file")) {
+                                                RootShell.exec("chcon -R \"$origContext\" \"$effectiveSourcePath\" 2>/dev/null")
+                                            } else {
+                                                RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
+                                            }
+                                        }
+                                    } else if (!destInspection.isNonPosix) {
+                                        RootShell.exec("chown -R $uid:1023 \"$effectiveSourcePath\" 2>/dev/null")
+                                        RootShell.exec("chmod -R 777 \"$effectiveSourcePath\" 2>/dev/null")
+                                        RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
+                                    }
+
+                                    // Purge any stale root .nomedia in MountX/Android to ensure media folders aren't hidden from Gallery
+                                    val mountXAndroid = "$sdBase/MountX/Android"
+                                    if (RootShell.exists(mountXAndroid)) {
+                                        RootShell.exec("rm -f \"$mountXAndroid/.nomedia\" 2>/dev/null")
+                                    }
+
+                                    // Smart .nomedia preservation for app directories:
+                                    if (point.category == MountPointCategory.EXTERNAL_DATA || point.category == MountPointCategory.OBB_STORAGE) {
+                                        RootShell.exec("touch \"$effectiveSourcePath/.nomedia\"")
+                                    } else if (point.category == MountPointCategory.MEDIA_DOWNLOADS || point.category == MountPointCategory.CUSTOM) {
+                                        val hadNomediaInTarget = RootShell.exists("$targetPath/.nomedia")
+                                        if (hadNomediaInTarget) {
+                                            RootShell.exec("touch \"$effectiveSourcePath/.nomedia\"")
+                                        } else {
+                                            RootShell.exec("rm -f \"$effectiveSourcePath/.nomedia\" 2>/dev/null")
+                                        }
+                                    }
+
+                                    if (isLastPoint) {
+                                        // Step 3: Cleanup
+                                        monotonicProgress?.invoke(
+                                            OperationProgress(
+                                                type = opType,
+                                                title = title,
+                                                subtitle = packageName,
+                                                currentStepIndex = 3,
+                                                totalSteps = steps.size,
+                                                stepDescriptions = steps,
+                                                bytesProcessed = totalMigrationBytes,
+                                                totalBytes = totalMigrationBytes,
+                                                speedBytesPerSec = 0L,
+                                                etaSeconds = 0L,
+                                                progressPercent = 0.97f,
+                                                currentItemName = categoryName,
+                                                isFinished = false
+                                            )
+                                        )
+                                    }
+                                    if (isApkOnlyWithoutLib) {
+                                        if (!RootShell.isMountpoint(targetPath)) {
+                                            RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
+                                        }
+                                    } else if (isPrivateOnlyWithoutCache) {
+                                        if (!RootShell.isMountpoint(targetPath)) {
+                                            RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec rm -rf {} + 2>/dev/null")
+                                            val altData = "/data/data/$packageName"
+                                            if (altData != targetPath && RootShell.exists(altData) && !RootShell.isMountpoint(altData) && !RootShell.exec("test -L \"$altData\"").isSuccess) {
+                                                RootShell.exec("find \"$altData\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec rm -rf {} + 2>/dev/null")
+                                            }
+                                        }
+                                    } else {
+                                        safeCleanSourceDirectory(targetPath, effectiveSourcePath, packageName)
+                                    }
                                 }
-                                RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
-                                RootShell.exec("rm -f \"$imgFile\"")
-                                RootShell.exec("chown -R $uid:$gid \"$targetPath\" 2>/dev/null")
-                                RootShell.exec("chmod 700 \"$targetPath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$targetPath\" 2>/dev/null")
-                                RootShell.exec("find \"$targetPath\" -type d -exec chmod 700 {} + 2>/dev/null")
-                                RootShell.exec("find \"$targetPath\" -type f -exec chmod 600 {} + 2>/dev/null")
-                                RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
-                                RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
                             }
-                        } else {
-                            if (RootShell.exists(effectiveSourcePath)) {
-                                RootShell.exec("mkdir -p \"$targetPath\"")
-                                val actualCopySource = if (targetPath.endsWith("/lib/arm64") && RootShell.exists("$effectiveSourcePath/arm64")) {
-                                    "$effectiveSourcePath/arm64"
-                                } else {
-                                    effectiveSourcePath
-                                }
-                                copyWithRealtimeProgress(
-                                    sourceDir = actualCopySource,
-                                    destDir = targetPath,
-                                    categoryName = categoryName,
-                                    pointSizeBytes = currentSrcSize,
-                                    overallProcessedBytes = accumulatedBytes,
-                                    totalMigrationBytes = totalMigrationBytes,
-                                    stepIndex = 1,
-                                    totalSteps = steps.size,
-                                    stepDescriptions = steps,
-                                    opType = opType,
-                                    title = title,
-                                    subtitle = packageName,
-                                    conflictStrategy = conflictStrategy,
-                                    onProgress = onProgress
-                                )
-                                accumulatedBytes += currentSrcSize
+                        }
+                        MoveDirection.TO_INTERNAL -> {
+                            val isPrivateCategory = point.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+                            val candidateImgFile = point.containerImgPath?.ifBlank { null }
+                                ?: (if (sourcePath.endsWith(".img")) sourcePath else "$sdBase/.mountx/containers/${packageName}_data.img")
+                            val candidateNativeFolder = "$sdBase/MountX/data/$packageName"
+                            val isContainer = if (isPrivateCategory) {
+                                RootShell.exists(candidateImgFile) && !RootShell.exists(candidateNativeFolder)
+                            } else {
+                                point.isEffectivelyVirtualContainer()
+                            }
+                            val effectiveSourcePath = if (isPrivateCategory) {
+                                if (isContainer) candidateImgFile
+                                else if (RootShell.exists(candidateNativeFolder)) candidateNativeFolder
+                                else sourcePath
+                            } else {
+                                sourcePath
+                            }
 
-                                // Step 2: Restore permissions & SELinux
-                                onProgress?.invoke(
-                                    OperationProgress(
-                                        type = opType,
-                                        title = title,
-                                        subtitle = packageName,
-                                        currentStepIndex = 2,
-                                        totalSteps = steps.size,
-                                        stepDescriptions = steps,
-                                        bytesProcessed = accumulatedBytes,
-                                        totalBytes = totalMigrationBytes,
-                                        speedBytesPerSec = 0L,
-                                        etaSeconds = 0L,
-                                        progressPercent = 0.85f,
-                                        currentItemName = categoryName,
-                                        isFinished = false
-                                    )
-                                )
+                            val actualSdBytes = getDirSizeBytes(effectiveSourcePath)
+                            val currentDestSize = getDirSizeBytes(targetPath)
 
-                                if (isPrivateCategory || targetPath.startsWith("/data/user/") || targetPath.startsWith("/data/data/")) {
+                            // Safety Guard 1: Already on Internal!
+                            if (actualSdBytes <= 64 * 1024L && currentDestSize > 1024 * 1024L) {
+                                AppLogger.info("StorageManager", "Data is already present on Internal ($currentDestSize bytes) and MicroSD is empty ($actualSdBytes bytes). Skipping redundant copy TO_INTERNAL.")
+                                accumulatedBytes = (accumulatedBytes + plannedPointSize).coerceAtMost(totalMigrationBytes)
+                                RootShell.exec("rm -rf \"$effectiveSourcePath\"")
+                                RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
+                                continue
+                            }
+
+                            // Safety Guard 2: Size ratio guard for OVERWRITE
+                            if (actualSdBytes <= 64 * 1024L && currentDestSize >= 10 * 1024 * 1024L) {
+                                AppLogger.error("StorageManager", "CRITICAL SAFETY: Source on SD ($actualSdBytes bytes) is empty/skeleton while internal has $currentDestSize bytes. Aborting overwrite to prevent data loss!")
+                                accumulatedBytes = (accumulatedBytes + plannedPointSize).coerceAtMost(totalMigrationBytes)
+                                RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
+                                continue
+                            }
+
+                            if (isContainer) {
+                                val imgFile = candidateImgFile
+                                if (RootShell.exists(imgFile)) {
+                                    val tempMount = "/dev/mountx_temp_${packageName}"
+                                    RootShell.exec("mkdir -p \"$tempMount\"")
+                                    val loopDev = MountManager.attachLoopDevice(imgFile)
+                                    if (loopDev.isNotEmpty()) {
+                                        RootShell.exec("mount -t ext4 \"$loopDev\" \"$tempMount\"")
+                                        RootShell.exec("mkdir -p \"$targetPath\"")
+                                        copyWithRealtimeProgress(
+                                            sourceDir = tempMount,
+                                            destDir = targetPath,
+                                            categoryName = categoryName,
+                                            pointSizeBytes = plannedPointSize,
+                                            overallProcessedBytes = accumulatedBytes,
+                                            totalMigrationBytes = totalMigrationBytes,
+                                            stepIndex = 1,
+                                            totalSteps = steps.size,
+                                            stepDescriptions = steps,
+                                            opType = opType,
+                                            title = title,
+                                            subtitle = packageName,
+                                            conflictStrategy = conflictStrategy,
+                                            onProgress = monotonicProgress
+                                        )
+                                        accumulatedBytes = (accumulatedBytes + plannedPointSize).coerceAtMost(totalMigrationBytes)
+                                        RootShell.exec("sync")
+                                        RootShell.exec("umount -l \"$tempMount\"")
+                                        MountManager.detachLoopDevice(imgFile)
+                                    }
+                                    RootShell.exec("rmdir \"$tempMount\" 2>/dev/null")
+                                    RootShell.exec("rm -f \"$imgFile\"")
                                     RootShell.exec("chown -R $uid:$gid \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("chmod 700 \"$targetPath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("find \"$targetPath\" -type d -exec chmod 700 {} + 2>/dev/null")
                                     RootShell.exec("find \"$targetPath\" -type f -exec chmod 600 {} + 2>/dev/null")
                                     RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
-                                } else if (point.category == MountPointCategory.APP_PACKAGE || targetPath.startsWith("/data/app/")) {
-                                    RootShell.exec("chown -R 1000:1000 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 755 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
-                                } else {
-                                    RootShell.exec("chown -R $uid:1023 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 775 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
                                 }
-
-                                // Clean up canary in internal target directory so canary check never thinks internal is mounted
-                                RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
-
-                                // Step 3: Cleanup on MicroSD
-                                onProgress?.invoke(
-                                    OperationProgress(
-                                        type = opType,
-                                        title = title,
-                                        subtitle = packageName,
-                                        currentStepIndex = 3,
+                            } else {
+                                if (RootShell.exists(effectiveSourcePath)) {
+                                    RootShell.exec("mkdir -p \"$targetPath\"")
+                                    val actualCopySource = if (targetPath.endsWith("/lib/arm64") && RootShell.exists("$effectiveSourcePath/arm64")) {
+                                        "$effectiveSourcePath/arm64"
+                                    } else {
+                                        effectiveSourcePath
+                                    }
+                                    copyWithRealtimeProgress(
+                                        sourceDir = actualCopySource,
+                                        destDir = targetPath,
+                                        categoryName = categoryName,
+                                        pointSizeBytes = plannedPointSize,
+                                        overallProcessedBytes = accumulatedBytes,
+                                        totalMigrationBytes = totalMigrationBytes,
+                                        stepIndex = 1,
                                         totalSteps = steps.size,
                                         stepDescriptions = steps,
-                                        bytesProcessed = totalMigrationBytes,
-                                        totalBytes = totalMigrationBytes,
-                                        speedBytesPerSec = 0L,
-                                        etaSeconds = 0L,
-                                        progressPercent = 0.95f,
-                                        currentItemName = categoryName,
-                                        isFinished = false
+                                        opType = opType,
+                                        title = title,
+                                        subtitle = packageName,
+                                        conflictStrategy = conflictStrategy,
+                                        onProgress = monotonicProgress
                                     )
-                                )
-                                val destVerifiedSize = getDirSizeBytes(targetPath)
-                                if (destVerifiedSize > 0L && effectiveSourcePath.trimEnd('/') != targetPath.trimEnd('/')) {
-                                    safeCleanSourceDirectory(effectiveSourcePath, targetPath, packageName)
-                                    RootShell.exec("rmdir \"$effectiveSourcePath\" 2>/dev/null")
+                                    accumulatedBytes = (accumulatedBytes + plannedPointSize).coerceAtMost(totalMigrationBytes)
+
+                                    if (isLastPoint) {
+                                        // Step 2: Restore permissions & SELinux (only transition stepper on final point of batch)
+                                        monotonicProgress?.invoke(
+                                            OperationProgress(
+                                                type = opType,
+                                                title = title,
+                                                subtitle = packageName,
+                                                currentStepIndex = 2,
+                                                totalSteps = steps.size,
+                                                stepDescriptions = steps,
+                                                bytesProcessed = totalMigrationBytes,
+                                                totalBytes = totalMigrationBytes,
+                                                speedBytesPerSec = 0L,
+                                                etaSeconds = 0L,
+                                                progressPercent = 0.93f,
+                                                currentItemName = categoryName,
+                                                isFinished = false
+                                            )
+                                        )
+                                    }
+
+                                    if (isPrivateCategory || targetPath.startsWith("/data/user/") || targetPath.startsWith("/data/data/")) {
+                                        RootShell.exec("chown -R $uid:$gid \"$targetPath\" 2>/dev/null")
+                                        RootShell.exec("chmod 700 \"$targetPath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$targetPath\" 2>/dev/null")
+                                        RootShell.exec("find \"$targetPath\" -type d -exec chmod 700 {} + 2>/dev/null")
+                                        RootShell.exec("find \"$targetPath\" -type f -exec chmod 600 {} + 2>/dev/null")
+                                        RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
+                                    } else if (point.category == MountPointCategory.APP_PACKAGE || targetPath.startsWith("/data/app/")) {
+                                        RootShell.exec("chown -R 1000:1000 \"$targetPath\" 2>/dev/null")
+                                        RootShell.exec("chmod -R 755 \"$targetPath\" 2>/dev/null")
+                                        RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$targetPath\" 2>/dev/null")
+                                        RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
+                                    } else {
+                                        RootShell.exec("chown -R $uid:1023 \"$targetPath\" 2>/dev/null")
+                                        RootShell.exec("chmod -R 775 \"$targetPath\" 2>/dev/null")
+                                        RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
+                                        RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
+                                    }
+
+                                    // Clean up canary in internal target directory so canary check never thinks internal is mounted
+                                    RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
+
+                                    if (isLastPoint) {
+                                        // Step 3: Cleanup on MicroSD
+                                        monotonicProgress?.invoke(
+                                            OperationProgress(
+                                                type = opType,
+                                                title = title,
+                                                subtitle = packageName,
+                                                currentStepIndex = 3,
+                                                totalSteps = steps.size,
+                                                stepDescriptions = steps,
+                                                bytesProcessed = totalMigrationBytes,
+                                                totalBytes = totalMigrationBytes,
+                                                speedBytesPerSec = 0L,
+                                                etaSeconds = 0L,
+                                                progressPercent = 0.97f,
+                                                currentItemName = categoryName,
+                                                isFinished = false
+                                            )
+                                        )
+                                    }
+                                    val destVerifiedSize = getDirSizeBytes(targetPath)
+                                    if (destVerifiedSize > 0L && effectiveSourcePath.trimEnd('/') != targetPath.trimEnd('/')) {
+                                        safeCleanSourceDirectory(effectiveSourcePath, targetPath, packageName)
+                                        RootShell.exec("rmdir \"$effectiveSourcePath\" 2>/dev/null")
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
             // Restore internal app sandbox directory permissions across user profile (Strict 0700 sandbox isolation)
             val appUserId = activePoints.firstOrNull()?.let { MountManager.resolveUserId(it.targetPath) } ?: 0
