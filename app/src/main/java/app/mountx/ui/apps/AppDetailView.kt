@@ -1115,7 +1115,7 @@ private fun StorageTabContent(
                 val size = if (safeBreakdown.ext2ApkBytes > 0L) safeBreakdown.ext2ApkBytes else internalApkTotalBytes
                 Triple(size, apkDefaultDesc, true)
             }
-            safeBreakdown.ext2ApkBytes > 0L && internalApkTotalBytes > 64 * 1024L -> {
+            safeBreakdown.ext2ApkBytes > 16 * 1024L && internalApkTotalBytes > 64 * 1024L -> {
                 val targetName = if (isApkUsb) (apkDiskLabel ?: "USB OTG") else (apkDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     internalApkTotalBytes,
@@ -1123,7 +1123,7 @@ private fun StorageTabContent(
                     false
                 )
             }
-            safeBreakdown.ext2ApkBytes > 4096L && existingApkPoint?.enabled == true && internalApkTotalBytes <= 4096L -> {
+            safeBreakdown.ext2ApkBytes > 16 * 1024L && existingApkPoint?.enabled == true && internalApkTotalBytes <= 16 * 1024L -> {
                 Triple(safeBreakdown.ext2ApkBytes, apkDefaultDesc, true)
             }
             else -> {
@@ -1134,14 +1134,14 @@ private fun StorageTabContent(
         val existingLibPoint = prioritizedPoints.firstOrNull { it.id == "lib" || (it.resolveCategory() == MountPointCategory.APP_PACKAGE && it.targetPath.contains("/lib")) }
         val libSdPath = existingLibPoint?.sourcePath ?: "$sdBase/MountX/lib/$pkg"
         val (isLibUsb, libDiskLabel) = getDiskDetails(libSdPath, existingLibPoint?.diskUuid)
-        val isLibCatMounted = safeBreakdown.isLibMounted || (isMounted && existingLibPoint?.enabled == true && safeBreakdown.ext2LibBytes > 0L && safeBreakdown.libBytes <= 4096L)
+        val isLibCatMounted = safeBreakdown.isLibMounted || (isMounted && existingLibPoint?.enabled == true && safeBreakdown.ext2LibBytes > 16 * 1024L && safeBreakdown.libBytes <= 16 * 1024L)
         val libDefaultDesc = context.getString(R.string.category_item_lib_desc)
         val (libBytes, libSubtitle, isLibSd) = when {
             isLibCatMounted -> {
                 val size = if (safeBreakdown.ext2LibBytes > 0L) safeBreakdown.ext2LibBytes else safeBreakdown.libBytes
                 Triple(size, libDefaultDesc, true)
             }
-            safeBreakdown.ext2LibBytes > 0L && safeBreakdown.libBytes > 64 * 1024L -> {
+            safeBreakdown.ext2LibBytes > 16 * 1024L && safeBreakdown.libBytes > 64 * 1024L -> {
                 val targetName = if (isLibUsb) (libDiskLabel ?: "USB OTG") else (libDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.libBytes,
@@ -1149,7 +1149,7 @@ private fun StorageTabContent(
                     false
                 )
             }
-            safeBreakdown.ext2LibBytes > 4096L && existingLibPoint?.enabled == true && safeBreakdown.libBytes <= 4096L -> {
+            safeBreakdown.ext2LibBytes > 16 * 1024L && existingLibPoint?.enabled == true && safeBreakdown.libBytes <= 16 * 1024L -> {
                 Triple(safeBreakdown.ext2LibBytes, libDefaultDesc, true)
             }
             else -> {
@@ -1162,14 +1162,14 @@ private fun StorageTabContent(
         val privateSdPath = existingPrivatePoint?.sourcePath
             ?: if (isDefaultPosix) "$sdBase/MountX/data/$pkg" else "$sdBase/.mountx/containers/${pkg}_data.img"
         val (isPrivateUsb, privateDiskLabel) = getDiskDetails(privateSdPath, existingPrivatePoint?.diskUuid)
-        val isPrivateCatMounted = safeBreakdown.isPrivateMounted || (isMounted && existingPrivatePoint?.enabled == true && safeBreakdown.ext2PrivateBytes > 0L && safeBreakdown.dataBytes <= 4096L)
+        val isPrivateCatMounted = safeBreakdown.isPrivateMounted || (isMounted && existingPrivatePoint?.enabled == true && safeBreakdown.ext2PrivateBytes > 16 * 1024L && safeBreakdown.dataBytes <= 16 * 1024L)
         val privateDefaultDesc = context.getString(R.string.category_item_private_desc)
         val (privateBytes, privateSubtitle, isPrivateSd) = when {
             isPrivateCatMounted -> {
                 val size = if (safeBreakdown.ext2PrivateBytes > 0L) safeBreakdown.ext2PrivateBytes else safeBreakdown.dataBytes
                 Triple(size, privateDefaultDesc, true)
             }
-            safeBreakdown.ext2PrivateBytes > 0L && safeBreakdown.dataBytes > 64 * 1024L -> {
+            safeBreakdown.ext2PrivateBytes > 16 * 1024L && safeBreakdown.dataBytes > 64 * 1024L -> {
                 val targetName = if (isPrivateUsb) (privateDiskLabel ?: "USB OTG") else (privateDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.dataBytes,
@@ -1177,7 +1177,7 @@ private fun StorageTabContent(
                     false
                 )
             }
-            safeBreakdown.ext2PrivateBytes > 4096L && existingPrivatePoint?.enabled == true && safeBreakdown.dataBytes <= 4096L -> {
+            safeBreakdown.ext2PrivateBytes > 16 * 1024L && existingPrivatePoint?.enabled == true && safeBreakdown.dataBytes <= 16 * 1024L -> {
                 Triple(safeBreakdown.ext2PrivateBytes, privateDefaultDesc, true)
             }
             else -> {
@@ -1188,14 +1188,14 @@ private fun StorageTabContent(
         val existingCachePoint = prioritizedPoints.firstOrNull { it.id == "cache" || it.resolveCategory() == MountPointCategory.CACHE_SHADERS }
         val cacheSdPath = existingCachePoint?.sourcePath ?: "$sdBase/MountX/cache/$pkg"
         val (isCacheUsb, cacheDiskLabel) = getDiskDetails(cacheSdPath, existingCachePoint?.diskUuid)
-        val isCacheCatMounted = safeBreakdown.isCacheMounted || (isMounted && existingCachePoint?.enabled == true && safeBreakdown.ext2CacheBytes > 0L && safeBreakdown.cacheBytes <= 4096L)
+        val isCacheCatMounted = safeBreakdown.isCacheMounted || (isMounted && existingCachePoint?.enabled == true && safeBreakdown.ext2CacheBytes > 16 * 1024L && safeBreakdown.cacheBytes <= 16 * 1024L)
         val cacheDefaultDesc = context.getString(R.string.category_item_cache_desc)
         val (cacheBytes, cacheSubtitle, isCacheSd) = when {
             isCacheCatMounted -> {
                 val size = if (safeBreakdown.ext2CacheBytes > 0L) safeBreakdown.ext2CacheBytes else safeBreakdown.cacheBytes
                 Triple(size, cacheDefaultDesc, true)
             }
-            safeBreakdown.ext2CacheBytes > 0L && safeBreakdown.cacheBytes > 64 * 1024L -> {
+            safeBreakdown.ext2CacheBytes > 16 * 1024L && safeBreakdown.cacheBytes > 64 * 1024L -> {
                 val targetName = if (isCacheUsb) (cacheDiskLabel ?: "USB OTG") else (cacheDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.cacheBytes,
@@ -1203,7 +1203,7 @@ private fun StorageTabContent(
                     false
                 )
             }
-            safeBreakdown.ext2CacheBytes > 4096L && existingCachePoint?.enabled == true && safeBreakdown.cacheBytes <= 4096L -> {
+            safeBreakdown.ext2CacheBytes > 16 * 1024L && existingCachePoint?.enabled == true && safeBreakdown.cacheBytes <= 16 * 1024L -> {
                 Triple(safeBreakdown.ext2CacheBytes, cacheDefaultDesc, true)
             }
             else -> {
@@ -1214,14 +1214,14 @@ private fun StorageTabContent(
         val existingDataPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
         val dataSdPath = existingDataPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg")
         val (isDataUsb, dataDiskLabel) = getDiskDetails(dataSdPath, existingDataPoint?.diskUuid)
-        val isDataCatMounted = safeBreakdown.isDataMounted || (isMounted && existingDataPoint?.enabled == true && safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes <= 4096L)
+        val isDataCatMounted = safeBreakdown.isDataMounted || (isMounted && existingDataPoint?.enabled == true && safeBreakdown.ext2DataBytes > 16 * 1024L && safeBreakdown.ext1DataBytes <= 16 * 1024L)
         val dataDefaultDesc = context.getString(R.string.category_item_data_desc)
         val (dataBytes, dataSubtitle, isDataSd) = when {
             isDataCatMounted -> {
                 val size = if (safeBreakdown.ext2DataBytes > 0L) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
                 Triple(size, dataDefaultDesc, true)
             }
-            safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes > 64 * 1024L -> {
+            safeBreakdown.ext2DataBytes > 16 * 1024L && safeBreakdown.ext1DataBytes > 64 * 1024L -> {
                 val targetName = if (isDataUsb) (dataDiskLabel ?: "USB OTG") else (dataDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1DataBytes,
@@ -1229,7 +1229,7 @@ private fun StorageTabContent(
                     false
                 )
             }
-            safeBreakdown.ext2DataBytes > 4096L && existingDataPoint?.enabled == true && safeBreakdown.ext1DataBytes <= 4096L -> {
+            safeBreakdown.ext2DataBytes > 16 * 1024L && existingDataPoint?.enabled == true && safeBreakdown.ext1DataBytes <= 16 * 1024L -> {
                 Triple(safeBreakdown.ext2DataBytes, dataDefaultDesc, true)
             }
             else -> {
@@ -1244,14 +1244,14 @@ private fun StorageTabContent(
         val existingObbPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
         val obbSdPath = existingObbPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/obb/$pkg")
         val (isObbUsb, obbDiskLabel) = getDiskDetails(obbSdPath, existingObbPoint?.diskUuid)
-        val isObbCatMounted = safeBreakdown.isObbMounted || (isMounted && existingObbPoint?.enabled == true && safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes <= 4096L)
+        val isObbCatMounted = safeBreakdown.isObbMounted || (isMounted && existingObbPoint?.enabled == true && safeBreakdown.ext2ObbBytes > 16 * 1024L && safeBreakdown.ext1ObbBytes <= 16 * 1024L)
         val obbDefaultDesc = context.getString(R.string.category_item_obb_desc)
         val (obbBytes, obbSubtitle, isObbSd) = when {
             isObbCatMounted -> {
                 val size = if (safeBreakdown.ext2ObbBytes > 0L) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
                 Triple(size, obbDefaultDesc, true)
             }
-            safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes > 64 * 1024L -> {
+            safeBreakdown.ext2ObbBytes > 16 * 1024L && safeBreakdown.ext1ObbBytes > 64 * 1024L -> {
                 val targetName = if (isObbUsb) (obbDiskLabel ?: "USB OTG") else (obbDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1ObbBytes,
@@ -1259,7 +1259,7 @@ private fun StorageTabContent(
                     false
                 )
             }
-            safeBreakdown.ext2ObbBytes > 4096L && existingObbPoint?.enabled == true && safeBreakdown.ext1ObbBytes <= 4096L -> {
+            safeBreakdown.ext2ObbBytes > 16 * 1024L && existingObbPoint?.enabled == true && safeBreakdown.ext1ObbBytes <= 16 * 1024L -> {
                 Triple(safeBreakdown.ext2ObbBytes, obbDefaultDesc, true)
             }
             else -> {
@@ -1270,15 +1270,15 @@ private fun StorageTabContent(
         val existingMediaPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS }
         val mediaSdPath = existingMediaPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/media/$pkg")
         val (isMediaUsb, mediaDiskLabel) = getDiskDetails(mediaSdPath, existingMediaPoint?.diskUuid)
-        val hasMedia = safeBreakdown.ext1MediaBytes > 0L || safeBreakdown.ext2MediaBytes > 0L || existingMediaPoint != null
-        val isMediaCatMounted = safeBreakdown.isMediaMounted || (isMounted && existingMediaPoint?.enabled == true && safeBreakdown.ext2MediaBytes > 0L && safeBreakdown.ext1MediaBytes <= 4096L)
+        val hasMedia = safeBreakdown.ext1MediaBytes > 16 * 1024L || safeBreakdown.ext2MediaBytes > 16 * 1024L || existingMediaPoint != null
+        val isMediaCatMounted = safeBreakdown.isMediaMounted || (isMounted && existingMediaPoint?.enabled == true && safeBreakdown.ext2MediaBytes > 16 * 1024L && safeBreakdown.ext1MediaBytes <= 16 * 1024L)
         val mediaDefaultDesc = context.getString(R.string.category_item_media_desc)
         val (mediaBytes, mediaSubtitle, isMediaSd) = when {
             isMediaCatMounted -> {
                 val size = if (safeBreakdown.ext2MediaBytes > 0L) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
                 Triple(size, mediaDefaultDesc, true)
             }
-            safeBreakdown.ext2MediaBytes > 0L && safeBreakdown.ext1MediaBytes > 64 * 1024L -> {
+            safeBreakdown.ext2MediaBytes > 16 * 1024L && safeBreakdown.ext1MediaBytes > 64 * 1024L -> {
                 val targetName = if (isMediaUsb) (mediaDiskLabel ?: "USB OTG") else (mediaDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1MediaBytes,
@@ -1286,7 +1286,7 @@ private fun StorageTabContent(
                     false
                 )
             }
-            safeBreakdown.ext2MediaBytes > 4096L && existingMediaPoint?.enabled == true && safeBreakdown.ext1MediaBytes <= 4096L -> {
+            safeBreakdown.ext2MediaBytes > 16 * 1024L && existingMediaPoint?.enabled == true && safeBreakdown.ext1MediaBytes <= 16 * 1024L -> {
                 Triple(safeBreakdown.ext2MediaBytes, mediaDefaultDesc, true)
             }
             else -> {
@@ -1751,10 +1751,13 @@ private fun StorageTabContent(
                                 MountPointCategory.OBB_STORAGE -> safeBreakdown.ext2ObbBytes
                                 MountPointCategory.EXTERNAL_DATA -> safeBreakdown.ext2DataBytes
                                 MountPointCategory.MEDIA_DOWNLOADS -> safeBreakdown.ext2MediaBytes
+                                MountPointCategory.APP_PACKAGE -> if (pt.targetPath.contains("/lib") || pt.id.startsWith("lib")) safeBreakdown.ext2LibBytes else safeBreakdown.ext2ApkBytes
+                                MountPointCategory.PRIVATE_INTERNAL -> safeBreakdown.ext2PrivateBytes
+                                MountPointCategory.CACHE_SHADERS -> safeBreakdown.ext2CacheBytes
                                 else -> pt.sizeBytes
                             }
                         }
-                        if (bytes > 0L) bytes else safeBreakdown.ext2Bytes
+                        maxOf(bytes, safeBreakdown.ext2Bytes)
                     }
                     val canRestore = isMounted && (restoreBytes > 0L)
                     OutlinedButton(
@@ -5297,13 +5300,13 @@ fun ConcentricStorageChart(
 
     val slices = remember(breakdown) {
         listOfNotNull(
-            ChartSlice("Dex", breakdown.dexBytes, Color(0xFFAB47BC)),
-            ChartSlice("Lib", breakdown.libBytes, Color(0xFFFB8C00)),
-            ChartSlice("Data", breakdown.dataBytes, Color(0xFF00ACC1)),
-            ChartSlice("Cache", breakdown.cacheBytes, Color(0xFFE57373)),
+            if (!breakdown.isApkMounted && breakdown.dexBytes > 0) ChartSlice("Dex", breakdown.dexBytes, Color(0xFFAB47BC)) else null,
+            if (!breakdown.isLibMounted && breakdown.libBytes > 0) ChartSlice("Lib", breakdown.libBytes, Color(0xFFFB8C00)) else null,
+            if (!breakdown.isPrivateMounted && breakdown.dataBytes > 0) ChartSlice("Data", breakdown.dataBytes, Color(0xFF00ACC1)) else null,
+            if (!breakdown.isCacheMounted && breakdown.cacheBytes > 0) ChartSlice("Cache", breakdown.cacheBytes, Color(0xFFE57373)) else null,
             if (breakdown.physicalExt1Bytes > 0) ChartSlice("Ext1", breakdown.physicalExt1Bytes, Color(0xFF3149FF)) else null,
             if (breakdown.ext2Bytes > 0) ChartSlice("Ext2", breakdown.ext2Bytes, Color(0xFF43A047)) else null,
-            ChartSlice("Apk", breakdown.apkBytes, Color(0xFFE91E63))
+            if (!breakdown.isApkMounted && breakdown.apkBytes > 0) ChartSlice("Apk", breakdown.apkBytes, Color(0xFFE91E63)) else null
         )
     }
 

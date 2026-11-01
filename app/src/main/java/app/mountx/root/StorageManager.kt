@@ -2761,6 +2761,7 @@ class StorageManager(
                                 val destVerifiedSize = getDirSizeBytes(targetPath)
                                 if (destVerifiedSize > 0L && effectiveSourcePath.trimEnd('/') != targetPath.trimEnd('/')) {
                                     safeCleanSourceDirectory(effectiveSourcePath, targetPath, packageName)
+                                    RootShell.exec("rmdir \"$effectiveSourcePath\" 2>/dev/null")
                                 }
                             }
                         }
@@ -3093,6 +3094,7 @@ class StorageManager(
                                 val destVerifiedSize = getDirSizeBytes(internalData)
                                 if (destVerifiedSize > 0L) {
                                     safeCleanSourceDirectory(sdData, internalData, packageName)
+                                    RootShell.exec("rmdir \"$sdData\" 2>/dev/null")
                                 }
                             } else if (target == MigrationTarget.DATA_ONLY) {
                                 error("SD data path does not exist: $sdData")
@@ -3128,6 +3130,7 @@ class StorageManager(
                                 val destVerifiedSize = getDirSizeBytes(internalObb)
                                 if (destVerifiedSize > 0L) {
                                     safeCleanSourceDirectory(sdObb, internalObb, packageName)
+                                    RootShell.exec("rmdir \"$sdObb\" 2>/dev/null")
                                 }
                             } else if (target == MigrationTarget.OBB_ONLY) {
                                 error("SD OBB path does not exist: $sdObb")
