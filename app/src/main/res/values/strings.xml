@@ -462,6 +462,11 @@
     <string name="app_detail_health_anomaly">Anomaly detected: %1$s</string>
     <string name="app_detail_health_permissions_ok">System storage permissions verified</string>
     <string name="app_detail_health_permissions_warn">Storage permission attention needed</string>
+    <string name="status_anomaly">Anomaly</string>
+    <string name="health_summary_missing_targets">Mount targets missing in /proc/mounts</string>
+    <string name="health_summary_perm_revoked">Storage permission revoked by Android</string>
+    <string name="health_summary_mounted_healthy">Mounted &amp; Healthy (%1$d active targets)</string>
+    <string name="health_summary_idle">Unmounted / Idle</string>
 
     <!-- Settings Screen -->
     <string name="settings_title">Settings</string>

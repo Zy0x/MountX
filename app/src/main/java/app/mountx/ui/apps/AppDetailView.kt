@@ -1668,7 +1668,7 @@ private fun StorageTabContent(
                                 border = BorderStroke(0.5.dp, bannerIconTint.copy(alpha = 0.5f))
                             ) {
                                 Text(
-                                    text = if (isAnomaly) "ANOMALY" else stringResource(R.string.disk_health_healthy).uppercase(),
+                                    text = if (isAnomaly) stringResource(R.string.status_anomaly).uppercase() else stringResource(R.string.disk_health_healthy).uppercase(),
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontSize = 8.5.sp,
                                         fontWeight = FontWeight.Bold,

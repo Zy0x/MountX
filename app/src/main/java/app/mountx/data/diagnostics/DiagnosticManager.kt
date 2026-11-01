@@ -1,7 +1,10 @@
 package app.mountx.data.diagnostics
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.Manifest
 import android.os.Build
+import app.mountx.R
 import app.mountx.data.db.AppDao
 import app.mountx.data.model.MountStatus
 import app.mountx.root.RootShell
@@ -152,9 +155,8 @@ class DiagnosticManager @Inject constructor(
         val mountsCountRes = RootShell.exec("grep -E \"(Android/(data|obb|media)/${packageName}|/data/app/.*${packageName}|/data/user/0/${packageName})\" /proc/mounts 2>/dev/null | wc -l")
         val activeMounts = mountsCountRes.output.trim().toIntOrNull() ?: 0
 
-        // Check storage permissions
-        val appopsRes = RootShell.exec("appops get \"$packageName\" MANAGE_EXTERNAL_STORAGE 2>/dev/null; appops get \"$packageName\" LEGACY_STORAGE 2>/dev/null")
-        val permissionsGranted = !appopsRes.output.contains("reject", ignoreCase = true)
+        // Check storage permissions accurately without false positives
+        val permissionsGranted = checkStoragePermissions(packageName)
 
         val exitReport = getRecentExitReport(packageName)
 
@@ -166,14 +168,14 @@ class DiagnosticManager @Inject constructor(
         }
 
         val summary = when {
-            isMounted && activeMounts == 0 -> "Mount targets missing in /proc/mounts"
+            isMounted && activeMounts == 0 -> context.getString(R.string.health_summary_missing_targets)
             exitReport != null && exitReport.isAbnormal -> {
                 val detail = if (exitReport.description.isNotBlank()) ": ${exitReport.description}" else ""
                 "Terminated: ${exitReport.reasonName} (${exitReport.subreasonName}$detail)"
             }
-            !permissionsGranted -> "Storage permission revoked by Android"
-            isMounted -> "Mounted & Healthy ($activeMounts active targets)"
-            else -> "Unmounted / Idle"
+            !permissionsGranted -> context.getString(R.string.health_summary_perm_revoked)
+            isMounted -> context.getString(R.string.health_summary_mounted_healthy, activeMounts)
+            else -> context.getString(R.string.health_summary_idle)
         }
 
         AppHealthTelemetry(
@@ -185,6 +187,63 @@ class DiagnosticManager @Inject constructor(
             recentExitReport = exitReport,
             statusSummary = summary
         )
+    }
+
+    /**
+     * Accurately verifies whether storage permissions are in an acceptable state for the package.
+     * Prevents false positives from historical appops reject timestamps or unrequested permissions.
+     */
+    private suspend fun checkStoragePermissions(packageName: String): Boolean {
+        return try {
+            val pm = context.packageManager
+            val packageInfo = pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+            val requested = packageInfo.requestedPermissions ?: return true
+
+            val requestsLegacyStorage = requested.contains(Manifest.permission.READ_EXTERNAL_STORAGE) ||
+                    requested.contains(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            val requestsAllFiles = requested.contains("android.permission.MANAGE_EXTERNAL_STORAGE")
+
+            if (!requestsLegacyStorage && !requestsAllFiles) {
+                // Modern Scoped Storage app, no legacy storage permission needed
+                return true
+            }
+
+            if (requestsLegacyStorage) {
+                val readGranted = pm.checkPermission(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    packageName
+                ) == PackageManager.PERMISSION_GRANTED
+                val writeGranted = pm.checkPermission(
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                    packageName
+                ) == PackageManager.PERMISSION_GRANTED
+                if (readGranted || writeGranted) {
+                    return true
+                }
+            }
+
+            if (requestsAllFiles) {
+                val appopsRes = RootShell.execForOutput("appops get \"$packageName\" MANAGE_EXTERNAL_STORAGE 2>/dev/null")
+                if (appopsRes.contains("MANAGE_EXTERNAL_STORAGE: allow", ignoreCase = true)) {
+                    return true
+                }
+            }
+
+            // On Android 13+ (API 33+), READ_EXTERNAL_STORAGE is obsolete for apps targeting SDK 33+
+            val targetSdk = packageInfo.applicationInfo?.targetSdkVersion ?: 0
+            if (requestsLegacyStorage && Build.VERSION.SDK_INT >= 33 && targetSdk >= 33) {
+                return true
+            }
+
+            // Only mark as revoked if legacy storage was explicitly declared on pre-API 33 but denied
+            if (requestsLegacyStorage && Build.VERSION.SDK_INT < 33) {
+                return false
+            }
+
+            true
+        } catch (_: Exception) {
+            true
+        }
     }
 
     /**

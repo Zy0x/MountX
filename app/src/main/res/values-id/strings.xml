@@ -447,6 +447,11 @@
     <string name="app_detail_health_anomaly">Anomali terdeteksi: %1$s</string>
     <string name="app_detail_health_permissions_ok">Izin penyimpanan sistem terverifikasi</string>
     <string name="app_detail_health_permissions_warn">Izin penyimpanan perlu perhatian</string>
+    <string name="status_anomaly">Anomali</string>
+    <string name="health_summary_missing_targets">Titik mount tidak ditemukan di /proc/mounts</string>
+    <string name="health_summary_perm_revoked">Izin penyimpanan dicabut oleh Android</string>
+    <string name="health_summary_mounted_healthy">Termount &amp; Sehat (%1$d target aktif)</string>
+    <string name="health_summary_idle">Belum Dimount / Siaga</string>
 
     <string name="settings_title">Pengaturan</string>
     <string name="settings_appearance">Tampilan</string>
