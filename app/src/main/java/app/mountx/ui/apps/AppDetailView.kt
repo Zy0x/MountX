@@ -818,6 +818,7 @@ private fun buildTargetMountPoints(
                         "$sdBase/MountX/app/$pkg"
                     }
                 }
+                existing.resolveCategory() == MountPointCategory.CACHE_SHADERS -> "$sdBase/MountX/cache/$pkg"
                 existing.resolveCategory() == MountPointCategory.GAME_ASSETS -> resolveSdPath(sdBase, "MountX/Android/data/$pkg/files")
                 else -> existing.sourcePath
             }
@@ -825,9 +826,9 @@ private fun buildTargetMountPoints(
                 isContainer || isPrivateCat -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg"
                 existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> {
                     if (catId == "lib" || existing.id.startsWith("lib_") || existing.targetPath.contains("/lib")) {
-                        if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/data/app/$pkg/lib")) existing.targetPath else libDir
+                        libDir
                     } else {
-                        if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/data/app/$pkg")) existing.targetPath else apkDir
+                        apkDir
                     }
                 }
                 existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/data/$pkg" else existing.targetPath
@@ -897,7 +898,7 @@ private fun buildTargetMountPoints(
                 "cache" -> MountPointConfig(
                     id = "cache_$pkg",
                     category = MountPointCategory.CACHE_SHADERS,
-                    sourcePath = "$sdBase/MountX/Android/data/$pkg/cache",
+                    sourcePath = "$sdBase/MountX/cache/$pkg",
                     targetPath = "/data/user/0/$pkg/cache",
                     enabled = true
                 )
@@ -1106,26 +1107,27 @@ private fun StorageTabContent(
         val existingApkPoint = prioritizedPoints.firstOrNull { it.id == "apk" || (it.resolveCategory() == MountPointCategory.APP_PACKAGE && !it.targetPath.contains("/lib")) }
         val apkSdPath = existingApkPoint?.sourcePath ?: "$sdBase/MountX/app/$pkg"
         val (isApkUsb, apkDiskLabel) = getDiskDetails(apkSdPath, existingApkPoint?.diskUuid)
-        val isApkCatMounted = safeBreakdown.isApkMounted || (isMounted && existingApkPoint?.enabled == true && safeBreakdown.ext2ApkBytes > 0L && safeBreakdown.apkBytes <= 4096L)
+        val internalApkTotalBytes = safeBreakdown.apkBytes + safeBreakdown.dexBytes
+        val isApkCatMounted = safeBreakdown.isApkMounted || (isMounted && existingApkPoint?.enabled == true && safeBreakdown.ext2ApkBytes > 0L && internalApkTotalBytes <= 4096L)
         val apkDefaultDesc = context.getString(R.string.category_item_apk_desc)
         val (apkBytes, apkSubtitle, isApkSd) = when {
             isApkCatMounted -> {
-                val size = if (safeBreakdown.ext2ApkBytes > 0L) safeBreakdown.ext2ApkBytes else safeBreakdown.apkBytes
+                val size = if (safeBreakdown.ext2ApkBytes > 0L) safeBreakdown.ext2ApkBytes else internalApkTotalBytes
                 Triple(size, apkDefaultDesc, true)
             }
-            safeBreakdown.ext2ApkBytes > 0L && safeBreakdown.apkBytes > 64 * 1024L -> {
+            safeBreakdown.ext2ApkBytes > 0L && internalApkTotalBytes > 64 * 1024L -> {
                 val targetName = if (isApkUsb) (apkDiskLabel ?: "USB OTG") else (apkDiskLabel ?: defaultMicroSdTitle)
                 Triple(
-                    safeBreakdown.apkBytes,
+                    internalApkTotalBytes,
                     context.getString(R.string.category_item_on_storage, apkDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2ApkBytes), targetName),
                     false
                 )
             }
-            safeBreakdown.ext2ApkBytes > 4096L && existingApkPoint?.enabled == true && safeBreakdown.apkBytes <= 4096L -> {
+            safeBreakdown.ext2ApkBytes > 4096L && existingApkPoint?.enabled == true && internalApkTotalBytes <= 4096L -> {
                 Triple(safeBreakdown.ext2ApkBytes, apkDefaultDesc, true)
             }
             else -> {
-                Triple(safeBreakdown.apkBytes, apkDefaultDesc, false)
+                Triple(internalApkTotalBytes, apkDefaultDesc, false)
             }
         }
 
@@ -1184,7 +1186,7 @@ private fun StorageTabContent(
         }
 
         val existingCachePoint = prioritizedPoints.firstOrNull { it.id == "cache" || it.resolveCategory() == MountPointCategory.CACHE_SHADERS }
-        val cacheSdPath = existingCachePoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg/cache")
+        val cacheSdPath = existingCachePoint?.sourcePath ?: "$sdBase/MountX/cache/$pkg"
         val (isCacheUsb, cacheDiskLabel) = getDiskDetails(cacheSdPath, existingCachePoint?.diskUuid)
         val isCacheCatMounted = safeBreakdown.isCacheMounted || (isMounted && existingCachePoint?.enabled == true && safeBreakdown.ext2CacheBytes > 0L && safeBreakdown.cacheBytes <= 4096L)
         val cacheDefaultDesc = context.getString(R.string.category_item_cache_desc)

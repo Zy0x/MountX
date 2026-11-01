@@ -959,17 +959,15 @@ load_mountpoints() {
                     local real_apk_dir
                     real_apk_dir=$(dirname "${real_apk_path}")
                     if echo "${dst}" | grep -q "/lib"; then
-                        # If parent app package is already mounted, do not double-mount lib!
-                        if grep -qF " ${real_apk_dir} " /proc/mounts 2>/dev/null; then
-                            log_info "  [${pkg}] App package already mounted at ${real_apk_dir}; skipping redundant lib mount"
-                            entries=$((entries + 1))
-                            continue
-                        fi
-                        if [ -d "${src}/arm64" ] && [ -d "${real_apk_dir}/lib/arm64" ]; then
+                        if [ -d "${src}/arm64" ]; then
                             dst="${real_apk_dir}/lib/arm64"
                             src="${src}/arm64"
-                        elif [ -d "${real_apk_dir}/lib" ]; then
-                            dst="${real_apk_dir}/lib"
+                        elif echo "${dst}" | grep -q "/lib/arm64"; then
+                            dst="${real_apk_dir}/lib/arm64"
+                        elif echo "${dst}" | grep -q "/lib/arm"; then
+                            dst="${real_apk_dir}/lib/arm"
+                        else
+                            dst="${real_apk_dir}/lib/arm64"
                         fi
                     else
                         dst="${real_apk_dir}"
@@ -987,11 +985,36 @@ load_mountpoints() {
                 continue
                 ;;
             CACHE_SHADERS)
-                mkdir -p "${dst}" 2>/dev/null
+                mkdir -p "${src}" "${dst}" 2>/dev/null
+                local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                [ -z "${app_uid}" ] && app_uid=$(pm list packages -U 2>/dev/null | grep -F "package:${pkg} " | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+                [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                chown -R "${app_uid}:${app_uid}" "${src}" 2>/dev/null
+                chmod 700 "${src}" 2>/dev/null
+                chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
+                chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
                 mount -o bind "${src}" "${dst}" 2>/dev/null
                 mount --make-shared "${dst}" 2>/dev/null
-                apply_permissions "${pkg}" "${dst}" "${user_id}"
+                chown -R "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                chmod 700 "${dst}" 2>/dev/null
+                restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                if [ -d "/data/data/${pkg}/cache" ] && ! grep -qF " /data/data/${pkg}/cache " /proc/mounts 2>/dev/null; then
+                    mount -o bind "${src}" "/data/data/${pkg}/cache" 2>/dev/null
+                fi
+                if [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}/cache" ] && ! grep -qF " /data_mirror/data_ce/null/${user_id}/${pkg}/cache " /proc/mounts 2>/dev/null; then
+                    mount -o bind "${src}" "/data_mirror/data_ce/null/${user_id}/${pkg}/cache" 2>/dev/null
+                fi
                 log_info "  [${pkg}] Cache shaders bind-mounted directly: ${src} -> ${dst}"
+                entries=$((entries + 1))
+                continue
+                ;;
+        esac
+
+        # Hard Guard: Never pass /data/app, /data/user, or /data/data to emulated runtime namespaces
+        case "${dst}" in
+            /data/app/*|/data/user/*|/data/data/*)
+                mkdir -p "${dst}" 2>/dev/null
+                mount -o bind "${src}" "${dst}" 2>/dev/null
                 entries=$((entries + 1))
                 continue
                 ;;

@@ -338,10 +338,13 @@ class MountManager(
 
             // Guard against accidental data occlusion:
             // ── MULTI-DISK COLLISION & ANTI-STACKING GUARD ──
+            // Sort by targetPath length ascending so parent mounts (/data/app/pkg, /data/user/0/pkg)
+            // are ALWAYS established before child mounts (/data/app/pkg/lib/arm64, /data/user/0/pkg/cache).
             val activeMountPoints = game.mountPoints
                 .filter { it.enabled }
                 .sortedWith(
-                    compareByDescending<MountPointConfig> { !it.id.startsWith("legacy_") || it.diskUuid != null }
+                    compareBy<MountPointConfig> { it.targetPath.trimEnd('/').length }
+                        .thenByDescending { !it.id.startsWith("legacy_") || it.diskUuid != null }
                         .thenByDescending { it.category == MountPointCategory.CUSTOM }
                         .thenByDescending { it.sizeBytes }
                 )
@@ -469,6 +472,12 @@ class MountManager(
                         }
                         MountPointCategory.CACHE_SHADERS -> {
                             if (mp.targetPath.startsWith("/data/user/") || mp.targetPath.startsWith("/data/data/")) {
+                                val parentContext = RootShell.execForOutput("stat -c %C \"/data/user/0/${game.packageName}\" 2>/dev/null").trim()
+                                val cacheContext = if (parentContext.isNotBlank() && parentContext.contains("app_data_file")) {
+                                    parentContext
+                                } else {
+                                    "u:object_r:app_data_file:s0"
+                                }
                                 RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
                                 RootShell.exec("mkdir -p \"${mp.targetPath}\" 2>/dev/null")
                                 val fsType = RootShell.execForOutput("stat -f -c %T \"${mp.sourcePath}\" 2>/dev/null").trim().lowercase()
@@ -476,13 +485,13 @@ class MountManager(
                                 if (!isNonPosix) {
                                     RootShell.exec("chown -R $uid:$gid \"${mp.sourcePath}\" 2>/dev/null")
                                     RootShell.exec("chmod 700 \"${mp.sourcePath}\" 2>/dev/null && chmod -R u+rwX,go-rwx \"${mp.sourcePath}\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                                    RootShell.exec("chcon -R \"$cacheContext\" \"${mp.sourcePath}\" 2>/dev/null")
                                 }
                                 val res = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"${mp.targetPath}\"")
                                 if (res.isSuccess || RootShell.isMountpoint(mp.targetPath)) {
                                     RootShell.exec("chown -R $uid:$gid \"${mp.targetPath}\" 2>/dev/null")
                                     RootShell.exec("chmod 700 \"${mp.targetPath}\" 2>/dev/null && chmod -R u+rwX,go-rwx \"${mp.targetPath}\" 2>/dev/null")
-                                    RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
+                                    RootShell.exec("chcon -R \"$cacheContext\" \"${mp.targetPath}\" 2>/dev/null")
                                     val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
                                         mp.targetPath.replace("/data/user/0/", "/data/data/")
                                     } else if (mp.targetPath.startsWith("/data/data/")) {
@@ -490,7 +499,12 @@ class MountManager(
                                     } else null
                                     if (altTarget != null && RootShell.exists(altTarget) && !RootShell.isMountpoint(altTarget)) {
                                         RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$altTarget\" 2>/dev/null")
-                                        RootShell.exec("restorecon -FR \"$altTarget\" 2>/dev/null")
+                                        RootShell.exec("chcon -R \"$cacheContext\" \"$altTarget\" 2>/dev/null")
+                                    }
+                                    val ceCacheTarget = "/data_mirror/data_ce/null/0/${game.packageName}/cache"
+                                    if (RootShell.exists(ceCacheTarget) && !RootShell.isMountpoint(ceCacheTarget)) {
+                                        RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$ceCacheTarget\" 2>/dev/null")
+                                        RootShell.exec("chcon -R \"$cacheContext\" \"$ceCacheTarget\" 2>/dev/null")
                                     }
                                     true
                                 } else {
@@ -506,7 +520,10 @@ class MountManager(
                             res
                         }
                         MountPointCategory.PRIVATE_INTERNAL -> {
-                            mountPrivateInternalData(game.packageName, mp, sdBase, uid, gid)
+                            val hasSeparateCache = activeMountPoints.any {
+                                it.category == MountPointCategory.CACHE_SHADERS || it.id.startsWith("cache_")
+                            }
+                            mountPrivateInternalData(game.packageName, mp, sdBase, uid, gid, hasSeparateCache)
                         }
                         MountPointCategory.APP_PACKAGE -> {
                             // Dynamic verification: resolve active APK directory via pm path in case update relocated the hash directory
@@ -517,38 +534,60 @@ class MountManager(
                             } else ""
                             val isLib = mp.targetPath.contains("/lib", ignoreCase = true) || mp.id.contains("lib", ignoreCase = true)
 
-                            // If parent package is already mounted, skip redundant lib mount
-                            if (isLib && currentApkDir.isNotBlank() && RootShell.isMountpoint(currentApkDir)) {
-                                AppLogger.info("MountManager", "App package already mounted at $currentApkDir, skipping redundant lib mount")
+                            val archSubdir = when {
+                                mp.targetPath.endsWith("/lib/arm64") || mp.targetPath.endsWith("/arm64") -> "lib/arm64"
+                                mp.targetPath.endsWith("/lib/arm") || mp.targetPath.endsWith("/arm") -> "lib/arm"
+                                mp.targetPath.endsWith("/lib/armeabi-v7a") -> "lib/armeabi-v7a"
+                                mp.targetPath.endsWith("/lib/x86_64") -> "lib/x86_64"
+                                else -> "lib/arm64"
+                            }
+
+                            val (finalSource, finalTarget) = if (isLib) {
+                                val hasArm64Source = RootShell.exists("${mp.sourcePath}/arm64")
+                                if (hasArm64Source) {
+                                    "${mp.sourcePath}/arm64" to (if (currentApkDir.isNotBlank()) "$currentApkDir/lib/arm64" else mp.targetPath)
+                                } else if (currentApkDir.isNotBlank()) {
+                                    mp.sourcePath to "$currentApkDir/$archSubdir"
+                                } else {
+                                    mp.sourcePath to mp.targetPath
+                                }
+                            } else {
+                                val target = if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
+                                mp.sourcePath to target
+                            }
+
+                            val hasSeparateLibMount = activeMountPoints.any {
+                                it.targetPath.contains("/lib", ignoreCase = true) || it.id.contains("lib", ignoreCase = true)
+                            }
+                            val libHoldDir = "/dev/mountx_lib_hold_${game.packageName}"
+                            var heldInternalLib = false
+                            if (!isLib && !hasSeparateLibMount && !RootShell.isMountpoint(finalTarget)) {
+                                val internalLibHasFiles = RootShell.execForOutput("find \"$finalTarget/lib\" -type f 2>/dev/null | head -n 1").trim().isNotBlank()
+                                val sdLibHasFiles = RootShell.execForOutput("find \"$finalSource/lib\" -type f 2>/dev/null | head -n 1").trim().isNotBlank()
+                                if (internalLibHasFiles && !sdLibHasFiles) {
+                                    RootShell.exec("mkdir -p \"$libHoldDir\" 2>/dev/null && mount -o bind \"$finalTarget/lib\" \"$libHoldDir\" 2>/dev/null")
+                                    heldInternalLib = RootShell.isMountpoint(libHoldDir)
+                                }
+                            }
+
+                            RootShell.exec("mkdir -p \"$finalSource\" 2>/dev/null")
+                            RootShell.exec("mkdir -p \"$finalTarget\" 2>/dev/null")
+                            val res = RootShell.exec("mount -o bind \"$finalSource\" \"$finalTarget\"")
+                            if (res.isSuccess || RootShell.isMountpoint(finalTarget)) {
+                                RootShell.exec("mount -o remount,bind,exec \"$finalTarget\" 2>/dev/null")
+                                RootShell.exec("chown -R 1000:1000 \"$finalTarget\" 2>/dev/null")
+                                RootShell.exec("chmod -R 755 \"$finalTarget\" 2>/dev/null")
+                                RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$finalTarget\" 2>/dev/null")
+                                if (heldInternalLib) {
+                                    RootShell.exec("mkdir -p \"$finalTarget/lib\" 2>/dev/null && mount -o bind \"$libHoldDir\" \"$finalTarget/lib\" 2>/dev/null")
+                                    RootShell.exec("umount -l \"$libHoldDir\" 2>/dev/null && rmdir \"$libHoldDir\" 2>/dev/null")
+                                }
                                 true
                             } else {
-                                val (finalSource, finalTarget) = if (isLib) {
-                                    val hasArm64Source = RootShell.exists("${mp.sourcePath}/arm64")
-                                    val targetIsArm64 = mp.targetPath.contains("/arm64") || RootShell.exists("$currentApkDir/lib/arm64")
-                                    if (hasArm64Source && targetIsArm64) {
-                                        "${mp.sourcePath}/arm64" to (if (currentApkDir.isNotBlank()) "$currentApkDir/lib/arm64" else mp.targetPath)
-                                    } else if (currentApkDir.isNotBlank()) {
-                                        mp.sourcePath to "$currentApkDir/lib"
-                                    } else {
-                                        mp.sourcePath to mp.targetPath
-                                    }
-                                } else {
-                                    val target = if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
-                                    mp.sourcePath to target
+                                if (heldInternalLib) {
+                                    RootShell.exec("umount -l \"$libHoldDir\" 2>/dev/null && rmdir \"$libHoldDir\" 2>/dev/null")
                                 }
-
-                                RootShell.exec("mkdir -p \"$finalSource\" 2>/dev/null")
-                                RootShell.exec("mkdir -p \"$finalTarget\" 2>/dev/null")
-                                val res = RootShell.exec("mount -o bind \"$finalSource\" \"$finalTarget\"")
-                                if (res.isSuccess || RootShell.isMountpoint(finalTarget)) {
-                                    RootShell.exec("mount -o remount,bind,exec \"$finalTarget\" 2>/dev/null")
-                                    RootShell.exec("chown -R 1000:1000 \"$finalTarget\" 2>/dev/null")
-                                    RootShell.exec("chmod -R 755 \"$finalTarget\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$finalTarget\" 2>/dev/null")
-                                    true
-                                } else {
-                                    false
-                                }
+                                false
                             }
                         }
                     }
@@ -815,7 +854,8 @@ class MountManager(
         mp: MountPointConfig,
         sdBase: String,
         uid: Int,
-        gid: Int
+        gid: Int,
+        hasSeparateCache: Boolean = false
     ): Boolean {
         val containerDir = "$sdBase/.mountx/containers"
         val containerPath = mp.containerImgPath?.ifBlank { null }
@@ -841,13 +881,31 @@ class MountManager(
         val dataCeTarget = "/data_mirror/data_ce/null/0/$packageName"
         RootShell.exec("mkdir -p \"$target\" 2>/dev/null")
 
+        val cacheHoldDir = "/dev/mountx_cache_hold_$packageName"
+        var heldInternalCache = false
+        if (useDirectFolderEngine && !hasSeparateCache && !RootShell.isMountpoint(target)) {
+            val internalCacheHasFiles = RootShell.execForOutput("find \"$target/cache\" -type f 2>/dev/null | head -n 1").trim().isNotBlank()
+            val sdCacheHasFiles = RootShell.execForOutput("find \"$nativeFolderPath/cache\" -type f 2>/dev/null | head -n 1").trim().isNotBlank()
+            if (internalCacheHasFiles && !sdCacheHasFiles) {
+                RootShell.exec("mkdir -p \"$cacheHoldDir\" 2>/dev/null && mount -o bind \"$target/cache\" \"$cacheHoldDir\" 2>/dev/null")
+                heldInternalCache = RootShell.isMountpoint(cacheHoldDir)
+            }
+        }
+
+        val origMcsContext = RootShell.execForOutput("stat -c %C \"$target\" 2>/dev/null").trim()
+        val effectiveContext = if (origMcsContext.isNotBlank() && origMcsContext.contains("app_data_file")) {
+            origMcsContext
+        } else {
+            "u:object_r:app_data_file:s0"
+        }
+
         val mountSucceeded = if (useDirectFolderEngine) {
             RootShell.exec("mkdir -p \"$nativeFolderPath\" 2>/dev/null")
             RootShell.exec("chown -R $uid:$gid \"$nativeFolderPath\" 2>/dev/null")
             RootShell.exec("chmod 700 \"$nativeFolderPath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$nativeFolderPath\" 2>/dev/null")
             RootShell.exec("find \"$nativeFolderPath\" -type d -exec chmod 700 {} + 2>/dev/null")
             RootShell.exec("find \"$nativeFolderPath\" -type f -exec chmod 600 {} + 2>/dev/null")
-            RootShell.exec("restorecon -FR \"$nativeFolderPath\" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 \"$nativeFolderPath\" 2>/dev/null")
+            RootShell.exec("chcon -R \"$effectiveContext\" \"$nativeFolderPath\" 2>/dev/null")
 
             val mountRes = RootShell.exec("mount -o bind \"$nativeFolderPath\" \"$target\" 2>/dev/null")
             val ok = mountRes.isSuccess || RootShell.isMountpoint(target)
@@ -897,12 +955,22 @@ class MountManager(
             RootShell.exec("chmod 700 \"$target\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$target\" 2>/dev/null")
             RootShell.exec("find \"$target\" -type d -exec chmod 700 {} + 2>/dev/null")
             RootShell.exec("find \"$target\" -type f -exec chmod 600 {} + 2>/dev/null")
-            RootShell.exec("restorecon -FR \"$target\" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 \"$target\" 2>/dev/null")
+            RootShell.exec("chcon -R \"$effectiveContext\" \"$target\" 2>/dev/null")
             if (RootShell.exists(dataDataTarget)) {
-                RootShell.exec("restorecon -FR \"$dataDataTarget\" 2>/dev/null")
+                RootShell.exec("chcon -R \"$effectiveContext\" \"$dataDataTarget\" 2>/dev/null")
             }
             if (RootShell.exists(dataCeTarget)) {
-                RootShell.exec("restorecon -FR \"$dataCeTarget\" 2>/dev/null")
+                RootShell.exec("chcon -R \"$effectiveContext\" \"$dataCeTarget\" 2>/dev/null")
+            }
+            if (heldInternalCache) {
+                RootShell.exec("mkdir -p \"$target/cache\" 2>/dev/null && mount -o bind \"$cacheHoldDir\" \"$target/cache\" 2>/dev/null")
+                if (RootShell.exists(dataDataTarget)) {
+                    RootShell.exec("mkdir -p \"$dataDataTarget/cache\" 2>/dev/null && mount -o bind \"$cacheHoldDir\" \"$dataDataTarget/cache\" 2>/dev/null")
+                }
+                if (RootShell.exists(dataCeTarget)) {
+                    RootShell.exec("mkdir -p \"$dataCeTarget/cache\" 2>/dev/null && mount -o bind \"$cacheHoldDir\" \"$dataCeTarget/cache\" 2>/dev/null")
+                }
+                RootShell.exec("umount -l \"$cacheHoldDir\" 2>/dev/null && rmdir \"$cacheHoldDir\" 2>/dev/null")
             }
             // Self-healing: ensure direct boot storage and ART profile directories exist to prevent Zygote Signal 11 crash
             RootShell.exec("""
@@ -919,6 +987,8 @@ class MountManager(
                     chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
                 fi
             """.trimIndent())
+        } else if (heldInternalCache) {
+            RootShell.exec("umount -l \"$cacheHoldDir\" 2>/dev/null && rmdir \"$cacheHoldDir\" 2>/dev/null")
         }
         return mountSucceeded
     }

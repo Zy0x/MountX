@@ -2155,12 +2155,37 @@ class StorageManager(
                 getAppContext().getString(R.string.op_step_cleaning)
             )
 
-            val activePoints = mountPoints.filter { it.enabled }.ifEmpty {
+            val rawActivePoints = mountPoints.filter { it.enabled }.ifEmpty {
                 // Resilient fallback: If all points were disabled but migration was triggered, activate them
                 mountPoints.map { it.copy(enabled = true) }
             }
-            if (activePoints.isEmpty()) {
+            if (rawActivePoints.isEmpty()) {
                 error("No active mount points configured for migration.")
+            }
+
+            // Dynamically resolve live APK directory from PackageManager so stale /data/app/~~old_hash paths are never used
+            val pmPathOut = RootShell.execForOutput("pm path \"$packageName\" 2>/dev/null | head -n 1").trim()
+            val liveApkDir = if (pmPathOut.startsWith("package:")) {
+                java.io.File(pmPathOut.removePrefix("package:").trim()).parent ?: ""
+            } else ""
+
+            val normalizedPoints = rawActivePoints.map { pt ->
+                if (liveApkDir.isNotBlank() && (pt.category == MountPointCategory.APP_PACKAGE || pt.targetPath.startsWith("/data/app"))) {
+                    val isLib = pt.targetPath.contains("/lib") || pt.id.startsWith("lib")
+                    val resolvedTarget = if (isLib) "$liveApkDir/lib/arm64" else liveApkDir
+                    pt.copy(targetPath = resolvedTarget)
+                } else {
+                    pt
+                }
+            }
+
+            // Order points safely for parent/child mount relationships:
+            // - TO_SD: Child before Parent (e.g. lib/arm64 before APK dir; cache before private data)
+            // - TO_INTERNAL: Parent before Child (e.g. APK dir before lib/arm64; private data before cache)
+            val activePoints = if (isToSd) {
+                normalizedPoints.sortedByDescending { it.targetPath.trimEnd('/').length }
+            } else {
+                normalizedPoints.sortedBy { it.targetPath.trimEnd('/').length }
             }
 
             // Step 0: Preparing - calculate dynamic real sizes
@@ -2269,7 +2294,13 @@ class StorageManager(
                     RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
                 }
                 RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
-                if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.isEffectivelyVirtualContainer()) {
+                if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.category == MountPointCategory.CACHE_SHADERS || point.targetPath.startsWith("/data/user/") || point.targetPath.startsWith("/data/data/") || point.isEffectivelyVirtualContainer()) {
+                    RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName/cache\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data/data/$packageName/cache\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName/cache\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/$packageName/cache\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/dev/mountx_cache_hold_$packageName\" 2>/dev/null")
+                    RootShell.exec("rmdir \"/dev/mountx_cache_hold_$packageName\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"/data/data/$packageName\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName\" 2>/dev/null")
@@ -2280,10 +2311,14 @@ class StorageManager(
                     for (ld in loopDevs) {
                         RootShell.exec("losetup -d \"$ld\" 2>/dev/null")
                     }
-                } else if (point.category == MountPointCategory.APP_PACKAGE) {
-                    RootShell.exec("umount -f -l \"$targetPath/lib\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"$targetPath/lib/arm64\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"$targetPath/lib/armeabi-v7a\" 2>/dev/null")
+                } else if (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) {
+                    val apkRootDir = if (targetPath.contains("/lib")) targetPath.substringBefore("/lib") else targetPath
+                    RootShell.exec("umount -f -l \"$apkRootDir/lib/arm64\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"$apkRootDir/lib/armeabi-v7a\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"$apkRootDir/lib\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"/dev/mountx_lib_hold_$packageName\" 2>/dev/null")
+                    RootShell.exec("rmdir \"/dev/mountx_lib_hold_$packageName\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"$apkRootDir\" 2>/dev/null")
                 }
 
                 // Pre-Flight Hard-Lock for TO_INTERNAL: fail-fast if unmount did not succeed
@@ -2433,22 +2468,36 @@ class StorageManager(
                                     RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_data.img\" \"$sdBase/MountX/containers/${packageName}_data.img\" 2>/dev/null")
                                 }
                                 RootShell.exec("mkdir -p \"$effectiveSourcePath\"")
-                                copyWithRealtimeProgress(
-                                    sourceDir = targetPath,
-                                    destDir = effectiveSourcePath,
-                                    categoryName = categoryName,
-                                    pointSizeBytes = currentSrcSize,
-                                    overallProcessedBytes = accumulatedBytes,
-                                    totalMigrationBytes = totalMigrationBytes,
-                                    stepIndex = 1,
-                                    totalSteps = steps.size,
-                                    stepDescriptions = steps,
-                                    opType = opType,
-                                    title = title,
-                                    subtitle = packageName,
-                                    conflictStrategy = conflictStrategy,
-                                    onProgress = onProgress
-                                )
+                                val isApkOnlyWithoutLib = (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) &&
+                                    !point.targetPath.contains("/lib") &&
+                                    activePoints.none { it.targetPath.contains("/lib") || it.id.startsWith("lib_") }
+                                val isPrivateOnlyWithoutCache = isPrivateCategory &&
+                                    activePoints.none { it.category == MountPointCategory.CACHE_SHADERS || it.id.startsWith("cache_") }
+
+                                if (isApkOnlyWithoutLib) {
+                                    RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec cp -a -f {} \"$effectiveSourcePath/\" \\; 2>/dev/null")
+                                    RootShell.exec("mkdir -p \"$effectiveSourcePath/lib/arm64\" 2>/dev/null")
+                                } else if (isPrivateOnlyWithoutCache) {
+                                    RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec cp -a -f {} \"$effectiveSourcePath/\" \\; 2>/dev/null")
+                                    RootShell.exec("mkdir -p \"$effectiveSourcePath/cache\" \"$effectiveSourcePath/code_cache\" 2>/dev/null")
+                                } else {
+                                    copyWithRealtimeProgress(
+                                        sourceDir = targetPath,
+                                        destDir = effectiveSourcePath,
+                                        categoryName = categoryName,
+                                        pointSizeBytes = currentSrcSize,
+                                        overallProcessedBytes = accumulatedBytes,
+                                        totalMigrationBytes = totalMigrationBytes,
+                                        stepIndex = 1,
+                                        totalSteps = steps.size,
+                                        stepDescriptions = steps,
+                                        opType = opType,
+                                        title = title,
+                                        subtitle = packageName,
+                                        conflictStrategy = conflictStrategy,
+                                        onProgress = onProgress
+                                    )
+                                }
                                 accumulatedBytes += currentSrcSize
 
                                 // Step 2: Verify & Permissions
@@ -2475,15 +2524,6 @@ class StorageManager(
                                     RootShell.exec("chown -R 1000:1000 \"$effectiveSourcePath\" 2>/dev/null")
                                     RootShell.exec("chmod -R 755 \"$effectiveSourcePath\" 2>/dev/null")
                                     RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$effectiveSourcePath\" 2>/dev/null")
-                                    // Safeguard: if lib was migrated prior to APK, merge the lib files into the APK directory on SD
-                                    val sdLibPath = "$sdBase/MountX/lib/$packageName"
-                                    if (RootShell.exists(sdLibPath) && !point.targetPath.contains("/lib")) {
-                                        RootShell.exec("mkdir -p \"$effectiveSourcePath/lib\" 2>/dev/null")
-                                        RootShell.exec("cp -a -f \"$sdLibPath/.\" \"$effectiveSourcePath/lib/\" 2>/dev/null")
-                                        RootShell.exec("chown -R 1000:1000 \"$effectiveSourcePath/lib\" 2>/dev/null")
-                                        RootShell.exec("chmod -R 755 \"$effectiveSourcePath/lib\" 2>/dev/null")
-                                        RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$effectiveSourcePath/lib\" 2>/dev/null")
-                                    }
                                 } else if (isPrivateCategory || point.category == MountPointCategory.CACHE_SHADERS) {
                                     if (!destInspection.isNonPosix) {
                                         RootShell.exec("chown -R $uid:$gid \"$effectiveSourcePath\" 2>/dev/null")
@@ -2539,7 +2579,21 @@ class StorageManager(
                                         isFinished = false
                                     )
                                 )
-                                safeCleanSourceDirectory(targetPath, effectiveSourcePath, packageName)
+                                if (isApkOnlyWithoutLib) {
+                                    if (!RootShell.isMountpoint(targetPath)) {
+                                        RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
+                                    }
+                                } else if (isPrivateOnlyWithoutCache) {
+                                    if (!RootShell.isMountpoint(targetPath)) {
+                                        RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec rm -rf {} + 2>/dev/null")
+                                        val altData = "/data/data/$packageName"
+                                        if (altData != targetPath && RootShell.exists(altData) && !RootShell.isMountpoint(altData) && !RootShell.exec("test -L \"$altData\"").isSuccess) {
+                                            RootShell.exec("find \"$altData\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec rm -rf {} + 2>/dev/null")
+                                        }
+                                    }
+                                } else {
+                                    safeCleanSourceDirectory(targetPath, effectiveSourcePath, packageName)
+                                }
                             }
                         }
                     }
@@ -2623,8 +2677,13 @@ class StorageManager(
                         } else {
                             if (RootShell.exists(effectiveSourcePath)) {
                                 RootShell.exec("mkdir -p \"$targetPath\"")
+                                val actualCopySource = if (targetPath.endsWith("/lib/arm64") && RootShell.exists("$effectiveSourcePath/arm64")) {
+                                    "$effectiveSourcePath/arm64"
+                                } else {
+                                    effectiveSourcePath
+                                }
                                 copyWithRealtimeProgress(
-                                    sourceDir = effectiveSourcePath,
+                                    sourceDir = actualCopySource,
                                     destDir = targetPath,
                                     categoryName = categoryName,
                                     pointSizeBytes = currentSrcSize,
@@ -2713,7 +2772,19 @@ class StorageManager(
             val appUserId = activePoints.firstOrNull()?.let { MountManager.resolveUserId(it.targetPath) } ?: 0
             RootShell.exec("chown -R $uid:$uid \"/data/user/$appUserId/$packageName\" 2>/dev/null")
             RootShell.exec("chmod 700 \"/data/user/$appUserId/$packageName\" 2>/dev/null && chmod -R u+rwX,go-rwx \"/data/user/$appUserId/$packageName\" 2>/dev/null")
-            RootShell.exec("restorecon -FR \"/data/user/$appUserId/$packageName\" 2>/dev/null")
+            val mcsContext = RootShell.execForOutput("stat -c %C \"/data/user/$appUserId/$packageName\" 2>/dev/null").trim()
+            if (mcsContext.isNotBlank() && mcsContext.contains("app_data_file")) {
+                RootShell.exec("chcon -R \"$mcsContext\" \"/data/user/$appUserId/$packageName\" 2>/dev/null")
+            } else {
+                RootShell.exec("restorecon -FR \"/data/user/$appUserId/$packageName\" 2>/dev/null")
+            }
+            if (RootShell.exists("$sdBase/MountX/data/$packageName")) {
+                if (mcsContext.isNotBlank() && mcsContext.contains("app_data_file")) {
+                    RootShell.exec("chcon -R \"$mcsContext\" \"$sdBase/MountX/data/$packageName\" 2>/dev/null")
+                } else {
+                    RootShell.exec("chcon -R u:object_r:app_data_file:s0 \"$sdBase/MountX/data/$packageName\" 2>/dev/null")
+                }
+            }
             RootShell.exec("restorecon -FR \"/data/media/$appUserId/Android/data/$packageName\" 2>/dev/null")
             RootShell.exec("restorecon -FR \"/data/media/$appUserId/Android/obb/$packageName\" 2>/dev/null")
 
