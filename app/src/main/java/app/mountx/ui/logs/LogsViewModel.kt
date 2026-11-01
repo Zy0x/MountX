@@ -174,11 +174,18 @@ class LogsViewModel @Inject constructor(
 
         if (rawLines.isNotEmpty()) {
             val parsed = rawLines.map { line ->
+                val isExplicitInfo = line.contains("[INFO", ignoreCase = true)
+                val isExplicitDebug = line.contains("[DEBUG", ignoreCase = true)
                 val level = when {
-                    line.contains("ERROR", ignoreCase = true) || line.contains("failed", ignoreCase = true) || line.contains("CRITICAL", ignoreCase = true) -> LogLevel.ERROR
-                    line.contains("SUCCESS", ignoreCase = true) || line.contains("Completed", ignoreCase = true) || line.contains("-> drwx", ignoreCase = true) || line.contains("verified: UID", ignoreCase = true) || line.contains("Bind-mounted to", ignoreCase = true) || line.contains("Heartbeat", ignoreCase = true) -> LogLevel.SUCCESS
-                    line.contains("DEBUG", ignoreCase = true) -> LogLevel.DEBUG
-                    line.contains("WARN", ignoreCase = true) -> LogLevel.WARN
+                    line.contains("[ERROR", ignoreCase = true) || line.contains("CRITICAL:", ignoreCase = true) || line.contains("FATAL:", ignoreCase = true) -> LogLevel.ERROR
+                    line.contains("[WARN", ignoreCase = true) -> LogLevel.WARN
+                    line.contains("[SUCCESS", ignoreCase = true) || line.contains("-> drwx", ignoreCase = true) || line.contains("verified: UID", ignoreCase = true) || line.contains("Heartbeat", ignoreCase = true) -> LogLevel.SUCCESS
+                    isExplicitDebug -> LogLevel.DEBUG
+                    isExplicitInfo -> LogLevel.INFO
+                    line.contains("error", ignoreCase = true) && !line.contains("error=false", ignoreCase = true) -> LogLevel.ERROR
+                    line.contains("failed", ignoreCase = true) -> LogLevel.ERROR
+                    line.contains("warn", ignoreCase = true) -> LogLevel.WARN
+                    line.contains("success", ignoreCase = true) || line.contains("Completed", ignoreCase = true) -> LogLevel.SUCCESS
                     else -> LogLevel.INFO
                 }
                 LogLine(rawText = line, level = level)
