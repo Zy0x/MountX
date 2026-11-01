@@ -15,6 +15,15 @@ enum class MountPointCategory {
 }
 
 /**
+ * Migration storage method for internal/sandbox categories (Private Data, Cache, APK, Lib).
+ */
+enum class InternalMigrationMethod {
+    AUTO,           // Adaptive: Method 1 (Native Folder) on POSIX (EXT4/F2FS), Method 2 (.img) on Non-POSIX (exFAT/FAT32/NTFS)
+    NATIVE_FOLDER,  // Method 1: Direct Native Folder (Supported on EXT4 & F2FS only)
+    CONTAINER_IMG   // Method 2: Virtual Sparse EXT4 Container .img (Supported on all filesystems)
+}
+
+/**
  * Represents a single bind-mount or virtual container target for an application.
  */
 @androidx.compose.runtime.Immutable
@@ -29,7 +38,8 @@ data class MountPointConfig(
     val sizeBytes: Long = 0L,
     val diskUuid: String? = null,
     val label: String? = null,
-    val preserveMedia: Boolean = false
+    val preserveMedia: Boolean = false,
+    val migrationMethod: InternalMigrationMethod = InternalMigrationMethod.AUTO
 ) {
     /**
      * Determines whether this target requires a virtual Ext4 loopback container
@@ -39,6 +49,70 @@ data class MountPointConfig(
         return isVirtualContainer ||
                 sourcePath.endsWith(".img", ignoreCase = true) ||
                 (!containerImgPath.isNullOrBlank())
+    }
+
+    /**
+     * Returns true if this mount point belongs to an internal/system category
+     * (Private Data, Cache, APK, or Native Libraries) that supports the 3-method engine.
+     */
+    fun isInternalSandboxOrPackageCategory(): Boolean {
+        val cat = resolveCategory()
+        return cat == MountPointCategory.PRIVATE_INTERNAL ||
+                cat == MountPointCategory.CACHE_SHADERS ||
+                cat == MountPointCategory.APP_PACKAGE
+    }
+
+    /**
+     * Returns true if this APP_PACKAGE mount point specifically targets the native libraries (/lib) folder.
+     */
+    fun isLibTarget(): Boolean {
+        return id == "lib" ||
+                id.startsWith("lib_") ||
+                targetPath.contains("/lib") ||
+                sourcePath.contains("/lib") ||
+                sourcePath.endsWith("_lib.img", ignoreCase = true) ||
+                (containerImgPath?.endsWith("_lib.img", ignoreCase = true) == true)
+    }
+
+    /**
+     * Resolves the standardized Sparse EXT4 .img container path on the target MicroSD partition.
+     */
+    fun resolveContainerImgPath(sdBase: String, packageName: String): String {
+        val cleanBase = sdBase.trimEnd('/')
+        return when (resolveCategory()) {
+            MountPointCategory.PRIVATE_INTERNAL -> "$cleanBase/.mountx/containers/${packageName}_data.img"
+            MountPointCategory.CACHE_SHADERS -> "$cleanBase/.mountx/containers/${packageName}_cache.img"
+            MountPointCategory.APP_PACKAGE -> {
+                if (isLibTarget()) {
+                    "$cleanBase/.mountx/containers/${packageName}_lib.img"
+                } else {
+                    "$cleanBase/.mountx/containers/${packageName}_apk.img"
+                }
+            }
+            else -> "$cleanBase/.mountx/containers/${packageName}_${id}.img"
+        }
+    }
+
+    /**
+     * Resolves the standardized Direct Native Folder path on the target MicroSD partition.
+     */
+    fun resolveNativeFolderPath(sdBase: String, packageName: String): String {
+        val cleanBase = sdBase.trimEnd('/')
+        return when (resolveCategory()) {
+            MountPointCategory.PRIVATE_INTERNAL -> "$cleanBase/MountX/data/$packageName"
+            MountPointCategory.CACHE_SHADERS -> "$cleanBase/MountX/cache/$packageName"
+            MountPointCategory.APP_PACKAGE -> {
+                if (isLibTarget()) {
+                    "$cleanBase/MountX/lib/$packageName"
+                } else {
+                    "$cleanBase/MountX/app/$packageName"
+                }
+            }
+            MountPointCategory.EXTERNAL_DATA -> "$cleanBase/Android/data/$packageName"
+            MountPointCategory.OBB_STORAGE -> "$cleanBase/Android/obb/$packageName"
+            MountPointCategory.MEDIA_DOWNLOADS -> "$cleanBase/Android/media/$packageName"
+            else -> sourcePath
+        }
     }
 
     /**
@@ -86,9 +160,7 @@ data class MountPointConfig(
         val catA = this.resolveCategory()
         val catB = other.resolveCategory()
         if (catA == MountPointCategory.APP_PACKAGE && catB == MountPointCategory.APP_PACKAGE) {
-            val aIsLib = this.id == "lib" || this.id.startsWith("lib_") || this.targetPath.contains("/lib") || this.sourcePath.contains("/lib")
-            val bIsLib = other.id == "lib" || other.id.startsWith("lib_") || other.targetPath.contains("/lib") || other.sourcePath.contains("/lib")
-            return aIsLib == bIsLib
+            return this.isLibTarget() == other.isLibTarget()
         }
         return catA == catB && catA != MountPointCategory.CUSTOM
     }

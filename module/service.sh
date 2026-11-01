@@ -867,34 +867,57 @@ load_mountpoints() {
                     mkdir -p "${dst}" 2>/dev/null
                     mount -t ext4 -o rw,noatime "${ldev}" "${dst}" 2>/dev/null
                     if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
-                        local app_uid=$(id -u "${pkg}" 2>/dev/null)
-                        [ -z "${app_uid}" ] && app_uid="${APP_UID}"
-                        chown "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
-                        chmod 700 "${dst}" 2>/dev/null
-                        chmod -R u+rwX,go-rwx "${dst}" 2>/dev/null
-                        find "${dst}" -type d -exec chmod 700 {} + 2>/dev/null
-                        find "${dst}" -type f -exec chmod 600 {} + 2>/dev/null
-                        restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
-                        if [ -d "/data/data/${pkg}" ] && ! grep -qF " /data/data/${pkg} " /proc/mounts 2>/dev/null; then
-                            mount -o bind "${dst}" "/data/data/${pkg}" 2>/dev/null
-                        fi
-                        if [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}" ] && ! grep -qF " /data_mirror/data_ce/null/${user_id}/${pkg} " /proc/mounts 2>/dev/null; then
-                            mount -o bind "${dst}" "/data_mirror/data_ce/null/${user_id}/${pkg}" 2>/dev/null
-                        fi
-                        # Self-healing: ensure direct boot storage and ART profile directories exist to prevent Zygote crash
-                        mkdir -p "/data/user_de/${user_id}/${pkg}/cache" "/data/user_de/${user_id}/${pkg}/code_cache" 2>/dev/null
-                        chown "${app_uid}:${app_uid}" "/data/user_de/${user_id}/${pkg}" 2>/dev/null
-                        chmod 700 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
-                        restorecon -FR "/data/user_de/${user_id}/${pkg}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
-                        if [ ! -d "/data/misc/profiles/cur/${user_id}/${pkg}" ]; then
-                            mkdir -p "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
-                            chown "${app_uid}:${app_uid}" "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
-                            chmod 700 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
-                            chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
-                        fi
-                        log_info "  [${pkg}] Loop container mounted: ${ldev} -> ${dst}"
-                        entries=$((entries + 1))
-                        continue
+                        case "${cat}" in
+                            APP_PACKAGE)
+                                mount -o remount,bind,exec "${dst}" 2>/dev/null || mount -o remount,exec "${dst}" 2>/dev/null
+                                chown -R 1000:1000 "${dst}" 2>/dev/null
+                                chmod -R 755 "${dst}" 2>/dev/null
+                                restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:apk_data_file:s0 "${dst}" 2>/dev/null
+                                log_info "  [${pkg}] Loop container mounted (APP_PACKAGE): ${ldev} -> ${dst}"
+                                entries=$((entries + 1))
+                                continue
+                                ;;
+                            CACHE_SHADERS)
+                                local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                                [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                                chown -R "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                                chmod -R 700 "${dst}" 2>/dev/null
+                                restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                                log_info "  [${pkg}] Loop container mounted (CACHE_SHADERS): ${ldev} -> ${dst}"
+                                entries=$((entries + 1))
+                                continue
+                                ;;
+                            *)
+                                local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                                [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                                chown "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                                chmod 700 "${dst}" 2>/dev/null
+                                chmod -R u+rwX,go-rwx "${dst}" 2>/dev/null
+                                find "${dst}" -type d -exec chmod 700 {} + 2>/dev/null
+                                find "${dst}" -type f -exec chmod 600 {} + 2>/dev/null
+                                restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                                if [ -d "/data/data/${pkg}" ] && ! grep -qF " /data/data/${pkg} " /proc/mounts 2>/dev/null; then
+                                    mount -o bind "${dst}" "/data/data/${pkg}" 2>/dev/null
+                                fi
+                                if [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}" ] && ! grep -qF " /data_mirror/data_ce/null/${user_id}/${pkg} " /proc/mounts 2>/dev/null; then
+                                    mount -o bind "${dst}" "/data_mirror/data_ce/null/${user_id}/${pkg}" 2>/dev/null
+                                fi
+                                # Self-healing: ensure direct boot storage and ART profile directories exist to prevent Zygote crash
+                                mkdir -p "/data/user_de/${user_id}/${pkg}/cache" "/data/user_de/${user_id}/${pkg}/code_cache" 2>/dev/null
+                                chown "${app_uid}:${app_uid}" "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                                chmod 700 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                                restorecon -FR "/data/user_de/${user_id}/${pkg}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                                if [ ! -d "/data/misc/profiles/cur/${user_id}/${pkg}" ]; then
+                                    mkdir -p "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                                    chown "${app_uid}:${app_uid}" "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                                    chmod 700 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                                    chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                                fi
+                                log_info "  [${pkg}] Loop container mounted: ${ldev} -> ${dst}"
+                                entries=$((entries + 1))
+                                continue
+                                ;;
+                        esac
                     fi
                 fi
                 ;;

@@ -932,6 +932,24 @@
     <string name="manage_tab_placeholder_title">Additional Management</string>
     <string name="manage_tab_placeholder_desc">Advanced management features will be available in future updates.</string>
     <string name="manage_badge_performance_risk">Performance Risk</string>
+    <!-- System Category 3-Method Storage Engine & Batch Customization -->
+    <string name="manage_method_selector_title">System Category Storage Method</string>
+    <string name="manage_method_selector_subtitle">Choose how internal and system data are stored on target storage:</string>
+    <string name="manage_method_auto_title">Auto (Smart Adaptive — Recommended)</string>
+    <string name="manage_method_auto_desc">Automatically uses Native Folder on POSIX (EXT4/F2FS) or Container .img on Non-POSIX (exFAT/FAT32)</string>
+    <string name="manage_method_auto_badge_native">Active: Method 1 (Folder)</string>
+    <string name="manage_method_auto_badge_container">Active: Method 2 (.img)</string>
+    <string name="manage_method_native_title">Method 1: Direct Native Folder (No .img)</string>
+    <string name="manage_method_native_desc">Fastest native performance &amp; direct folder capacity matching partition free space</string>
+    <string name="manage_method_native_badge">EXT4, F2FS</string>
+    <string name="manage_method_container_title">Method 2: Virtual EXT4 Container (.img)</string>
+    <string name="manage_method_container_desc">Dynamic Sparse container (&gt;40GB+ auto-expand). Bundles files into a single safe loop container</string>
+    <string name="manage_method_container_badge">All Filesystems</string>
+    <string name="manage_method_non_posix_guard_notice">Target partition uses [%1$s]. Android requires POSIX permissions for Method 1. Use Auto or Method 2 (.img) to prevent application crashes.</string>
+    <string name="manage_method_customize_per_category">Customize Method per Category</string>
+    <string name="manage_method_external_note">App Data &amp; OBB automatically use Native Folder (Android standard, supports &gt;40GB+ on all filesystems).</string>
+    <string name="manage_method_badge_native_short">[Folder]</string>
+    <string name="manage_method_badge_container_short">[.img]</string>
     <string name="manage_cat_private_data">Private Data</string>
     <string name="manage_cat_private_data_desc">Application internal data (/data/data)</string>
     <string name="manage_cat_apk_sub_short">App installation files</string>

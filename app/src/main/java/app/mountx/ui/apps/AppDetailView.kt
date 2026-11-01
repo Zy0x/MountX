@@ -105,6 +105,7 @@ import app.mountx.data.model.DiskType
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
+import app.mountx.data.model.InternalMigrationMethod
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.PartitionInfo
@@ -703,7 +704,9 @@ private data class UnifiedCategoryItem(
     val preserveMedia: Boolean = false,
     val userId: Int = 0,
     val isUsbOtg: Boolean = false,
-    val storageTitle: String? = null
+    val storageTitle: String? = null,
+    val isVirtualContainer: Boolean = false,
+    val migrationMethod: InternalMigrationMethod = InternalMigrationMethod.AUTO
 )
 
 private fun resolveUserIdFromPath(path: String): Int {
@@ -745,7 +748,8 @@ private fun buildTargetMountPoints(
     packageInfo: android.content.pm.PackageInfo? = null,
     availableDisks: List<SdCardDiskInfo> = emptyList(),
     targetPartition: PartitionInfo? = null,
-    direction: MoveDirection = MoveDirection.TO_SD
+    direction: MoveDirection = MoveDirection.TO_SD,
+    migrationMethods: Map<String, InternalMigrationMethod> = emptyMap()
 ): List<MountPointConfig> {
     val result = mutableListOf<MountPointConfig>()
     val pkg = game.packageName
@@ -769,25 +773,51 @@ private fun buildTargetMountPoints(
                     "data" -> pt.resolveCategory() == MountPointCategory.EXTERNAL_DATA
                     "obb" -> pt.resolveCategory() == MountPointCategory.OBB_STORAGE
                     "media" -> pt.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS
-                    "apk" -> pt.resolveCategory() == MountPointCategory.APP_PACKAGE && !pt.targetPath.contains("/lib", ignoreCase = true) && pt.id != "lib"
-                    "lib" -> pt.targetPath.contains("/lib", ignoreCase = true) || pt.id == "lib"
+                    "apk" -> pt.resolveCategory() == MountPointCategory.APP_PACKAGE && !pt.isLibTarget() && pt.id != "lib"
+                    "lib" -> pt.isLibTarget()
                     "private", "private_internal" -> (pt.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL || pt.id in listOf("private", "private_internal")) && !pt.targetPath.contains("/cache", ignoreCase = true)
                     "cache" -> pt.resolveCategory() == MountPointCategory.CACHE_SHADERS || pt.targetPath.contains("/cache", ignoreCase = true) || pt.id == "cache"
                     else -> pt.id == catId
                 }
             }
 
-        if (existing != null) {
-            val isPrivateCat = catId in listOf("private", "private_internal") ||
-                existing.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
-            val isContainer = when {
-                isPrivateCat && direction == MoveDirection.TO_SD -> !isPosixTarget
-                isPrivateCat && direction == MoveDirection.TO_INTERNAL -> existing.isEffectivelyVirtualContainer()
-                else -> existing.isEffectivelyVirtualContainer()
+        val isPrivateCat = catId in listOf("private", "private_internal") || existing?.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+        val isCacheCat = catId == "cache" || existing?.resolveCategory() == MountPointCategory.CACHE_SHADERS
+        val isApkCat = (catId == "apk" || existing?.resolveCategory() == MountPointCategory.APP_PACKAGE) && !(existing?.isLibTarget() ?: (catId == "lib"))
+        val isLibCat = catId == "lib" || existing?.isLibTarget() == true
+        val isInternalCat = isPrivateCat || isCacheCat || isApkCat || isLibCat || existing?.isInternalSandboxOrPackageCategory() == true
+
+        val method = if (isInternalCat) {
+            migrationMethods[catId] ?: migrationMethods["default"] ?: existing?.migrationMethod ?: InternalMigrationMethod.AUTO
+        } else {
+            InternalMigrationMethod.NATIVE_FOLDER
+        }
+
+        val isContainer = when {
+            !isInternalCat -> false
+            direction == MoveDirection.TO_INTERNAL -> existing?.isEffectivelyVirtualContainer() ?: false
+            else -> when (method) {
+                InternalMigrationMethod.AUTO -> !isPosixTarget
+                InternalMigrationMethod.CONTAINER_IMG -> true
+                InternalMigrationMethod.NATIVE_FOLDER -> false
             }
-            val containerPath = if (isContainer) "$sdBase/.mountx/containers/${pkg}_data.img" else null
+        }
+
+        val containerPath = if (isContainer) {
+            when {
+                isLibCat -> "$sdBase/.mountx/containers/${pkg}_lib.img"
+                isApkCat -> "$sdBase/.mountx/containers/${pkg}_apk.img"
+                isCacheCat -> "$sdBase/.mountx/containers/${pkg}_cache.img"
+                else -> "$sdBase/.mountx/containers/${pkg}_data.img"
+            }
+        } else null
+
+        if (existing != null) {
             val updatedSource = when {
                 isContainer -> containerPath!!
+                isLibCat -> "$sdBase/MountX/lib/$pkg"
+                isApkCat -> "$sdBase/MountX/app/$pkg"
+                isCacheCat -> "$sdBase/MountX/cache/$pkg"
                 isPrivateCat -> "$sdBase/MountX/data/$pkg"
                 existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> {
                     val subFolder = if (existing.targetPath.endsWith("/files")) "MountX/Android/data/$pkg/files" else "MountX/Android/data/$pkg"
@@ -811,26 +841,14 @@ private fun buildTargetMountPoints(
                         resolveSdPath(sdBase, "MountX/Android/media/$pkg")
                     }
                 }
-                existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> {
-                    if (catId == "lib" || existing.id.startsWith("lib_") || existing.targetPath.contains("/lib")) {
-                        "$sdBase/MountX/lib/$pkg"
-                    } else {
-                        "$sdBase/MountX/app/$pkg"
-                    }
-                }
-                existing.resolveCategory() == MountPointCategory.CACHE_SHADERS -> "$sdBase/MountX/cache/$pkg"
                 existing.resolveCategory() == MountPointCategory.GAME_ASSETS -> resolveSdPath(sdBase, "MountX/Android/data/$pkg/files")
                 else -> existing.sourcePath
             }
             val updatedTarget = when {
                 isContainer || isPrivateCat -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg"
-                existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> {
-                    if (catId == "lib" || existing.id.startsWith("lib_") || existing.targetPath.contains("/lib")) {
-                        libDir
-                    } else {
-                        apkDir
-                    }
-                }
+                isCacheCat -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg/cache"
+                isLibCat -> libDir
+                isApkCat -> apkDir
                 existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/data/$pkg" else existing.targetPath
                 existing.resolveCategory() == MountPointCategory.OBB_STORAGE -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/obb/$pkg" else existing.targetPath
                 existing.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/media/$pkg" else existing.targetPath
@@ -842,7 +860,8 @@ private fun buildTargetMountPoints(
                     targetPath = updatedTarget,
                     enabled = true,
                     isVirtualContainer = isContainer,
-                    containerImgPath = containerPath
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
             )
         } else {
@@ -852,55 +871,64 @@ private fun buildTargetMountPoints(
                     category = MountPointCategory.EXTERNAL_DATA,
                     sourcePath = resolveSdPath(sdBase, "MountX/Android/data/$pkg"),
                     targetPath = "/data/media/0/Android/data/$pkg",
-                    enabled = true
+                    enabled = true,
+                    migrationMethod = InternalMigrationMethod.NATIVE_FOLDER
                 )
                 "obb" -> MountPointConfig(
                     id = "ext_obb_$pkg",
                     category = MountPointCategory.OBB_STORAGE,
                     sourcePath = resolveSdPath(sdBase, "MountX/Android/obb/$pkg"),
                     targetPath = "/data/media/0/Android/obb/$pkg",
-                    enabled = true
+                    enabled = true,
+                    migrationMethod = InternalMigrationMethod.NATIVE_FOLDER
                 )
                 "media" -> MountPointConfig(
                     id = "ext_media_$pkg",
                     category = MountPointCategory.MEDIA_DOWNLOADS,
                     sourcePath = resolveSdPath(sdBase, "MountX/Android/media/$pkg"),
                     targetPath = "/data/media/0/Android/media/$pkg",
-                    enabled = true
+                    enabled = true,
+                    migrationMethod = InternalMigrationMethod.NATIVE_FOLDER
                 )
                 "apk" -> MountPointConfig(
                     id = "apk_$pkg",
                     category = MountPointCategory.APP_PACKAGE,
-                    sourcePath = "$sdBase/MountX/app/$pkg",
+                    sourcePath = if (isContainer) containerPath!! else "$sdBase/MountX/app/$pkg",
                     targetPath = apkDir,
-                    enabled = true
+                    enabled = true,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
                 "lib" -> MountPointConfig(
                     id = "lib_$pkg",
                     category = MountPointCategory.APP_PACKAGE,
-                    sourcePath = "$sdBase/MountX/lib/$pkg",
+                    sourcePath = if (isContainer) containerPath!! else "$sdBase/MountX/lib/$pkg",
                     targetPath = libDir,
-                    enabled = true
+                    enabled = true,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
-                "private", "private_internal" -> {
-                    val useContainer = !isPosixTarget
-                    val privSrc = if (useContainer) "$sdBase/.mountx/containers/${pkg}_data.img" else "$sdBase/MountX/data/$pkg"
-                    MountPointConfig(
-                        id = "private_$pkg",
-                        category = MountPointCategory.PRIVATE_INTERNAL,
-                        sourcePath = privSrc,
-                        targetPath = "/data/user/0/$pkg",
-                        enabled = true,
-                        isVirtualContainer = useContainer,
-                        containerImgPath = if (useContainer) privSrc else null
-                    )
-                }
+                "private", "private_internal" -> MountPointConfig(
+                    id = "private_$pkg",
+                    category = MountPointCategory.PRIVATE_INTERNAL,
+                    sourcePath = if (isContainer) containerPath!! else "$sdBase/MountX/data/$pkg",
+                    targetPath = "/data/user/0/$pkg",
+                    enabled = true,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath,
+                    migrationMethod = method
+                )
                 "cache" -> MountPointConfig(
                     id = "cache_$pkg",
                     category = MountPointCategory.CACHE_SHADERS,
-                    sourcePath = "$sdBase/MountX/cache/$pkg",
+                    sourcePath = if (isContainer) containerPath!! else "$sdBase/MountX/cache/$pkg",
                     targetPath = "/data/user/0/$pkg/cache",
-                    enabled = true
+                    enabled = true,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
                 else -> null
             }
@@ -1377,7 +1405,9 @@ private fun StorageTabContent(
                 isCategoryMounted = isApkCatMounted,
                 userId = resolveUserIdFromPath(apkInternalDir),
                 isUsbOtg = isApkUsb,
-                storageTitle = apkDiskLabel
+                storageTitle = apkDiskLabel,
+                isVirtualContainer = existingApkPoint?.isEffectivelyVirtualContainer() ?: false,
+                migrationMethod = existingApkPoint?.migrationMethod ?: InternalMigrationMethod.AUTO
             ),
             UnifiedCategoryItem(
                 id = "lib",
@@ -1398,7 +1428,9 @@ private fun StorageTabContent(
                 isCategoryMounted = isLibCatMounted,
                 userId = resolveUserIdFromPath(libSrc),
                 isUsbOtg = isLibUsb,
-                storageTitle = libDiskLabel
+                storageTitle = libDiskLabel,
+                isVirtualContainer = existingLibPoint?.isEffectivelyVirtualContainer() ?: false,
+                migrationMethod = existingLibPoint?.migrationMethod ?: InternalMigrationMethod.AUTO
             ),
             UnifiedCategoryItem(
                 id = "private",
@@ -1419,7 +1451,9 @@ private fun StorageTabContent(
                 isCategoryMounted = isPrivateCatMounted,
                 userId = 0,
                 isUsbOtg = isPrivateUsb,
-                storageTitle = privateDiskLabel
+                storageTitle = privateDiskLabel,
+                isVirtualContainer = existingPrivatePoint?.isEffectivelyVirtualContainer() ?: false,
+                migrationMethod = existingPrivatePoint?.migrationMethod ?: InternalMigrationMethod.AUTO
             ),
             UnifiedCategoryItem(
                 id = "cache",
@@ -1440,7 +1474,9 @@ private fun StorageTabContent(
                 isCategoryMounted = isCacheCatMounted,
                 userId = 0,
                 isUsbOtg = isCacheUsb,
-                storageTitle = cacheDiskLabel
+                storageTitle = cacheDiskLabel,
+                isVirtualContainer = existingCachePoint?.isEffectivelyVirtualContainer() ?: false,
+                migrationMethod = existingCachePoint?.migrationMethod ?: InternalMigrationMethod.AUTO
             ),
             UnifiedCategoryItem(
                 id = "data",
@@ -2079,10 +2115,10 @@ private fun StorageTabContent(
             } ?: sdBase,
             modalMode = targetModalMode,
             onDismiss = { showTargetModal = false },
-            onConfirmMove = { dir, targetDisk, targetPartition ->
+            onConfirmMove = { dir, targetDisk, targetPartition, migrationMethods ->
                 showTargetModal = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo, availableDisks, targetPartition, dir)
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo, availableDisks, targetPartition, dir, migrationMethods)
                 val isToInternal = dir == MoveDirection.TO_INTERNAL
                 val totalBytes = targetPoints.sumOf { pt ->
                     val cat = pt.resolveCategory()
@@ -2139,11 +2175,11 @@ private fun StorageTabContent(
                     pointsToMigrate = targetPoints
                 )
             },
-            onConfirmDirectMount = { targetDisk, targetPartition ->
+            onConfirmDirectMount = { targetDisk, targetPartition, migrationMethods ->
                 showTargetModal = false
                 isSelectionMode = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo, availableDisks, targetPartition, MoveDirection.TO_SD)
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo, availableDisks, targetPartition, MoveDirection.TO_SD, migrationMethods)
 
                 val internalBytes = targetPoints.sumOf { pt ->
                     when (pt.resolveCategory()) {
@@ -2937,6 +2973,26 @@ private fun CategoryCardItem(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
+
+                    if (item.isMicroSd && (item.id in listOf("private", "cache", "apk", "lib") || item.mountCategory == MountPointCategory.PRIVATE_INTERNAL || item.mountCategory == MountPointCategory.CACHE_SHADERS || item.mountCategory == MountPointCategory.APP_PACKAGE)) {
+                        val isImg = item.isVirtualContainer || item.migrationMethod == InternalMigrationMethod.CONTAINER_IMG
+                        val methodBadge = if (isImg) stringResource(R.string.manage_method_badge_container_short) else stringResource(R.string.manage_method_badge_native_short)
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isImg) Color(0x1A7E57C2) else Color(0x1A00ACC1),
+                            border = BorderStroke(0.5.dp, if (isImg) Color(0xFF7E57C2).copy(alpha = 0.5f) else Color(0xFF00ACC1).copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = methodBadge,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = if (isImg) Color(0xFF7E57C2) else Color(0xFF00ACC1),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -3074,6 +3130,26 @@ private fun CategoryInspectorBottomSheet(
                             color = badgeColor,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
+                    }
+
+                    if (item.isMicroSd && (item.id in listOf("private", "cache", "apk", "lib") || item.mountCategory == MountPointCategory.PRIVATE_INTERNAL || item.mountCategory == MountPointCategory.CACHE_SHADERS || item.mountCategory == MountPointCategory.APP_PACKAGE)) {
+                        val isImg = item.isVirtualContainer || item.migrationMethod == InternalMigrationMethod.CONTAINER_IMG
+                        val methodBadge = if (isImg) stringResource(R.string.manage_method_badge_container_short) else stringResource(R.string.manage_method_badge_native_short)
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isImg) Color(0x1A7E57C2) else Color(0x1A00ACC1),
+                            border = BorderStroke(0.5.dp, if (isImg) Color(0xFF7E57C2).copy(alpha = 0.5f) else Color(0xFF00ACC1).copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = methodBadge,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = if (isImg) Color(0xFF7E57C2) else Color(0xFF00ACC1),
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
                     }
 
                     if (item.userId > 0) {
@@ -3819,8 +3895,17 @@ private fun SmartStoragePartitionBottomSheet(
     currentSdBase: String = "/data/sdext2",
     modalMode: TargetModalMode = TargetModalMode.TRANSFER,
     onDismiss: () -> Unit,
-    onConfirmMove: (dir: MoveDirection, targetDisk: SdCardDiskInfo?, targetPartition: PartitionInfo?) -> Unit,
-    onConfirmDirectMount: ((targetDisk: SdCardDiskInfo?, targetPartition: PartitionInfo?) -> Unit)? = null
+    onConfirmMove: (
+        dir: MoveDirection,
+        targetDisk: SdCardDiskInfo?,
+        targetPartition: PartitionInfo?,
+        migrationMethods: Map<String, InternalMigrationMethod>
+    ) -> Unit,
+    onConfirmDirectMount: ((
+        targetDisk: SdCardDiskInfo?,
+        targetPartition: PartitionInfo?,
+        migrationMethods: Map<String, InternalMigrationMethod>
+    ) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var modalStep by remember { mutableStateOf(1) } // 1: Disk, 2: Partition, 3: Confirmation
@@ -3845,6 +3930,24 @@ private fun SmartStoragePartitionBottomSheet(
         selectedItems.any { it.isRisk }
     }
 
+    val internalSelectedItems = remember(selectedItems) {
+        selectedItems.filter {
+            it.id in listOf("private", "private_internal", "cache", "apk", "lib") ||
+            it.mountCategory == MountPointCategory.PRIVATE_INTERNAL ||
+            it.mountCategory == MountPointCategory.CACHE_SHADERS ||
+            it.mountCategory == MountPointCategory.APP_PACKAGE
+        }
+    }
+    val hasInternalCategories = internalSelectedItems.isNotEmpty()
+
+    var defaultMigrationMethod by remember { mutableStateOf(InternalMigrationMethod.AUTO) }
+    var isCustomMethodMode by remember { mutableStateOf(false) }
+    var categoryMethods by remember(selectedCategoryIds) {
+        mutableStateOf(
+            selectedCategoryIds.associateWith { InternalMigrationMethod.AUTO }.toMutableMap()
+        )
+    }
+
     var isTargetInternal by remember(allSelectedOnMicroSd, modalMode) {
         mutableStateOf(if (modalMode == TargetModalMode.DIRECT_MOUNT) false else allSelectedOnMicroSd)
     }
@@ -3863,6 +3966,26 @@ private fun SmartStoragePartitionBottomSheet(
         mutableStateOf(validPart)
     }
 
+    val targetFsType = (selectedPartition?.fsType
+        ?: selectedDisk?.partitions?.firstOrNull { part ->
+            part.mountPoint != null && (selectedPartition?.mountPoint ?: "").startsWith(part.mountPoint)
+        }?.fsType ?: "").lowercase()
+    val isTargetPosix = targetFsType in listOf("ext4", "f2fs", "ext2", "ext3", "btrfs", "xfs") ||
+        (selectedPartition == null && isPosixStorageTarget(currentSdBase, availableDisks))
+
+    LaunchedEffect(isTargetPosix) {
+        if (!isTargetPosix && defaultMigrationMethod == InternalMigrationMethod.NATIVE_FOLDER) {
+            defaultMigrationMethod = InternalMigrationMethod.AUTO
+        }
+        if (!isTargetPosix) {
+            categoryMethods.forEach { (catId, method) ->
+                if (method == InternalMigrationMethod.NATIVE_FOLDER) {
+                    categoryMethods[catId] = InternalMigrationMethod.AUTO
+                }
+            }
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -3872,6 +3995,8 @@ private fun SmartStoragePartitionBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(horizontal = 18.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -4487,6 +4612,184 @@ private fun SmartStoragePartitionBottomSheet(
                         }
                     }
 
+                    // ── STORAGE METHOD SELECTOR (FOR INTERNAL / SYSTEM CATEGORIES) ──
+                    if (!isTargetInternal && hasInternalCategories) {
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Tune,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.manage_method_selector_title),
+                                            style = MaterialTheme.typography.titleSmall.copy(
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Text(
+                                        text = stringResource(R.string.manage_method_selector_subtitle),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                if (!isTargetPosix) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0x1AFFA000),
+                                        border = BorderStroke(0.5.dp, Color(0xFFFFA000).copy(alpha = 0.5f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Info,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFFA000),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = stringResource(
+                                                    R.string.manage_method_non_posix_guard_notice,
+                                                    targetFsType.ifBlank { "exFAT/FAT32" }.uppercase()
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+
+                                MethodOptionCard(
+                                    title = stringResource(R.string.manage_method_auto_title),
+                                    subtitle = stringResource(R.string.manage_method_auto_desc),
+                                    badge = if (isTargetPosix) stringResource(R.string.manage_method_auto_badge_native)
+                                            else stringResource(R.string.manage_method_auto_badge_container),
+                                    badgeColor = CyberEmerald,
+                                    isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.AUTO,
+                                    isEnabled = true,
+                                    onSelect = {
+                                        defaultMigrationMethod = InternalMigrationMethod.AUTO
+                                        isCustomMethodMode = false
+                                    }
+                                )
+
+                                MethodOptionCard(
+                                    title = stringResource(R.string.manage_method_native_title),
+                                    subtitle = stringResource(R.string.manage_method_native_desc),
+                                    badge = stringResource(R.string.manage_method_native_badge),
+                                    badgeColor = if (isTargetPosix) Color(0xFF00ACC1) else Color.Gray,
+                                    isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.NATIVE_FOLDER,
+                                    isEnabled = isTargetPosix,
+                                    onSelect = {
+                                        if (isTargetPosix) {
+                                            defaultMigrationMethod = InternalMigrationMethod.NATIVE_FOLDER
+                                            isCustomMethodMode = false
+                                        }
+                                    }
+                                )
+
+                                MethodOptionCard(
+                                    title = stringResource(R.string.manage_method_container_title),
+                                    subtitle = stringResource(R.string.manage_method_container_desc),
+                                    badge = stringResource(R.string.manage_method_container_badge),
+                                    badgeColor = Color(0xFF7E57C2),
+                                    isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.CONTAINER_IMG,
+                                    isEnabled = true,
+                                    onSelect = {
+                                        defaultMigrationMethod = InternalMigrationMethod.CONTAINER_IMG
+                                        isCustomMethodMode = false
+                                    }
+                                )
+
+                                if (internalSelectedItems.size > 1) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { isCustomMethodMode = !isCustomMethodMode }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.manage_method_customize_per_category),
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Switch(
+                                            checked = isCustomMethodMode,
+                                            onCheckedChange = { isCustomMethodMode = it }
+                                        )
+                                    }
+
+                                    if (isCustomMethodMode) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            internalSelectedItems.forEach { catItem ->
+                                                val currentMethod = categoryMethods[catItem.id] ?: defaultMigrationMethod
+                                                PerCategoryMethodRow(
+                                                    item = catItem,
+                                                    currentMethod = currentMethod,
+                                                    isPosix = isTargetPosix,
+                                                    onMethodSelected = { newMethod ->
+                                                        categoryMethods = categoryMethods.toMutableMap().apply {
+                                                            put(catItem.id, newMethod)
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (selectedItems.any { it.id in listOf("data", "obb", "media") }) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.manage_method_external_note),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, lineHeight = 13.5.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Warning Card if APK or Lib is included in selection
                     if (hasRiskSelected) {
                         Card(
@@ -4552,9 +4855,18 @@ private fun SmartStoragePartitionBottomSheet(
                         if (modalMode == TargetModalMode.DIRECT_MOUNT) {
                             Button(
                                 onClick = {
+                                    val effectiveMethods: Map<String, InternalMigrationMethod> = if (isCustomMethodMode) {
+                                        categoryMethods
+                                    } else {
+                                        buildMap {
+                                            put("default", defaultMigrationMethod)
+                                            internalSelectedItems.forEach { put(it.id, defaultMigrationMethod) }
+                                        }
+                                    }
                                     onConfirmDirectMount?.invoke(
                                         selectedDisk,
-                                        selectedPartition
+                                        selectedPartition,
+                                        effectiveMethods
                                     )
                                 },
                                 shape = RoundedCornerShape(10.dp),
@@ -4577,10 +4889,19 @@ private fun SmartStoragePartitionBottomSheet(
                         } else {
                             Button(
                                 onClick = {
+                                    val effectiveMethods: Map<String, InternalMigrationMethod> = if (isCustomMethodMode) {
+                                        categoryMethods
+                                    } else {
+                                        buildMap {
+                                            put("default", defaultMigrationMethod)
+                                            internalSelectedItems.forEach { put(it.id, defaultMigrationMethod) }
+                                        }
+                                    }
                                     onConfirmMove(
                                         if (isTargetInternal) MoveDirection.TO_INTERNAL else MoveDirection.TO_SD,
                                         selectedDisk,
-                                        selectedPartition
+                                        selectedPartition,
+                                        effectiveMethods
                                     )
                                 },
                                 shape = RoundedCornerShape(10.dp),
@@ -4606,6 +4927,173 @@ private fun SmartStoragePartitionBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun MethodOptionCard(
+    title: String,
+    subtitle: String,
+    badge: String,
+    badgeColor: Color,
+    isSelected: Boolean,
+    isEnabled: Boolean,
+    onSelect: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (!isEnabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                             else if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                             else MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (isSelected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = isEnabled, onClick = onSelect)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = if (isEnabled) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = badgeColor.copy(alpha = 0.12f),
+                        border = BorderStroke(0.5.dp, badgeColor.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = badge,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = if (isEnabled) badgeColor else Color.Gray,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp
+                    ),
+                    color = if (isEnabled) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+            }
+            RadioButton(
+                selected = isSelected,
+                onClick = if (isEnabled) onSelect else null,
+                enabled = isEnabled
+            )
+        }
+    }
+}
+
+@Composable
+private fun PerCategoryMethodRow(
+    item: UnifiedCategoryItem,
+    currentMethod: InternalMigrationMethod,
+    isPosix: Boolean,
+    onMethodSelected: (InternalMigrationMethod) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(
+                0.5.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(
+                imageVector = item.icon,
+                contentDescription = null,
+                tint = item.iconTint,
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            val methods = listOf<Pair<InternalMigrationMethod, String>>(
+                InternalMigrationMethod.AUTO to "Auto",
+                InternalMigrationMethod.NATIVE_FOLDER to "Folder",
+                InternalMigrationMethod.CONTAINER_IMG to ".img"
+            )
+            methods.forEach { (method, label) ->
+                val isSelected = currentMethod == method
+                val isEnabled = method != InternalMigrationMethod.NATIVE_FOLDER || isPosix
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else if (!isEnabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(
+                        0.5.dp,
+                        if (isSelected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    ),
+                    modifier = Modifier.clickable(enabled = isEnabled) { onMethodSelected(method) }
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        ),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                                else if (!isEnabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            }
         }
     }
 }

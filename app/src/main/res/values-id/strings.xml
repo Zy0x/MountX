@@ -916,6 +916,24 @@
     <string name="manage_tab_placeholder_title">Kelola Tambahan</string>
     <string name="manage_tab_placeholder_desc">Fitur pengelolaan lanjutan akan tersedia di pembaruan mendatang.</string>
     <string name="manage_badge_performance_risk">Risiko Kinerja</string>
+    <!-- System Category 3-Method Storage Engine & Batch Customization -->
+    <string name="manage_method_selector_title">Metode Penyimpanan Kategori Sistem</string>
+    <string name="manage_method_selector_subtitle">Pilih cara penyimpanan data internal &amp; sistem pada media tujuan:</string>
+    <string name="manage_method_auto_title">Auto (Smart Adaptive — Direkomendasikan)</string>
+    <string name="manage_method_auto_desc">Otomatis memilih Folder Biasa pada POSIX (EXT4/F2FS) atau Kontainer .img pada Non-POSIX (exFAT/FAT32)</string>
+    <string name="manage_method_auto_badge_native">Aktif: Metode 1 (Folder)</string>
+    <string name="manage_method_auto_badge_container">Aktif: Metode 2 (.img)</string>
+    <string name="manage_method_native_title">Metode 1: Folder Biasa (Tanpa .img)</string>
+    <string name="manage_method_native_desc">Performa native tercepat &amp; kapasitas bebas mengikuti sisa partisi MicroSD</string>
+    <string name="manage_method_native_badge">EXT4, F2FS</string>
+    <string name="manage_method_container_title">Metode 2: Kontainer Virtual EXT4 (.img)</string>
+    <string name="manage_method_container_desc">Kontainer Sparse dinamis (&gt;40GB+ auto-expand). Membungkus data ke dalam 1 berkas kontainer aman</string>
+    <string name="manage_method_container_badge">Semua Filesystem</string>
+    <string name="manage_method_non_posix_guard_notice">Partisi tujuan berformat [%1$s]. Sistem Android mewajibkan izin POSIX untuk Metode 1. Gunakan Auto atau Metode 2 (.img) untuk mencegah aplikasi crash.</string>
+    <string name="manage_method_customize_per_category">Atur Metode per Kategori</string>
+    <string name="manage_method_external_note">App Data &amp; OBB otomatis menggunakan Folder Biasa (Standar Android, mendukung &gt;40GB+ di semua filesystem).</string>
+    <string name="manage_method_badge_native_short">[Folder]</string>
+    <string name="manage_method_badge_container_short">[.img]</string>
     <string name="manage_cat_private_data">Data Privat</string>
     <string name="manage_cat_private_data_desc">Data aplikasi (internal)</string>
     <string name="manage_cat_apk_sub_short">File instalasi aplikasi</string>

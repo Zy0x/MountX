@@ -9,6 +9,7 @@ import app.mountx.data.model.AppStorageBreakdown
 import app.mountx.data.model.AppEntry
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.InstalledAppInfo
+import app.mountx.data.model.InternalMigrationMethod
 import app.mountx.data.model.MigrationTarget
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
@@ -523,13 +524,21 @@ class AppsViewModel @Inject constructor(
                 }
                 val sdInspection = if (direction == MoveDirection.TO_SD) storageRepository.inspectStorageTarget(sdBase) else null
                 val effectivePoints = basePoints.map { pt ->
-                    if (direction == MoveDirection.TO_SD && pt.resolveCategory() == app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL && sdInspection != null) {
-                        val useContainer = sdInspection.isNonPosix
-                        val privSrc = if (useContainer) "$sdBase/.mountx/containers/${packageName}_data.img" else "$sdBase/MountX/data/$packageName"
+                    if (direction == MoveDirection.TO_SD && pt.isInternalSandboxOrPackageCategory() && sdInspection != null) {
+                        val useContainer = when (pt.migrationMethod) {
+                            InternalMigrationMethod.AUTO -> sdInspection.isNonPosix
+                            InternalMigrationMethod.NATIVE_FOLDER -> false
+                            InternalMigrationMethod.CONTAINER_IMG -> true
+                        }
+                        val targetSrc = if (useContainer) {
+                            pt.containerImgPath?.ifBlank { null } ?: pt.resolveContainerImgPath(sdBase, packageName)
+                        } else {
+                            pt.resolveNativeFolderPath(sdBase, packageName)
+                        }
                         pt.copy(
-                            sourcePath = privSrc,
+                            sourcePath = targetSrc,
                             isVirtualContainer = useContainer,
-                            containerImgPath = if (useContainer) privSrc else null
+                            containerImgPath = if (useContainer) targetSrc else null
                         )
                     } else {
                         pt
@@ -580,7 +589,7 @@ class AppsViewModel @Inject constructor(
                             val allDisabled = updatedPoints.none { it.enabled }
                             val updated = game.copy(
                                 mountPoints = updatedPoints,
-                                mountStatus = MountStatus.UNMOUNTED,
+                                mountStatus = if (allDisabled) MountStatus.UNMOUNTED else MountStatus.MOUNTED,
                                 isEnabled = if (allDisabled) false else game.isEnabled
                             )
                             gameRepository.updateGame(updated)

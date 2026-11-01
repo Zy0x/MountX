@@ -373,6 +373,7 @@ class AppRepository @Inject constructor(
                     RootShell.exec("rm -rf \"$sdBase/MountX/app/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/MountX/lib/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_data.img\" \"$sdBase/MountX/containers/${packageName}_data.img\" 2>/dev/null")
+                    RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_cache.img\" \"$sdBase/.mountx/containers/${packageName}_apk.img\" \"$sdBase/.mountx/containers/${packageName}_lib.img\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/Android/data/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/Android/obb/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/Android/media/$packageName\" 2>/dev/null")
