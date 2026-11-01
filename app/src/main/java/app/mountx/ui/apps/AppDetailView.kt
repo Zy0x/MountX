@@ -339,7 +339,7 @@ fun AppDetailView(
                 navigationIcon = {
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(28.dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -360,87 +360,90 @@ fun AppDetailView(
                     }
                 },
                 actions = {
-                    // System App Details Button
-                    IconButton(
-                        onClick = {
-                            try {
-                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.fromParts("package", game.packageName, null)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            } catch (_: Exception) {
-                            }
-                        },
-                        modifier = Modifier.size(38.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(26.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = RoundedCornerShape(6.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = stringResource(R.string.game_detail_system_info),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    if (isDraftMode) {
-                        if (onSaveGame != null) {
-                            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                            val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
-                            IconButton(
-                                onClick = { onSaveGame(game.copy(mountPoints = currentMountPoints)) },
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(26.dp)
-                                        .background(
-                                            color = activeEmerald.copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(6.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = stringResource(R.string.common_save),
-                                        tint = activeEmerald,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        // Delete App Button
+                        // System App Details Button
                         IconButton(
-                            onClick = onDelete,
-                            modifier = Modifier.size(38.dp)
+                            onClick = {
+                                try {
+                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", game.packageName, null)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                }
+                            },
+                            modifier = Modifier.size(28.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(26.dp)
                                     .background(
-                                        color = NeonCrimson.copy(alpha = 0.15f),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
                                         shape = RoundedCornerShape(6.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = stringResource(R.string.dialog_delete_app_title),
-                                    tint = NeonCrimson,
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = stringResource(R.string.game_detail_system_info),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(15.dp)
                                 )
+                            }
+                        }
+
+                        if (isDraftMode) {
+                            if (onSaveGame != null) {
+                                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                                val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
+                                IconButton(
+                                    onClick = { onSaveGame(game.copy(mountPoints = currentMountPoints)) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(26.dp)
+                                            .background(
+                                                color = activeEmerald.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(6.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = stringResource(R.string.common_save),
+                                            tint = activeEmerald,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Delete App Button
+                            IconButton(
+                                onClick = onDelete,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .background(
+                                            color = NeonCrimson.copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = stringResource(R.string.dialog_delete_app_title),
+                                        tint = NeonCrimson,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
                             }
                         }
                     }
