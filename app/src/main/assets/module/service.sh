@@ -574,6 +574,13 @@ bind_mount_to_runtime_namespaces() {
     else
         count=$(grep -c " ${dst}" /proc/mounts 2>/dev/null || echo 0)
     fi
+    local app_pids
+    app_pids=$(pgrep -f "^${pkg}" 2>/dev/null || true)
+    if [ -n "${app_pids}" ]; then
+        log_info "  [${pkg}] App active (PID=${app_pids}): hot-injected into namespaces. Storage AppOps deferred to protect active session."
+    else
+        log_info "  [${pkg}] App idle: verified storage permissions (MANAGE_EXTERNAL_STORAGE, LEGACY, READ/WRITE)."
+    fi
     log_info "  [${pkg}] Bind-mounted to ${count} targets in /proc/mounts: ${src} → ${dst}"
 }
 
@@ -1344,6 +1351,15 @@ mount_watchdog() {
             fi
         fi
 
+        # Check 1b: Kernel Read-Only Remount Protection Probe
+        if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+            if grep -qF " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -q " ro,"; then
+                log_error "[Storage] CRITICAL: MicroSD ${SD_BASE} has been remounted READ-ONLY by kernel! Writes will fail with EROFS."
+                echo "ro_error" > "/dev/.mountx_disk_error"
+                am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "ro_error" -p app.mountx >/dev/null 2>&1
+            fi
+        fi
+
         # ── Check 3: Zygote soft restart detection ────────────────────────────
         # When Zygote/SystemServer restarts WITHOUT a kernel reboot, the PID changes
         # and all per-app mount namespaces (/mnt/runtime/*/emulated/0/Android/...)
@@ -1425,6 +1441,17 @@ mount_watchdog() {
             CHECK_INTERVAL=$((CHECK_INTERVAL + 60))
             [ ${CHECK_INTERVAL} -gt ${MAX_INTERVAL} ] && CHECK_INTERVAL=${MAX_INTERVAL}
             log_info "[Watchdog] System stable (${CONSECUTIVE_OK} checks OK). Interval → ${CHECK_INTERVAL}s."
+        fi
+
+        local free_mb
+        free_mb=$(df -m "${SD_BASE}" 2>/dev/null | tail -n 1 | awk '{print $4}')
+        local active_apps=0
+        if [ -f "${MOUNTPOINTS_FILE}" ]; then
+            active_apps=$(cut -d'|' -f1 "${MOUNTPOINTS_FILE}" 2>/dev/null | sort -u | wc -l)
+        fi
+        log_info "[Watchdog] Heartbeat #${CONSECUTIVE_OK} OK (Zygote64=${ZYGOTE_PID_LAST:-N/A}, Disk=${SD_BASE} [${FS_TYPE}, free=${free_mb:-0}MB], MountedApps=${active_apps:-0})."
+        if [ -n "${free_mb}" ] && [ "${free_mb}" -lt 500 ] 2>/dev/null; then
+            log_warn "[Storage] Low storage alert: only ${free_mb}MB free on ${SD_BASE}!"
         fi
     }
 

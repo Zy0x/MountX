@@ -50,6 +50,7 @@ class AppsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
     private val mountNotificationManager: app.mountx.service.MountNotificationManager,
+    private val diagnosticManager: app.mountx.data.diagnostics.DiagnosticManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -157,6 +158,9 @@ class AppsViewModel @Inject constructor(
     private val _detailedStorage = MutableStateFlow<AppStorageBreakdown?>(null)
     val detailedStorage: StateFlow<AppStorageBreakdown?> = _detailedStorage.asStateFlow()
 
+    private val _appHealth = MutableStateFlow<app.mountx.data.diagnostics.AppHealthTelemetry?>(null)
+    val appHealth: StateFlow<app.mountx.data.diagnostics.AppHealthTelemetry?> = _appHealth.asStateFlow()
+
     private val _operationProgress = MutableStateFlow<OperationProgress?>(null)
     val operationProgress: StateFlow<OperationProgress?> = _operationProgress.asStateFlow()
 
@@ -174,6 +178,7 @@ class AppsViewModel @Inject constructor(
     fun clearDetailedStorage() {
         _activePackageName.value = null
         _detailedStorage.value = null
+        _appHealth.value = null
     }
 
     fun setSearchQuery(query: String) {
@@ -204,10 +209,14 @@ class AppsViewModel @Inject constructor(
         if (cached != null && !force) {
             _detailedStorage.value = cached
             _storageBreakdown.value = Pair(cached.ext1Bytes, cached.ext2Bytes)
+            viewModelScope.launch {
+                _appHealth.value = diagnosticManager.getAppHealth(packageName)
+            }
             return
         }
         // When switching to a new package without cache, clear detailedStorage to avoid stale cross-game data leak
         _detailedStorage.value = null
+        _appHealth.value = null
         viewModelScope.launch {
             try {
                 app.mountx.util.AppLogger.info("GamesVM", "loadStorageBreakdown started for $packageName")
@@ -220,6 +229,7 @@ class AppsViewModel @Inject constructor(
                     _detailedStorage.value = breakdown
                     _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
                 }
+                _appHealth.value = diagnosticManager.getAppHealth(packageName)
             } catch (e: Exception) {
                 app.mountx.util.AppLogger.error("GamesVM", "loadStorageBreakdown failed for $packageName: ${e.message}")
             }
@@ -247,6 +257,8 @@ class AppsViewModel @Inject constructor(
                 }
                 // 3. Sync mount status without global multi-app rescan
                 gameRepository.refreshMountStatuses()
+                // 4. Update live health telemetry
+                _appHealth.value = diagnosticManager.getAppHealth(packageName)
             } catch (e: Exception) {
                 app.mountx.util.AppLogger.error("GamesVM", "refreshAppDetail failed for $packageName: ${e.message}")
             } finally {

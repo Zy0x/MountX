@@ -115,6 +115,7 @@ fun AppsScreen(
     val restructureProgressMessage by viewModel.restructureProgressMessage.collectAsState()
     val isRefreshingDetail by viewModel.isRefreshingDetail.collectAsState()
     val pendingOperations by viewModel.pendingOperations.collectAsState()
+    val appHealth by viewModel.appHealth.collectAsState()
     var showRestructureDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -293,6 +294,7 @@ fun AppsScreen(
 
         GameDetailView(
             game = updatedGame,
+            healthTelemetry = appHealth,
             breakdown = detailedStorage,
             isMoving = isMovingData,
             moveMessage = moveMessage,

@@ -91,6 +91,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -132,6 +133,13 @@ import app.mountx.ui.theme.WarmCrimsonBorderDark
 import app.mountx.ui.theme.WarmCrimsonBorderLight
 import app.mountx.ui.theme.WarmCrimsonDark
 import app.mountx.ui.theme.WarmCrimsonLight
+import app.mountx.ui.theme.adaptiveEmerald
+import app.mountx.ui.theme.adaptiveEmeraldContainer
+import app.mountx.ui.theme.adaptiveCrimson
+import app.mountx.ui.theme.adaptiveCrimsonContainer
+import app.mountx.ui.theme.adaptiveAmber
+import app.mountx.ui.theme.adaptiveAmberContainer
+import app.mountx.data.diagnostics.AppHealthTelemetry
 import app.mountx.util.FormatUtils
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -160,6 +168,7 @@ data class OcclusionWarningData(
 fun GameDetailView(
     game: GameEntry,
     breakdown: AppStorageBreakdown? = null,
+    healthTelemetry: AppHealthTelemetry? = null,
     isMoving: Boolean = false,
     moveMessage: String? = null,
     onClearMoveMessage: () -> Unit = {},
@@ -190,6 +199,7 @@ fun GameDetailView(
 ) = AppDetailView(
     game = game,
     breakdown = breakdown,
+    healthTelemetry = healthTelemetry,
     isMoving = isMoving,
     moveMessage = moveMessage,
     onClearMoveMessage = onClearMoveMessage,
@@ -224,6 +234,7 @@ fun GameDetailView(
 fun AppDetailView(
     game: GameEntry,
     breakdown: AppStorageBreakdown? = null,
+    healthTelemetry: AppHealthTelemetry? = null,
     isMoving: Boolean = false,
     moveMessage: String? = null,
     onClearMoveMessage: () -> Unit = {},
@@ -543,6 +554,7 @@ fun AppDetailView(
                             internalFreeBytes = internalFreeBytes,
                             isMoving = isMoving,
                             moveMessage = moveMessage,
+                            healthTelemetry = healthTelemetry,
                             sdBase = sdBase,
                             onMove = { dir, pts, disk, partition, strategy ->
                                 val updatedPoints = currentMountPoints.map { pt ->
@@ -1039,6 +1051,7 @@ private fun StorageTabContent(
     internalFreeBytes: Long,
     isMoving: Boolean,
     moveMessage: String?,
+    healthTelemetry: AppHealthTelemetry? = null,
     sdBase: String = "/data/sdext2",
     packageInfo: android.content.pm.PackageInfo? = null,
     onMove: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit,
@@ -1575,6 +1588,121 @@ private fun StorageTabContent(
                 .padding(horizontal = 14.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+        // ── MOUNT & SYSTEM HEALTH TELEMETRY BANNER ──
+        val health = healthTelemetry
+        val isAnomaly = health?.isHealthy == false
+        val isMountedHealth = game.mountStatus == MountStatus.MOUNTED || safeBreakdown.isExt1Mounted
+
+        if (isMountedHealth || isAnomaly) {
+            val bannerContainerColor = when {
+                isAnomaly -> adaptiveCrimsonContainer()
+                else -> adaptiveEmeraldContainer()
+            }
+            val bannerBorderColor = when {
+                isAnomaly -> adaptiveCrimson().copy(alpha = 0.5f)
+                else -> adaptiveEmerald().copy(alpha = 0.45f)
+            }
+            val bannerIconTint = when {
+                isAnomaly -> adaptiveCrimson()
+                else -> adaptiveEmerald()
+            }
+            val bannerIcon = when {
+                isAnomaly -> Icons.Default.Warning
+                else -> Icons.Default.CheckCircle
+            }
+
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = bannerContainerColor),
+                border = BorderStroke(1.dp, bannerBorderColor),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(bannerIconTint.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = bannerIcon,
+                            contentDescription = null,
+                            tint = bannerIconTint,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.app_detail_health_title),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = bannerIconTint.copy(alpha = 0.18f),
+                                border = BorderStroke(0.5.dp, bannerIconTint.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = if (isAnomaly) "ANOMALY" else stringResource(R.string.disk_health_healthy).uppercase(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.4.sp
+                                    ),
+                                    color = bannerIconTint,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = when {
+                                isAnomaly -> health?.statusSummary ?: stringResource(R.string.status_error)
+                                else -> health?.statusSummary ?: stringResource(R.string.app_detail_health_healthy)
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        if (health?.recentExitReport != null && health.recentExitReport.isAbnormal) {
+                            val exit = health.recentExitReport
+                            Text(
+                                text = "${exit.reasonName} (${exit.subreasonName}) • ${exit.timestamp}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = adaptiveCrimson(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // ── CONCENTRIC DONUT CHART & 2-SUBPAGE LEGEND CARD ──
         Card(
             shape = RoundedCornerShape(12.dp),
@@ -3117,14 +3245,28 @@ private fun CategoryCardItem(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(1.dp)
             ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (item.isMicroSd) {
+                        val isCatActive = item.isCategoryMounted
+                        val dotColor = if (isCatActive) adaptiveEmerald() else adaptiveCrimson()
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(dotColor, CircleShape)
+                        )
+                    }
+                }
                 Text(
                     text = item.subtitle,
                     style = MaterialTheme.typography.bodySmall.copy(

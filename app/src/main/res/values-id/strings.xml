@@ -433,6 +433,16 @@
     <string name="logs_clear">Hapus Log</string>
     <string name="logs_clear_confirm">Hapus semua entri log?</string>
     <string name="logs_cleared">Log dihapus.</string>
+    <string name="logs_filter_warn">Peringatan</string>
+    <string name="logs_diagnostic_report">Salin Laporan Diagnostik</string>
+    <string name="logs_diagnostic_report_copied">Laporan diagnostik berhasil disalin ke papan klip!</string>
+    <string name="logs_daemon_healthy">Daemon Sehat</string>
+    <string name="logs_daemon_error">Masalah Daemon Terdeteksi</string>
+    <string name="app_detail_health_title">Kesehatan Mount &amp; Sistem</string>
+    <string name="app_detail_health_healthy">Semua kategori penyimpanan aktif &amp; tersinkronisasi</string>
+    <string name="app_detail_health_anomaly">Anomali terdeteksi: %1$s</string>
+    <string name="app_detail_health_permissions_ok">Izin penyimpanan sistem terverifikasi</string>
+    <string name="app_detail_health_permissions_warn">Izin penyimpanan perlu perhatian</string>
 
     <string name="settings_title">Pengaturan</string>
     <string name="settings_appearance">Tampilan</string>

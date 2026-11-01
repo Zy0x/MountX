@@ -448,6 +448,16 @@
     <string name="logs_clear">Clear Log</string>
     <string name="logs_clear_confirm">Clear all log entries?</string>
     <string name="logs_cleared">Log cleared.</string>
+    <string name="logs_filter_warn">Warning</string>
+    <string name="logs_diagnostic_report">Copy Diagnostic Report</string>
+    <string name="logs_diagnostic_report_copied">Diagnostic report copied to clipboard!</string>
+    <string name="logs_daemon_healthy">Daemon Healthy</string>
+    <string name="logs_daemon_error">Daemon Issues Detected</string>
+    <string name="app_detail_health_title">Mount &amp; System Health</string>
+    <string name="app_detail_health_healthy">All storage categories active &amp; synchronized</string>
+    <string name="app_detail_health_anomaly">Anomaly detected: %1$s</string>
+    <string name="app_detail_health_permissions_ok">System storage permissions verified</string>
+    <string name="app_detail_health_permissions_warn">Storage permission attention needed</string>
 
     <!-- Settings Screen -->
     <string name="settings_title">Settings</string>

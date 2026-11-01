@@ -1,8 +1,9 @@
 package app.mountx.ui.logs
 
 enum class LogLevel {
-    INFO,
+    ALL,
     SUCCESS,
+    INFO,
     WARN,
     ERROR,
     DEBUG
