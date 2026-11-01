@@ -1291,6 +1291,13 @@
     <string name="module_export_success">ZIP saved to Downloads: %1$s</string>
     <string name="module_export_failed">Export failed: %1$s</string>
     <string name="module_op_processing">Processing…</string>
+    <!-- App Detail Chart Sub-pages & Slices -->
+    <string name="game_detail_subpage_media_title">Storage Media</string>
+    <string name="game_detail_subpage_components_title">Components</string>
+    <string name="game_detail_slice_dex">Dex (Code)</string>
+    <string name="game_detail_slice_shared_internal">App Data (Phone)</string>
+    <string name="game_detail_slice_custom">Custom</string>
+    <string name="game_detail_no_components">No components measured yet</string>
 </resources>
 
 

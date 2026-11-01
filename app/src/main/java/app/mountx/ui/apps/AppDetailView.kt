@@ -17,6 +17,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -1529,6 +1531,41 @@ private fun StorageTabContent(
     }
 
     val chartBreakdown = safeBreakdown
+    val hasUsbCategory = categories.any { it.isMicroSd && it.isUsbOtg }
+    val extIcon = if (hasUsbCategory) Icons.Default.Usb else Icons.Default.SdCard
+    val extColor = if (hasUsbCategory) Color(0xFF00ACC1) else Color(0xFF3BA71A)
+    val extLabel = if (hasUsbCategory) stringResource(R.string.game_detail_legend_usb) else stringResource(R.string.game_detail_legend_microsd)
+
+    val chartSlices = remember(chartBreakdown, hasUsbCategory, extLabel, extColor) {
+        listOfNotNull(
+            if (!chartBreakdown.isApkMounted && chartBreakdown.apkBytes > 0) {
+                ChartSlice("Apk", context.getString(R.string.category_item_apk_title), chartBreakdown.apkBytes, Color(0xFFE91E63))
+            } else null,
+            if (!chartBreakdown.isLibMounted && chartBreakdown.libBytes > 0) {
+                ChartSlice("Lib", context.getString(R.string.category_item_lib_title), chartBreakdown.libBytes, Color(0xFFFB8C00))
+            } else null,
+            if (!chartBreakdown.isApkMounted && chartBreakdown.dexBytes > 0) {
+                ChartSlice("Dex", context.getString(R.string.game_detail_slice_dex), chartBreakdown.dexBytes, Color(0xFFAB47BC))
+            } else null,
+            if (!chartBreakdown.isPrivateMounted && chartBreakdown.dataBytes > 0) {
+                ChartSlice("Data", context.getString(R.string.category_item_private_title), chartBreakdown.dataBytes, Color(0xFF00ACC1))
+            } else null,
+            if (!chartBreakdown.isCacheMounted && chartBreakdown.cacheBytes > 0) {
+                ChartSlice("Cache", context.getString(R.string.category_item_cache_title), chartBreakdown.cacheBytes, Color(0xFFE57373))
+            } else null,
+            if (chartBreakdown.physicalExt1Bytes > 0) {
+                ChartSlice("Ext1", context.getString(R.string.game_detail_slice_shared_internal), chartBreakdown.physicalExt1Bytes, Color(0xFF3149FF))
+            } else null,
+            if (chartBreakdown.ext2Bytes > 0) {
+                ChartSlice("Ext2", extLabel, chartBreakdown.ext2Bytes, extColor)
+            } else null,
+            if (chartBreakdown.customBytes > 0) {
+                ChartSlice("Custom", context.getString(R.string.game_detail_slice_custom), chartBreakdown.customBytes, Color(0xFF00BFA5))
+            } else null
+        )
+    }
+
+    val chartPagerState = rememberPagerState(pageCount = { 2 })
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -1538,7 +1575,7 @@ private fun StorageTabContent(
                 .padding(horizontal = 14.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-        // ── CONCENTRIC DONUT CHART & 3-TIER LEGEND CARD ──
+        // ── CONCENTRIC DONUT CHART & 2-SUBPAGE LEGEND CARD ──
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1559,115 +1596,299 @@ private fun StorageTabContent(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 ConcentricStorageChart(
                     breakdown = chartBreakdown,
+                    slices = chartSlices,
+                    isUsb = hasUsbCategory,
                     modifier = Modifier.size(152.dp)
                 )
 
-                // Storage Distribution Legend (Phone Memory, MicroSD, Total)
+                // Right Column: 2 Sub-Pages (Storage Media vs Components) with Smooth Dot Indicators
                 Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(152.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // 1. Phone Memory (Internal)
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Smartphone,
-                                contentDescription = null,
-                                tint = Color(0xFFDF4006),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.game_detail_legend_phone),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = FormatUtils.formatLegendBytes(chartBreakdown.phoneInternalBytes),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = Color(0xFFDF4006),
-                            modifier = Modifier.padding(start = 18.dp)
-                        )
-                    }
-
-                    // 2. MicroSD Card / External Storage
-                    val hasUsbCategory = categories.any { it.isMicroSd && it.isUsbOtg }
-                    val extIcon = if (hasUsbCategory) Icons.Default.Usb else Icons.Default.SdCard
-                    val extColor = if (hasUsbCategory) Color(0xFF00ACC1) else Color(0xFF3BA71A)
-                    val extLabel = if (hasUsbCategory) stringResource(R.string.game_detail_legend_usb) else stringResource(R.string.game_detail_legend_microsd)
-
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = extIcon,
-                                contentDescription = null,
-                                tint = extColor,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = extLabel,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = FormatUtils.formatLegendBytes(chartBreakdown.microSdBytes),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = extColor,
-                            modifier = Modifier.padding(start = 18.dp)
-                        )
-                    }
-
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    HorizontalPager(
+                        state = chartPagerState,
                         modifier = Modifier
-                            .fillMaxWidth(0.9f)
-                            .padding(vertical = 1.dp)
-                    )
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) { page ->
+                        when (page) {
+                            0 -> {
+                                // ── SUB-PAGE 1: STORAGE MEDIA (Phone Memory, MicroSD, Total) ──
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(end = 2.dp),
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                coroutineScope.launch {
+                                                    chartPagerState.animateScrollToPage(1)
+                                                }
+                                            }
+                                            .padding(bottom = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.game_detail_subpage_media_title).uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.5.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "1/2 ›",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                    }
 
-                    // 3. Grand Total (Total)
+                                    // 1. Phone Memory (Internal)
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Smartphone,
+                                                contentDescription = null,
+                                                tint = Color(0xFFDF4006),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = stringResource(R.string.game_detail_legend_phone),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                ),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Text(
+                                            text = FormatUtils.formatLegendBytes(chartBreakdown.phoneInternalBytes),
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = Color(0xFFDF4006),
+                                            modifier = Modifier.padding(start = 18.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    // 2. MicroSD Card / External Storage
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = extIcon,
+                                                contentDescription = null,
+                                                tint = extColor,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = extLabel,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                ),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Text(
+                                            text = FormatUtils.formatLegendBytes(chartBreakdown.microSdBytes),
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = extColor,
+                                            modifier = Modifier.padding(start = 18.dp)
+                                        )
+                                    }
+
+                                    HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.95f)
+                                            .padding(vertical = 4.dp)
+                                    )
+
+                                    // 3. Grand Total (Total)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.game_detail_legend_total),
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = FormatUtils.formatLegendBytes(chartBreakdown.totalBytes),
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                            1 -> {
+                                // ── SUB-PAGE 2: COMPONENT BREAKDOWN (Outer Ring Colors & Details) ──
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(end = 2.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                coroutineScope.launch {
+                                                    chartPagerState.animateScrollToPage(0)
+                                                }
+                                            }
+                                            .padding(bottom = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.game_detail_subpage_components_title).uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.5.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "‹ 2/2",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                    }
+
+                                    if (chartSlices.isEmpty()) {
+                                        Text(
+                                            text = stringResource(R.string.game_detail_no_components),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    } else {
+                                        chartSlices.forEach { slice ->
+                                            val fraction = if (chartBreakdown.totalBytes > 0) {
+                                                slice.bytes.toDouble() / chartBreakdown.totalBytes.toDouble()
+                                            } else 0.0
+                                            val pct = (fraction * 100).roundToInt()
+                                            val pctStr = if (pct > 0) "$pct%" else "<1%"
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                                    modifier = Modifier.weight(1f, fill = false)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(6.5.dp)
+                                                            .background(slice.color, CircleShape)
+                                                    )
+                                                    Text(
+                                                        text = slice.label,
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.SemiBold
+                                                        ),
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "${FormatUtils.formatLegendBytes(slice.bytes)} ($pctStr)",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 9.5.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    ),
+                                                    color = slice.color,
+                                                    maxLines = 1,
+                                                    modifier = Modifier.padding(start = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Smooth Dot Indicator with Touch & Tap Support ──
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = stringResource(R.string.game_detail_legend_total),
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = FormatUtils.formatLegendBytes(chartBreakdown.totalBytes),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        repeat(2) { index ->
+                            val isSelected = chartPagerState.currentPage == index
+                            val dotWidth by animateDpAsState(
+                                targetValue = if (isSelected) 14.dp else 5.dp,
+                                label = "chartDotWidth"
+                            )
+                            val dotColor = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 32.dp, height = 24.dp)
+                                    .clickable {
+                                        coroutineScope.launch {
+                                            chartPagerState.animateScrollToPage(index)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = dotWidth, height = 5.dp)
+                                        .background(dotColor, RoundedCornerShape(2.5.dp))
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -5780,26 +6001,29 @@ fun FloppyDiskIcon(
  * - Inner Circle: Solid Internal vs External representation with dashed dividing line and percentage labels
  */
 @Composable
-fun ConcentricStorageChart(
+internal fun ConcentricStorageChart(
     breakdown: AppStorageBreakdown,
+    slices: List<ChartSlice>? = null,
+    isUsb: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val totalBytes = breakdown.totalBytes
 
-    val slices = remember(breakdown) {
-        listOfNotNull(
-            if (!breakdown.isApkMounted && breakdown.dexBytes > 0) ChartSlice("Dex", breakdown.dexBytes, Color(0xFFAB47BC)) else null,
-            if (!breakdown.isLibMounted && breakdown.libBytes > 0) ChartSlice("Lib", breakdown.libBytes, Color(0xFFFB8C00)) else null,
-            if (!breakdown.isPrivateMounted && breakdown.dataBytes > 0) ChartSlice("Data", breakdown.dataBytes, Color(0xFF00ACC1)) else null,
-            if (!breakdown.isCacheMounted && breakdown.cacheBytes > 0) ChartSlice("Cache", breakdown.cacheBytes, Color(0xFFE57373)) else null,
-            if (breakdown.physicalExt1Bytes > 0) ChartSlice("Ext1", breakdown.physicalExt1Bytes, Color(0xFF3149FF)) else null,
-            if (breakdown.ext2Bytes > 0) ChartSlice("Ext2", breakdown.ext2Bytes, Color(0xFF43A047)) else null,
-            if (!breakdown.isApkMounted && breakdown.apkBytes > 0) ChartSlice("Apk", breakdown.apkBytes, Color(0xFFE91E63)) else null
+    val activeSlices = remember(breakdown, slices, isUsb) {
+        slices ?: listOfNotNull(
+            if (!breakdown.isApkMounted && breakdown.apkBytes > 0) ChartSlice("Apk", "APK", breakdown.apkBytes, Color(0xFFE91E63)) else null,
+            if (!breakdown.isLibMounted && breakdown.libBytes > 0) ChartSlice("Lib", "Lib", breakdown.libBytes, Color(0xFFFB8C00)) else null,
+            if (!breakdown.isApkMounted && breakdown.dexBytes > 0) ChartSlice("Dex", "Dex", breakdown.dexBytes, Color(0xFFAB47BC)) else null,
+            if (!breakdown.isPrivateMounted && breakdown.dataBytes > 0) ChartSlice("Data", "Data", breakdown.dataBytes, Color(0xFF00ACC1)) else null,
+            if (!breakdown.isCacheMounted && breakdown.cacheBytes > 0) ChartSlice("Cache", "Cache", breakdown.cacheBytes, Color(0xFFE57373)) else null,
+            if (breakdown.physicalExt1Bytes > 0) ChartSlice("Ext1", "Shared", breakdown.physicalExt1Bytes, Color(0xFF3149FF)) else null,
+            if (breakdown.ext2Bytes > 0) ChartSlice("Ext2", if (isUsb) "USB" else "MicroSD", breakdown.ext2Bytes, if (isUsb) Color(0xFF00ACC1) else Color(0xFF43A047)) else null,
+            if (breakdown.customBytes > 0) ChartSlice("Custom", "Custom", breakdown.customBytes, Color(0xFF00BFA5)) else null
         )
     }
 
     val internalColor = Color(0xFFDF4006)
-    val extColor = Color(0xFF3BA71A)
+    val extColor = if (isUsb) Color(0xFF00ACC1) else Color(0xFF3BA71A)
     val neutralTrack = MaterialTheme.colorScheme.surfaceVariant
 
     val density = LocalDensity.current
@@ -5860,7 +6084,7 @@ fun ConcentricStorageChart(
 
         var currentAngle = -90f
 
-        slices.forEach { slice ->
+        activeSlices.forEach { slice ->
             if (slice.bytes > 0) {
                 val fraction = slice.bytes.toDouble() / totalBytes.toDouble()
                 val sweep = (fraction * 360f).toFloat()
@@ -6051,8 +6275,9 @@ private fun BreakdownRow(
     }
 }
 
-private data class ChartSlice(
+internal data class ChartSlice(
     val name: String,
+    val label: String = name,
     val bytes: Long,
     val color: Color
 )
