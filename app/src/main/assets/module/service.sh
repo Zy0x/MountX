@@ -540,14 +540,8 @@ bind_mount_to_runtime_namespaces() {
             fi
         fi
 
-        # Pre-emptively stop any stale app process / pushservice that started before boot mount
+        # Pre-emptively grant storage permissions and inject mounts into active app process mount namespace if already spawned
         if [ -n "${PKG}" ]; then
-            # Auto-grant storage permissions for boot-mounted apps to guarantee zero-crash execution
-            appops set "${PKG}" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null
-            appops set "${PKG}" LEGACY_STORAGE allow 2>/dev/null
-            pm grant "${PKG}" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null
-            pm grant "${PKG}" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null
-
             pids=$(pgrep -f "^${PKG}" 2>/dev/null)
             if [ -n "${pids}" ]; then
                 for p in ${pids}; do
@@ -563,7 +557,13 @@ bind_mount_to_runtime_namespaces() {
                         nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-shared "${DST}" 2>/dev/null
                     fi
                 done
-                am force-stop "${PKG}" 2>/dev/null
+            else
+                # Auto-grant storage permissions only when app is not running
+                # (Android OS forcefully kills all UID processes if MANAGE_EXTERNAL_STORAGE is changed while alive)
+                appops set "${PKG}" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null
+                appops set "${PKG}" LEGACY_STORAGE allow 2>/dev/null
+                pm grant "${PKG}" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null
+                pm grant "${PKG}" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null
             fi
         fi
     '
@@ -1205,18 +1205,20 @@ mount_watchdog() {
     # A soft restart (SystemServer / Zygote restart without kernel reboot) changes
     # the zygote64 PID but does NOT trigger service.sh re-execution. We detect
     # this by comparing the current zygote64 PID against the one recorded at boot.
-    # NOTE: Use pidof with fallback to ps -A to ensure accurate PID across
-    # both toybox and busybox ps implementations (busybox ps $2 is USER, not PID).
     _get_zygote_pid() {
         local p
         p=$(pidof zygote64 2>/dev/null)
+        [ -z "${p}" ] && p=$(toybox pidof zygote64 2>/dev/null)
+        [ -z "${p}" ] && p=$(busybox pidof zygote64 2>/dev/null)
         [ -z "${p}" ] && p=$(pidof zygote 2>/dev/null)
+        [ -z "${p}" ] && p=$(toybox pidof zygote 2>/dev/null)
+        [ -z "${p}" ] && p=$(busybox pidof zygote 2>/dev/null)
         if [ -n "${p}" ]; then
             echo "${p%% *}"
             return 0
         fi
-        p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote64$" | awk '{print $1}' | head -n 1)
-        [ -z "${p}" ] && p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote$" | awk '{print $1}' | head -n 1)
+        p=$(pgrep -f "^zygote64$" 2>/dev/null | head -n 1)
+        [ -z "${p}" ] && p=$(pgrep -f "^zygote$" 2>/dev/null | head -n 1)
         echo "${p}"
     }
     ZYGOTE_PID_LAST=$(_get_zygote_pid)
@@ -1342,27 +1344,13 @@ mount_watchdog() {
             fi
         fi
 
-        # Sample canary paths for Zygote namespace check
-        local sample_dst=""
-        local sample_pkg=""
-        if [ -f "${MOUNTPOINTS_FILE}" ]; then
-            local sample_line
-            sample_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
-            sample_dst=$(echo "${sample_line}" | cut -d'|' -f4)
-            sample_pkg=$(echo "${sample_line}" | cut -d'|' -f1)
-        fi
-
         # ── Check 3: Zygote soft restart detection ────────────────────────────
         # When Zygote/SystemServer restarts WITHOUT a kernel reboot, the PID changes
         # and all per-app mount namespaces (/mnt/runtime/*/emulated/0/Android/...)
         # are torn down. The base mount at /data/media/0/ survives but games
         # launched after the soft restart get empty internal namespaces.
-        # We detect this via two independent signals:
-        #   A) Zygote64 PID changed from the value recorded at watchdog start
-        #   B) /mnt/runtime namespace mount count for first game dropped to 0
+        # We detect this via the authoritative Zygote PID change (Primary, 100% definitive).
         local soft_restart=0
-
-        # Signal A: Zygote PID change
         local zygote_pid_now
         zygote_pid_now=$(_get_zygote_pid)
         if [ -n "${zygote_pid_now}" ] && [ -n "${ZYGOTE_PID_LAST}" ] && \
@@ -1370,17 +1358,6 @@ mount_watchdog() {
             log_warn "[Watchdog] Zygote PID changed: ${ZYGOTE_PID_LAST} → ${zygote_pid_now}. Soft restart detected!"
             ZYGOTE_PID_LAST="${zygote_pid_now}"
             soft_restart=1
-        fi
-
-        # Signal B: Namespace mount count dropped (check /mnt/runtime for first game)
-        if [ ${soft_restart} -eq 0 ] && [ -n "${sample_pkg}" ]; then
-            local ns_count
-            ns_count=$(grep "/mnt/runtime.*${sample_pkg}" /proc/mounts 2>/dev/null | wc -l)
-            if [ "${ns_count}" -eq 0 ] && grep -qF " ${sample_dst} " /proc/mounts 2>/dev/null; then
-                # Base mount exists but namespace mounts are gone → soft restart symptom
-                log_warn "[Watchdog] Namespace mounts for ${sample_pkg} lost (count=0) while base mount exists. Soft restart suspected."
-                soft_restart=1
-            fi
         fi
 
         if [ ${soft_restart} -eq 1 ]; then
@@ -1455,22 +1432,7 @@ mount_watchdog() {
     # Sleeps in 5s slices while rapidly monitoring Zygote PID and physical disk
     # attachment so that soft reboots, subsystem crashes, and hotplug events
     # are caught and recovered within <= 5s, without CPU/battery penalty.
-    # Sample canary paths for rapid runtime namespace check
-    local canary_dst=""
-    local canary_pkg=""
-    if [ -f "${MOUNTPOINTS_FILE}" ]; then
-        # CRITICAL: Canary MUST ONLY be an external storage entry (EXTERNAL_DATA, OBB_STORAGE, MEDIA_DOWNLOADS)
-        # or path containing /Android/data, /Android/obb, /Android/media.
-        # NEVER pick PRIVATE_INTERNAL, CACHE_SHADERS, or APP_PACKAGE because they NEVER exist in /mnt/runtime!
-        local canary_line
-        canary_line=$(grep -E '\|(EXTERNAL_DATA|OBB_STORAGE|MEDIA_DOWNLOADS)\|' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
-        if [ -n "${canary_line}" ]; then
-            canary_dst=$(echo "${canary_line}" | cut -d'|' -f4)
-            canary_pkg=$(echo "${canary_line}" | cut -d'|' -f1)
-        fi
-    fi
-
-    log_info "[Watchdog] Using sliced sleep loop (5s slice, ${CHECK_INTERVAL}s health check, canary=${canary_pkg:-none})."
+    log_info "[Watchdog] Using sliced sleep loop (5s slice, ${CHECK_INTERVAL}s health check)."
     local slice=5
     local elapsed=0
     while true; do
@@ -1487,22 +1449,6 @@ mount_watchdog() {
             continue
         fi
 
-        # Check 1.5: Rapid Runtime Namespace Canary Check (FUSE/sdcardfs EXDEV dead-lock guard)
-        # If the base mount (/data/media) exists but runtime namespaces (/mnt/runtime) dropped to 0,
-        # Android storage subsystem reset without Zygote PID change. Catch and recover within <= 5s.
-        if [ -n "${canary_pkg}" ] && [ -n "${canary_dst}" ]; then
-            if grep -qF " ${canary_dst} " /proc/mounts 2>/dev/null; then
-                local fast_ns_count
-                fast_ns_count=$(grep "/mnt/runtime.*${canary_pkg}" /proc/mounts 2>/dev/null | wc -l)
-                if [ "${fast_ns_count}" -eq 0 ]; then
-                    log_warn "[Watchdog] Immediate namespace drop detected for ${canary_pkg} (count=0)! Triggering recovery..."
-                    elapsed=0
-                    check_mounts
-                    continue
-                fi
-            fi
-        fi
-
         # Check 2: Rapid physical disk attachment detection (hotplug)
         local fast_disk=0
         { [ -b "${blk_dev}" ] || [ -b "/dev/block/mmcblk0" ]; } && fast_disk=1
@@ -1517,18 +1463,6 @@ mount_watchdog() {
         if [ ${elapsed} -ge ${CHECK_INTERVAL} ]; then
             elapsed=0
             check_mounts
-            # Refresh canary target from mountpoints.conf
-            if [ -f "${MOUNTPOINTS_FILE}" ]; then
-                local canary_line
-                canary_line=$(grep -E '\|(EXTERNAL_DATA|OBB_STORAGE|MEDIA_DOWNLOADS)\|' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
-                if [ -n "${canary_line}" ]; then
-                    canary_dst=$(echo "${canary_line}" | cut -d'|' -f4)
-                    canary_pkg=$(echo "${canary_line}" | cut -d'|' -f1)
-                else
-                    canary_dst=""
-                    canary_pkg=""
-                fi
-            fi
         fi
     done
 }
