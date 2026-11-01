@@ -38,6 +38,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
@@ -960,35 +962,36 @@ private fun StepBadge(
     isDone: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = modifier
     ) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(26.dp)
+                .size(20.dp)
                 .background(
                     color = when {
                         isDone -> CyberEmerald
                         isActive -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.surfaceVariant
                     },
-                    shape = RoundedCornerShape(13.dp)
+                    shape = CircleShape
                 )
         ) {
             if (isDone) {
                 Icon(
-                    imageVector = Icons.Default.CheckCircle,
+                    imageVector = Icons.Default.Check,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(12.dp)
                 )
             } else {
                 Text(
                     text = stepNumber.toString(),
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     ),
                     color = if (isActive) MaterialTheme.colorScheme.onPrimary
@@ -996,16 +999,17 @@ private fun StepBadge(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                fontSize = 11.5.sp,
+                fontWeight = if (isActive || isDone) FontWeight.Bold else FontWeight.Medium
             ),
             color = if (isActive) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1
+                    else if (isDone) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -4396,46 +4400,42 @@ private fun SmartStoragePartitionBottomSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 StepBadge(
                     stepNumber = 1,
                     label = stringResource(R.string.manage_step_pick_disk),
                     isActive = modalStep == 1,
-                    isDone = modalStep > 1,
-                    modifier = Modifier.weight(1f)
+                    isDone = modalStep > 1
                 )
 
                 HorizontalDivider(
-                    color = if (modalStep > 1) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    color = if (modalStep > 1) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                     modifier = Modifier
                         .weight(1f)
-                        .padding(bottom = 12.dp)
+                        .padding(horizontal = 6.dp)
                 )
 
                 StepBadge(
                     stepNumber = 2,
                     label = stringResource(R.string.manage_step_pick_partition),
                     isActive = modalStep == 2,
-                    isDone = modalStep > 2,
-                    modifier = Modifier.weight(1f)
+                    isDone = modalStep > 2
                 )
 
                 HorizontalDivider(
-                    color = if (modalStep > 2) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    color = if (modalStep > 2) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                     modifier = Modifier
                         .weight(1f)
-                        .padding(bottom = 12.dp)
+                        .padding(horizontal = 6.dp)
                 )
 
                 StepBadge(
                     stepNumber = 3,
                     label = stringResource(R.string.manage_step_confirm),
                     isActive = modalStep == 3,
-                    isDone = false,
-                    modifier = Modifier.weight(1f)
+                    isDone = false
                 )
             }
 
@@ -4916,239 +4916,396 @@ private fun SmartStoragePartitionBottomSheet(
 
                 3 -> {
                     // ── LANGKAH 3: KONFIRMASI ──
+                    val sourceTitle: String
+                    val sourceSubtitle: String?
+                    val sourceIsInternal: Boolean
+
+                    val destTitle: String
+                    val destSubtitle: String?
+                    val destIsInternal: Boolean
+
+                    if (modalMode == TargetModalMode.DIRECT_MOUNT) {
+                        sourceTitle = stringResource(R.string.manage_internal_memory_label)
+                        sourceSubtitle = null
+                        sourceIsInternal = true
+
+                        destTitle = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                        destSubtitle = selectedPartition?.let {
+                            "${stringResource(R.string.storage_wizard_partition_n, it.partitionNumber)} • ${it.fsType.ifBlank { "EXT4" }.uppercase()}"
+                        }
+                        destIsInternal = false
+                    } else if (isTargetInternal) {
+                        sourceTitle = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                        sourceSubtitle = selectedPartition?.let {
+                            "${stringResource(R.string.storage_wizard_partition_n, it.partitionNumber)} • ${it.fsType.ifBlank { "EXT4" }.uppercase()}"
+                        }
+                        sourceIsInternal = false
+
+                        destTitle = stringResource(R.string.manage_internal_memory_label)
+                        destSubtitle = null
+                        destIsInternal = true
+                    } else {
+                        sourceTitle = stringResource(R.string.manage_internal_memory_label)
+                        sourceSubtitle = null
+                        sourceIsInternal = true
+
+                        destTitle = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                        destSubtitle = selectedPartition?.let {
+                            "${stringResource(R.string.storage_wizard_partition_n, it.partitionNumber)} • ${it.fsType.ifBlank { "EXT4" }.uppercase()}"
+                        }
+                        destIsInternal = false
+                    }
+
+                    // Compact Migration Route Card
                     Card(
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                text = stringResource(R.string.manage_summary_title),
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Source Block
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (sourceIsInternal) Icons.Default.PhoneAndroid else Icons.Default.SdCard,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.manage_summary_from).uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.6.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = sourceTitle,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (sourceSubtitle != null) {
+                                        Text(
+                                            text = sourceSubtitle,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = CyberEmerald,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
 
-                            SummaryRow(
-                                label = stringResource(R.string.manage_summary_selected_data),
-                                value = "${selectedCategoryIds.size} kategori"
-                            )
-                            SummaryRow(
-                                label = stringResource(R.string.manage_summary_total_size),
-                                value = FormatUtils.formatExactBytes(totalSelectedBytes)
-                            )
-                            SummaryRow(
-                                label = stringResource(R.string.manage_summary_from),
-                                value = if (modalMode == TargetModalMode.DIRECT_MOUNT) {
-                                    stringResource(R.string.manage_internal_memory_label)
-                                } else if (isTargetInternal) {
-                                    val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
-                                    val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
-                                    "$diskName$partName"
-                                } else {
-                                    stringResource(R.string.manage_internal_memory_label)
+                                // Arrow & Payload
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(horizontal = 6.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                                    ) {
+                                        Text(
+                                            text = FormatUtils.formatExactBytes(totalSelectedBytes),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(15.dp)
+                                    )
                                 }
-                            )
-                            SummaryRow(
-                                label = stringResource(R.string.manage_summary_to),
-                                value = if (modalMode == TargetModalMode.DIRECT_MOUNT) {
-                                    val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
-                                    val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
-                                    "$diskName$partName"
-                                } else if (isTargetInternal) {
-                                    stringResource(R.string.manage_internal_memory_label)
-                                } else {
-                                    val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
-                                    val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
-                                    "$diskName$partName"
+
+                                // Destination Block
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.manage_summary_to).uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.6.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                        Icon(
+                                            imageVector = if (destIsInternal) Icons.Default.PhoneAndroid else Icons.Default.SdCard,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = destTitle,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = TextAlign.End
+                                    )
+                                    if (destSubtitle != null) {
+                                        Text(
+                                            text = destSubtitle,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = CyberEmerald,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = TextAlign.End
+                                        )
+                                    }
                                 }
-                            )
+                            }
+
+                            // Footer line with category count
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.manage_summary_selected_data),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "${selectedCategoryIds.size} ${stringResource(R.string.manage_summary_categories_suffix)}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
 
                     // ── STORAGE METHOD SELECTOR (FOR INTERNAL / SYSTEM CATEGORIES) ──
                     if (!isTargetInternal && hasInternalCategories) {
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-                            modifier = Modifier.fillMaxWidth()
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.manage_method_selector_title),
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(R.string.manage_method_selector_subtitle),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            if (!isTargetPosix) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0x1AFFA000),
+                                    border = BorderStroke(0.5.dp, Color(0xFFFFA000).copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        modifier = Modifier.padding(8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Tune,
+                                            imageVector = Icons.Default.Info,
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
+                                            tint = Color(0xFFFFA000),
+                                            modifier = Modifier.size(15.dp)
                                         )
                                         Text(
-                                            text = stringResource(R.string.manage_method_selector_title),
-                                            style = MaterialTheme.typography.titleSmall.copy(
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold
+                                            text = stringResource(
+                                                R.string.manage_method_non_posix_guard_notice,
+                                                targetFsType.ifBlank { "exFAT/FAT32" }.uppercase()
                                             ),
-                                            color = MaterialTheme.colorScheme.primary
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, lineHeight = 13.5.sp),
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
+                                }
+                            }
+
+                            // Single Grouped Container for Options
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    MethodOptionRow(
+                                        title = stringResource(R.string.manage_method_auto_title),
+                                        subtitle = stringResource(R.string.manage_method_auto_desc),
+                                        badge = if (isTargetPosix) stringResource(R.string.manage_method_auto_badge_native)
+                                                else stringResource(R.string.manage_method_auto_badge_container),
+                                        badgeColor = CyberEmerald,
+                                        isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.AUTO,
+                                        isEnabled = true,
+                                        onSelect = {
+                                            defaultMigrationMethod = InternalMigrationMethod.AUTO
+                                            isCustomMethodMode = false
+                                        }
+                                    )
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                    MethodOptionRow(
+                                        title = stringResource(R.string.manage_method_native_title),
+                                        subtitle = stringResource(R.string.manage_method_native_desc),
+                                        badge = stringResource(R.string.manage_method_native_badge),
+                                        badgeColor = if (isTargetPosix) Color(0xFF00ACC1) else Color.Gray,
+                                        isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.NATIVE_FOLDER,
+                                        isEnabled = isTargetPosix,
+                                        onSelect = {
+                                            if (isTargetPosix) {
+                                                defaultMigrationMethod = InternalMigrationMethod.NATIVE_FOLDER
+                                                isCustomMethodMode = false
+                                            }
+                                        }
+                                    )
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                    MethodOptionRow(
+                                        title = stringResource(R.string.manage_method_container_title),
+                                        subtitle = stringResource(R.string.manage_method_container_desc),
+                                        badge = stringResource(R.string.manage_method_container_badge),
+                                        badgeColor = Color(0xFF7E57C2),
+                                        isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.CONTAINER_IMG,
+                                        isEnabled = true,
+                                        onSelect = {
+                                            defaultMigrationMethod = InternalMigrationMethod.CONTAINER_IMG
+                                            isCustomMethodMode = false
+                                        }
+                                    )
+                                }
+                            }
+
+                            if (internalSelectedItems.size > 1) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isCustomMethodMode = !isCustomMethodMode }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Text(
-                                        text = stringResource(R.string.manage_method_selector_subtitle),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        text = stringResource(R.string.manage_method_customize_per_category),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Switch(
+                                        checked = isCustomMethodMode,
+                                        onCheckedChange = { isCustomMethodMode = it }
                                     )
                                 }
 
-                                if (!isTargetPosix) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = Color(0x1AFFA000),
-                                        border = BorderStroke(0.5.dp, Color(0xFFFFA000).copy(alpha = 0.5f)),
-                                        modifier = Modifier.fillMaxWidth()
+                                if (isCustomMethodMode) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(8.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Info,
-                                                contentDescription = null,
-                                                tint = Color(0xFFFFA000),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                text = stringResource(
-                                                    R.string.manage_method_non_posix_guard_notice,
-                                                    targetFsType.ifBlank { "exFAT/FAT32" }.uppercase()
-                                                ),
-                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                    }
-                                }
-
-                                MethodOptionCard(
-                                    title = stringResource(R.string.manage_method_auto_title),
-                                    subtitle = stringResource(R.string.manage_method_auto_desc),
-                                    badge = if (isTargetPosix) stringResource(R.string.manage_method_auto_badge_native)
-                                            else stringResource(R.string.manage_method_auto_badge_container),
-                                    badgeColor = CyberEmerald,
-                                    isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.AUTO,
-                                    isEnabled = true,
-                                    onSelect = {
-                                        defaultMigrationMethod = InternalMigrationMethod.AUTO
-                                        isCustomMethodMode = false
-                                    }
-                                )
-
-                                MethodOptionCard(
-                                    title = stringResource(R.string.manage_method_native_title),
-                                    subtitle = stringResource(R.string.manage_method_native_desc),
-                                    badge = stringResource(R.string.manage_method_native_badge),
-                                    badgeColor = if (isTargetPosix) Color(0xFF00ACC1) else Color.Gray,
-                                    isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.NATIVE_FOLDER,
-                                    isEnabled = isTargetPosix,
-                                    onSelect = {
-                                        if (isTargetPosix) {
-                                            defaultMigrationMethod = InternalMigrationMethod.NATIVE_FOLDER
-                                            isCustomMethodMode = false
-                                        }
-                                    }
-                                )
-
-                                MethodOptionCard(
-                                    title = stringResource(R.string.manage_method_container_title),
-                                    subtitle = stringResource(R.string.manage_method_container_desc),
-                                    badge = stringResource(R.string.manage_method_container_badge),
-                                    badgeColor = Color(0xFF7E57C2),
-                                    isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.CONTAINER_IMG,
-                                    isEnabled = true,
-                                    onSelect = {
-                                        defaultMigrationMethod = InternalMigrationMethod.CONTAINER_IMG
-                                        isCustomMethodMode = false
-                                    }
-                                )
-
-                                if (internalSelectedItems.size > 1) {
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { isCustomMethodMode = !isCustomMethodMode }
-                                            .padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.manage_method_customize_per_category),
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Switch(
-                                            checked = isCustomMethodMode,
-                                            onCheckedChange = { isCustomMethodMode = it }
-                                        )
-                                    }
-
-                                    if (isCustomMethodMode) {
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            internalSelectedItems.forEach { catItem ->
-                                                val currentMethod = categoryMethods[catItem.id] ?: defaultMigrationMethod
-                                                PerCategoryMethodRow(
-                                                    item = catItem,
-                                                    currentMethod = currentMethod,
-                                                    isPosix = isTargetPosix,
-                                                    onMethodSelected = { newMethod ->
-                                                        categoryMethods = categoryMethods.toMutableMap().apply {
-                                                            put(catItem.id, newMethod)
-                                                        }
+                                        internalSelectedItems.forEach { catItem ->
+                                            val currentMethod = categoryMethods[catItem.id] ?: defaultMigrationMethod
+                                            PerCategoryMethodRow(
+                                                item = catItem,
+                                                currentMethod = currentMethod,
+                                                isPosix = isTargetPosix,
+                                                onMethodSelected = { newMethod ->
+                                                    categoryMethods = categoryMethods.toMutableMap().apply {
+                                                        put(catItem.id, newMethod)
                                                     }
-                                                )
-                                            }
+                                                }
+                                            )
                                         }
                                     }
                                 }
+                            }
 
-                                if (selectedItems.any { it.id in listOf("data", "obb", "media") }) {
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.manage_method_external_note),
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, lineHeight = 13.5.sp),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                                        )
-                                    }
-                                }
+                            if (selectedItems.any { it.id in listOf("data", "obb", "media") }) {
+                                Text(
+                                    text = stringResource(R.string.manage_method_external_note),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 9.5.sp,
+                                        lineHeight = 13.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
                             }
                         }
                     }
@@ -5295,7 +5452,7 @@ private fun SmartStoragePartitionBottomSheet(
 }
 
 @Composable
-private fun MethodOptionCard(
+private fun MethodOptionRow(
     title: String,
     subtitle: String,
     badge: String,
@@ -5304,76 +5461,76 @@ private fun MethodOptionCard(
     isEnabled: Boolean,
     onSelect: () -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (!isEnabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                             else if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                             else MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (isSelected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-        ),
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = isEnabled, onClick = onSelect)
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                else Color.Transparent
+            )
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        RadioButton(
+            selected = isSelected,
+            onClick = if (isEnabled) onSelect else null,
+            enabled = isEnabled,
+            modifier = Modifier.size(20.dp)
+        )
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                    ),
+                    color = if (isEnabled) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = badgeColor.copy(alpha = 0.12f),
+                    border = BorderStroke(0.5.dp, badgeColor.copy(alpha = 0.4f))
                 ) {
                     Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontSize = 12.sp,
+                        text = badge,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = if (isEnabled) MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        color = if (isEnabled) badgeColor else Color.Gray,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
                     )
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = badgeColor.copy(alpha = 0.12f),
-                        border = BorderStroke(0.5.dp, badgeColor.copy(alpha = 0.4f))
-                    ) {
-                        Text(
-                            text = badge,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = if (isEnabled) badgeColor else Color.Gray,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-                    }
                 }
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 10.sp,
-                        lineHeight = 13.sp
-                    ),
-                    color = if (isEnabled) MaterialTheme.colorScheme.onSurfaceVariant
-                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                )
             }
-            RadioButton(
-                selected = isSelected,
-                onClick = if (isEnabled) onSelect else null,
-                enabled = isEnabled
+
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp
+                ),
+                color = if (isEnabled) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
