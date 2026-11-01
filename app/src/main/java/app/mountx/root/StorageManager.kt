@@ -1434,11 +1434,13 @@ class StorageManager(
                 for (point in mountPoints) {
                     val ptUserId = MountManager.resolveUserId(point.targetPath)
                     val rel = MountManager.extractRelativePath(point.targetPath)
-                    for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                        RootShell.exec("umount -f -l \"$ns/emulated/$ptUserId/$rel\" 2>/dev/null")
-                        RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                    if (point.isExternalStorageCategory() && rel.isNotBlank()) {
+                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                            RootShell.exec("umount -f -l \"$ns/emulated/$ptUserId/$rel\" 2>/dev/null")
+                            RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                        }
+                        RootShell.exec("umount -f -l \"/data/media/$ptUserId/$rel\" 2>/dev/null")
                     }
-                    RootShell.exec("umount -f -l \"/data/media/$ptUserId/$rel\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"${point.sourcePath}\" 2>/dev/null")
 
@@ -2156,14 +2158,16 @@ class StorageManager(
         val targetPath = point.targetPath
         val pointUserId = MountManager.resolveUserId(targetPath)
         val relPath = MountManager.extractRelativePath(targetPath)
-        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-            RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
-        }
-        RootShell.exec("umount -f -l \"/data/media/$pointUserId/$relPath\" 2>/dev/null")
-        if (pointUserId == 0) {
-            RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
+        if (point.isExternalStorageCategory() && relPath.isNotBlank()) {
+            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
+                RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+            }
+            RootShell.exec("umount -f -l \"/data/media/$pointUserId/$relPath\" 2>/dev/null")
+            if (pointUserId == 0) {
+                RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
+                RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
+            }
         }
         RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
         if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.category == MountPointCategory.CACHE_SHADERS || point.targetPath.startsWith("/data/user/") || point.targetPath.startsWith("/data/data/") || point.isEffectivelyVirtualContainer()) {
@@ -3015,8 +3019,10 @@ class StorageManager(
                             AppLogger.warn("StorageManager", "Target $targetPath is still mounted before TO_INTERNAL! Attempting forced lazy unmount (attempt $retryCount)...")
                             RootShell.exec("sync")
                             RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
-                            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                                RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
+                            if (point.isExternalStorageCategory() && relPath.isNotBlank()) {
+                                for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                                    RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
+                                }
                             }
                             delay(200)
                         }
@@ -3267,13 +3273,15 @@ class StorageManager(
                 // Safety Guard: Unmount target paths across runtime namespaces before migration
                 for (targetPath in listOf(internalData, internalObb)) {
                     val relPath = MountManager.extractRelativePath(targetPath)
-                    for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                        RootShell.exec("umount -f -l \"$ns/emulated/0/$relPath\" 2>/dev/null")
-                        RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                    if (relPath.isNotBlank()) {
+                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                            RootShell.exec("umount -f -l \"$ns/emulated/0/$relPath\" 2>/dev/null")
+                            RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                        }
+                        RootShell.exec("umount -f -l \"/data/media/0/$relPath\" 2>/dev/null")
+                        RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
+                        RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
                     }
-                    RootShell.exec("umount -f -l \"/data/media/0/$relPath\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
                     RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
                 }
 

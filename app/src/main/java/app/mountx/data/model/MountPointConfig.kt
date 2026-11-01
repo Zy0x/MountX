@@ -63,6 +63,25 @@ data class MountPointConfig(
     }
 
     /**
+     * Returns true if this mount point belongs to an external storage category
+     * (/storage/emulated/0, /sdcard, or /data/media) that requires runtime namespace propagation.
+     */
+    fun isExternalStorageCategory(): Boolean {
+        if (isInternalSandboxOrPackageCategory()) return false
+        val cat = resolveCategory()
+        return cat == MountPointCategory.EXTERNAL_DATA ||
+                cat == MountPointCategory.OBB_STORAGE ||
+                cat == MountPointCategory.GAME_ASSETS ||
+                cat == MountPointCategory.MEDIA_DOWNLOADS ||
+                (cat == MountPointCategory.CUSTOM && (
+                    targetPath.startsWith("/storage/") ||
+                    targetPath.startsWith("/sdcard/") ||
+                    targetPath.startsWith("/data/media/") ||
+                    targetPath.contains("/Android/")
+                ))
+    }
+
+    /**
      * Returns true if this APP_PACKAGE mount point specifically targets the native libraries (/lib) folder.
      */
     fun isLibTarget(): Boolean {

@@ -140,7 +140,8 @@ class MountNotificationManager @Inject constructor(
                         enabledPoints.isEmpty() || enabledPoints.any { pt ->
                             val cleanTarget = pt.targetPath.trimEnd('/')
                             val rel = MountManager.extractRelativePath(pt.targetPath).trimEnd('/')
-                            val mountCount = RootShell.execForOutput("grep -cE '($cleanTarget|$rel)' /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
+                            val grepPattern = if (rel.isNotBlank()) "($cleanTarget|$rel)" else cleanTarget
+                            val mountCount = RootShell.execForOutput("grep -cE '$grepPattern' /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
                             mountCount > 0
                         }
                     } else {

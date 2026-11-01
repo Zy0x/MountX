@@ -452,12 +452,17 @@ class MountManager(
 
                     if (requestedDev.isNotBlank() && activeDev != requestedDev && activeUuid != null && requestedUuid != null && activeUuid != requestedUuid) {
                         AppLogger.warn("MountManager", "SWITCHING DISK MOUNT: ${game.packageName} target ${mp.targetPath} is mounted from $activeDev ($activeUuid), switching to $requestedDev ($requestedUuid). Unmounting previous device mount cleanly...")
-                        val relPath = extractRelativePath(mp.targetPath)
-                        val targetUserId = resolveUserId(mp.targetPath)
-                        val userNamespaces = getTargetNamespaces(targetUserId)
-                        for (ns in userNamespaces) {
-                            RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                        if (mp.isExternalStorageCategory()) {
+                            val relPath = extractRelativePath(mp.targetPath)
+                            if (relPath.isNotBlank()) {
+                                val targetUserId = resolveUserId(mp.targetPath)
+                                val userNamespaces = getTargetNamespaces(targetUserId)
+                                for (ns in userNamespaces) {
+                                    RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                                }
+                            }
                         }
+                        RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
                     }
                 }
             }
@@ -885,6 +890,10 @@ class MountManager(
         // Extract relative path from target path across any user profile
         val relPath = extractRelativePath(mp.targetPath)
         val targetUserId = resolveUserId(mp.targetPath)
+        if (relPath.isBlank()) {
+            AppLogger.error("MountManager", "Cannot mount to empty relative path for target: ${mp.targetPath}")
+            return false
+        }
 
         // Clear any preexisting /data/media mount point to prevent sdcardfs EXDEV (Cross-device link) error
         // When /data/media has an active mount on another filesystem, sdcardfs on /storage/emulated
@@ -1214,10 +1223,14 @@ class MountManager(
                             }
                             RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                         } else {
-                            val userNamespaces = getTargetNamespaces(targetUserId)
-                            val relPath = extractRelativePath(mp.targetPath)
-                            for (ns in userNamespaces) {
-                                RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                            if (mp.isExternalStorageCategory()) {
+                                val userNamespaces = getTargetNamespaces(targetUserId)
+                                val relPath = extractRelativePath(mp.targetPath)
+                                if (relPath.isNotBlank()) {
+                                    for (ns in userNamespaces) {
+                                        RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                                    }
+                                }
                             }
                             RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
                         }
@@ -1397,12 +1410,17 @@ class MountManager(
                     }
                     RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                 } else {
-                    val userNamespaces = getTargetNamespaces(targetUserId)
-                    val relPath = extractRelativePath(mp.targetPath)
-                    for (ns in userNamespaces) {
-                        RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                    if (mp.isExternalStorageCategory()) {
+                        val userNamespaces = getTargetNamespaces(targetUserId)
+                        val relPath = extractRelativePath(mp.targetPath)
+                        if (relPath.isNotBlank()) {
+                            for (ns in userNamespaces) {
+                                RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                            }
+                            RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
+                        }
                     }
-                    RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
+                    RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
                     RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                     if (mp.category == MountPointCategory.MEDIA_DOWNLOADS || mp.category == MountPointCategory.CUSTOM) {
                         triggerMediaScan(mp.targetPath)
@@ -1625,8 +1643,12 @@ class MountManager(
             for (mp in game.mountPoints) {
                 if (mp.targetPath.isNotBlank()) {
                     checkPaths.add("${mp.targetPath}/.mountx_canary")
-                    val rel = extractRelativePath(mp.targetPath)
-                    checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                    if (mp.isExternalStorageCategory()) {
+                        val rel = extractRelativePath(mp.targetPath)
+                        if (rel.isNotBlank()) {
+                            checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                        }
+                    }
                 }
             }
             pathsByGame[pkg] = checkPaths
@@ -1652,8 +1674,12 @@ class MountManager(
             for (mp in appEntry.mountPoints) {
                 if (mp.targetPath.isNotBlank()) {
                     checkPaths.add("${mp.targetPath}/.mountx_canary")
-                    val rel = extractRelativePath(mp.targetPath)
-                    checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                    if (mp.isExternalStorageCategory()) {
+                        val rel = extractRelativePath(mp.targetPath)
+                        if (rel.isNotBlank()) {
+                            checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                        }
+                    }
                 }
             }
         }

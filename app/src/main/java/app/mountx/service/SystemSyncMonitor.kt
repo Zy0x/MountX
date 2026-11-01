@@ -245,10 +245,13 @@ class SystemSyncMonitor @Inject constructor(
                                     enabledPoints.isEmpty() || enabledPoints.any { pt ->
                                         val cleanTarget = pt.targetPath.trimEnd('/')
                                         val rel = MountManager.extractRelativePath(pt.targetPath).trimEnd('/')
+                                        val isInternal = pt.isInternalSandboxOrPackageCategory()
                                         RootShell.isMountpoint(cleanTarget) ||
-                                                RootShell.isMountpoint("/storage/emulated/0/$rel") ||
-                                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel") ||
-                                                RootShell.isMountpoint("/data/media/0/$rel")
+                                                (!isInternal && rel.isNotBlank() && (
+                                                    RootShell.isMountpoint("/storage/emulated/0/$rel") ||
+                                                    RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel") ||
+                                                    RootShell.isMountpoint("/data/media/0/$rel")
+                                                ))
                                     }
                                 } else {
                                     val sampleTarget = when (sampleGame.mode) {
