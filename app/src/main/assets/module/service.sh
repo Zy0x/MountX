@@ -453,14 +453,17 @@ bind_mount_to_runtime_namespaces() {
     fi
     [ -z "${app_uid}" ] && app_uid=10000
 
-    # Extract relative path from dst across any user profile
+    # Extract relative path from dst across any user profile (ONLY for external storage!)
     local rel=""
     case "${dst}" in
-        */Android/*)
+        */Android/data/*|*/Android/obb/*|*/Android/media/*)
             rel="Android/"$(echo "${dst}" | sed 's|.*/Android/||')
             ;;
+        /sdcard/*|/storage/emulated/*|/data/media/*|/mnt/user/*)
+            rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||')
+            ;;
         *)
-            rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||;s|^/||')
+            rel=""
             ;;
     esac
 
@@ -736,24 +739,44 @@ load_mountpoints() {
             live_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed -n 's/^package://p' | tr -d '\r')
             if [ -n "${live_apk_path}" ]; then
                 live_apk_dir=$(dirname "${live_apk_path}")
-                if [ -n "${live_apk_dir}" ] && [ "${live_apk_dir}" != "${dst}" ]; then
-                    log_warn "  [${pkg}] APP_PACKAGE relocated by system update: ${dst} -> ${live_apk_dir}"
-                    if mountpoint -q "${dst}" 2>/dev/null; then
-                        umount -f -l "${dst}" 2>/dev/null
-                    fi
-                    dst="${live_apk_dir}"
+                if [ -n "${live_apk_dir}" ]; then
+                    case "${dst}" in
+                        */lib/*|*/lib)
+                            lib_sub=$(echo "${dst}" | sed 's|.*/lib|lib|')
+                            new_dst="${live_apk_dir}/${lib_sub}"
+                            if [ "${new_dst}" != "${dst}" ]; then
+                                log_warn "  [${pkg}] APP_PACKAGE (lib) relocated: ${dst} -> ${new_dst}"
+                                if mountpoint -q "${dst}" 2>/dev/null; then
+                                    umount -f -l "${dst}" 2>/dev/null
+                                fi
+                                dst="${new_dst}"
+                            fi
+                            ;;
+                        *)
+                            if [ "${live_apk_dir}" != "${dst}" ]; then
+                                log_warn "  [${pkg}] APP_PACKAGE relocated by system update: ${dst} -> ${live_apk_dir}"
+                                if mountpoint -q "${dst}" 2>/dev/null; then
+                                    umount -f -l "${dst}" 2>/dev/null
+                                fi
+                                dst="${live_apk_dir}"
+                            fi
+                            ;;
+                    esac
                 fi
             fi
         fi
 
-        # Extract relative path to inspect user-facing runtime namespace
+        # Extract relative path to inspect user-facing runtime namespace (ONLY for external storage!)
         local rel=""
         case "${dst}" in
-            */Android/*)
+            */Android/data/*|*/Android/obb/*|*/Android/media/*)
                 rel="Android/"$(echo "${dst}" | sed 's|.*/Android/||')
                 ;;
+            /sdcard/*|/storage/emulated/*|/data/media/*|/mnt/user/*)
+                rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||')
+                ;;
             *)
-                rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||;s|^/||')
+                rel=""
                 ;;
         esac
 
@@ -996,9 +1019,14 @@ load_mountpoints() {
                         dst="${real_apk_dir}"
                     fi
                 fi
+                if grep -qF " ${dst} " /proc/mounts 2>/dev/null || mountpoint -q "${dst}" 2>/dev/null; then
+                    log_info "  [${pkg}] App package target ${dst} already mounted, skipping duplicate bind."
+                    entries=$((entries + 1))
+                    continue
+                fi
                 mkdir -p "${dst}" 2>/dev/null
                 mount -o bind "${src}" "${dst}" 2>/dev/null
-                mount --make-shared "${dst}" 2>/dev/null
+                busybox mount --make-shared "${dst}" 2>/dev/null || mount --make-shared "${dst}" 2>/dev/null
                 chown -R 1000:1000 "${dst}" 2>/dev/null
                 chmod -R 755 "${dst}" 2>/dev/null
                 chcon -R u:object_r:apk_data_file:s0 "${dst}" 2>/dev/null
@@ -1431,10 +1459,15 @@ mount_watchdog() {
     local canary_dst=""
     local canary_pkg=""
     if [ -f "${MOUNTPOINTS_FILE}" ]; then
-        local first_line
-        first_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
-        canary_dst=$(echo "${first_line}" | cut -d'|' -f4)
-        canary_pkg=$(echo "${first_line}" | cut -d'|' -f1)
+        # CRITICAL: Canary MUST ONLY be an external storage entry (EXTERNAL_DATA, OBB_STORAGE, MEDIA_DOWNLOADS)
+        # or path containing /Android/data, /Android/obb, /Android/media.
+        # NEVER pick PRIVATE_INTERNAL, CACHE_SHADERS, or APP_PACKAGE because they NEVER exist in /mnt/runtime!
+        local canary_line
+        canary_line=$(grep -E '\|(EXTERNAL_DATA|OBB_STORAGE|MEDIA_DOWNLOADS)\|' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
+        if [ -n "${canary_line}" ]; then
+            canary_dst=$(echo "${canary_line}" | cut -d'|' -f4)
+            canary_pkg=$(echo "${canary_line}" | cut -d'|' -f1)
+        fi
     fi
 
     log_info "[Watchdog] Using sliced sleep loop (5s slice, ${CHECK_INTERVAL}s health check, canary=${canary_pkg:-none})."
@@ -1486,10 +1519,15 @@ mount_watchdog() {
             check_mounts
             # Refresh canary target from mountpoints.conf
             if [ -f "${MOUNTPOINTS_FILE}" ]; then
-                local first_line
-                first_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
-                canary_dst=$(echo "${first_line}" | cut -d'|' -f4)
-                canary_pkg=$(echo "${first_line}" | cut -d'|' -f1)
+                local canary_line
+                canary_line=$(grep -E '\|(EXTERNAL_DATA|OBB_STORAGE|MEDIA_DOWNLOADS)\|' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
+                if [ -n "${canary_line}" ]; then
+                    canary_dst=$(echo "${canary_line}" | cut -d'|' -f4)
+                    canary_pkg=$(echo "${canary_line}" | cut -d'|' -f1)
+                else
+                    canary_dst=""
+                    canary_pkg=""
+                fi
             fi
         fi
     done

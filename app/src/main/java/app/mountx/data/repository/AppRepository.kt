@@ -671,6 +671,7 @@ class AppRepository @Inject constructor(
             }
 
             // Deduplicate enabled mount points by targetPath (prevent multi-disk collisions & double bind)
+            // and omit redundant /lib subpath mounts when full APK package root is already mounted
             val distinctEnabledPoints = updatedPoints.filter { it.enabled }
                 .sortedWith(
                     compareByDescending<MountPointConfig> { !it.id.startsWith("legacy_") || it.diskUuid != null }
@@ -678,6 +679,17 @@ class AppRepository @Inject constructor(
                         .thenByDescending { it.sizeBytes }
                 )
                 .distinctBy { it.targetPath.trimEnd('/') }
+                .filter { mp ->
+                    if (mp.isLibTarget()) {
+                        !updatedPoints.any { other ->
+                            other.enabled && other.id != mp.id &&
+                            (other.category == MountPointCategory.APP_PACKAGE || other.targetPath.startsWith("/data/app")) &&
+                            !other.isLibTarget()
+                        }
+                    } else {
+                        true
+                    }
+                }
 
             for (mp in distinctEnabledPoints) {
                 val pkg = g.packageName
