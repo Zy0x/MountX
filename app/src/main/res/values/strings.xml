@@ -453,6 +453,10 @@
     <string name="logs_diagnostic_report_copied">Diagnostic report copied to clipboard!</string>
     <string name="logs_daemon_healthy">Daemon Healthy</string>
     <string name="logs_daemon_error">Daemon Issues Detected</string>
+    <string name="logs_save_log">Save Log</string>
+    <string name="logs_saved_success">Log saved: %1$s</string>
+    <string name="logs_action_open">Open</string>
+    <string name="logs_save_failed">Failed to save log</string>
     <string name="app_detail_health_title">Mount &amp; System Health</string>
     <string name="app_detail_health_healthy">All storage categories active &amp; synchronized</string>
     <string name="app_detail_health_anomaly">Anomaly detected: %1$s</string>

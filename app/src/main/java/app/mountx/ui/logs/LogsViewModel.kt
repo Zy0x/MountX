@@ -4,12 +4,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.mountx.R
 import app.mountx.data.diagnostics.DiagnosticManager
 import app.mountx.root.RootShell
+import app.mountx.util.AppLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -143,6 +146,59 @@ class LogsViewModel @Inject constructor(
                 _isGeneratingReport.value = false
             }
         }
+    }
+
+    fun saveLogToUri(uri: Uri, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            _isGeneratingReport.value = true
+            try {
+                val content = withContext(Dispatchers.IO) {
+                    val diagnosticHeader = diagnosticManager.generateSystemDiagnosticReport()
+                    val rawLogs = _logLines.value.joinToString("\n") { it.rawText }
+                    buildString {
+                        append(diagnosticHeader)
+                        append("\n\n")
+                        append("═".repeat(64))
+                        append("\nMOUNTX SYSTEM LOG STREAM\n")
+                        append("═".repeat(64))
+                        append("\n\n")
+                        append(rawLogs)
+                    }
+                }
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { os ->
+                        os.write(content.toByteArray(Charsets.UTF_8))
+                        os.flush()
+                    } ?: throw IllegalStateException("Could not open stream for $uri")
+                }
+                val fileName = resolveFileNameFromUri(uri)
+                withContext(Dispatchers.Main) {
+                    onSuccess(fileName)
+                }
+            } catch (e: Exception) {
+                AppLogger.error("LogsVM", "Failed to save log to URI: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    onError(e.message ?: "Failed to save")
+                }
+            } finally {
+                _isGeneratingReport.value = false
+            }
+        }
+    }
+
+    private fun resolveFileNameFromUri(uri: Uri): String {
+        return runCatching {
+            var name: String? = null
+            if (uri.scheme == "content") {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1 && cursor.moveToFirst()) {
+                        name = cursor.getString(nameIndex)
+                    }
+                }
+            }
+            name ?: uri.lastPathSegment ?: "mountx_log.log"
+        }.getOrDefault("mountx_log.log")
     }
 
     fun startTailing() {

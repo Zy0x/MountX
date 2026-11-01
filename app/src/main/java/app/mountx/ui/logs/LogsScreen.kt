@@ -1,5 +1,8 @@
 package app.mountx.ui.logs
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -18,10 +21,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -39,8 +42,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import app.mountx.R
 import app.mountx.ui.components.CompactScreenHeader
+import kotlinx.coroutines.launch
 import app.mountx.ui.theme.adaptiveAmber
 import app.mountx.ui.theme.adaptiveAmberContainer
 import app.mountx.ui.theme.adaptiveCrimson
@@ -152,6 +159,45 @@ fun LogsScreen(
     val isGeneratingReport by viewModel.isGeneratingReport.collectAsState()
 
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val saveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.saveLogToUri(
+                uri = uri,
+                onSuccess = { fileName ->
+                    coroutineScope.launch {
+                        val result = snackbarHostState.showSnackbar(
+                            message = context.getString(R.string.logs_saved_success, fileName),
+                            actionLabel = context.getString(R.string.logs_action_open),
+                            duration = SnackbarDuration.Short
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            runCatching {
+                                val openIntent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, "text/plain")
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(openIntent)
+                            }
+                        }
+                    }
+                },
+                onError = {
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = context.getString(R.string.logs_save_failed),
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+            )
+        }
+    }
 
     DisposableEffect(Unit) {
         viewModel.startTailing()
@@ -191,9 +237,12 @@ fun LogsScreen(
                 title = stringResource(R.string.logs_title),
                 subtitle = "${allLines.size} entries • Live Stream",
                 actions = {
-                    // Copy Diagnostic Report Action
+                    // Unified Modern Save Log Button (SAF Document Creation)
                     IconButton(
-                        onClick = { viewModel.copyDiagnosticReport() },
+                        onClick = {
+                            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                            saveLauncher.launch("mountx_log_$timestamp.log")
+                        },
                         enabled = !isGeneratingReport,
                         modifier = Modifier.size(32.dp)
                     ) {
@@ -205,23 +254,12 @@ fun LogsScreen(
                             )
                         } else {
                             Icon(
-                                imageVector = Icons.Default.Assessment,
-                                contentDescription = stringResource(R.string.logs_diagnostic_report),
+                                imageVector = Icons.Default.FileDownload,
+                                contentDescription = stringResource(R.string.logs_save_log),
                                 tint = adaptiveCyan(),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
-                    }
-                    IconButton(
-                        onClick = { viewModel.shareLog() },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Share,
-                            contentDescription = stringResource(R.string.logs_share),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
                     }
                     IconButton(
                         onClick = { viewModel.clearLog() },
@@ -252,6 +290,20 @@ fun LogsScreen(
                     }
                 }
             )
+        },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    actionColor = adaptiveCyan(),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier

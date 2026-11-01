@@ -438,6 +438,10 @@
     <string name="logs_diagnostic_report_copied">Laporan diagnostik berhasil disalin ke papan klip!</string>
     <string name="logs_daemon_healthy">Daemon Sehat</string>
     <string name="logs_daemon_error">Masalah Daemon Terdeteksi</string>
+    <string name="logs_save_log">Simpan Log</string>
+    <string name="logs_saved_success">Log berhasil disimpan: %1$s</string>
+    <string name="logs_action_open">Buka</string>
+    <string name="logs_save_failed">Gagal menyimpan log</string>
     <string name="app_detail_health_title">Kesehatan Mount &amp; Sistem</string>
     <string name="app_detail_health_healthy">Semua kategori penyimpanan aktif &amp; tersinkronisasi</string>
     <string name="app_detail_health_anomaly">Anomali terdeteksi: %1$s</string>
