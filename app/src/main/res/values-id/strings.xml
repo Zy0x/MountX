@@ -64,6 +64,7 @@
     <string name="dashboard_internal_storage">Penyimpanan Internal</string>
     <string name="dashboard_games_offloaded_format">%1$d aplikasi dialihkan · %2$s dihemat</string>
     <string name="dashboard_free_suffix">%1$s bebas</string>
+    <string name="dashboard_free_of_total_format">%1$s / %2$s bebas</string>
     <string name="dashboard_active_count_format">%1$d / %2$d Aktif</string>
     <string name="dashboard_mounted_count_format">%1$d / %2$d Terpasang</string>
 
@@ -1159,6 +1160,7 @@
     <string name="dashboard_disk_detached_hero_desc">Kartu MicroSD tidak terdeteksi. Aplikasi tidak dapat mengakses data yang dialihkan secara aman.</string>
     <string name="dashboard_disk_detached_badge">Penyimpanan Terputus</string>
     <string name="dashboard_disk_detached_action_rescan">Pindai Ulang</string>
+    <string name="dashboard_check_root_action">Periksa Root</string>
 
     <!-- App Update System & Dialog -->
     <string name="update_dialog_title">Pembaruan Aplikasi</string>

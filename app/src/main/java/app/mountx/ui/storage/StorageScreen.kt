@@ -187,6 +187,19 @@ fun StorageScreen(
     var showFormatDialog by remember { mutableStateOf(false) }
     var showRepartitionFinalConfirm by remember { mutableStateOf(false) }
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.detectPartitions(force = true)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.detectPartitions(force = false)
     }
@@ -1276,8 +1289,13 @@ private fun InternalDiskVisualMapCard(
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
+                    val typeTitle = if (internalStorage.storageType.isNotBlank() && internalStorage.storageType != "Internal") {
+                        "Internal Storage (${internalStorage.storageType})"
+                    } else {
+                        stringResource(R.string.storage_internal_partition_name)
+                    }
                     Text(
-                        text = stringResource(R.string.storage_internal_partition_name),
+                        text = typeTitle,
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
@@ -1287,8 +1305,10 @@ private fun InternalDiskVisualMapCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
+                    val chipPart = if (internalStorage.chipName.isNotBlank()) "${internalStorage.chipName} • " else ""
+                    val physPart = if (internalStorage.physicalTotalBytes > 0) " (${app.mountx.util.FormatUtils.formatBytes(internalStorage.physicalTotalBytes)})" else ""
                     Text(
-                        text = "/data • F2FS",
+                        text = "${chipPart}/data • ${internalStorage.filesystem}$physPart",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace

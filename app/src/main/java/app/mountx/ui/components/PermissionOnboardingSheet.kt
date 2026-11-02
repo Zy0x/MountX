@@ -207,7 +207,12 @@ fun PermissionOnboardingSheet(
                 isGranted = permState.isBatteryExempted,
                 isEssential = false,
                 onGrantClick = {
-                    PermissionManager.requestBatteryOptimizationExemption(context)
+                    coroutineScope.launch {
+                        withContext(Dispatchers.IO) {
+                            PermissionManager.requestBatteryOptimizationExemption(context)
+                        }
+                        permState = PermissionManager.checkAllPermissions(context)
+                    }
                 }
             )
 

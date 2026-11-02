@@ -67,6 +67,7 @@
     <string name="dashboard_internal_storage">Internal Storage</string>
     <string name="dashboard_games_offloaded_format">%1$d apps offloaded · %2$s freed</string>
     <string name="dashboard_free_suffix">%1$s free</string>
+    <string name="dashboard_free_of_total_format">%1$s / %2$s free</string>
     <string name="dashboard_active_count_format">%1$d / %2$d Active</string>
     <string name="dashboard_mounted_count_format">%1$d / %2$d Mounted</string>
 
@@ -1175,6 +1176,7 @@
     <string name="dashboard_disk_detached_hero_desc">MicroSD card is missing or not detected. Apps cannot safely access bound data.</string>
     <string name="dashboard_disk_detached_badge">Storage Disconnected</string>
     <string name="dashboard_disk_detached_action_rescan">Rescan Storage</string>
+    <string name="dashboard_check_root_action">Check Root</string>
 
     <!-- App Update System & Dialog -->
     <string name="update_dialog_title">Software Update</string>

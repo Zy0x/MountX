@@ -107,8 +107,40 @@ class StorageManager(
         }
     }
 
-    private data class HwDiskCache(val manfid: String, val model: String, val vendor: String, val sizeSectors: Long)
+    private data class HwDiskCache(val manfid: String, val model: String, val vendor: String, val sizeSectors: Long, val type: String = "")
     private val diskHardwareCache = java.util.concurrent.ConcurrentHashMap<String, HwDiskCache>()
+
+    private fun isInternalMmc(
+        diskName: String,
+        hw: HwDiskCache,
+        sysfsDisks: Map<String, HwDiskCache>,
+        procPartitions: List<RawProcPart>,
+        allMounts: List<RawMount>
+    ): Boolean {
+        if (!diskName.startsWith("mmcblk")) return false
+
+        // 1. Sysfs device type check (Linux MMC subsystem standard: MMC = eMMC, SD = MicroSD/SD)
+        if (hw.type.equals("MMC", ignoreCase = true)) return true
+        if (hw.type.equals("SD", ignoreCase = true)) return false
+
+        // 2. Multi-MMC devices check:
+        // On devices with eMMC internal storage (e.g. Redmi Note 7), internal flash is always mmcblk0,
+        // and external MicroSD is mmcblk1 (or higher).
+        val hasMultipleMmc = sysfsDisks.keys.count { it.startsWith("mmcblk") } > 1 ||
+            procPartitions.map { it.name.substringBeforeLast("p") }.distinct().count { it.startsWith("mmcblk") } > 1
+
+        if (hasMultipleMmc) {
+            return diskName == "mmcblk0"
+        }
+
+        // 3. For single mmcblk0 where type was not readable in sysfs:
+        // Check if critical Android OS partitions (/data, /system, /vendor, /metadata) are mounted on this disk.
+        val hasAndroidSystemMount = allMounts.any { m ->
+            (m.spec.startsWith("/dev/block/$diskName") || m.spec.contains(diskName)) &&
+            (m.file == "/data" || m.file == "/system" || m.file == "/vendor" || m.file == "/metadata")
+        }
+        return hasAndroidSystemMount
+    }
 
     private var cachedSupportedFilesystems: List<SupportedFilesystemInfo>? = null
 
@@ -163,18 +195,16 @@ class StorageManager(
 
     suspend fun getInternalStorageInfo(): InternalStorageInfo? = withContext(Dispatchers.IO) {
         val emulatedMounted = isEmulatedStorageMounted()
+        var totalBytes = 0L
+        var freeBytes = 0L
+        var usedBytes = 0L
+
         try {
             val stat = android.os.StatFs("/data")
             val blockSize = stat.blockSizeLong
-            val totalBytes = stat.blockCountLong * blockSize
-            val freeBytes = stat.availableBlocksLong * blockSize
-            val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
-            InternalStorageInfo(
-                totalBytes = totalBytes,
-                usedBytes = usedBytes,
-                freeBytes = freeBytes,
-                isEmulatedMounted = emulatedMounted
-            )
+            totalBytes = stat.blockCountLong * blockSize
+            freeBytes = stat.availableBlocksLong * blockSize
+            usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
         } catch (_: Exception) {
             val statRes = RootShell.exec("stat -f -c %s:%b:%a /data 2>/dev/null")
             val parts = statRes.output.trim().split(":")
@@ -182,19 +212,57 @@ class StorageManager(
                 val bs = parts[0].toLongOrNull() ?: 0L
                 val blocks = parts[1].toLongOrNull() ?: 0L
                 val avail = parts[2].toLongOrNull() ?: 0L
-                val totalBytes = blocks * bs
-                val freeBytes = avail * bs
-                val usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
-                InternalStorageInfo(
-                    totalBytes = totalBytes,
-                    usedBytes = usedBytes,
-                    freeBytes = freeBytes,
-                    isEmulatedMounted = emulatedMounted
-                )
-            } else {
-                null
+                totalBytes = blocks * bs
+                freeBytes = avail * bs
+                usedBytes = (totalBytes - freeBytes).coerceAtLeast(0L)
             }
         }
+
+        if (totalBytes <= 0L) return@withContext null
+
+        var storageType = "Internal"
+        var chipName = ""
+        var physicalTotalBytes = 0L
+        var filesystem = "F2FS"
+
+        try {
+            val mountsRes = RootShell.exec("grep ' /data ' /proc/mounts 2>/dev/null")
+            val line = mountsRes.stdout.firstOrNull { it.contains(" /data ") }
+            if (line != null) {
+                val parts = line.trim().split(Regex("\\s+"))
+                if (parts.size >= 3) {
+                    val dev = parts[0]
+                    filesystem = parts[2].uppercase()
+                    if (dev.contains("mmcblk")) {
+                        storageType = "eMMC"
+                        val disk = "mmcblk0"
+                        val hw = diskHardwareCache[disk] ?: run {
+                            val nm = RootShell.exec("cat /sys/block/$disk/device/name 2>/dev/null").output.trim()
+                            val sz = RootShell.exec("cat /sys/block/$disk/size 2>/dev/null").output.trim().toLongOrNull() ?: 0L
+                            HwDiskCache("", nm, "", sz, "MMC")
+                        }
+                        chipName = hw.model
+                        physicalTotalBytes = if (hw.sizeSectors > 0) hw.sizeSectors * 512L else totalBytes
+                    } else if (dev.contains("/sd") || dev.contains("/ufs") || dev.contains("dm-")) {
+                        storageType = "UFS"
+                        val hw = diskHardwareCache["sda"]
+                        chipName = hw?.model ?: ""
+                        physicalTotalBytes = if ((hw?.sizeSectors ?: 0L) > 0) (hw?.sizeSectors ?: 0L) * 512L else totalBytes
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        InternalStorageInfo(
+            totalBytes = totalBytes,
+            usedBytes = usedBytes,
+            freeBytes = freeBytes,
+            isEmulatedMounted = emulatedMounted,
+            storageType = storageType,
+            chipName = chipName,
+            physicalTotalBytes = physicalTotalBytes,
+            filesystem = filesystem
+        )
     }
 
     /**
@@ -404,7 +472,8 @@ class StorageManager(
               md=${'$'}(cat "${'$'}d/device/model" 2>/dev/null)
               vd=${'$'}(cat "${'$'}d/device/vendor" 2>/dev/null)
               sz=${'$'}(cat "${'$'}d/size" 2>/dev/null)
-              echo "DISK|${'$'}name|${'$'}mf|${'$'}nm|${'$'}md|${'$'}vd|${'$'}sz"
+              tp=${'$'}(cat "${'$'}d/device/type" 2>/dev/null)
+              echo "DISK|${'$'}name|${'$'}mf|${'$'}nm|${'$'}md|${'$'}vd|${'$'}sz|${'$'}tp"
             done
         """.trimIndent()
 
@@ -519,8 +588,9 @@ class StorageManager(
                                 val model = tokens[4].trim()
                                 val vendor = tokens[5].trim()
                                 val sizeSectors = tokens[6].trim().toLongOrNull() ?: 0L
+                                val devType = if (tokens.size >= 8) tokens[7].trim() else ""
                                 val diskModel = if (name.isNotBlank()) name else model
-                                val hwCache = HwDiskCache(manfid, diskModel, vendor, sizeSectors)
+                                val hwCache = HwDiskCache(manfid, diskModel, vendor, sizeSectors, devType)
                                 sysfsDisks[diskName] = hwCache
                                 diskHardwareCache[diskName] = hwCache
                             }
@@ -676,10 +746,19 @@ class StorageManager(
                     ?: ""
             }
 
-            // Removability Check
+            // Removability Check & Internal eMMC Exclusion
+            val hw = sysfsDisks[diskName] ?: diskHardwareCache[diskName] ?: HwDiskCache("", "", "", 0L)
+            val isMmcInternal = isInternalMmc(diskName, hw, sysfsDisks, rawList, allMounts)
+            val isExternalMmc = isMmcPartition && !isMmcInternal
+
+            // Strictly reject internal fixed eMMC partitions (unless target mount)
+            if (isMmcInternal && !isTargetMount) {
+                continue
+            }
+
             val hasVoldNode = voldMajorComma.isNotBlank() && allMounts.any { it.spec.contains("public:$voldMajorComma") }
             val isKnownPublic = smPublicVolumes.containsKey(majorMinor) || (!uuid.isNullOrBlank() && smPublicVolumes.containsKey(uuid))
-            val isRemovable = isMmcPartition ||
+            val isRemovable = isExternalMmc ||
                 removableDisks.contains(diskName) ||
                 usbDisks.contains(diskName) ||
                 isTargetMount ||
@@ -687,7 +766,7 @@ class StorageManager(
                 hasVoldNode ||
                 isKnownPublic
 
-            if (!isMmcPartition && !isRemovable && !isTargetMount) {
+            if (!isRemovable && !isTargetMount) {
                 continue
             }
 
@@ -765,9 +844,6 @@ class StorageManager(
         for (smMount in externalStorageMounts) {
             val mntPath = smMount.file
             val mntUuid = mntPath.substringAfterLast("/")
-            if (partitionItems.any { it.mountPoint == mntPath || (it.uuid != null && it.uuid.equals(mntUuid, ignoreCase = true)) }) {
-                continue
-            }
 
             val voldMount = allMounts.firstOrNull { it.file.contains(mntUuid) && it.spec.contains("public:") }
             val majorMinor = voldMount?.spec?.substringAfter("public:")?.replace(',', ':') ?: ""
@@ -785,6 +861,26 @@ class StorageManager(
             if (devName.startsWith("loop") || devName.startsWith("dm-") || devName.startsWith("ram") || devName.contains(".")) {
                 continue
             }
+            val devPath = devPathCandidate
+
+            // Check if this physical partition or mount is already known
+            val existing = partitionItems.firstOrNull {
+                it.path == devPath ||
+                it.name == devName ||
+                it.mountPoint == mntPath ||
+                (!it.uuid.isNullOrBlank() && it.uuid.equals(mntUuid, ignoreCase = true)) ||
+                (!it.mountPoint.isNullOrBlank() && it.mountPoint.endsWith(mntUuid))
+            }
+            if (existing != null) {
+                // If the existing partition had a lower-tier mount point (like /mnt/media_rw/), upgrade it to user-facing /storage/ path
+                if (existing.mountPoint == null || existing.mountPoint.startsWith("/mnt/media_rw")) {
+                    val idx = partitionItems.indexOf(existing)
+                    if (idx >= 0) {
+                        partitionItems[idx] = existing.copy(mountPoint = mntPath, uuid = existing.uuid ?: mntUuid)
+                    }
+                }
+                continue
+            }
 
             val diskName = when {
                 devName.startsWith("sd") -> devName.filter { it.isLetter() }
@@ -792,8 +888,11 @@ class StorageManager(
                 devName.startsWith("nvme") -> devName.substringBeforeLast("p")
                 else -> devName
             }
-            val partNum = devName.filter { it.isDigit() }.toIntOrNull() ?: 1
-            val devPath = devPathCandidate
+            val partNum = when {
+                devName.contains("p") -> devName.substringAfterLast("p").toIntOrNull() ?: 1
+                devName.startsWith("sd") -> devName.filter { it.isDigit() }.toIntOrNull() ?: 1
+                else -> 1
+            }
 
             val fsType = blkidMap[devPath]?.first ?: blkidMap[devName]?.first ?: smMount.vfstype
             val label = blkidMap[devPath]?.second ?: blkidMap[devName]?.second
@@ -831,7 +930,8 @@ class StorageManager(
             )
         }
 
-        val sortedPartitions = partitionItems.sortedWith(
+        val distinctPartitions = partitionItems.distinctBy { it.path }
+        val sortedPartitions = distinctPartitions.sortedWith(
             compareByDescending<PartitionInfo> { it.isTargetMount }
                 .thenByDescending { it.isMountTargetReady }
                 .thenBy { it.name }
@@ -862,17 +962,24 @@ class StorageManager(
             val isRemovable = removableDisks.contains(candidateDisk)
             val diskPartitions = sortedPartitions.filter { it.diskName == candidateDisk }
 
-            // Strictly reject internal fixed flash storage (such as UFS LUNs sda, sdb, sdc, sdd or motherboard NVMe)
-            // A genuine external disk must either be MMC (MicroSD), connected over USB, flagged removable by the kernel,
-            // or contain verified external/target partitions.
-            if (!isMmc && !isUsb && !isRemovable && diskPartitions.isEmpty()) {
+            val hw = sysfsDisks[candidateDisk] ?: diskHardwareCache[candidateDisk] ?: HwDiskCache("", "", "", 0L)
+            val isMmcInternal = isInternalMmc(candidateDisk, hw, sysfsDisks, rawList, allMounts)
+            val isExternalMmc = isMmc && !isMmcInternal
+
+            // Strictly reject internal fixed flash storage:
+            // 1. Any eMMC internal chip (mmcblk0 with type=MMC or holding system mounts)
+            if (isMmcInternal && !diskPartitions.any { it.isTargetMount }) {
+                continue
+            }
+
+            // 2. Fixed UFS LUNs (sda, sdb, sdc, sdd) or motherboard NVMe without target/removable partitions
+            if (!isExternalMmc && !isRemovable && !isUsb && diskPartitions.isEmpty()) {
                 continue
             }
 
             val diskPath = "/dev/block/$candidateDisk"
             val diskType = if (isMmc) DiskType.MICRO_SD else DiskType.USB_OTG
 
-            val hw = sysfsDisks[candidateDisk] ?: diskHardwareCache[candidateDisk] ?: HwDiskCache("", "", "", 0L)
             val manfid = hw.manfid
             val model = hw.model
             val vendor = hw.vendor
@@ -1197,24 +1304,16 @@ class StorageManager(
             }
 
             if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
-                // 2. Direct blkid probe for f2fs partition on mmcblk
-                val f2fsBlkid = RootShell.execForOutput("blkid /dev/block/mmcblk* 2>/dev/null | grep 'TYPE=\"f2fs\"' | head -n 1 | cut -d: -f1").trim()
-                if (f2fsBlkid.isNotBlank() && RootShell.exists(f2fsBlkid)) {
-                    targetDev = f2fsBlkid
-                }
-            }
-
-            if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
                 val partitions = detectPartitions(mountPoint)
-                // 3. Look for unmounted F2FS partition (avoid picking vold-mounted ext4 mmcblk0p1)
+                // 2. Look for unmounted F2FS partition on external storage
                 val unmountedF2fs = partitions.firstOrNull { p ->
                     p.mountPoint.isNullOrBlank() && p.fsType.equals("f2fs", ignoreCase = true) && RootShell.exists(p.path)
                 }
-                // 4. Look for unmounted partition on mmcblk (preferring larger capacity)
+                // 3. Look for unmounted partition on external media (preferring larger capacity)
                 val unmountedMmc = partitions.filter { p ->
-                    p.mountPoint.isNullOrBlank() && p.path.contains("mmcblk") && RootShell.exists(p.path)
+                    p.mountPoint.isNullOrBlank() && RootShell.exists(p.path)
                 }.maxByOrNull { it.sizeBytes }
-                // 5. Look for unmounted ext4 partition
+                // 4. Look for unmounted ext4 partition
                 val unmountedExt4 = partitions.firstOrNull { p ->
                     p.mountPoint.isNullOrBlank() && p.fsType.equals("ext4", ignoreCase = true) && RootShell.exists(p.path)
                 }
@@ -1222,7 +1321,6 @@ class StorageManager(
                 val candidate = unmountedF2fs
                     ?: unmountedMmc
                     ?: unmountedExt4
-                    ?: partitions.firstOrNull { it.path.contains("mmcblk0p3") && RootShell.exists(it.path) }
                     ?: partitions.firstOrNull { it.isTargetMount }
                     ?: partitions.firstOrNull { it.mountPoint == mountPoint }
                     ?: partitions.firstOrNull { (it.fsType.equals("f2fs", ignoreCase = true) || it.fsType.equals("ext4", ignoreCase = true)) && RootShell.exists(it.path) }

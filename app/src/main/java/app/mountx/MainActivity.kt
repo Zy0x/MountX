@@ -76,6 +76,13 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { _ -> }
 
+    override fun onResume() {
+        super.onResume()
+        // When app returns to foreground from root manager, settings, or external dialog,
+        // trigger global synchronization so root elevation and storages refresh immediately
+        systemSyncMonitor.notifyRefreshAll()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
     }

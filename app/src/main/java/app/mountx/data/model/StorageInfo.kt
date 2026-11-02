@@ -49,13 +49,17 @@ data class StorageInfo(
         if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
 }
 
-/** Internal device storage telemetry (/data) */
+/** Internal device storage telemetry (/data) and hardware storage chip details */
 @androidx.compose.runtime.Immutable
 data class InternalStorageInfo(
     val totalBytes: Long = 0L,
     val usedBytes: Long = 0L,
     val freeBytes: Long = 0L,
-    val isEmulatedMounted: Boolean = true
+    val isEmulatedMounted: Boolean = true,
+    val storageType: String = "Internal",
+    val chipName: String = "",
+    val physicalTotalBytes: Long = 0L,
+    val filesystem: String = "F2FS"
 ) {
     val usedPercent: Float
         get() = if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
