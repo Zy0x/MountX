@@ -67,7 +67,7 @@ BOOT_FLAG_FILE="/dev/.mountx_booted"
 
 # ── Default configuration values ─────────────────────────────────────────────
 SD_BASE="/data/sdext2"
-SD_BLOCK="/dev/block/mmcblk0p3"
+SD_BLOCK=""
 FS_TYPE="f2fs"
 IO_TWEAKS_ENABLED=1
 READ_AHEAD_KB=2048
@@ -250,7 +250,7 @@ mount_sd() {
 if [ ! -b "${SD_BLOCK}" ]; then
             # Dynamic fallback: check if mmcblk0p3 exists, or find f2fs partition on mmcblk
             if [ -b "/dev/block/mmcblk0p3" ]; then
-                SD_BLOCK="/dev/block/mmcblk0p3"
+                SD_BLOCK=""
             else
                 local f2fs_dev
                 f2fs_dev=$(blkid /dev/block/mmcblk* 2>/dev/null | grep 'TYPE="f2fs"' | head -n 1 | cut -d: -f1)
@@ -505,7 +505,7 @@ bind_mount_to_runtime_namespaces() {
             su -mm -c "
                 mkdir -p \"${dst}\" 2>/dev/null
                 mount -o bind \"${src}\" \"${dst}\" 2>/dev/null
-                mount --make-shared \"${dst}\" 2>/dev/null
+                mount --make-rprivate \"${dst}\" 2>/dev/null
             "
             return 0
             ;;
@@ -567,7 +567,7 @@ bind_mount_to_runtime_namespaces() {
             else
                 mount -o bind "${_s}" "${_t}" 2>/dev/null
             fi
-            mount --make-shared "${_t}" 2>/dev/null
+            mount --make-rprivate "${_t}" 2>/dev/null
         }
 
         if [ -n "${REL}" ]; then
@@ -627,8 +627,8 @@ bind_mount_to_runtime_namespaces() {
                             nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
                             nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "${DST}" 2>/dev/null
                         fi
-                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-shared "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
-                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-shared "${DST}" 2>/dev/null
+                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-rprivate "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
+                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-rprivate "${DST}" 2>/dev/null
                     fi
                 done
             else
@@ -1101,16 +1101,20 @@ load_mountpoints() {
                     fi
                 fi
                 if grep -qF " ${dst} " /proc/mounts 2>/dev/null || mountpoint -q "${dst}" 2>/dev/null; then
-                    log_info "  [${pkg}] App package target ${dst} already mounted, skipping duplicate bind."
+                    # Two-Stage Promotion: Ensure target has RW & exec permissions after boot completion
+                    mount -o remount,bind,rw,exec "${dst}" 2>/dev/null || mount -o remount,rw,exec "${dst}" 2>/dev/null
+                    mount --make-rprivate "${dst}" 2>/dev/null
+                    pm unsuspend "${pkg}" >/dev/null 2>&1
+                    log_info "  [${pkg}] App package target ${dst} already mounted, promoted to RW/exec."
                     entries=$((entries + 1))
                     continue
                 fi
                 mkdir -p "${dst}" 2>/dev/null
                 mount -o bind "${src}" "${dst}" 2>/dev/null
-                busybox mount --make-shared "${dst}" 2>/dev/null || mount --make-shared "${dst}" 2>/dev/null
+                mount -o remount,bind,rw,exec "${dst}" 2>/dev/null || mount -o remount,rw,exec "${dst}" 2>/dev/null
+                mount --make-rprivate "${dst}" 2>/dev/null
                 chown -R 1000:1000 "${dst}" 2>/dev/null
                 chmod -R 755 "${dst}" 2>/dev/null
-                chcon -R u:object_r:apk_data_file:s0 "${dst}" 2>/dev/null
                 pm unsuspend "${pkg}" >/dev/null 2>&1
                 log_info "  [${pkg}] App package bind-mounted directly: ${src} -> ${dst}"
                 entries=$((entries + 1))
@@ -1126,7 +1130,7 @@ load_mountpoints() {
                 chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
                 chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
                 mount -o bind "${src}" "${dst}" 2>/dev/null
-                mount --make-shared "${dst}" 2>/dev/null
+                mount --make-rprivate "${dst}" 2>/dev/null
                 chown -R "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
                 chmod 700 "${dst}" 2>/dev/null
                 restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
@@ -1305,7 +1309,7 @@ mount_watchdog() {
     ZYGOTE_PID_LAST=$(_get_zygote_pid)
     local LAST_DISK_ATTACHED=0
     local blk_dev="${SD_BLOCK}"
-    [ -z "${blk_dev}" ] && blk_dev="/dev/block/mmcblk0p3"
+    # No hardcoded fallback
     { [ -b "${blk_dev}" ] || [ -b "/dev/block/mmcblk0" ]; } && LAST_DISK_ATTACHED=1
     log_info "[Watchdog] Starting. PID=$$, Zygote64=${ZYGOTE_PID_LAST:-N/A}, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
 
@@ -1328,7 +1332,7 @@ mount_watchdog() {
 
             if [ ! -b "${blk_dev}" ] && [ -b "/dev/block/mmcblk0p3" ]; then
                 blk_dev="/dev/block/mmcblk0p3"
-                SD_BLOCK="/dev/block/mmcblk0p3"
+                SD_BLOCK=""
             fi
 
             log_info "[Watchdog] Auto-mounting ${blk_dev} to ${SD_BASE} after hotplug..."

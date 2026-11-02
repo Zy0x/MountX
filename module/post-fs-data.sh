@@ -3,6 +3,7 @@
 # MountX Early Boot Stage (post-fs-data.sh)
 # Performs non-blocking early mount of SD_BASE and APP_PACKAGE (/data/app)
 # before PackageManagerService scans /data/app during cold boot.
+# Protected against VFS F2FS deadlock & cross-namespace lock contention.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 MODDIR="${0%/*}"
@@ -10,7 +11,7 @@ export PATH="${MODDIR}/bin:/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/
 
 CONFIG_FILE="${MODDIR}/config.conf"
 MOUNTPOINTS_FILE="${MODDIR}/mountpoints.conf"
-SD_BLOCK="/dev/block/mmcblk0p3"
+SD_BLOCK=""
 SD_BASE="/data/sdext2"
 FS_TYPE="auto"
 
@@ -26,14 +27,41 @@ if [ -f "${CONFIG_FILE}" ]; then
     done < "${CONFIG_FILE}"
 fi
 
-# Wait up to 2 seconds (non-blocking) for MMC block device to appear in early boot
-tries=0
-while [ ${tries} -lt 4 ] && [ ! -b "${SD_BLOCK}" ]; do
-    sleep 0.5
-    tries=$((tries + 1))
-done
+# Dual-MMC Security Filter: Reject internal eMMC (mmcblk0) when MicroSD (mmcblk1) exists
+if [ -d "/sys/block/mmcblk1" ]; then
+    case "${SD_BLOCK}" in
+        /dev/block/mmcblk0*|mmcblk0*)
+            SD_BLOCK=""
+            ;;
+    esac
+fi
 
-if [ -b "${SD_BLOCK}" ] && ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+# Dynamic fallback discovery if SD_BLOCK was unconfigured
+if [ -z "${SD_BLOCK}" ] || [ ! -b "${SD_BLOCK}" ]; then
+    for candidate in /dev/block/mmcblk1p2 /dev/block/mmcblk1p1 /dev/block/mmcblk0p2 /dev/block/sda2; do
+        if [ -b "${candidate}" ]; then
+            # Verify candidate is not internal eMMC
+            if [ -d "/sys/block/mmcblk1" ] && echo "${candidate}" | grep -q "mmcblk0"; then
+                continue
+            fi
+            SD_BLOCK="${candidate}"
+            break
+        fi
+    done
+fi
+
+# Ultra-fast non-blocking probe (max 0.2s total delay) to prevent delaying Android init
+if [ -n "${SD_BLOCK}" ] && [ ! -b "${SD_BLOCK}" ]; then
+    sleep 0.2
+fi
+
+# Exit early if storage media is detached — allow Android init & framework to boot freely
+if [ -z "${SD_BLOCK}" ] || [ ! -b "${SD_BLOCK}" ]; then
+    exit 0
+fi
+
+# Mount SD_BASE with strict VFS namespace isolation
+if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
     mkdir -p "${SD_BASE}" 2>/dev/null
     detected_fs="${FS_TYPE}"
     if [ -z "${detected_fs}" ] || [ "${detected_fs}" = "auto" ]; then
@@ -48,7 +76,9 @@ if [ -b "${SD_BLOCK}" ] && ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
     mount --make-rprivate "${SD_BASE}" 2>/dev/null
 fi
 
-# Early bind-mount APP_PACKAGE entries so PackageManagerService sees base.apk during initial boot scan
+# Two-Stage Early Mount for APP_PACKAGE:
+# Bind-mount existing APK folders with private namespace propagation.
+# Zero recursive chcon/chmod during boot to eliminate VFS F2FS semaphore deadlocks.
 if mountpoint -q "${SD_BASE}" 2>/dev/null && [ -f "${MOUNTPOINTS_FILE}" ]; then
     while IFS='|' read -r pkg cat src dst preserve_media disk_uuid user_id || [ -n "${pkg}" ]; do
         pkg=$(echo "${pkg}" | tr -d '\r')
@@ -56,10 +86,8 @@ if mountpoint -q "${SD_BASE}" 2>/dev/null && [ -f "${MOUNTPOINTS_FILE}" ]; then
         if [ "${cat}" = "APP_PACKAGE" ] && [ -d "${src}" ] && [ -n "${dst}" ]; then
             mkdir -p "${dst}" 2>/dev/null
             if ! mountpoint -q "${dst}" 2>/dev/null; then
-                mount -o bind "${src}" "${dst}" 2>/dev/null
-                chown -R 1000:1000 "${dst}" 2>/dev/null
-                chmod -R 755 "${dst}" 2>/dev/null
-                chcon -R u:object_r:apk_data_file:s0 "${dst}" 2>/dev/null
+                mount -o bind,ro "${src}" "${dst}" 2>/dev/null || mount -o bind "${src}" "${dst}" 2>/dev/null
+                mount --make-rprivate "${dst}" 2>/dev/null
             fi
         fi
     done < "${MOUNTPOINTS_FILE}"

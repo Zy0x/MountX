@@ -692,6 +692,7 @@ class MountManager(
 
                             if (res || RootShell.isMountpoint(finalTarget)) {
                                 RootShell.exec("mount -o remount,bind,exec \"$finalTarget\" 2>/dev/null || mount -o remount,exec \"$finalTarget\" 2>/dev/null")
+                                RootShell.exec("mount --make-rprivate \"$finalTarget\" 2>/dev/null")
                                 RootShell.exec("chown -R 1000:1000 \"$finalTarget\" 2>/dev/null")
                                 RootShell.exec("chmod -R 755 \"$finalTarget\" 2>/dev/null")
                                 RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$finalTarget\" 2>/dev/null")
@@ -767,7 +768,7 @@ class MountManager(
                                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
                                 }
-                                RootShell.exec("mount --make-shared \"$targetPath\" 2>/dev/null")
+                                RootShell.exec("mount --make-rprivate \"$targetPath\" 2>/dev/null")
                             }
                         }
                     }
@@ -799,7 +800,7 @@ class MountManager(
                                     RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
                                 }
-                                RootShell.exec("mount --make-shared \"$targetPath\" 2>/dev/null")
+                                RootShell.exec("mount --make-rprivate \"$targetPath\" 2>/dev/null")
                             }
                         }
                     }
@@ -954,7 +955,7 @@ class MountManager(
                 }
 
                 if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
-                    RootShell.exec("mount --make-shared \"$nsTarget\" 2>/dev/null")
+                    RootShell.exec("mount --make-rprivate \"$nsTarget\" 2>/dev/null")
                     anyMounted = true
                 }
             }
