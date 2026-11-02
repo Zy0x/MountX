@@ -192,12 +192,19 @@ object ModuleManager {
 
             val currentVersionCode = app.mountx.BuildConfig.VERSION_CODE
             val binExists = RootShell.exists("$MODULE_DIR/bin/busybox") && RootShell.exists("$MODULE_DIR/post-fs-data.sh")
+            val hasInstallerResidue = RootShell.exists("$MODULE_DIR/customize.sh") || RootShell.exists("$MODULE_DIR/META-INF")
+
+            if (hasInstallerResidue) {
+                AppLogger.info(TAG, "Purging legacy installer residue from module directory (Zero-Residue Policy)")
+                RootShell.exec("rm -rf $MODULE_DIR/META-INF $MODULE_DIR/customize.sh $MODULE_DIR/MountX.apk /data/local/tmp/MountX* /data/local/tmp/mountx* 2>/dev/null || true")
+            }
+
             if (installedVersionCode < currentVersionCode || !binExists) {
                 AppLogger.info(TAG, "Syncing outdated or incomplete module: installed=$installedVersionCode, current=$currentVersionCode, binExists=$binExists")
                 installModuleDirectly(context)
                 true
             } else {
-                false
+                hasInstallerResidue
             }
         }
     }
