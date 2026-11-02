@@ -1389,6 +1389,19 @@
     <string name="catalog_step_moving_data">Moving game data structure to MountX/Android/data…</string>
     <string name="catalog_step_moving_obb">Moving OBB resources to MountX/Android/obb…</string>
     <string name="mount_occlusion_hazard_msg">Game data is still in internal storage. Move data to MicroSD first before mounting.</string>
+    <string name="storage_wizard_auto_balance">Split Evenly</string>
+    <string name="format_kernel_ready">Kernel Ready</string>
+    <string name="format_kernel_unsupported">Unsupported</string>
+    <string name="fsck_log_hide">Hide Shell Log</string>
+    <string name="fsck_log_view_raw">View Raw Shell Output</string>
+    <string name="op_f2fs_gc_mode_label">GC Mode</string>
+    <string name="op_f2fs_gc_mode_urgent">Urgent (Level 1)</string>
+    <string name="settings_emergency_reset_success_msg">Emergency reset completed. All mounts detached and permissions restored.</string>
+    <string name="logs_share_title">Share MountX Log</string>
+    <string name="diag_issue_root_shell_failed">Root shell access failed or timed out.</string>
+    <string name="diag_issue_microsd_readonly">MicroSD storage partition is read-only or not writable.</string>
+    <string name="diag_issue_watchdog_inactive">Watchdog daemon service.sh is not actively running.</string>
+    <string name="op_detail_disk">Disk</string>
 </resources>
 
 

@@ -257,7 +257,7 @@ class DiagnosticManager @Inject constructor(
         val echoRes = RootShell.exec("echo 'pong'")
         val latencyMs = ((System.nanoTime() - startNs) / 1_000_000).coerceAtLeast(1)
         if (!echoRes.isSuccess || !echoRes.output.contains("pong")) {
-            issues.add("Root shell access failed or timed out.")
+            issues.add(context.getString(R.string.diag_issue_root_shell_failed))
         }
 
         // 2. SELinux Mode
@@ -271,7 +271,7 @@ class DiagnosticManager @Inject constructor(
         val rwCheck = RootShell.exec("touch \"$sdBase/.mountx_selftest\" 2>/dev/null && rm -f \"$sdBase/.mountx_selftest\" 2>/dev/null")
         val isWritable = rwCheck.isSuccess
         if (!isWritable) {
-            issues.add("MicroSD storage partition is read-only or not writable.")
+            issues.add(context.getString(R.string.diag_issue_microsd_readonly))
         }
         if (freeMb < 500) {
             issues.add("MicroSD storage space critical: only ${freeMb}MB remaining.")
@@ -282,7 +282,7 @@ class DiagnosticManager @Inject constructor(
         val isWatchdogActive = pgrepWatchdog.isSuccess && pgrepWatchdog.output.isNotBlank()
         val watchdogPid = pgrepWatchdog.output.trim().lines().firstOrNull() ?: "None"
         if (!isWatchdogActive) {
-            issues.add("Watchdog daemon service.sh is not actively running.")
+            issues.add(context.getString(R.string.diag_issue_watchdog_inactive))
         }
 
         // 5. Apps Status

@@ -991,8 +991,8 @@ class StorageViewModel @Inject constructor(
                     title = context.getString(R.string.op_f2fs_gc_success_title),
                     message = context.getString(R.string.op_f2fs_gc_completed),
                     details = listOf(
-                        "Disk" to disk.hardwareTitle,
-                        "Mode GC" to "Urgent (Level 1)"
+                        context.getString(R.string.op_detail_disk) to disk.hardwareTitle,
+                        context.getString(R.string.op_f2fs_gc_mode_label) to context.getString(R.string.op_f2fs_gc_mode_urgent)
                     )
                 )
             } else {

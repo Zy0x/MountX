@@ -1,5 +1,7 @@
 package app.mountx.ui.settings
 
+import app.mountx.R
+
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -181,7 +183,7 @@ class SettingsViewModel @Inject constructor(
             val result = emergencyRescueManager.executeEmergencyReset()
             _isExecutingRescue.value = false
             if (result.isSuccess) {
-                _rescueMessage.value = "Emergency reset completed. All mounts detached and permissions restored."
+                _rescueMessage.value = context.getString(R.string.settings_emergency_reset_success_msg)
             } else {
                 _rescueMessage.value = "Emergency reset failed: ${result.exceptionOrNull()?.message}"
             }

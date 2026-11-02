@@ -1373,6 +1373,19 @@
     <string name="catalog_step_moving_data">Memindahkan struktur data game ke MountX/Android/data…</string>
     <string name="catalog_step_moving_obb">Memindahkan OBB resource ke MountX/Android/obb…</string>
     <string name="mount_occlusion_hazard_msg">Data game masih berada di memori internal. Pindahkan data ke MicroSD terlebih dahulu sebelum di-mount.</string>
+    <string name="storage_wizard_auto_balance">Bagi Rata</string>
+    <string name="format_kernel_ready">Mendukung Kernel</string>
+    <string name="format_kernel_unsupported">Tidak Didukung</string>
+    <string name="fsck_log_hide">Sembunyikan Log Shell</string>
+    <string name="fsck_log_view_raw">Lihat Output Shell (Raw Log)</string>
+    <string name="op_f2fs_gc_mode_label">Mode GC</string>
+    <string name="op_f2fs_gc_mode_urgent">Mendesak (Level 1)</string>
+    <string name="settings_emergency_reset_success_msg">Reset darurat selesai. Seluruh kaitan dilepas dan perizinan dipulihkan.</string>
+    <string name="logs_share_title">Bagikan Log MountX</string>
+    <string name="diag_issue_root_shell_failed">Akses root shell gagal atau kehabisan waktu.</string>
+    <string name="diag_issue_microsd_readonly">Partisi penyimpanan MicroSD hanya-baca (read-only) atau tidak dapat ditulis.</string>
+    <string name="diag_issue_watchdog_inactive">Daemon watchdog service.sh tidak berjalan secara aktif.</string>
+    <string name="op_detail_disk">Disk</string>
 </resources>
 
 

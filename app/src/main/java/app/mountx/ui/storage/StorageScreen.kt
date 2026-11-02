@@ -911,7 +911,7 @@ private fun MultiDiskTelemetryCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Internal Storage (/data)",
+                                text = stringResource(R.string.storage_internal_partition_name),
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -2236,7 +2236,7 @@ private fun PartitionWizardDialog(
                                     Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        "Bagi Rata",
+                                        stringResource(R.string.storage_wizard_auto_balance),
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -2963,7 +2963,7 @@ private fun FormatFsRadioOption(
                         color = if (isKernelSupported) emeraldBg else AmberWarn.copy(alpha = 0.15f)
                     ) {
                         Text(
-                            text = if (isKernelSupported) "Kernel Ready" else "Unsupported",
+                            text = if (isKernelSupported) stringResource(R.string.format_kernel_ready) else stringResource(R.string.format_kernel_unsupported),
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isKernelSupported) emeraldColor else AmberWarn,
@@ -3110,7 +3110,7 @@ private fun FsckReportDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (isExpandedLog) "Sembunyikan Log Shell" else "Lihat Output Shell (Raw Log)",
+                                text = if (isExpandedLog) stringResource(R.string.fsck_log_hide) else stringResource(R.string.fsck_log_view_raw),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary

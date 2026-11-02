@@ -1,5 +1,6 @@
 package app.mountx.ui.logs
 
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -117,7 +118,7 @@ class LogsViewModel @Inject constructor(
             type = "text/plain"
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        context.startActivity(Intent.createChooser(sendIntent, "Share MountX Log").apply {
+        context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.logs_share_title)).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         })
     }
@@ -178,7 +179,7 @@ class LogsViewModel @Inject constructor(
             } catch (e: Exception) {
                 AppLogger.error("LogsVM", "Failed to save log to URI: ${e.message}")
                 withContext(Dispatchers.Main) {
-                    onError(e.message ?: "Failed to save")
+                    onError(e.message ?: context.getString(R.string.logs_save_failed))
                 }
             } finally {
                 _isGeneratingReport.value = false
