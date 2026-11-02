@@ -519,9 +519,9 @@
     <!-- Disk & Partition Tools (Modal Bottom Sheets & IO Tweaks) -->
     <string name="storage_action_mount_all">Mount Semua</string>
     <string name="storage_action_unmount_all">Keluarkan Disk</string>
-    <string name="storage_action_disk_tools">Tools Disk</string>
+    <string name="storage_action_disk_tools">Alat Disk</string>
     <string name="storage_action_partition_tools">Alat</string>
-    <string name="storage_disk_tools_title">Performa &amp; Tools Disk</string>
+    <string name="storage_disk_tools_title">Performa &amp; Alat Disk</string>
     <string name="storage_disk_tools_subtitle">Optimasi antrean I/O, scheduler, dan pemeliharaan disk</string>
     <string name="storage_partition_tools_title">Alat Partisi: %1$s</string>
     <string name="storage_partition_tools_subtitle">Operasi volume dan sistem berkas</string>
