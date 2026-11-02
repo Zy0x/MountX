@@ -480,7 +480,14 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
 
+                // Reconcile dynamic permissions (UID/GID & SELinux) for all imported apps on this device
+                val allApps = appRepository.observeApps().first()
+                for (a in allApps) {
+                    appRepository.reconcileApp(a, currentSdBase)
+                }
+
                 appRepository.syncModuleConfig()
+                appRepository.syncDiskCatalog(currentSdBase)
                 _portabilityMessage.value = "SNAPSHOT_IMPORT_OK:$importedCount"
             }.onFailure { ex ->
                 AppLogger.error("Portability", "Snapshot import failed: ${ex.message}")

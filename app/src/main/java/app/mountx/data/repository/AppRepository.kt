@@ -771,6 +771,10 @@ class AppRepository @Inject constructor(
             }
         }
 
+    suspend fun reconcileApp(entry: GameEntry, sdBase: String = "/data/sdext2") = withContext(Dispatchers.IO) {
+        diskCatalogManager.reconcileGame(sdBase, entry)
+    }
+
     suspend fun restructureGame(
         game: DiscoveredGame,
         sdBase: String,
