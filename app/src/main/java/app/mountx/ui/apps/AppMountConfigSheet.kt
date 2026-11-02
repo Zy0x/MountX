@@ -201,7 +201,7 @@ fun AppMountConfigSheet(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Partisi MicroSD adalah FAT32: Batas ukuran file 4 GB berlaku pada Virtual Container dan tidak mendukung hak akses POSIX bawaan.",
+                            text = stringResource(R.string.mount_config_fat32_warning),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -227,7 +227,7 @@ fun AppMountConfigSheet(
                             CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "Memindai direktori aplikasi...",
+                                stringResource(R.string.mount_config_scanning_dirs),
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

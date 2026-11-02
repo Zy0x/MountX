@@ -755,7 +755,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "IO_APPLY_OK"
                 _operationProgress.value = OperationState.Success(
                     title = context.getString(R.string.op_io_booster_success_title),
-                    message = "I/O kernel parameters synced to the block device subsystem.",
+                    message = context.getString(R.string.op_io_kernel_params_synced),
                     details = listOf(
                         context.getString(R.string.op_detail_read_ahead) to "${config.readAheadKb} KB",
                         context.getString(R.string.op_detail_scheduler) to config.scheduler,
@@ -846,7 +846,7 @@ class StorageViewModel @Inject constructor(
                 _benchmarkResult.value = benchResult
                 _operationProgress.value = OperationState.Success(
                     title = context.getString(R.string.op_benchmark_success_title),
-                    message = "I/O test completed successfully.",
+                    message = context.getString(R.string.op_io_test_completed_success),
                     details = listOf(
                         context.getString(R.string.op_detail_seq_read) to "${String.format(java.util.Locale.US, "%.1f", benchResult?.sequentialReadMbPerSec ?: 0.0)} MB/s",
                         context.getString(R.string.op_detail_latency) to "${String.format(java.util.Locale.US, "%.2f", benchResult?.accessLatencyMs ?: 0.0)} ms",
@@ -989,7 +989,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "F2FS_GC_OK"
                 _operationProgress.value = OperationState.Success(
                     title = context.getString(R.string.op_f2fs_gc_success_title),
-                    message = "F2FS Garbage Collection completed, flash blocks consolidated.",
+                    message = context.getString(R.string.op_f2fs_gc_completed),
                     details = listOf(
                         "Disk" to disk.hardwareTitle,
                         "Mode GC" to "Urgent (Level 1)"

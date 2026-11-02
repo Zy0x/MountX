@@ -1,5 +1,7 @@
 package app.mountx.ui.apps
 
+import app.mountx.R
+
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -661,8 +663,8 @@ class AppsViewModel @Inject constructor(
                 _isMovingData.value = true
                 val initialProgress = OperationProgress(
                     type = OperationType.MOUNT,
-                    title = "Kaitkan Langsung",
-                    subtitle = "${game.displayName} • ${points.size} Kategori",
+                    title = context.getString(R.string.op_direct_mount_title),
+                    subtitle = context.getString(R.string.op_game_categories_subtitle, game.displayName, points.size),
                     progressPercent = 0.1f
                 )
                 _operationProgress.value = initialProgress
@@ -705,8 +707,8 @@ class AppsViewModel @Inject constructor(
                 val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
                 val initialProgress = OperationProgress(
                     type = OperationType.UNMOUNT,
-                    title = "Melepaskan Kaitan Kategori",
-                    subtitle = "${game.displayName} • ${points.size} Kategori",
+                    title = context.getString(R.string.op_unmount_categories_title),
+                    subtitle = context.getString(R.string.op_game_categories_subtitle, game.displayName, points.size),
                     progressPercent = 0.2f
                 )
                 _operationProgress.value = initialProgress

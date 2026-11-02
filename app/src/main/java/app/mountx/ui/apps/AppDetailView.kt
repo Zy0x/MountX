@@ -2159,7 +2159,7 @@ private fun StorageTabContent(
                                 direction = MoveDirection.TO_INTERNAL,
                                 totalBytes = restoreBytes,
                                 sourceName = "MicroSD",
-                                destName = "Memori Internal",
+                                destName = context.getString(R.string.manage_internal_memory_label),
                                 destFreeBytes = internalFreeBytes,
                                 destExistingBytes = internalExistingBytes,
                                 targetDisk = null,
@@ -2516,8 +2516,8 @@ private fun StorageTabContent(
                 }
 
                 val extLocationName = targetPartition?.shortName ?: targetDisk?.displayName ?: "MicroSD"
-                val sourceName = if (isToInternal) extLocationName else "Memori Internal"
-                val destName = if (isToInternal) "Memori Internal" else extLocationName
+                val sourceName = if (isToInternal) extLocationName else context.getString(R.string.manage_internal_memory_label)
+                val destName = if (isToInternal) context.getString(R.string.manage_internal_memory_label) else extLocationName
 
                 migrationConfirmData = MigrationConfirmData(
                     direction = dir,
@@ -3049,7 +3049,7 @@ private fun AddCustomDirectoryDialog(
                         IconButton(onClick = { showRootPickerForInternal = true }) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
-                                contentDescription = "Pilih Folder",
+                                contentDescription = stringResource(R.string.file_picker_select_folder),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -3072,7 +3072,7 @@ private fun AddCustomDirectoryDialog(
                         IconButton(onClick = { showRootPickerForSd = true }) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
-                                contentDescription = "Pilih Folder",
+                                contentDescription = stringResource(R.string.file_picker_select_folder),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -4800,7 +4800,7 @@ private fun SmartStoragePartitionBottomSheet(
                                             verticalArrangement = Arrangement.spacedBy(1.dp)
                                         ) {
                                             Text(
-                                                text = "Partisi ${partition.partitionNumber} (${partition.fsType.ifBlank { "EXT4" }})",
+                                                text = "${stringResource(R.string.storage_wizard_partition_n, partition.partitionNumber)} (${partition.fsType.ifBlank { "EXT4" }})",
                                                 style = MaterialTheme.typography.titleSmall.copy(
                                                     fontSize = 13.5.sp,
                                                     fontWeight = FontWeight.Bold
@@ -4858,7 +4858,7 @@ private fun SmartStoragePartitionBottomSheet(
                                         verticalArrangement = Arrangement.spacedBy(1.dp)
                                     ) {
                                         Text(
-                                            text = "Partisi 1 (EXT4)",
+                                            text = "${stringResource(R.string.storage_wizard_partition_n, 1)} (EXT4)",
                                             style = MaterialTheme.typography.titleSmall.copy(
                                                 fontSize = 13.5.sp,
                                                 fontWeight = FontWeight.Bold
@@ -4866,7 +4866,7 @@ private fun SmartStoragePartitionBottomSheet(
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = selectedDisk?.hardwareTitle ?: "MicroSD Storage",
+                                            text = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd),
                                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -5641,7 +5641,7 @@ private fun AppInfoTabContent(
         if (launchIntent != null) {
             context.startActivity(launchIntent)
         } else {
-            Toast.makeText(context, "Aplikasi tidak dapat dibuka langsung", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.app_detail_cannot_open_directly), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -5825,7 +5825,7 @@ private fun AppInfoTabContent(
                         }
                         context.startActivity(intent)
                     } catch (e: Exception) {
-                        Toast.makeText(context, "Gagal membuka setelan aplikasi", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.app_detail_cannot_open_settings), Toast.LENGTH_SHORT).show()
                     }
                 },
                 shape = RoundedCornerShape(12.dp),

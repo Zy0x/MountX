@@ -1302,6 +1302,77 @@
     <string name="game_detail_slice_shared_internal">Data Aplikasi (HP)</string>
     <string name="game_detail_slice_custom">Kustom</string>
     <string name="game_detail_no_components">Belum ada data komponen</string>
+
+    <!-- Bilingual Parity & Localized String Audit Additions -->
+    <string name="status_active">Aktif</string>
+    <string name="settings_permissions_all_granted_desc">Seluruh izin sistem dan hak akses telah aktif secara optimal.</string>
+    <string name="settings_permissions_all_granted">Semua Izin Diberikan</string>
+    <string name="file_picker_access_denied">Akses ditolak atau gagal membaca direktori</string>
+    <string name="file_picker_title">Penjelajah Berkas Root</string>
+    <string name="file_picker_subtitle">Pilih direktori penyimpanan sistem atau kartu memori</string>
+    <string name="file_picker_back_to_parent">Kembali ke Direktori Induk</string>
+    <string name="file_picker_empty_dir">(Direktori kosong atau tidak ada subfolder)</string>
+    <string name="file_picker_parent_desc">Induk</string>
+    <string name="file_picker_parent_item">.. (Kembali ke folder induk)</string>
+    <string name="file_picker_kernel_fs_blocked">⚠️ Virtual Kernel Filesystem dilarang untuk mounting</string>
+    <string name="file_picker_select_high_risk">Pilih (Risiko Tinggi)</string>
+    <string name="file_picker_select_folder">Pilih Folder Ini</string>
+    <string name="file_picker_system_risk_title">Peringatan Risiko Sistem</string>
+    <string name="file_picker_system_risk_chosen">Anda memilih direktori sistem inti:</string>
+    <string name="file_picker_system_risk_warning">Mengaitkan bind-mount pada direktori ini dapat menyebabkan kegagalan booting (bootloop), penolakan izin konteks SELinux, atau kerusakan sistem.</string>
+    <string name="file_picker_system_risk_agree">Saya memahami risiko kerusakan sistem</string>
+    <string name="file_picker_system_risk_confirm">Tetap Gunakan Jalur Ini</string>
+    <string name="app_detail_cannot_open_directly">Aplikasi tidak dapat dibuka langsung</string>
+    <string name="app_detail_cannot_open_settings">Gagal membuka setelan aplikasi</string>
+    <string name="migration_microsd_default">MicroSD Default</string>
+    <string name="format_fat32">FAT32</string>
+    <string name="format_fat32_desc">Penyimpanan portabel universal (batas file 4GB)</string>
+    <string name="fsck_dialog_title">Diagnostik Filesystem (fsck)</string>
+    <string name="fsck_status_clean">Clean (Integritas Baik)</string>
+    <string name="fsck_status_repaired">Diperbaiki Otomatis</string>
+    <string name="fsck_status_dirty_warning">Peringatan Direktori Kotor</string>
+    <string name="fsck_status_error">Kesalahan Kritis</string>
+    <string name="fsck_files_inodes">Files / Inodes</string>
+    <string name="fsck_block_allocation">Alokasi Blok</string>
+    <string name="storage_partitions_mounted_count">%1$d partisi terpasang</string>
+    <string name="storage_hw_product_name">Nama Produk</string>
+    <string name="storage_hw_bus_standard">Kecepatan Tinggi Standar</string>
+    <string name="mount_config_fat32_warning">Partisi MicroSD adalah FAT32: Batas ukuran file 4 GB berlaku pada Virtual Container dan tidak mendukung hak akses POSIX bawaan.</string>
+    <string name="mount_config_scanning_dirs">Memindai direktori aplikasi…</string>
+    <string name="smart_restructure_explanation">Data aplikasi berikut berada di luar struktur standar MountX. MountX akan merapikannya secara atomik ke dalam folder MountX/Android/ agar dapat di-mount dengan sempurna dan aman saat boot.</string>
+    <string name="op_direct_mount_title">Kaitkan Langsung</string>
+    <string name="op_unmount_categories_title">Melepaskan Kaitan Kategori</string>
+    <string name="op_mount_game_title">Mengaitkan Data Game (Mount)</string>
+    <string name="op_game_categories_subtitle">%1$s • %2$d Kategori</string>
+    <string name="op_io_kernel_params_synced">Parameter kernel I/O berhasil disinkronkan ke subsistem perangkat blok.</string>
+    <string name="op_io_test_completed_success">Pengujian I/O berhasil diselesaikan.</string>
+    <string name="op_f2fs_gc_completed">Garbage Collection F2FS selesai, blok memori flash terkonsolidasi.</string>
+    <string name="mount_step_sandbox_perms">Menyiapkan Identitas Sandbox &amp; Izin</string>
+    <string name="mount_step_check_microsd">Memeriksa Direktori MicroSD</string>
+    <string name="mount_step_bind_vfs">Mengaitkan VFS ke Runtime Namespaces</string>
+    <string name="mount_step_verify_selinux">Memverifikasi Kaitan &amp; SELinux</string>
+    <string name="mount_step_mount_complete">Pengaitan Selesai</string>
+    <string name="mount_step_stop_app">Menghentikan Proses Aplikasi</string>
+    <string name="mount_step_unbind_vfs">Melepaskan Kaitan VFS Namespaces Terpilih</string>
+    <string name="mount_step_restore_selinux">Memulihkan Konteks SELinux</string>
+    <string name="mount_step_unmount_complete">Pelepasan Selesai</string>
+    <string name="catalog_step_prep_dirs">Menyiapkan direktori standar MountX…</string>
+    <string name="catalog_step_adjust_perms">Menyesuaikan izin akses direktori &amp; SELinux…</string>
+    <string name="catalog_step_complete">Selesai merapikan data game.</string>
+    <string name="storage_msg_stopping_app">Menghentikan proses aplikasi (%1$s)…</string>
+    <string name="storage_msg_unmount_failed_abort">Gagal melepas mount %1$s. Pemulihan dibatalkan demi keamanan data.</string>
+    <string name="storage_msg_internal_insufficient">Memori internal tidak mencukupi untuk pemulihan! Dibutuhkan: %1$d MB (termasuk cadangan sistem 250 MB), Tersedia: %2$d MB.</string>
+    <string name="storage_msg_restoring_perms">Memulihkan perizinan dan konteks keamanan SELinux…</string>
+    <string name="storage_msg_fat32_limit_exceeded">Batas FAT32 Terlampaui: Berkas %1$s berukuran &gt;= 4 GB. Sistem berkas FAT32 tidak dapat menyimpan berkas ini. Silakan format partisi penyimpanan ke F2FS atau exFAT terlebih dahulu.</string>
+    <string name="storage_msg_transfer_cancelled_by_user">Operasi pemindahan dibatalkan oleh pengguna.</string>
+    <string name="storage_msg_integrity_verification_failed">Integritas data gagal diverifikasi! Ukuran tujuan (%1$d bytes) tidak cocok dengan sumber (%2$d bytes). Pemindahan dibatalkan untuk melindungi data.</string>
+    <string name="storage_msg_non_posix_target">Partisi target berformat Non-POSIX (%1$s). Kategori internal wajib menggunakan Metode 2 (.img) atau Auto.</string>
+    <string name="storage_msg_target_insufficient_space">Kapasitas ruang di %1$s tidak mencukupi! Dibutuhkan: %2$d MB (termasuk kompensasi cluster slack), Tersedia: %3$d MB (Kurang %4$d MB).</string>
+    <string name="storage_msg_critical_unmount_failed_before_internal">KRITIS: Gagal melepas mount sebelum pemindahan ke internal. Operasi dibatalkan demi menjaga keutuhan data.</string>
+    <string name="storage_msg_operation_complete">Operasi Selesai</string>
+    <string name="catalog_step_moving_data">Memindahkan struktur data game ke MountX/Android/data…</string>
+    <string name="catalog_step_moving_obb">Memindahkan OBB resource ke MountX/Android/obb…</string>
+    <string name="mount_occlusion_hazard_msg">Data game masih berada di memori internal. Pindahkan data ke MicroSD terlebih dahulu sebelum di-mount.</string>
 </resources>
 
 

@@ -521,7 +521,7 @@ class MountNotificationManager @Inject constructor(
                             .setSmallIcon(R.drawable.ic_notification)
                             .setColor(0xFF00E676.toInt())
                             .setContentTitle(progress.title)
-                            .setContentText(progress.subtitle.ifBlank { "Operasi Selesai" })
+                            .setContentText(progress.subtitle.ifBlank { context.getString(R.string.storage_msg_operation_complete) })
                             .setPriority(NotificationCompat.PRIORITY_LOW)
                             .setAutoCancel(true)
                             .setContentIntent(pendingIntent)

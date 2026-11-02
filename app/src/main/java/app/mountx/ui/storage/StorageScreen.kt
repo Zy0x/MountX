@@ -1424,7 +1424,7 @@ private fun InternalDiskVisualMapCard(
                     onClick = { showDialog = false },
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text(text = "OK", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                    Text(text = stringResource(R.string.common_ok), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
                 }
             },
             containerColor = MaterialTheme.colorScheme.surface,
@@ -2812,7 +2812,7 @@ private fun SingleFormatDialog(
                         isRecommended = false,
                         isKernelSupported = fat32Supported,
                         title = "FAT32",
-                        subtitle = "Universal portable storage",
+                        subtitle = stringResource(R.string.format_fat32_desc),
                         onSelect = { chosenFs = FilesystemType.FAT32 }
                     )
                     FormatFsRadioOption(
@@ -2998,10 +2998,10 @@ private fun FsckReportDialog(
     }
 
     val statusBadgeText = when (report.status) {
-        FsckStatus.CLEAN -> "Clean (Integritas Baik)"
-        FsckStatus.REPAIRED -> "Diperbaiki Otomatis"
-        FsckStatus.DIRTY_WARNING -> "Peringatan Direktori Kotor"
-        FsckStatus.ERROR -> "Kesalahan Kritis"
+        FsckStatus.CLEAN -> stringResource(R.string.fsck_status_clean)
+        FsckStatus.REPAIRED -> stringResource(R.string.fsck_status_repaired)
+        FsckStatus.DIRTY_WARNING -> stringResource(R.string.fsck_status_dirty_warning)
+        FsckStatus.ERROR -> stringResource(R.string.fsck_status_error)
     }
 
     AlertDialog(
@@ -3016,7 +3016,7 @@ private fun FsckReportDialog(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Diagnostik Filesystem (fsck)",
+                    text = stringResource(R.string.fsck_dialog_title),
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 )
             }
@@ -3074,7 +3074,7 @@ private fun FsckReportDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Files / Inodes", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.fsck_files_inodes), fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     val filesStr = if (report.totalFiles > 0) "${report.filesCount} / ${report.totalFiles}" else "${report.filesCount}"
                                     Text(filesStr, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                                 }
@@ -3084,7 +3084,7 @@ private fun FsckReportDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Alokasi Blok", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.fsck_block_allocation), fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     val blocksStr = if (report.totalBlocks > 0) "${report.blocksCount} / ${report.totalBlocks}" else "${report.blocksCount}"
                                     Text(blocksStr, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                                 }
@@ -3488,7 +3488,7 @@ private fun EjectDiskConfirmDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "${mountedPartitions.size} partisi terpasang",
+                                text = stringResource(R.string.storage_partitions_mounted_count, mountedPartitions.size),
                                 fontSize = 10.sp,
                                 color = crimsonColor,
                                 fontWeight = FontWeight.SemiBold

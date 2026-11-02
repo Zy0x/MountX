@@ -413,7 +413,7 @@ fun SettingsScreen(
                                         color = adaptiveEmerald().copy(alpha = 0.15f)
                                     ) {
                                         Text(
-                                            text = "Aktif",
+                                            text = stringResource(R.string.status_active),
                                             fontSize = 9.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = adaptiveEmerald(),
@@ -425,7 +425,7 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = if (permState.areAllGranted) {
-                                    "Seluruh izin sistem dan hak akses telah aktif secara optimal."
+                                    stringResource(R.string.settings_permissions_all_granted_desc)
                                 } else {
                                     stringResource(R.string.settings_permissions_desc)
                                 },
@@ -446,7 +446,7 @@ fun SettingsScreen(
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = "Semua Izin Diberikan",
+                                        contentDescription = stringResource(R.string.settings_permissions_all_granted),
                                         tint = adaptiveEmerald(),
                                         modifier = Modifier.size(18.dp)
                                     )

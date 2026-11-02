@@ -1,5 +1,7 @@
 package app.mountx.ui.dashboard
 
+import app.mountx.R
+
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -433,8 +435,8 @@ class DashboardViewModel @Inject constructor(
                 val activePoints = selectedPoints.map { it.copy(enabled = true) }
                 _operationProgress.value = OperationProgress(
                     type = OperationType.MOUNT,
-                    title = "Kaitkan Langsung",
-                    subtitle = "${game.displayName} • ${activePoints.size} Kategori",
+                    title = context.getString(R.string.op_direct_mount_title),
+                    subtitle = context.getString(R.string.op_game_categories_subtitle, game.displayName, activePoints.size),
                     progressPercent = 0.1f
                 )
                 gameRepository.directMountGame(game, activePoints, targetBase) { prog ->

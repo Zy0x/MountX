@@ -297,15 +297,16 @@ class MountManager(
         autoCreateSource: Boolean = true
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            val ctx = getAppContext()
             val steps = listOf(
-                "Menyiapkan Identitas Sandbox & Izin",
-                "Memeriksa Direktori MicroSD",
-                "Mengaitkan VFS ke Runtime Namespaces",
-                "Memverifikasi Kaitan & SELinux",
-                "Pengaitan Selesai"
+                ctx.getString(R.string.mount_step_sandbox_perms),
+                ctx.getString(R.string.mount_step_check_microsd),
+                ctx.getString(R.string.mount_step_bind_vfs),
+                ctx.getString(R.string.mount_step_verify_selinux),
+                ctx.getString(R.string.mount_step_mount_complete)
             )
             val opType = OperationType.MOUNT
-            val title = "Mengaitkan Data Game (Mount)"
+            val title = ctx.getString(R.string.op_mount_game_title)
             val subtitle = "${game.displayName} • ${game.packageName}"
 
             // Step 0: Sandbox & Izin
@@ -438,7 +439,7 @@ class MountManager(
                     packageName = game.packageName,
                     internalBytes = occlusionInternalBytes,
                     sdBytes = occlusionSdBytes,
-                    message = "Data game masih berada di Memori Internal. Pindahkan data ke MicroSD terlebih dahulu agar aman untuk di-mount."
+                    message = getAppContext().getString(R.string.mount_occlusion_hazard_msg)
                 )
             }
 
@@ -1325,15 +1326,16 @@ class MountManager(
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            val ctx = getAppContext()
             val steps = listOf(
-                "Menghentikan Proses Aplikasi",
-                "Melepaskan Kaitan VFS Namespaces Terpilih",
-                "Memulihkan Konteks SELinux",
-                "Pelepasan Selesai"
+                ctx.getString(R.string.mount_step_stop_app),
+                ctx.getString(R.string.mount_step_unbind_vfs),
+                ctx.getString(R.string.mount_step_restore_selinux),
+                ctx.getString(R.string.mount_step_unmount_complete)
             )
             val opType = OperationType.UNMOUNT
-            val title = "Melepaskan Kaitan Kategori"
-            val subtitle = "${game.displayName} • ${points.size} Kategori"
+            val title = ctx.getString(R.string.op_unmount_categories_title)
+            val subtitle = ctx.getString(R.string.op_game_categories_subtitle, game.displayName, points.size)
 
             onProgress?.invoke(
                 OperationProgress(
@@ -1447,7 +1449,7 @@ class MountManager(
                 OperationProgress(
                     type = OperationType.UNMOUNT,
                     title = getAppContext().getString(R.string.op_title_unmount),
-                    subtitle = "${game.displayName} • ${points.size} Kategori",
+                    subtitle = getAppContext().getString(R.string.op_game_categories_subtitle, game.displayName, points.size),
                     isFinished = true,
                     isSuccess = false,
                     errorMessage = err.message

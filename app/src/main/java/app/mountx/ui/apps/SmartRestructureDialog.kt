@@ -78,7 +78,7 @@ fun SmartRestructureDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "Data aplikasi berikut berada di luar struktur standar MountX. MountX akan merapikannya secara atomik ke dalam folder MountX/Android/ agar dapat di-mount dengan sempurna dan aman saat boot.",
+                    text = stringResource(R.string.smart_restructure_explanation),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

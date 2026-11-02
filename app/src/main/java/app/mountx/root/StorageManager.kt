@@ -1427,7 +1427,7 @@ class StorageManager(
             val wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "MountX:RestoreWakeLock")
             wakeLock?.acquire(15 * 60 * 1000L) // 15 mins safeguard against deep sleep
             try {
-                onProgress(0.05f, "Menghentikan proses aplikasi ($packageName)...")
+                onProgress(0.05f, getAppContext().getString(R.string.storage_msg_stopping_app, packageName))
                 RootShell.exec("am force-stop \"$packageName\"")
 
                 // Pre-Flight unmount across all runtime namespaces
@@ -1448,7 +1448,7 @@ class StorageManager(
                         RootShell.exec("sync")
                         RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
                         if (RootShell.isMountpoint(point.targetPath)) {
-                            throw IllegalStateException("Gagal melepas mount ${point.targetPath}. Pemulihan dibatalkan demi keamanan data.")
+                            throw IllegalStateException(getAppContext().getString(R.string.storage_msg_unmount_failed_abort, point.targetPath))
                         }
                     }
                 }
@@ -1475,7 +1475,7 @@ class StorageManager(
                 if (totalSrcBytes > 0L && totalSrcBytes > (internalAvailable - safetyReserve)) {
                     val reqMb = (totalSrcBytes + safetyReserve) / (1024 * 1024)
                     val availMb = internalAvailable / (1024 * 1024)
-                    throw IllegalStateException("Memori internal tidak mencukupi untuk pemulihan! Dibutuhkan: ${reqMb} MB (termasuk cadangan sistem 250 MB), Tersedia: ${availMb} MB.")
+                    throw IllegalStateException(getAppContext().getString(R.string.storage_msg_internal_insufficient, reqMb, availMb))
                 }
 
                 val totalPoints = mountPoints.size.coerceAtLeast(1)
@@ -1548,12 +1548,12 @@ class StorageManager(
                 RootShell.exec("rm -rf \"$sdBase/MountX/data/$packageName\" \"$sdBase/MountX/cache/$packageName\" \"$sdBase/MountX/app/$packageName\" \"$sdBase/MountX/lib/$packageName\" 2>/dev/null")
                 RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_data.img\" \"$sdBase/.mountx/containers/${packageName}_cache.img\" \"$sdBase/.mountx/containers/${packageName}_apk.img\" \"$sdBase/.mountx/containers/${packageName}_lib.img\" 2>/dev/null")
 
-                onProgress(0.92f, "Memulihkan perizinan dan konteks keamanan SELinux...")
+                onProgress(0.92f, getAppContext().getString(R.string.storage_msg_restoring_perms))
                 val gameUserId = mountPoints.firstOrNull()?.let { MountManager.resolveUserId(it.targetPath) } ?: 0
                 RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/data/$packageName\" 2>/dev/null")
                 RootShell.exec("restorecon -FR \"/data/media/$gameUserId/Android/obb/$packageName\" 2>/dev/null")
                 RootShell.exec("restorecon -FR \"/data/user/$gameUserId/$packageName\" 2>/dev/null")
-                onProgress(1.0f, "Selesai")
+                onProgress(1.0f, getAppContext().getString(R.string.storage_msg_operation_complete))
             } finally {
                 if (wakeLock?.isHeld == true) {
                     wakeLock.release()
@@ -1757,7 +1757,7 @@ class StorageManager(
             throw FileTooLargeForFat32Exception(
                 filePath = overLimitFile,
                 fileSize = 4294967296L,
-                message = "Batas FAT32 Terlampaui: File '$fileName' berukuran >= 4 GB. Sistem file FAT32 tidak dapat menyimpan file ini. Silakan format partisi penyimpanan ke F2FS atau ExFAT terlebih dahulu."
+                message = getAppContext().getString(R.string.storage_msg_fat32_limit_exceeded, fileName)
             )
         }
     }
@@ -2114,7 +2114,7 @@ class StorageManager(
             if (!existedInitially) {
                 RootShell.exec("rm -rf \"$destDir\" 2>/dev/null")
             }
-            throw kotlinx.coroutines.CancellationException("Operasi pemindahan dibatalkan oleh pengguna.")
+            throw kotlinx.coroutines.CancellationException(getAppContext().getString(R.string.storage_msg_transfer_cancelled_by_user))
         }
 
         // Final point progress
@@ -2150,7 +2150,7 @@ class StorageManager(
             if (!existedInitially) {
                 RootShell.exec("rm -rf \"$destDir\"")
             }
-            error("Integritas data gagal diverifikasi! Ukuran tujuan ($finalDestBytes bytes) tidak cocok dengan sumber ($expectedSrcBytes bytes). Pemindahan dibatalkan untuk melindungi data.")
+            error(getAppContext().getString(R.string.storage_msg_integrity_verification_failed, finalDestBytes, expectedSrcBytes))
         }
     }
 
@@ -2277,7 +2277,7 @@ class StorageManager(
                 InternalMigrationMethod.NATIVE_FOLDER -> {
                     if (sdTargetInspection.isNonPosix) {
                         throw IllegalStateException(
-                            "Partisi target berformat Non-POSIX (${sdTargetInspection.fsType}). Kategori internal wajib menggunakan Metode 2 (.img) atau Auto."
+                            getAppContext().getString(R.string.storage_msg_non_posix_target, sdTargetInspection.fsType)
                         )
                     }
                     false
@@ -2953,13 +2953,13 @@ class StorageManager(
                     val reqMb = requiredTotal / (1024 * 1024)
                     val availMb = freeBytes / (1024 * 1024)
                     val deficitMb = deficit / (1024 * 1024)
-                    val targetLabel = if (isToSd) "MicroSD" else "Memori Internal"
+                    val targetLabel = if (isToSd) "MicroSD" else getAppContext().getString(R.string.manage_internal_memory_label)
                     throw InsufficientStorageException(
                         requiredBytes = requiredTotal,
                         availableBytes = freeBytes,
                         deficitBytes = deficit,
                         targetName = targetLabel,
-                        message = "Kapasitas ruang di $targetLabel tidak mencukupi! Dibutuhkan: ${reqMb} MB (termasuk kompensasi cluster slack), Tersedia: ${availMb} MB (Kurang ${deficitMb} MB)."
+                        message = getAppContext().getString(R.string.storage_msg_target_insufficient_space, targetLabel, reqMb, availMb, deficitMb)
                     )
                 }
 
@@ -3232,13 +3232,13 @@ class StorageManager(
                 val reqMb = requiredTotal / (1024 * 1024)
                 val availMb = freeBytes / (1024 * 1024)
                 val deficitMb = deficit / (1024 * 1024)
-                val targetLabel = if (isToSd) "MicroSD" else "Memori Internal"
+                val targetLabel = if (isToSd) "MicroSD" else getAppContext().getString(R.string.manage_internal_memory_label)
                 throw InsufficientStorageException(
                     requiredBytes = requiredTotal,
                     availableBytes = freeBytes,
                     deficitBytes = deficit,
                     targetName = targetLabel,
-                    message = "Kapasitas ruang di $targetLabel tidak mencukupi! Dibutuhkan: ${reqMb} MB (termasuk kompensasi cluster slack), Tersedia: ${availMb} MB (Kurang ${deficitMb} MB)."
+                    message = getAppContext().getString(R.string.storage_msg_target_insufficient_space, targetLabel, reqMb, availMb, deficitMb)
                 )
             }
 
@@ -3295,7 +3295,7 @@ class StorageManager(
                         delay(200)
                     }
                     if (RootShell.isMountpoint(internalData) || RootShell.isMountpoint(internalObb)) {
-                        throw IllegalStateException("CRITICAL: Gagal melepas mount sebelum pemindahan ke internal. Operasi dibatalkan demi menjaga data.")
+                        throw IllegalStateException(getAppContext().getString(R.string.storage_msg_critical_unmount_failed_before_internal))
                     }
                 }
 
