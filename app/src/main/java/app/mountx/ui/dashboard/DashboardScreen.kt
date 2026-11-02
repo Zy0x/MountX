@@ -1598,7 +1598,8 @@ private fun DashboardTelemetryCard(
                             val physStr = if (internalStorage.physicalTotalBytes > 0) " (${FormatUtils.formatBytes(internalStorage.physicalTotalBytes)})" else ""
                             "${internalStorage.storageType}$chipStr$physStr • "
                         } else ""
-                        "${typeStr}/data"
+                        val fsStr = if (internalStorage.filesystem.isNotBlank()) " • ${internalStorage.filesystem}" else ""
+                        "${typeStr}/data$fsStr"
                     },
                     usedRatio = intUsedRatio,
                     usedBytes = internalStorage.usedBytes,

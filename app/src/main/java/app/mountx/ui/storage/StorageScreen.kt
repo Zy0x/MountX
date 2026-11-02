@@ -1306,9 +1306,10 @@ private fun InternalDiskVisualMapCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     val chipPart = if (internalStorage.chipName.isNotBlank()) "${internalStorage.chipName} • " else ""
+                    val fsPart = if (internalStorage.filesystem.isNotBlank()) " • ${internalStorage.filesystem}" else ""
                     val physPart = if (internalStorage.physicalTotalBytes > 0) " (${app.mountx.util.FormatUtils.formatBytes(internalStorage.physicalTotalBytes)})" else ""
                     Text(
-                        text = "${chipPart}/data • ${internalStorage.filesystem}$physPart",
+                        text = "${chipPart}/data$fsPart$physPart",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
@@ -1501,8 +1502,13 @@ private fun InternalDiskVisualMapCard(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
+                        val barText = if (internalStorage.partitionName.isNotBlank()) {
+                            internalStorage.partitionName
+                        } else {
+                            "userdata"
+                        }
                         Text(
-                            text = "userdata",
+                            text = barText,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
                             color = labelColor,
                             maxLines = 1,

@@ -99,7 +99,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "/data/sdext2")
 
     val sdBlockDevice: StateFlow<String> = appPreferences.sdBlockDevice
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "/dev/block/mmcblk0p3")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     val autoMountOnBoot: StateFlow<Boolean> = appPreferences.autoMountOnBoot
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)

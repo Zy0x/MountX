@@ -220,38 +220,83 @@ class StorageManager(
 
         if (totalBytes <= 0L) return@withContext null
 
-        var storageType = "Internal"
+        var storageType = ""
         var chipName = ""
         var physicalTotalBytes = 0L
-        var filesystem = "F2FS"
+        var filesystem = ""
+        var partitionName = ""
 
         try {
-            val mountsRes = RootShell.exec("grep ' /data ' /proc/mounts 2>/dev/null")
-            val line = mountsRes.stdout.firstOrNull { it.contains(" /data ") }
-            if (line != null) {
-                val parts = line.trim().split(Regex("\\s+"))
-                if (parts.size >= 3) {
-                    val dev = parts[0]
-                    filesystem = parts[2].uppercase()
-                    if (dev.contains("mmcblk")) {
-                        storageType = "eMMC"
-                        val disk = "mmcblk0"
-                        val hw = diskHardwareCache[disk] ?: run {
-                            val nm = RootShell.exec("cat /sys/block/$disk/device/name 2>/dev/null").output.trim()
-                            val sz = RootShell.exec("cat /sys/block/$disk/size 2>/dev/null").output.trim().toLongOrNull() ?: 0L
-                            HwDiskCache("", nm, "", sz, "MMC")
-                        }
-                        chipName = hw.model
-                        physicalTotalBytes = if (hw.sizeSectors > 0) hw.sizeSectors * 512L else totalBytes
-                    } else if (dev.contains("/sd") || dev.contains("/ufs") || dev.contains("dm-")) {
-                        storageType = "UFS"
-                        val hw = diskHardwareCache["sda"]
-                        chipName = hw?.model ?: ""
-                        physicalTotalBytes = if ((hw?.sizeSectors ?: 0L) > 0) (hw?.sizeSectors ?: 0L) * 512L else totalBytes
+            // Read mounts directly without depending on root if /proc/mounts is readable
+            val procMounts = java.io.File("/proc/mounts")
+            val mountLines = if (procMounts.exists() && procMounts.canRead()) {
+                procMounts.readLines()
+            } else {
+                RootShell.exec("cat /proc/mounts 2>/dev/null").stdout
+            }
+
+            // Find canonical /data entry (exact match for mountpoint " /data ")
+            val dataEntry = mountLines.firstOrNull { line ->
+                val tokens = line.trim().split(Regex("\\s+"))
+                tokens.size >= 3 && tokens[1] == "/data"
+            }
+
+            if (dataEntry != null) {
+                val tokens = dataEntry.trim().split(Regex("\\s+"))
+                val devPath = tokens[0]
+                filesystem = tokens[2].uppercase() // dynamically detect F2FS, EXT4, EROFS, etc.
+                partitionName = devPath.substringAfterLast("/")
+
+                val diskName = when {
+                    partitionName.startsWith("mmcblk") -> partitionName.substringBeforeLast("p")
+                    partitionName.startsWith("nvme") -> partitionName.substringBeforeLast("p")
+                    partitionName.startsWith("sd") -> partitionName.filter { it.isLetter() }
+                    else -> ""
+                }
+
+                if (diskName.isNotBlank()) {
+                    val hw = diskHardwareCache[diskName] ?: run {
+                        val tp = RootShell.exec("cat /sys/block/$diskName/device/type 2>/dev/null").output.trim()
+                        val nm = RootShell.exec("cat /sys/block/$diskName/device/name 2>/dev/null").output.trim()
+                        val md = RootShell.exec("cat /sys/block/$diskName/device/model 2>/dev/null").output.trim()
+                        val sz = RootShell.exec("cat /sys/block/$diskName/size 2>/dev/null").output.trim().toLongOrNull() ?: 0L
+                        val chosenName = if (nm.isNotBlank()) nm else md
+                        HwDiskCache("", chosenName, "", sz, tp)
                     }
+
+                    chipName = hw.model
+                    physicalTotalBytes = if (hw.sizeSectors > 0) hw.sizeSectors * 512L else 0L
+
+                    storageType = when {
+                        hw.type.equals("MMC", ignoreCase = true) || diskName.startsWith("mmcblk") -> "eMMC"
+                        diskName.startsWith("sd") -> "UFS"
+                        diskName.startsWith("nvme") -> "NVMe"
+                        else -> "Flash"
+                    }
+                } else if (devPath.contains("dm-")) {
+                    storageType = if (java.io.File("/sys/block/mmcblk0").exists()) "eMMC" else "UFS"
+                    val primaryDisk = if (storageType == "eMMC") "mmcblk0" else "sda"
+                    val hw = diskHardwareCache[primaryDisk]
+                    chipName = hw?.model ?: ""
+                    physicalTotalBytes = if ((hw?.sizeSectors ?: 0L) > 0) (hw?.sizeSectors ?: 0L) * 512L else 0L
                 }
             }
         } catch (_: Exception) {}
+
+        // Fallback for filesystem via statfs if /proc/mounts was unavailable
+        if (filesystem.isBlank()) {
+            try {
+                val statFsType = RootShell.exec("stat -f -c %T /data 2>/dev/null").output.trim()
+                if (statFsType.isNotBlank() && !statFsType.contains("stat:")) {
+                    filesystem = statFsType.uppercase()
+                }
+            } catch (_: Exception) {}
+        }
+
+        // Fallback for storageType
+        if (storageType.isBlank()) {
+            storageType = if (java.io.File("/sys/block/mmcblk0").exists()) "eMMC" else "UFS"
+        }
 
         InternalStorageInfo(
             totalBytes = totalBytes,
@@ -261,7 +306,9 @@ class StorageManager(
             storageType = storageType,
             chipName = chipName,
             physicalTotalBytes = physicalTotalBytes,
-            filesystem = filesystem
+            filesystem = filesystem,
+            partitionName = partitionName,
+            mountPoint = "/data"
         )
     }
 
@@ -1295,6 +1342,19 @@ class StorageManager(
 
             // 2. Resolve block device dynamically if path shifted on reboot or was unassigned
             var targetDev = blockDevice.trim()
+
+            // Strictly protect internal eMMC: on devices with both mmcblk0 and mmcblk1, mmcblk0 is internal flash
+            val devName = targetDev.substringAfterLast("/")
+            val diskName = when {
+                devName.startsWith("mmcblk") -> devName.substringBeforeLast("p")
+                devName.startsWith("nvme") -> devName.substringBeforeLast("p")
+                devName.startsWith("sd") -> devName.filter { it.isLetter() }
+                else -> ""
+            }
+            if (diskName == "mmcblk0" && (RootShell.exists("/sys/block/mmcblk1") || java.io.File("/sys/block/mmcblk1").exists())) {
+                targetDev = ""
+            }
+
             if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
                 // 1. Try reading SD_BLOCK from module config.conf
                 val moduleConfBlock = RootShell.execForOutput("grep -E '^SD_BLOCK=' /data/adb/modules/MountX/config.conf /data/adb/modules/mountx/config.conf /data/adb/modules/Mountify/config.conf 2>/dev/null | head -n 1 | cut -d= -f2").trim()

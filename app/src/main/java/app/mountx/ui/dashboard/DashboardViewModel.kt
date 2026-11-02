@@ -182,10 +182,12 @@ class DashboardViewModel @Inject constructor(
 
                 val sdBase = appPreferences.sdBasePath.first()
 
-                // If root is active and sdBase is not mounted, attempt auto-mounting backing partition
+                // If root is active, block device is configured, and sdBase is not mounted, attempt auto-mounting backing partition
                 if (info.rootSolution != RootSolution.NONE && !RootShell.isMountpoint(sdBase)) {
-                    val blockDevice = appPreferences.sdBlockDevice.first()
-                    storageRepository.mountSdPartition(blockDevice, sdBase)
+                    val blockDevice = appPreferences.sdBlockDevice.first().trim()
+                    if (blockDevice.isNotBlank() && RootShell.exists(blockDevice)) {
+                        storageRepository.mountSdPartition(blockDevice, sdBase)
+                    }
                 }
 
                 // Refresh game mount statuses first to detect detached storage
