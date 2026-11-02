@@ -1484,6 +1484,14 @@
     <string name="storage_err_direct_block_read_failed">Pembacaan blok langsung gagal: 0 record tersalin</string>
     <string name="module_err_copy_files">Gagal menyalin berkas modul: %1$s</string>
 
+    <!-- Emulated Internal Storage Recovery -->
+    <string name="storage_internal_unmounted_badge">Tidak Terpasang</string>
+    <string name="storage_internal_unmounted_warning_title">Penyimpanan Emulasi Terlepas</string>
+    <string name="storage_internal_unmounted_warning_desc">Penyimpanan emulasi virtual (/storage/emulated/0) terlepas oleh sistem. Game dan aplikasi tidak dapat mendeteksi berkas.</string>
+    <string name="storage_repair_internal_btn">Perbaiki</string>
+    <string name="storage_repairing_internal">Memperbaiki penyimpanan internal emulasi…</string>
+    <string name="storage_repair_internal_success">Penyimpanan internal berhasil dipulihkan dan terpasang.</string>
+    <string name="storage_repair_internal_failed">Gagal memulihkan penyimpanan internal. Periksa log.</string>
 </resources>
 
 

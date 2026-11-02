@@ -135,6 +135,76 @@ load_config() {
     log_info "Config loaded — SD_BASE=${SD_BASE} SD_BLOCK=${SD_BLOCK} FS_TYPE=${FS_TYPE} IO_TWEAKS=${IO_TWEAKS_ENABLED}"
 }
 
+# ── Authoritative Emulated Primary Storage Health Probe ───────────────────────
+is_emulated_storage_ready() {
+    # 1. Framework/Vold volume check
+    if ! sm list-volumes 2>/dev/null | grep -q 'emulated;0 mounted'; then
+        if ! dumpsys mount 2>/dev/null | grep -q "VolumeInfo{emulated;0}:.*state=MOUNTED"; then
+            return 1
+        fi
+    fi
+    # 2. Live read access probe (confirms FUSE/sdcardfs is healthy and responsive)
+    if ! ls /storage/emulated/0 >/dev/null 2>&1; then
+        return 1
+    fi
+    return 0
+}
+
+# ── Emulated Primary Storage Self-Healing & Vold Mount Recovery ───────────────
+repair_emulated_storage() {
+    log_warn "[Repair] Initiating emulated internal storage self-healing..."
+
+    # 1. Sweep away all child bind-mounts on emulated/runtime storage
+    while read -r _dev _mnt _rest; do
+        case "${_mnt}" in
+            /data/media/*/Android/data/*|/data/media/*/Android/obb/*|\
+            /data/media/*/Android/media/*|\
+            /storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*|\
+            /storage/emulated/*/Android/media/*|\
+            /mnt/runtime/*/emulated/*/Android/data/*|/mnt/runtime/*/emulated/*/Android/obb/*|\
+            /mnt/runtime/*/emulated/*/Android/media/*|\
+            /mnt/user/*/emulated/*/Android/data/*|/mnt/user/*/emulated/*/Android/obb/*|\
+            /mnt/user/*/emulated/*/Android/media/*|\
+            /mnt/pass_through/*/emulated/*/Android/data/*|/mnt/pass_through/*/emulated/*/Android/obb/*|\
+            /mnt/pass_through/*/emulated/*/Android/media/*|\
+            /mnt/androidwritable/*/emulated/*/Android/data/*|/mnt/androidwritable/*/emulated/*/Android/obb/*|\
+            /mnt/androidwritable/*/emulated/*/Android/media/*|\
+            /mnt/installer/*/emulated/*/Android/data/*|/mnt/installer/*/emulated/*/Android/obb/*|\
+            /mnt/installer/*/emulated/*/Android/media/*)
+                umount -f -l "${_mnt}" 2>/dev/null
+                ;;
+        esac
+    done < /proc/mounts
+
+    # 2. Unmount base sdcardfs/fuse mounts if stuck/unmounted
+    umount -l /mnt/runtime/default/emulated 2>/dev/null
+    umount -l /mnt/runtime/read/emulated 2>/dev/null
+    umount -l /mnt/runtime/write/emulated 2>/dev/null
+    umount -l /mnt/runtime/full/emulated 2>/dev/null
+    umount -l /mnt/pass_through/0/emulated 2>/dev/null
+    umount -l /storage/emulated 2>/dev/null
+    umount -l /mnt/user/0/emulated 2>/dev/null
+    umount -l /mnt/installer/0/emulated 2>/dev/null
+    umount -l /mnt/androidwritable/0/emulated 2>/dev/null
+
+    # 3. Clean up any dummy directories created on tmpfs /storage/emulated/0
+    if [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" = "tmpfs" ]; then
+        rm -rf /storage/emulated/0 2>/dev/null
+    fi
+
+    # 4. Trigger Vold / StorageManager to mount emulated;0
+    sm mount 'emulated;0' 2>/dev/null || sm mount 'emulated:0' 2>/dev/null
+    sleep 2
+
+    if is_emulated_storage_ready; then
+        log_info "[Repair] Emulated storage successfully recovered and mounted."
+        return 0
+    else
+        log_warn "[Repair] Emulated storage recovery still pending..."
+        return 1
+    fi
+}
+
 # ── Wait until Android and Primary Storage have finished booting ──────────────
 wait_for_boot() {
     log_info "Waiting for sys.boot_completed…"
@@ -142,26 +212,30 @@ wait_for_boot() {
         sleep 2
     done
 
-    log_info "Boot completed detected. Waiting for primary emulated storage and FUSE readiness…"
+    log_info "Boot completed detected. Waiting for primary emulated storage and Vold readiness…"
     local retries=0
     while true; do
-        if [ -d "/data/media/0" ] && \
-           mountpoint -q "/storage/emulated" 2>/dev/null && \
-           grep -q " /storage/emulated " /proc/mounts 2>/dev/null && \
-           [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" != "tmpfs" ] && \
-           [ -d "/storage/emulated/0" ]; then
+        if is_emulated_storage_ready; then
             break
         fi
         sleep 2
         retries=$((retries + 1))
+        # Self-healing: if emulated storage is stuck or unmountable during boot, auto-repair
+        if [ ${retries} -ge 5 ] && [ $((retries % 5)) -eq 0 ]; then
+            if sm list-volumes all 2>/dev/null | grep -qE "emulated;[0-9]+ (unmountable|ejecting)|emulated:[0-9]+ (unmountable|ejecting)" || \
+               ! mountpoint -q "/storage/emulated" 2>/dev/null; then
+                log_warn "Primary emulated storage is unmountable or unmounted. Triggering automated repair..."
+                repair_emulated_storage
+            fi
+        fi
         if [ $((retries % 15)) -eq 0 ]; then
-            log_info "Waiting for primary storage FUSE decryption/unlock (${retries}s)..."
+            log_info "Waiting for primary storage readiness (${retries}s)..."
         fi
     done
 
-    # Give Vold, FUSE daemon, and runtime namespaces extra time to settle
-    sleep 3
-    log_info "Primary storage, FUSE, and user directory readiness confirmed."
+    # Give Vold, sdcard daemon, and runtime namespaces extra time to settle before applying bind mounts
+    sleep 5
+    log_info "Primary storage and runtime namespaces readiness confirmed."
 }
 
 # ── Mount the SD partition (Smart Multi-FS: blkid detection + NTFS support) ───
@@ -521,7 +595,7 @@ bind_mount_to_runtime_namespaces() {
                             if ! mountpoint -q "/storage/emulated" 2>/dev/null || ! grep -q " /storage/emulated " /proc/mounts 2>/dev/null; then
                                 continue
                             fi
-                            if [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" = "tmpfs" ]; then
+                            if ! is_emulated_storage_ready; then
                                 continue
                             fi
                             ;;
@@ -1351,6 +1425,17 @@ mount_watchdog() {
             fi
         fi
 
+        # Check 1c: Primary Internal Storage Emulated Mount Integrity Probe
+        if ! is_emulated_storage_ready; then
+            log_warn "[Watchdog] Primary emulated storage lost or unmountable! Triggering automated repair..."
+            repair_emulated_storage
+            if is_emulated_storage_ready; then
+                cleanup_stale_mounts
+                apply_all_mounts
+                am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+            fi
+        fi
+
         # Check 1b: Kernel Read-Only Remount Protection Probe
         if mountpoint -q "${SD_BASE}" 2>/dev/null; then
             if grep -qF " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -q " ro,"; then
@@ -1386,39 +1471,38 @@ mount_watchdog() {
                     esac
                 done < "${MOUNTPOINTS_FILE}"
             fi
+            # IMMEDIATELY sweep away stale mounts BEFORE waiting for framework/Vold
+            log_warn "[Watchdog] Soft restart recovery: clearing stale bind mounts immediately..."
+            repair_emulated_storage
+
             log_warn "[Watchdog] Soft restart recovery: waiting for framework (AMS/PMS) and storage readiness..."
             wait_for_framework
 
-            # Wait for storage readiness
+            # Wait for storage readiness with active self-healing
             local s_tries=0
             while [ ${s_tries} -lt 15 ]; do
-                if mountpoint -q "/storage/emulated" 2>/dev/null && [ -d "/storage/emulated/0" ]; then
+                if is_emulated_storage_ready; then
                     break
                 fi
-                sleep 1
+                if [ $((s_tries % 5)) -eq 0 ]; then
+                    repair_emulated_storage
+                fi
+                sleep 2
                 s_tries=$((s_tries + 1))
             done
-            sleep 2
+            sleep 3
+
+            # Guard: NEVER call apply_all_mounts if emulated storage is not fully ready!
+            if ! is_emulated_storage_ready; then
+                log_error "[Watchdog] /storage/emulated is NOT healthy after soft restart! Aborting apply_all_mounts to prevent corruption."
+                repair_emulated_storage
+                return 1
+            fi
 
             # Ensure SD_BASE is mounted
             if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
                 mount_sd
             fi
-
-            # Sweep away any stale base /data/media and runtime mounts to clear sdcardfs EXDEV locks
-            while read -r dev mnt rest; do
-                case "${mnt}" in
-                    /data/media/*/Android/data/*|/data/media/*/Android/obb/*|\
-                    /storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*|\
-                    /mnt/runtime/*/emulated/*/Android/data/*|/mnt/runtime/*/emulated/*/Android/obb/*|\
-                    /mnt/user/*/emulated/*/Android/data/*|/mnt/user/*/emulated/*/Android/obb/*|\
-                    /mnt/pass_through/*/emulated/*/Android/data/*|/mnt/pass_through/*/emulated/*/Android/obb/*|\
-                    /mnt/androidwritable/*/emulated/*/Android/data/*|/mnt/androidwritable/*/emulated/*/Android/obb/*|\
-                    /mnt/installer/*/emulated/*/Android/data/*|/mnt/installer/*/emulated/*/Android/obb/*)
-                        umount -f -l "${mnt}" 2>/dev/null
-                        ;;
-                esac
-            done < /proc/mounts
 
             cleanup_stale_mounts
             apply_io_tweaks

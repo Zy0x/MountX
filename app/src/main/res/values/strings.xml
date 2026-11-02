@@ -1500,6 +1500,14 @@
     <string name="storage_err_direct_block_read_failed">Direct block read failed: 0 records copied</string>
     <string name="module_err_copy_files">Failed to copy module files: %1$s</string>
 
+    <!-- Emulated Internal Storage Recovery -->
+    <string name="storage_internal_unmounted_badge">Unmounted</string>
+    <string name="storage_internal_unmounted_warning_title">Emulated Storage Detached</string>
+    <string name="storage_internal_unmounted_warning_desc">Virtual emulated storage (/storage/emulated/0) was unmounted by the system. Games and apps cannot detect files.</string>
+    <string name="storage_repair_internal_btn">Repair</string>
+    <string name="storage_repairing_internal">Repairing emulated internal storage…</string>
+    <string name="storage_repair_internal_success">Internal storage successfully restored and mounted.</string>
+    <string name="storage_repair_internal_failed">Failed to restore internal storage. Check logs.</string>
 </resources>
 
 

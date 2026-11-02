@@ -156,6 +156,12 @@ class StorageRepository @Inject constructor(
             storageManager.getInternalStorageInfo()
         }
 
+    suspend fun repairInternalStorage(): Boolean = withContext(Dispatchers.IO) {
+        val ok = storageManager.repairEmulatedStorage()
+        refreshStorage()
+        ok
+    }
+
     suspend fun detectBlockDevices(): List<String> = withContext(Dispatchers.IO) {
         storageManager.detectBlockDevices()
     }

@@ -142,6 +142,24 @@ class StorageViewModel @Inject constructor(
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
+    private val _isRepairingInternalStorage = MutableStateFlow(false)
+    val isRepairingInternalStorage: StateFlow<Boolean> = _isRepairingInternalStorage.asStateFlow()
+
+    fun repairInternalStorage() {
+        if (_isRepairingInternalStorage.value) return
+        viewModelScope.launch {
+            _isRepairingInternalStorage.value = true
+            _statusMessage.value = context.getString(R.string.storage_repairing_internal)
+            val success = storageRepository.repairInternalStorage()
+            if (success) {
+                _statusMessage.value = context.getString(R.string.storage_repair_internal_success)
+            } else {
+                _statusMessage.value = context.getString(R.string.storage_repair_internal_failed)
+            }
+            _isRepairingInternalStorage.value = false
+        }
+    }
+
     private val _operationProgress = MutableStateFlow<OperationState?>(null)
     val operationProgress: StateFlow<OperationState?> = _operationProgress.asStateFlow()
 

@@ -54,7 +54,8 @@ data class StorageInfo(
 data class InternalStorageInfo(
     val totalBytes: Long = 0L,
     val usedBytes: Long = 0L,
-    val freeBytes: Long = 0L
+    val freeBytes: Long = 0L,
+    val isEmulatedMounted: Boolean = true
 ) {
     val usedPercent: Float
         get() = if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f

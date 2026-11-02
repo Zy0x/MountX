@@ -137,6 +137,7 @@ fun StorageScreen(
 ) {
     val storage by viewModel.storageInfo.collectAsState()
     val internalStorage by viewModel.internalStorageInfo.collectAsState()
+    val isRepairingInternalStorage by viewModel.isRepairingInternalStorage.collectAsState()
     val diskInfo by viewModel.diskInfo.collectAsState()
     val allDisks by viewModel.allDisks.collectAsState()
     val selectedDiskForDetail by viewModel.selectedDiskForDetail.collectAsState()
@@ -218,6 +219,8 @@ fun StorageScreen(
         StorageContent(
             storage = storage,
             internalStorage = internalStorage,
+            onRepairInternalStorage = { viewModel.repairInternalStorage() },
+            isRepairingInternalStorage = isRepairingInternalStorage,
             diskInfo = diskInfo,
             allDisks = if (allDisks.isNotEmpty()) allDisks else (if (diskInfo != null) listOf(diskInfo!!) else emptyList()),
             statusMessage = statusMessage,
@@ -639,6 +642,8 @@ fun StorageScreen(
 fun StorageContent(
     storage: StorageInfo?,
     internalStorage: InternalStorageInfo? = null,
+    onRepairInternalStorage: () -> Unit = {},
+    isRepairingInternalStorage: Boolean = false,
     diskInfo: SdCardDiskInfo? = null,
     allDisks: List<SdCardDiskInfo> = emptyList(),
     statusMessage: String? = null,
@@ -695,7 +700,9 @@ fun StorageContent(
                                 MultiDiskVisualMapSection(
                                     internalStorage = internalStorage,
                                     disks = effectiveDisks,
-                                    onOpenDiskDetail = onOpenDiskDetail
+                                    onOpenDiskDetail = onOpenDiskDetail,
+                                    onRepairInternalStorage = onRepairInternalStorage,
+                                    isRepairingInternalStorage = isRepairingInternalStorage
                                 )
                             }
                         }
@@ -721,7 +728,9 @@ fun StorageContent(
                             MultiDiskVisualMapSection(
                                 internalStorage = internalStorage,
                                 disks = effectiveDisks,
-                                onOpenDiskDetail = onOpenDiskDetail
+                                onOpenDiskDetail = onOpenDiskDetail,
+                                onRepairInternalStorage = onRepairInternalStorage,
+                                isRepairingInternalStorage = isRepairingInternalStorage
                             )
                         }
                     }
@@ -1157,6 +1166,8 @@ private fun MultiDiskVisualMapSection(
     internalStorage: InternalStorageInfo? = null,
     disks: List<SdCardDiskInfo>,
     onOpenDiskDetail: (SdCardDiskInfo) -> Unit,
+    onRepairInternalStorage: () -> Unit = {},
+    isRepairingInternalStorage: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1169,7 +1180,11 @@ private fun MultiDiskVisualMapSection(
 
         // Internal Storage — always first, read-only Protected card
         if (internalStorage != null) {
-            InternalDiskVisualMapCard(internalStorage = internalStorage)
+            InternalDiskVisualMapCard(
+                internalStorage = internalStorage,
+                onRepairInternalStorage = onRepairInternalStorage,
+                isRepairing = isRepairingInternalStorage
+            )
         }
 
         if (disks.isEmpty() && internalStorage == null) {
@@ -1224,6 +1239,8 @@ private fun MultiDiskVisualMapSection(
 @Composable
 private fun InternalDiskVisualMapCard(
     internalStorage: InternalStorageInfo,
+    onRepairInternalStorage: () -> Unit = {},
+    isRepairing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
@@ -1279,29 +1296,56 @@ private fun InternalDiskVisualMapCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                // Protected badge
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = AmberWarn.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, AmberWarn.copy(alpha = 0.45f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                // Protected or Unmounted badge
+                if (!internalStorage.isEmulatedMounted) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.45f))
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = AmberWarn,
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.storage_internal_protected_badge),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = AmberWarn
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.storage_internal_unmounted_badge),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = AmberWarn.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, AmberWarn.copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = AmberWarn,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.storage_internal_protected_badge),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = AmberWarn
+                            )
+                        }
                     }
                 }
             }
@@ -1337,6 +1381,63 @@ private fun InternalDiskVisualMapCard(
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
                     color = healthColor
                 )
+            }
+
+            if (!internalStorage.isEmulatedMounted) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.storage_internal_unmounted_warning_title),
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = stringResource(R.string.storage_internal_unmounted_warning_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        FilledTonalButton(
+                            onClick = onRepairInternalStorage,
+                            enabled = !isRepairing,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        ) {
+                            if (isRepairing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onError
+                                )
+                            } else {
+                                Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.storage_repair_internal_btn),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1420,11 +1521,31 @@ private fun InternalDiskVisualMapCard(
                 )
             },
             confirmButton = {
-                FilledTonalButton(
-                    onClick = { showDialog = false },
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(text = stringResource(R.string.common_ok), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (!internalStorage.isEmulatedMounted) {
+                        FilledTonalButton(
+                            onClick = {
+                                onRepairInternalStorage()
+                                showDialog = false
+                            },
+                            enabled = !isRepairing,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        ) {
+                            Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = stringResource(R.string.storage_repair_internal_btn), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+                    FilledTonalButton(
+                        onClick = { showDialog = false },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(text = stringResource(R.string.common_ok), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                    }
                 }
             },
             containerColor = MaterialTheme.colorScheme.surface,

@@ -138,7 +138,31 @@ class StorageManager(
     /**
      * Query internal storage (/data) statistics (total, used, free space).
      */
+    /**
+     * Checks if primary emulated internal storage (/storage/emulated/0) is mounted and healthy.
+     */
+    suspend fun isEmulatedStorageMounted(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val state = android.os.Environment.getExternalStorageState()
+            if (state == android.os.Environment.MEDIA_MOUNTED) {
+                val dir = java.io.File("/storage/emulated/0")
+                if (dir.exists() && dir.canRead()) return@withContext true
+            }
+            val lsRes = RootShell.exec("ls /storage/emulated/0 >/dev/null 2>&1 && echo 1 || echo 0")
+            if (lsRes.output.trim() == "1") return@withContext true
+
+            val vRes = RootShell.exec("sm list-volumes 2>/dev/null | grep -E 'emulated;0.*mounted'")
+            if (vRes.isSuccess && vRes.output.isNotBlank()) return@withContext true
+
+            val dRes = RootShell.exec("dumpsys mount 2>/dev/null | grep -E 'VolumeInfo\\{emulated;0\\}:.*state=MOUNTED'")
+            dRes.isSuccess && dRes.output.isNotBlank()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     suspend fun getInternalStorageInfo(): InternalStorageInfo? = withContext(Dispatchers.IO) {
+        val emulatedMounted = isEmulatedStorageMounted()
         try {
             val stat = android.os.StatFs("/data")
             val blockSize = stat.blockSizeLong
@@ -148,7 +172,8 @@ class StorageManager(
             InternalStorageInfo(
                 totalBytes = totalBytes,
                 usedBytes = usedBytes,
-                freeBytes = freeBytes
+                freeBytes = freeBytes,
+                isEmulatedMounted = emulatedMounted
             )
         } catch (_: Exception) {
             val statRes = RootShell.exec("stat -f -c %s:%b:%a /data 2>/dev/null")
@@ -163,12 +188,61 @@ class StorageManager(
                 InternalStorageInfo(
                     totalBytes = totalBytes,
                     usedBytes = usedBytes,
-                    freeBytes = freeBytes
+                    freeBytes = freeBytes,
+                    isEmulatedMounted = emulatedMounted
                 )
             } else {
                 null
             }
         }
+    }
+
+    /**
+     * Self-healing routine to restore unmountable/detached primary emulated storage (/storage/emulated/0).
+     * Cleans up stale child mounts, unmounts jammed runtime namespaces, and triggers Vold sm mount.
+     */
+    suspend fun repairEmulatedStorage(): Boolean = withContext(Dispatchers.IO) {
+        val script = """
+            while read -r _dev _mnt _rest; do
+                case "${'$'}{_mnt}" in
+                    /data/media/*/Android/data/*|/data/media/*/Android/obb/*|\
+                    /data/media/*/Android/media/*|\
+                    /storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*|\
+                    /storage/emulated/*/Android/media/*|\
+                    /mnt/runtime/*/emulated/*/Android/data/*|/mnt/runtime/*/emulated/*/Android/obb/*|\
+                    /mnt/runtime/*/emulated/*/Android/media/*|\
+                    /mnt/user/*/emulated/*/Android/data/*|/mnt/user/*/emulated/*/Android/obb/*|\
+                    /mnt/user/*/emulated/*/Android/media/*|\
+                    /mnt/pass_through/*/emulated/*/Android/data/*|/mnt/pass_through/*/emulated/*/Android/obb/*|\
+                    /mnt/pass_through/*/emulated/*/Android/media/*|\
+                    /mnt/androidwritable/*/emulated/*/Android/data/*|/mnt/androidwritable/*/emulated/*/Android/obb/*|\
+                    /mnt/androidwritable/*/emulated/*/Android/media/*|\
+                    /mnt/installer/*/emulated/*/Android/data/*|/mnt/installer/*/emulated/*/Android/obb/*|\
+                    /mnt/installer/*/emulated/*/Android/media/*)
+                        umount -f -l "${'$'}{_mnt}" 2>/dev/null
+                        ;;
+                esac
+            done < /proc/mounts
+
+            umount -l /mnt/runtime/default/emulated 2>/dev/null
+            umount -l /mnt/runtime/read/emulated 2>/dev/null
+            umount -l /mnt/runtime/write/emulated 2>/dev/null
+            umount -l /mnt/runtime/full/emulated 2>/dev/null
+            umount -l /mnt/pass_through/0/emulated 2>/dev/null
+            umount -l /storage/emulated 2>/dev/null
+            umount -l /mnt/user/0/emulated 2>/dev/null
+            umount -l /mnt/installer/0/emulated 2>/dev/null
+            umount -l /mnt/androidwritable/0/emulated 2>/dev/null
+
+            if [ "${'$'}(stat -f -c %T /storage/emulated 2>/dev/null)" = "tmpfs" ]; then
+                rm -rf /storage/emulated/0 2>/dev/null
+            fi
+
+            sm mount 'emulated;0' 2>/dev/null || sm mount 'emulated:0' 2>/dev/null
+            sleep 2
+        """.trimIndent()
+        RootShell.exec(script)
+        isEmulatedStorageMounted()
     }
 
     /**
