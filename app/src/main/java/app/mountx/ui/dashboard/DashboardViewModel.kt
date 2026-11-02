@@ -166,21 +166,32 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    fun refresh() {
+    fun refresh(force: Boolean = true) {
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                // Use cached info for instant render, refresh in background only after initial display
-                val info = RootDetector.getRootAndModuleInfo(forceRefresh = false)
+                // When force is true (manual pull-to-refresh or onResume after permission grant), force fresh detection
+                val info = RootDetector.getRootAndModuleInfo(forceRefresh = force)
                 _rootSolution.value = info.rootSolution
                 _isModuleInstalled.value = info.isModuleInstalled
                 _moduleVersion.value = info.moduleVersion
 
+                if (force) {
+                    storageRepository.refreshStorage()
+                }
+
+                val sdBase = appPreferences.sdBasePath.first()
+
+                // If root is active and sdBase is not mounted, attempt auto-mounting backing partition
+                if (info.rootSolution != RootSolution.NONE && !RootShell.isMountpoint(sdBase)) {
+                    val blockDevice = appPreferences.sdBlockDevice.first()
+                    storageRepository.mountSdPartition(blockDevice, sdBase)
+                }
+
                 // Refresh game mount statuses first to detect detached storage
                 gameRepository.refreshMountStatuses()
 
-                val sdBase = appPreferences.sdBasePath.first()
-                val disks = storageRepository.getAllDisks(sdBase)
+                val disks = storageRepository.getAllDisks(sdBase, force = force)
                 _allDisks.value = disks
 
                 val worstHealth = disks.map { it.effectiveHealth }.firstOrNull { it != app.mountx.data.model.DiskHealthStatus.HEALTHY }

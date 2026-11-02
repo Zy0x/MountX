@@ -178,6 +178,19 @@ fun DashboardScreen(
     val operationProgress by viewModel.operationProgress.collectAsState()
     val pendingOperations by viewModel.pendingOperations.collectAsState()
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refresh()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     DisposableEffect(Unit) {
         viewModel.startLiveStoragePulse()
         onDispose {

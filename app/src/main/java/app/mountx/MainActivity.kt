@@ -69,6 +69,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var mountNotificationManager: MountNotificationManager
 
+    @Inject
+    lateinit var storageRepository: app.mountx.data.repository.StorageRepository
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { _ -> }
@@ -178,7 +181,10 @@ class MainActivity : ComponentActivity() {
 
                         if (showPermissionSheet) {
                             app.mountx.ui.components.PermissionOnboardingSheet(
-                                onDismiss = { showPermissionSheet = false }
+                                onDismiss = {
+                                    showPermissionSheet = false
+                                    storageRepository.refreshStorage()
+                                }
                             )
                         }
 
