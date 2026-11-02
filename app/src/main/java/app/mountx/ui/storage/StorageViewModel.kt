@@ -302,6 +302,9 @@ class StorageViewModel @Inject constructor(
             _isScanning.value = true
         }
         try {
+            if (force) {
+                storageRepository.refreshStorage()
+            }
             val sdBase = appPreferences.sdBasePath.first()
             val hierarchy = storageRepository.getStorageHierarchy(sdBase, force = force)
             val detected = hierarchy.partitions

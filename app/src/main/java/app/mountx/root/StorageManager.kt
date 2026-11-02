@@ -388,7 +388,12 @@ class StorageManager(
             echo "===REMOVABLE==="; grep . /sys/block/*/removable 2>/dev/null
             echo "===BLOCK_LINKS==="; ls -l /sys/block/ 2>/dev/null
             echo "===SM_VOLUMES==="; sm list-volumes public 2>/dev/null
-            echo "===BLKID==="; blkid 2>/dev/null || toybox blkid 2>/dev/null
+            echo "===BLKID==="
+            devs=""
+            for p in /dev/block/mmcblk* /dev/block/sd* /dev/block/nvme*; do
+              [ -b "${'$'}p" ] && devs="${'$'}devs ${'$'}p"
+            done
+            [ -n "${'$'}devs" ] && (toybox blkid ${'$'}devs 2>/dev/null || blkid ${'$'}devs 2>/dev/null)
             echo "===SYSFS_DISKS==="
             for d in /sys/block/mmcblk* /sys/block/sd* /sys/block/nvme*; do
               [ -d "${'$'}d" ] || continue
@@ -571,27 +576,31 @@ class StorageManager(
         for (entry in rawList) {
             val name = entry.name
             val isMmcPartition = name.matches(Regex("mmcblk[0-9]+p[0-9]+"))
-            val isSdPartition = name.matches(Regex("sd[a-z][0-9]+"))
-            val isSdWholeDisk = name.matches(Regex("sd[a-z]"))
+            val isSdPartition = name.matches(Regex("sd[a-z]+[0-9]+"))
+            val isSdWholeDisk = name.matches(Regex("sd[a-z]+"))
+            val isNvmePartition = name.matches(Regex("nvme[0-9]+n[0-9]+p[0-9]+"))
+            val isNvmeWholeDisk = name.matches(Regex("nvme[0-9]+n[0-9]+"))
 
-            // If it's a whole disk like 'sdd', check if it has child partitions like 'sdd1'
-            if (isSdWholeDisk) {
+            // If it's a whole disk like 'sdd' or 'nvme0n1', check if it has child partitions like 'sdd1' or 'nvme0n1p1'
+            if (isSdWholeDisk || isNvmeWholeDisk) {
                 val hasChildPartitions = rawList.any { it.name.startsWith(name) && it.name != name }
                 if (hasChildPartitions) {
                     continue
                 }
             }
 
-            if (!isMmcPartition && !isSdPartition && !isSdWholeDisk) continue
+            if (!isMmcPartition && !isSdPartition && !isSdWholeDisk && !isNvmePartition && !isNvmeWholeDisk) continue
 
             val path = "/dev/block/$name"
             val diskName = when {
                 isMmcPartition -> name.substringBeforeLast("p")
+                isNvmePartition -> name.substringBeforeLast("p")
                 isSdPartition -> name.filter { it.isLetter() }
                 else -> name
             }
             val partNum = when {
                 isMmcPartition -> name.substringAfterLast("p").toIntOrNull() ?: 1
+                isNvmePartition -> name.substringAfterLast("p").toIntOrNull() ?: 1
                 isSdPartition -> name.filter { it.isDigit() }.toIntOrNull() ?: 1
                 else -> 1
             }
@@ -777,12 +786,11 @@ class StorageManager(
                 continue
             }
 
-            val diskName = if (devName.startsWith("sd") && devName.length >= 3) {
-                devName.filter { it.isLetter() }
-            } else if (devName.startsWith("mmcblk")) {
-                devName.substringBeforeLast("p")
-            } else {
-                devName
+            val diskName = when {
+                devName.startsWith("sd") -> devName.filter { it.isLetter() }
+                devName.startsWith("mmcblk") -> devName.substringBeforeLast("p")
+                devName.startsWith("nvme") -> devName.substringBeforeLast("p")
+                else -> devName
             }
             val partNum = devName.filter { it.isDigit() }.toIntOrNull() ?: 1
             val devPath = devPathCandidate

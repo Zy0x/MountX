@@ -453,11 +453,11 @@ class AppsViewModel @Inject constructor(
         }
     }
 
-    fun loadAvailableDisks() {
+    fun loadAvailableDisks(force: Boolean = false) {
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
-            val detected = storageRepository.detectPartitions(sdBase)
-            _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
+            val detected = storageRepository.detectPartitions(sdBase, force = force)
+            _availableDisks.value = storageRepository.getAllDisks(sdBase, detected, force = force)
         }
     }
 
@@ -466,8 +466,8 @@ class AppsViewModel @Inject constructor(
             _isScanningDisks.value = true
             try {
                 val sdBase = appPreferences.sdBasePath.first()
-                val detected = storageRepository.detectPartitions(sdBase)
-                _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
+                val detected = storageRepository.detectPartitions(sdBase, force = true)
+                _availableDisks.value = storageRepository.getAllDisks(sdBase, detected, force = true)
             } finally {
                 _isScanningDisks.value = false
             }
@@ -497,7 +497,7 @@ class AppsViewModel @Inject constructor(
             _isRefreshing.value = true
             try {
                 val sdBase = appPreferences.sdBasePath.first()
-                loadAvailableDisks()
+                loadAvailableDisks(force = true)
                 gameRepository.refreshMountStatuses()
                 gameRepository.calculateDataSizesBatch(games.value, sdBase)
                 scanDiscoveredGames()
