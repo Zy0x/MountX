@@ -191,7 +191,7 @@ class DashboardViewModel @Inject constructor(
 
                 if (hasDiskErrorFile || worstHealth == app.mountx.data.model.DiskHealthStatus.ERROR_IO) {
                     _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.ERROR_IO
-                    _diskErrorDetails.value = disks.firstOrNull { it.healthErrorDetails != null }?.healthErrorDetails ?: "Hardware I/O error"
+                    _diskErrorDetails.value = disks.firstOrNull { it.healthErrorDetails != null }?.healthErrorDetails ?: context.getString(app.mountx.R.string.storage_err_hardware_io)
                 } else if (disks.isEmpty() && (hasDetachedGames || hasConfiguredStorage)) {
                     _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.DISCONNECTED
                     _diskErrorDetails.value = context.getString(app.mountx.R.string.dashboard_disk_detached_desc)

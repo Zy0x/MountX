@@ -59,13 +59,13 @@ fun SmartRestructureDialog(
                 }
                 Column {
                     Text(
-                        text = "Restrukturisasi Data MicroSD",
+                        text = stringResource(R.string.smart_restructure_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "${gamesToRestructure.size} aplikasi perlu dirapikan",
+                        text = stringResource(R.string.smart_restructure_subtitle, gamesToRestructure.size),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -139,7 +139,7 @@ fun SmartRestructureDialog(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Text(
-                                            text = game.originalPath?.substringAfterLast("/data/sdext2/") ?: "Lokasi Lama",
+                                            text = game.originalPath?.substringAfterLast("/data/sdext2/") ?: stringResource(R.string.smart_restructure_legacy_path),
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 fontFamily = FontFamily.Monospace,
                                                 fontSize = 9.sp
@@ -186,7 +186,7 @@ fun SmartRestructureDialog(
                             trackColor = MaterialTheme.colorScheme.outline
                         )
                         Text(
-                            text = progressMessage ?: "Memproses restrukturisasi...",
+                            text = progressMessage ?: stringResource(R.string.smart_restructure_in_progress),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -205,7 +205,7 @@ fun SmartRestructureDialog(
                 ),
                 modifier = Modifier.height(42.dp)
             ) {
-                Text("Rapikan Sekarang", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                Text(stringResource(R.string.smart_restructure_btn_confirm), fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
             }
         },
         dismissButton = {
@@ -215,7 +215,7 @@ fun SmartRestructureDialog(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.height(42.dp)
             ) {
-                Text("Nanti Saja", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.5.sp)
+                Text(stringResource(R.string.smart_restructure_btn_later), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.5.sp)
             }
         }
     )

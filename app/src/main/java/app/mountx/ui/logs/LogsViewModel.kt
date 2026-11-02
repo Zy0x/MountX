@@ -138,7 +138,7 @@ class LogsViewModel @Inject constructor(
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                val errMsg = "Failed to generate report: ${e.message}"
+                val errMsg = context.getString(R.string.logs_err_generate_report, e.message ?: "")
                 _toastEvent.emit(errMsg)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, errMsg, Toast.LENGTH_SHORT).show()
@@ -170,7 +170,7 @@ class LogsViewModel @Inject constructor(
                     context.contentResolver.openOutputStream(uri)?.use { os ->
                         os.write(content.toByteArray(Charsets.UTF_8))
                         os.flush()
-                    } ?: throw IllegalStateException("Could not open stream for $uri")
+                    } ?: throw IllegalStateException(context.getString(R.string.logs_err_open_stream, uri.toString()))
                 }
                 val fileName = resolveFileNameFromUri(uri)
                 withContext(Dispatchers.Main) {

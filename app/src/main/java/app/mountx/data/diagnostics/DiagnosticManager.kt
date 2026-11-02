@@ -274,7 +274,7 @@ class DiagnosticManager @Inject constructor(
             issues.add(context.getString(R.string.diag_issue_microsd_readonly))
         }
         if (freeMb < 500) {
-            issues.add("MicroSD storage space critical: only ${freeMb}MB remaining.")
+            issues.add(context.getString(R.string.diag_issue_microsd_space_critical, freeMb))
         }
 
         // 4. Watchdog Process Status
@@ -343,11 +343,11 @@ class DiagnosticManager @Inject constructor(
         val sdBase = "/data/sdext2"
         val dfOut = RootShell.execForOutput("df -h \"$sdBase\" 2>/dev/null").trim()
         sb.appendLine("```text")
-        sb.appendLine(dfOut.ifBlank { "No partition mounted at $sdBase" })
+        sb.appendLine(dfOut.ifBlank { context.getString(R.string.diag_no_partition_mounted_at, sdBase) })
         sb.appendLine("```")
 
         val mountLine = RootShell.execForOutput("grep -F \" $sdBase \" /proc/mounts 2>/dev/null").trim()
-        sb.appendLine("- **Base Mount Options**: `${mountLine.ifBlank { "Not in /proc/mounts" }}`")
+        sb.appendLine("- **Base Mount Options**: `${mountLine.ifBlank { context.getString(R.string.diag_mount_not_in_proc_mounts) }}`")
 
         sb.appendLine()
         sb.appendLine("#### Registered Apps Health Matrix")
@@ -376,7 +376,7 @@ class DiagnosticManager @Inject constructor(
         sb.appendLine("#### Recent mountx.log (Last 35 lines)")
         sb.appendLine("```text")
         val logLines = RootShell.execForOutput("tail -n 35 /data/adb/modules/MountX/mountx.log 2>/dev/null").trim()
-        sb.appendLine(logLines.ifBlank { "mountx.log is empty or inaccessible" })
+        sb.appendLine(logLines.ifBlank { context.getString(R.string.diag_log_empty_or_inaccessible) })
         sb.appendLine("```")
 
         sb.toString()

@@ -141,7 +141,7 @@ object ModuleManager {
             cacheDir.deleteRecursively()
 
             if (!res.isSuccess) {
-                throw IllegalStateException("Failed to copy module files: ${res.stderr.joinToString(" ")}")
+                throw IllegalStateException(context.getString(app.mountx.R.string.module_err_copy_files, res.stderr.joinToString(" ")))
             }
 
             // Also execute Magisk / KSU CLI if available for registry sync

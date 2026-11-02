@@ -1402,6 +1402,104 @@
     <string name="diag_issue_microsd_readonly">MicroSD storage partition is read-only or not writable.</string>
     <string name="diag_issue_watchdog_inactive">Watchdog daemon service.sh is not actively running.</string>
     <string name="op_detail_disk">Disk</string>
+
+    <!-- Common UI Actions & Descriptors -->
+    <string name="common_copy">Copy</string>
+    <string name="common_copied_toast">%1$s copied to clipboard</string>
+    <string name="common_locked">Locked</string>
+    <string name="common_menu">Menu</string>
+    <string name="common_unknown_device">Unknown Device</string>
+    <string name="common_unknown_error">Unknown error</string>
+
+    <!-- App Detail -->
+    <string name="app_detail_installer_system_sideload">System / Sideload</string>
+    <string name="manage_location_badge_usb_otg">USB OTG</string>
+
+    <!-- Smart Restructure Dialog -->
+    <string name="smart_restructure_title">MicroSD Data Restructuring</string>
+    <string name="smart_restructure_subtitle">%1$d apps need restructuring</string>
+    <string name="smart_restructure_legacy_path">Legacy Path</string>
+    <string name="smart_restructure_in_progress">Processing restructuring…</string>
+    <string name="smart_restructure_btn_confirm">Restructure Now</string>
+    <string name="smart_restructure_btn_later">Maybe Later</string>
+
+    <!-- Manual Add App Sheet -->
+    <string name="add_app_manual_name_placeholder">Application Name</string>
+
+    <!-- About Screen Actions & Changelog -->
+    <string name="about_btn_view_changelog">View</string>
+    <string name="about_changelog_view_earlier_n">View earlier versions (%1$s)</string>
+    <string name="about_changelog_older_releases_n">%1$d older releases</string>
+    <string name="about_changelog_older_releases_one">1 older release</string>
+    <string name="about_changelog_badge_latest">Latest</string>
+    <string name="about_changelog_hide_details">Hide Details</string>
+    <string name="about_changelog_view_details">View Details</string>
+    <string name="about_changelog_view_on_github">View on GitHub</string>
+
+    <!-- Operation Progress Overlay -->
+    <string name="op_overlay_show_log">Show Technical Log</string>
+    <string name="op_overlay_hide_log">Hide Technical Log</string>
+
+    <!-- Logs Screen -->
+    <string name="logs_subtitle_live_stream">%1$d entries • Live Stream</string>
+    <string name="logs_lines_count_format">%1$d / %2$d Lines</string>
+    <string name="logs_err_generate_report">Failed to generate report: %1$s</string>
+    <string name="logs_err_open_stream">Could not open stream for %1$s</string>
+
+    <!-- Notification Service -->
+    <string name="notif_more_apps_count">+%1$d more</string>
+
+    <!-- Storage Partition Telemetry Tags -->
+    <string name="storage_partition_tag_target">Target</string>
+    <string name="storage_partition_tag_portable">Portable</string>
+
+    <!-- Storage Operations Error Fallbacks -->
+    <string name="op_err_repartition_failed">Repartition failed</string>
+    <string name="op_err_mount_failed">Mount failed</string>
+    <string name="op_err_unmount_failed">Unmount failed</string>
+    <string name="storage_trim_must_be_mounted">Partition must be mounted to run TRIM</string>
+    <string name="storage_trim_completed">TRIM completed successfully.</string>
+    <string name="storage_err_mount_all_failed">Failed to mount all partitions</string>
+    <string name="storage_err_unmount_all_failed">Failed to unmount all partitions</string>
+    <string name="op_err_move_failed">Data transfer failed</string>
+    <string name="op_err_direct_mount_failed">Direct mount failed</string>
+    <string name="update_check_failed">Check failed</string>
+    <string name="settings_emergency_reset_failed">Emergency reset failed: %1$s</string>
+    <string name="settings_rescue_script_created">Rescue script created at %1$s</string>
+    <string name="settings_rescue_script_failed">Failed to create rescue script: %1$s</string>
+    <string name="settings_portability_export_failed">Export failed</string>
+    <string name="settings_portability_import_failed">Import failed</string>
+    <string name="settings_portability_invalid_backup">Invalid backup file: %1$s</string>
+    <string name="settings_portability_err_open_file">Unable to open file</string>
+    <string name="settings_portability_err_invalid_json">Invalid JSON format</string>
+    <string name="storage_err_hardware_io">Hardware I/O error</string>
+
+    <!-- Diagnostics Additional Alerts -->
+    <string name="diag_issue_microsd_space_critical">MicroSD storage space critical: only %1$d MB remaining.</string>
+    <string name="diag_no_partition_mounted_at">No partition mounted at %1$s</string>
+    <string name="diag_mount_not_in_proc_mounts">Not mounted in /proc/mounts</string>
+    <string name="diag_log_empty_or_inaccessible">mountx.log is empty or inaccessible</string>
+
+    <!-- Storage Manager & Module Engine Exceptions -->
+    <string name="storage_err_fsck_mounted">Cannot check filesystem while partition is mounted. Please unmount first.</string>
+    <string name="storage_err_label_empty">Partition label cannot be empty.</string>
+    <string name="storage_err_failed_set_label">Failed to set partition label (exit code %1$d)</string>
+    <string name="storage_err_no_accessible_block_device">No accessible block device found for %1$s (requested: %2$s)</string>
+    <string name="storage_err_no_partitions_in_scheme">No partitions specified in scheme.</string>
+    <string name="storage_err_fdisk_write_failed">Failed to write partition table via fdisk: %1$s</string>
+    <string name="storage_err_partition_format_failed">Partition %1$d format error: %2$s</string>
+    <string name="storage_err_copy_failed">Failed to copy %1$s to %2$s (exit code %3$d): %4$s</string>
+    <string name="storage_err_no_active_points">No active mount points configured for migration.</string>
+    <string name="storage_err_internal_data_not_exist">Internal data path does not exist: %1$s</string>
+    <string name="storage_err_internal_obb_not_exist">Internal OBB path does not exist: %1$s</string>
+    <string name="storage_err_sd_data_not_exist">SD data path does not exist: %1$s</string>
+    <string name="storage_err_sd_obb_not_exist">SD OBB path does not exist: %1$s</string>
+    <string name="storage_err_no_mounted_partitions">No mounted partitions found on %1$s. Mount at least one partition before trimming.</string>
+    <string name="storage_err_mount_point_empty">Mount point cannot be empty.</string>
+    <string name="storage_err_no_f2fs_gc_urgent">No active F2FS filesystem with gc_urgent support detected.</string>
+    <string name="storage_err_direct_block_read_failed">Direct block read failed: 0 records copied</string>
+    <string name="module_err_copy_files">Failed to copy module files: %1$s</string>
+
 </resources>
 
 

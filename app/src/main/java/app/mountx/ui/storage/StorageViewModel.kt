@@ -526,7 +526,7 @@ class StorageViewModel @Inject constructor(
                 _isWizardOpen.value = false
                 detectPartitions(force = true)
             } else {
-                val err = result.exceptionOrNull()?.message ?: "Repartition failed"
+                val err = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_repartition_failed)
                 _repartitionError.value = err
                 _statusMessage.value = err
             }
@@ -554,7 +554,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "MOUNT_OK"
                 detectPartitions(force = true)
             } else {
-                _statusMessage.value = result.exceptionOrNull()?.message ?: "Mount failed"
+                _statusMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_mount_failed)
             }
         }
     }
@@ -576,7 +576,7 @@ class StorageViewModel @Inject constructor(
                     updatePartitionMountedState(partition.path, isMounted = true)
                     detectPartitionsInternal(force = true)
                 } else {
-                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Mount failed"
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_mount_failed)
                 }
             } finally {
                 _mountingPartitionPath.value = null
@@ -594,7 +594,7 @@ class StorageViewModel @Inject constructor(
                     _statusMessage.value = "UNMOUNT_OK"
                     detectPartitionsInternal(force = true)
                 } else {
-                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_unmount_failed)
                 }
             } finally {
                 _unmountingPartitionPath.value = null
@@ -612,7 +612,7 @@ class StorageViewModel @Inject constructor(
                     updatePartitionMountedState(partition.path, isMounted = false)
                     detectPartitionsInternal(force = true)
                 } else {
-                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_unmount_failed)
                 }
             } finally {
                 _unmountingPartitionPath.value = null
@@ -945,7 +945,7 @@ class StorageViewModel @Inject constructor(
     fun runPartitionTrim(partition: PartitionInfo) {
         val mnt = partition.mountPoint
         if (mnt.isNullOrBlank()) {
-            _statusMessage.value = "Partition must be mounted to run TRIM"
+            _statusMessage.value = context.getString(R.string.storage_trim_must_be_mounted)
             return
         }
         viewModelScope.launch {
@@ -959,7 +959,7 @@ class StorageViewModel @Inject constructor(
             _isTrimming.value = false
             _operationProgress.value = null
             if (res.isSuccess) {
-                val out = res.getOrNull() ?: "TRIM complete."
+                val out = res.getOrNull() ?: context.getString(R.string.storage_trim_completed)
                 _trimOutput.value = out
             } else {
                 val err = res.exceptionOrNull()?.message ?: context.getString(R.string.op_trim_error_title)
@@ -1016,7 +1016,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "MOUNT_ALL_OK"
                 detectPartitions(force = true)
             } else {
-                _statusMessage.value = res.exceptionOrNull()?.message ?: "Failed to mount all partitions"
+                _statusMessage.value = res.exceptionOrNull()?.message ?: context.getString(R.string.storage_err_mount_all_failed)
             }
         }
     }
@@ -1030,7 +1030,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "UNMOUNT_ALL_OK"
                 detectPartitions(force = true)
             } else {
-                _statusMessage.value = res.exceptionOrNull()?.message ?: "Failed to unmount all partitions"
+                _statusMessage.value = res.exceptionOrNull()?.message ?: context.getString(R.string.storage_err_unmount_all_failed)
             }
         }
     }

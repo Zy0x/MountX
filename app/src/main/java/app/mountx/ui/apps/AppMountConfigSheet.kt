@@ -280,7 +280,7 @@ fun AppMountConfigSheet(
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Icon(
                                                 Icons.Default.Lock,
-                                                contentDescription = "Locked",
+                                                contentDescription = stringResource(R.string.common_locked),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.size(14.dp)
                                             )

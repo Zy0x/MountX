@@ -103,7 +103,7 @@ class SystemSyncMonitor @Inject constructor(
                     }
                 }
                 ACTION_DISK_ERROR -> {
-                    val err = intent.getStringExtra("error") ?: "Hardware I/O error"
+                    val err = intent.getStringExtra("error") ?: context.getString(app.mountx.R.string.storage_err_hardware_io)
                     scope.launch {
                         handleDiskError("MicroSD", err)
                     }

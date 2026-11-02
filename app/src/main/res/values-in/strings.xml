@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MountX</string>
-    <string name="app_description">Seamless storage redirection &amp; external bind engine</string>
+    <string name="app_description">Pengalihan penyimpanan mulus &amp; engine bind eksternal</string>
 
     <string name="nav_dashboard">Beranda</string>
     <string name="nav_games">Game</string>
@@ -433,6 +433,25 @@
     <string name="logs_clear">Hapus Log</string>
     <string name="logs_clear_confirm">Hapus semua entri log?</string>
     <string name="logs_cleared">Log dihapus.</string>
+    <string name="logs_filter_warn">Peringatan</string>
+    <string name="logs_diagnostic_report">Salin Laporan Diagnostik</string>
+    <string name="logs_diagnostic_report_copied">Laporan diagnostik berhasil disalin ke papan klip!</string>
+    <string name="logs_daemon_healthy">Daemon Sehat</string>
+    <string name="logs_daemon_error">Masalah Daemon Terdeteksi</string>
+    <string name="logs_save_log">Simpan Log</string>
+    <string name="logs_saved_success">Log berhasil disimpan: %1$s</string>
+    <string name="logs_action_open">Buka</string>
+    <string name="logs_save_failed">Gagal menyimpan log</string>
+    <string name="app_detail_health_title">Kesehatan Mount &amp; Sistem</string>
+    <string name="app_detail_health_healthy">Semua kategori penyimpanan aktif &amp; tersinkronisasi</string>
+    <string name="app_detail_health_anomaly">Anomali terdeteksi: %1$s</string>
+    <string name="app_detail_health_permissions_ok">Izin penyimpanan sistem terverifikasi</string>
+    <string name="app_detail_health_permissions_warn">Izin penyimpanan perlu perhatian</string>
+    <string name="status_anomaly">Anomali</string>
+    <string name="health_summary_missing_targets">Titik mount tidak ditemukan di /proc/mounts</string>
+    <string name="health_summary_perm_revoked">Izin penyimpanan dicabut oleh Android</string>
+    <string name="health_summary_mounted_healthy">Termount &amp; Sehat (%1$d target aktif)</string>
+    <string name="health_summary_idle">Belum Dimount / Siaga</string>
 
     <string name="settings_title">Pengaturan</string>
     <string name="settings_appearance">Tampilan</string>
@@ -499,7 +518,7 @@
 
     <!-- Disk & Partition Tools (Modal Bottom Sheets & IO Tweaks) -->
     <string name="storage_action_mount_all">Mount Semua</string>
-    <string name="storage_action_unmount_all">Eject Disk</string>
+    <string name="storage_action_unmount_all">Keluarkan Disk</string>
     <string name="storage_action_disk_tools">Tools Disk</string>
     <string name="storage_action_partition_tools">Alat</string>
     <string name="storage_disk_tools_title">Performa &amp; Tools Disk</string>
@@ -562,7 +581,7 @@
     <string name="storage_unmount_confirm_btn">Unmount Sekarang</string>
     <string name="storage_eject_disk_confirm_title">Konfirmasi Eject Disk</string>
     <string name="storage_eject_disk_confirm_message">Apakah Anda yakin ingin melakukan eject pada %1$s? Seluruh %2$d partisi yang terpasang pada drive ini akan dilepas secara aman.</string>
-    <string name="storage_eject_disk_confirm_btn">Eject Disk</string>
+    <string name="storage_eject_disk_confirm_btn">Keluarkan Disk</string>
 
     <!-- FSTRIM Actionable Remediation -->
     <string name="storage_trim_clean_needed_title">Struktur Filesystem Perlu Dibersihkan</string>
@@ -719,9 +738,9 @@
     <string name="gerbong_media_desc">Folder media publik dan unduhan dengan proteksi .nomedia.</string>
     <string name="gerbong_cache_title">Cache &amp; Shader</string>
     <string name="gerbong_cache_desc">File sementara dan kompilasi shader grafis.</string>
-    <string name="gerbong_private_title">Private Data</string>
+    <string name="gerbong_private_title">Data Privat</string>
     <string name="gerbong_private_desc">Data privat internal (/data/data). Folder besar menggunakan Virtual Ext4 Loop Container.</string>
-    <string name="gerbong_app_package_title">App Package</string>
+    <string name="gerbong_app_package_title">Paket Aplikasi</string>
     <string name="gerbong_app_package_desc">Biner APK dan native library (.so) di /data/app/.</string>
     <string name="gerbong_experimental_section">Opsi Lanjutan / Eksperimental</string>
     <string name="gerbong_experimental_warning_title">⚠️ Peringatan Risiko Eksperimental</string>
@@ -825,9 +844,9 @@
     <string name="manage_overview_saving">Menghemat %1$s di memori internal</string>
     <string name="manage_overview_categories_title">Kategori Data Aplikasi</string>
     <string name="manage_cat_data_game">Data Aplikasi</string>
-    <string name="manage_cat_obb">OBB Resource</string>
-    <string name="manage_cat_native_lib">Native Library</string>
-    <string name="manage_cat_package_app">Package App</string>
+    <string name="manage_cat_obb">Sumber Daya OBB</string>
+    <string name="manage_cat_native_lib">Pustaka Native</string>
+    <string name="manage_cat_package_app">Paket Aplikasi</string>
     <string name="manage_cat_other_files">File Lainnya</string>
     <string name="manage_cat_data_game_desc">Data utama aplikasi, pengaturan, dan berkas pengguna.</string>
     <string name="manage_cat_obb_desc">Paket aset utama aplikasi (file OBB).</string>
@@ -907,6 +926,7 @@
     <string name="manage_btn_back_step">← Kembali</string>
     <string name="manage_btn_continue_step">Lanjutkan →</string>
     <string name="manage_summary_title">Ringkasan Pemindahan</string>
+        <string name="manage_summary_categories_suffix">kategori</string>
     <string name="manage_summary_selected_data">Data yang dipilih</string>
     <string name="manage_summary_total_size">Total ukuran</string>
     <string name="manage_summary_from">Dari</string>
@@ -916,6 +936,24 @@
     <string name="manage_tab_placeholder_title">Kelola Tambahan</string>
     <string name="manage_tab_placeholder_desc">Fitur pengelolaan lanjutan akan tersedia di pembaruan mendatang.</string>
     <string name="manage_badge_performance_risk">Risiko Kinerja</string>
+    <!-- System Category 3-Method Storage Engine & Batch Customization -->
+    <string name="manage_method_selector_title">Metode Penyimpanan Kategori Sistem</string>
+    <string name="manage_method_selector_subtitle">Pilih cara penyimpanan data internal &amp; sistem pada media tujuan:</string>
+    <string name="manage_method_auto_title">Otomatis (Direkomendasikan)</string>
+    <string name="manage_method_auto_desc">Memilih format terbaik secara otomatis sesuai jenis partisi</string>
+    <string name="manage_method_auto_badge_native">Optimal</string>
+    <string name="manage_method_auto_badge_container">Kontainer</string>
+    <string name="manage_method_native_title">Folder Langsung (Native)</string>
+    <string name="manage_method_native_desc">Akses folder langsung dengan performa maksimal</string>
+    <string name="manage_method_native_badge">EXT4 / F2FS</string>
+    <string name="manage_method_container_title">Kontainer Virtual EXT4 (.img)</string>
+    <string name="manage_method_container_desc">Penyimpanan loop terisolasi untuk stabilitas non-Linux</string>
+    <string name="manage_method_container_badge">Universal</string>
+    <string name="manage_method_non_posix_guard_notice">Partisi tujuan berformat [%1$s]. Sistem Android mewajibkan izin POSIX untuk Metode 1. Gunakan Auto atau Metode 2 (.img) untuk mencegah aplikasi crash.</string>
+    <string name="manage_method_customize_per_category">Atur Metode per Kategori</string>
+    <string name="manage_method_external_note">App Data &amp; OBB otomatis menggunakan Folder Biasa (Standar Android, mendukung &gt;40GB+ di semua filesystem).</string>
+    <string name="manage_method_badge_native_short">[Folder]</string>
+    <string name="manage_method_badge_container_short">[.img]</string>
     <string name="manage_cat_private_data">Data Privat</string>
     <string name="manage_cat_private_data_desc">Data aplikasi (internal)</string>
     <string name="manage_cat_apk_sub_short">File instalasi aplikasi</string>
@@ -1194,6 +1232,258 @@
 
     <!-- Storage Headroom Advisory -->
     <string name="dashboard_low_headroom_warning">Sisa ruang MicroSD menipis (&lt; 3 GB). Update patch di dalam game mungkin gagal.</string>
+    <string name="dashboard_low_headroom_warning_usb">Sisa ruang USB menipis (&lt; 3 GB). Update patch di dalam game mungkin gagal.</string>
+    <!-- System Integrity & Dynamic Storage Recovery -->
+    <string name="error_no_sd_directory_found">Tidak ada direktori MicroSD yang ditemukan untuk di-mount. Pastikan data aplikasi sudah dipindahkan ke MicroSD.</string>
+    <string name="error_game_data_not_found">Jalur data maupun obb tidak ditemukan di penyimpanan eksternal untuk %1$s</string>
+    <string name="candidate_private_desc">Data internal aplikasi. Folder besar (&gt; 1 GB) menggunakan Virtual Ext4 Loop Container.</string>
+    <string name="candidate_private_locked_desc">Terkunci: Data internal &lt; 1 GB wajib berada di internal flash demi stabilitas database SQLite WAL.</string>
+    <string name="candidate_private_locked_reason">Ukuran &lt; 1 GB dikunci demi keselamatan database</string>
+    <string name="candidate_app_package_desc">Biner APK dan file library (.so) di /data/app/. Membutuhkan partisi MicroSD bertipe Linux (ext4/f2fs) dan proteksi SELinux.</string>
+    <string name="trim_success_message">Proses pembebasan blok memori tidak terpakai selesai.</string>
+    <string name="format_unmount_failed">Gagal melepas kaitan aktif untuk %1$s. Partisi sedang sibuk.</string>
+    <string name="repartition_fdisk_fallback">Sintaks sgdisk tidak didukung oleh ROM saat ini. Berhasil beralih otomatis ke busybox fdisk.</string>
+    <string name="notif_recovering_mounts">Mendeteksi restart sistem. Memulihkan kaitan MicroSD di latar belakang...</string>
+    <string name="category_data_game">Data Game</string>
+    <string name="category_data_private">Data Privat</string>
+    <string name="trim_warning_needs_fsck">Peringatan: Satu atau lebih partisi memerlukan perbaikan integritas filesystem (fsck).</string>
+    <string name="trim_not_supported">Driver partisi atau filesystem saat ini tidak mendukung operasi TRIM/discard.</string>
+    <!-- Candidate Directory Titles & Descriptions -->
+    <string name="candidate_data_title">Data (Android/data)</string>
+    <string name="candidate_data_desc">Data aset dan unduhan in-game (/Android/data). Komponen terbesar game.</string>
+    <string name="candidate_obb_title">OBB (Android/obb)</string>
+    <string name="candidate_obb_desc">Berkas arsip paket instalasi game (/Android/obb). Aman dimount ke MicroSD.</string>
+    <string name="candidate_media_title">Media &amp; Unduhan (Android/media &amp; Publik)</string>
+    <string name="candidate_media_desc">Folder media publik dan unduhan. Otomatis menyertakan berkas .nomedia di MicroSD.</string>
+    <string name="candidate_cache_title">Cache &amp; Sementara (Android/data/cache)</string>
+    <string name="candidate_cache_desc">Cache dan file sementara. Disarankan tetap di internal flash agar tidak memicu micro-stuttering.</string>
+    <string name="candidate_private_title">Data Privat (/data/data)</string>
+    <string name="candidate_app_package_title">Paket Aplikasi (APK &amp; Lib Asli)</string>
+
+    <!-- App Detail Category Item Titles & Subtitles -->
+    <string name="category_item_apk_title">APK</string>
+    <string name="category_item_apk_desc">File instalasi aplikasi</string>
+    <string name="category_item_lib_title">Lib</string>
+    <string name="category_item_lib_desc">Pustaka asli aplikasi</string>
+    <string name="category_item_private_title">Data Privat</string>
+    <string name="category_item_private_desc">Data aplikasi (internal)</string>
+    <string name="category_item_cache_title">Cache</string>
+    <string name="category_item_cache_desc">Cache sementara</string>
+    <string name="category_item_data_title">Data Aplikasi</string>
+    <string name="category_item_data_desc">Data utama aplikasi</string>
+    <string name="category_item_obb_title">OBB</string>
+    <string name="category_item_obb_desc">File ekspansi aplikasi</string>
+    <string name="category_item_media_title">Media &amp; Unduhan</string>
+    <string name="category_item_media_desc">Berkas media &amp; unduhan</string>
+    <string name="category_item_on_storage">%1$s • %2$s di %3$s</string>
+    <string name="category_item_custom_title">Kustom (%1$s)</string>
+
+    <!-- App Mount Configuration Sheet -->
+    <string name="mount_config_cache_notice">Catatan: Disarankan tetap di internal flash agar kompilasi shader grafis tidak stutter.</string>
+    <string name="mount_config_locked_reason_prefix">Alasan: %1$s</string>
+    <string name="mount_config_custom_prefix">Kustom: %1$s</string>
+    <string name="mount_config_apply_and_link">Terapkan &amp; Tautkan (%1$s)</string>
+    <string name="mount_config_placeholder_example">Contoh: Android/data/%1$s/files/assets</string>
+    <string name="mount_config_select_folder">Pilih Folder</string>
+
+    <!-- Migration Safety -->
+    <string name="error_migration_unmount_failed_before_restore">KRITIS: Gagal melepas mount pada %1$s sebelum pemulihan ke internal. Dibatalkan demi mencegah kehilangan data asli di MicroSD.</string>
+    <!-- Module Management & Direct Installation -->
+    <string name="module_install_direct_success">Modul MountX berhasil dipasang dan diaktifkan!</string>
+    <string name="module_enable_success">Modul berhasil diaktifkan kembali!</string>
+    <string name="module_op_failed">Gagal: %1$s</string>
+    <string name="module_export_success">ZIP tersimpan di Download: %1$s</string>
+    <string name="module_export_failed">Gagal ekspor: %1$s</string>
+    <string name="module_op_processing">Memproses…</string>
+    <!-- App Detail Chart Sub-pages & Slices -->
+    <string name="game_detail_subpage_media_title">Media Penyimpanan</string>
+    <string name="game_detail_subpage_components_title">Komponen</string>
+    <string name="game_detail_slice_dex">Dex (Kode)</string>
+    <string name="game_detail_slice_shared_internal">Data Aplikasi (HP)</string>
+    <string name="game_detail_slice_custom">Kustom</string>
+    <string name="game_detail_no_components">Belum ada data komponen</string>
+
+    <!-- Bilingual Parity & Localized String Audit Additions -->
+    <string name="status_active">Aktif</string>
+    <string name="settings_permissions_all_granted_desc">Seluruh izin sistem dan hak akses telah aktif secara optimal.</string>
+    <string name="settings_permissions_all_granted">Semua Izin Diberikan</string>
+    <string name="file_picker_access_denied">Akses ditolak atau gagal membaca direktori</string>
+    <string name="file_picker_title">Penjelajah Berkas Root</string>
+    <string name="file_picker_subtitle">Pilih direktori penyimpanan sistem atau kartu memori</string>
+    <string name="file_picker_back_to_parent">Kembali ke Direktori Induk</string>
+    <string name="file_picker_empty_dir">(Direktori kosong atau tidak ada subfolder)</string>
+    <string name="file_picker_parent_desc">Induk</string>
+    <string name="file_picker_parent_item">.. (Kembali ke folder induk)</string>
+    <string name="file_picker_kernel_fs_blocked">⚠️ Virtual Kernel Filesystem dilarang untuk mounting</string>
+    <string name="file_picker_select_high_risk">Pilih (Risiko Tinggi)</string>
+    <string name="file_picker_select_folder">Pilih Folder Ini</string>
+    <string name="file_picker_system_risk_title">Peringatan Risiko Sistem</string>
+    <string name="file_picker_system_risk_chosen">Anda memilih direktori sistem inti:</string>
+    <string name="file_picker_system_risk_warning">Mengaitkan bind-mount pada direktori ini dapat menyebabkan kegagalan booting (bootloop), penolakan izin konteks SELinux, atau kerusakan sistem.</string>
+    <string name="file_picker_system_risk_agree">Saya memahami risiko kerusakan sistem</string>
+    <string name="file_picker_system_risk_confirm">Tetap Gunakan Jalur Ini</string>
+    <string name="app_detail_cannot_open_directly">Aplikasi tidak dapat dibuka langsung</string>
+    <string name="app_detail_cannot_open_settings">Gagal membuka setelan aplikasi</string>
+    <string name="migration_microsd_default">MicroSD Default</string>
+    <string name="format_fat32">FAT32</string>
+    <string name="format_fat32_desc">Penyimpanan portabel universal (batas file 4GB)</string>
+    <string name="fsck_dialog_title">Diagnostik Filesystem (fsck)</string>
+    <string name="fsck_status_clean">Clean (Integritas Baik)</string>
+    <string name="fsck_status_repaired">Diperbaiki Otomatis</string>
+    <string name="fsck_status_dirty_warning">Peringatan Direktori Kotor</string>
+    <string name="fsck_status_error">Kesalahan Kritis</string>
+    <string name="fsck_files_inodes">Files / Inodes</string>
+    <string name="fsck_block_allocation">Alokasi Blok</string>
+    <string name="storage_partitions_mounted_count">%1$d partisi terpasang</string>
+    <string name="storage_hw_product_name">Nama Produk</string>
+    <string name="storage_hw_bus_standard">Kecepatan Tinggi Standar</string>
+    <string name="mount_config_fat32_warning">Partisi MicroSD adalah FAT32: Batas ukuran file 4 GB berlaku pada Virtual Container dan tidak mendukung hak akses POSIX bawaan.</string>
+    <string name="mount_config_scanning_dirs">Memindai direktori aplikasi…</string>
+    <string name="smart_restructure_explanation">Data aplikasi berikut berada di luar struktur standar MountX. MountX akan merapikannya secara atomik ke dalam folder MountX/Android/ agar dapat di-mount dengan sempurna dan aman saat boot.</string>
+    <string name="op_direct_mount_title">Kaitkan Langsung</string>
+    <string name="op_unmount_categories_title">Melepaskan Kaitan Kategori</string>
+    <string name="op_mount_game_title">Mengaitkan Data Game (Mount)</string>
+    <string name="op_game_categories_subtitle">%1$s • %2$d Kategori</string>
+    <string name="op_io_kernel_params_synced">Parameter kernel I/O berhasil disinkronkan ke subsistem perangkat blok.</string>
+    <string name="op_io_test_completed_success">Pengujian I/O berhasil diselesaikan.</string>
+    <string name="op_f2fs_gc_completed">Garbage Collection F2FS selesai, blok memori flash terkonsolidasi.</string>
+    <string name="mount_step_sandbox_perms">Menyiapkan Identitas Sandbox &amp; Izin</string>
+    <string name="mount_step_check_microsd">Memeriksa Direktori MicroSD</string>
+    <string name="mount_step_bind_vfs">Mengaitkan VFS ke Runtime Namespaces</string>
+    <string name="mount_step_verify_selinux">Memverifikasi Kaitan &amp; SELinux</string>
+    <string name="mount_step_mount_complete">Pengaitan Selesai</string>
+    <string name="mount_step_stop_app">Menghentikan Proses Aplikasi</string>
+    <string name="mount_step_unbind_vfs">Melepaskan Kaitan VFS Namespaces Terpilih</string>
+    <string name="mount_step_restore_selinux">Memulihkan Konteks SELinux</string>
+    <string name="mount_step_unmount_complete">Pelepasan Selesai</string>
+    <string name="catalog_step_prep_dirs">Menyiapkan direktori standar MountX…</string>
+    <string name="catalog_step_adjust_perms">Menyesuaikan izin akses direktori &amp; SELinux…</string>
+    <string name="catalog_step_complete">Selesai merapikan data game.</string>
+    <string name="storage_msg_stopping_app">Menghentikan proses aplikasi (%1$s)…</string>
+    <string name="storage_msg_unmount_failed_abort">Gagal melepas mount %1$s. Pemulihan dibatalkan demi keamanan data.</string>
+    <string name="storage_msg_internal_insufficient">Memori internal tidak mencukupi untuk pemulihan! Dibutuhkan: %1$d MB (termasuk cadangan sistem 250 MB), Tersedia: %2$d MB.</string>
+    <string name="storage_msg_restoring_perms">Memulihkan perizinan dan konteks keamanan SELinux…</string>
+    <string name="storage_msg_fat32_limit_exceeded">Batas FAT32 Terlampaui: Berkas %1$s berukuran &gt;= 4 GB. Sistem berkas FAT32 tidak dapat menyimpan berkas ini. Silakan format partisi penyimpanan ke F2FS atau exFAT terlebih dahulu.</string>
+    <string name="storage_msg_transfer_cancelled_by_user">Operasi pemindahan dibatalkan oleh pengguna.</string>
+    <string name="storage_msg_integrity_verification_failed">Integritas data gagal diverifikasi! Ukuran tujuan (%1$d bytes) tidak cocok dengan sumber (%2$d bytes). Pemindahan dibatalkan untuk melindungi data.</string>
+    <string name="storage_msg_non_posix_target">Partisi target berformat Non-POSIX (%1$s). Kategori internal wajib menggunakan Metode 2 (.img) atau Auto.</string>
+    <string name="storage_msg_target_insufficient_space">Kapasitas ruang di %1$s tidak mencukupi! Dibutuhkan: %2$d MB (termasuk kompensasi cluster slack), Tersedia: %3$d MB (Kurang %4$d MB).</string>
+    <string name="storage_msg_critical_unmount_failed_before_internal">KRITIS: Gagal melepas mount sebelum pemindahan ke internal. Operasi dibatalkan demi menjaga keutuhan data.</string>
+    <string name="storage_msg_operation_complete">Operasi Selesai</string>
+    <string name="catalog_step_moving_data">Memindahkan struktur data game ke MountX/Android/data…</string>
+    <string name="catalog_step_moving_obb">Memindahkan OBB resource ke MountX/Android/obb…</string>
+    <string name="mount_occlusion_hazard_msg">Data game masih berada di memori internal. Pindahkan data ke MicroSD terlebih dahulu sebelum di-mount.</string>
+    <string name="storage_wizard_auto_balance">Bagi Rata</string>
+    <string name="format_kernel_ready">Mendukung Kernel</string>
+    <string name="format_kernel_unsupported">Tidak Didukung</string>
+    <string name="fsck_log_hide">Sembunyikan Log Shell</string>
+    <string name="fsck_log_view_raw">Lihat Output Shell (Raw Log)</string>
+    <string name="op_f2fs_gc_mode_label">Mode GC</string>
+    <string name="op_f2fs_gc_mode_urgent">Mendesak (Level 1)</string>
+    <string name="settings_emergency_reset_success_msg">Reset darurat selesai. Seluruh kaitan dilepas dan perizinan dipulihkan.</string>
+    <string name="logs_share_title">Bagikan Log MountX</string>
+    <string name="diag_issue_root_shell_failed">Akses root shell gagal atau kehabisan waktu.</string>
+    <string name="diag_issue_microsd_readonly">Partisi penyimpanan MicroSD hanya-baca (read-only) atau tidak dapat ditulis.</string>
+    <string name="diag_issue_watchdog_inactive">Daemon watchdog service.sh tidak berjalan secara aktif.</string>
+    <string name="op_detail_disk">Disk</string>
+
+    <!-- Common UI Actions & Descriptors -->
+    <string name="common_copy">Salin</string>
+    <string name="common_copied_toast">%1$s disalin</string>
+    <string name="common_locked">Terkunci</string>
+    <string name="common_menu">Menu</string>
+    <string name="common_unknown_device">Perangkat Tidak Dikenal</string>
+    <string name="common_unknown_error">Kesalahan tidak diketahui</string>
+
+    <!-- App Detail -->
+    <string name="app_detail_installer_system_sideload">Sistem / Sideload</string>
+    <string name="manage_location_badge_usb_otg">USB OTG</string>
+
+    <!-- Smart Restructure Dialog -->
+    <string name="smart_restructure_title">Restrukturisasi Data MicroSD</string>
+    <string name="smart_restructure_subtitle">%1$d aplikasi perlu dirapikan</string>
+    <string name="smart_restructure_legacy_path">Lokasi Lama</string>
+    <string name="smart_restructure_in_progress">Memproses restrukturisasi…</string>
+    <string name="smart_restructure_btn_confirm">Rapikan Sekarang</string>
+    <string name="smart_restructure_btn_later">Nanti Saja</string>
+
+    <!-- Manual Add App Sheet -->
+    <string name="add_app_manual_name_placeholder">Nama Aplikasi</string>
+
+    <!-- About Screen Actions & Changelog -->
+    <string name="about_btn_view_changelog">Lihat</string>
+    <string name="about_changelog_view_earlier_n">Lihat versi sebelumnya (%1$s)</string>
+    <string name="about_changelog_older_releases_n">%1$d versi terdahulu</string>
+    <string name="about_changelog_older_releases_one">1 versi terdahulu</string>
+    <string name="about_changelog_badge_latest">Terbaru</string>
+    <string name="about_changelog_hide_details">Sembunyikan Detail</string>
+    <string name="about_changelog_view_details">Lihat Detail</string>
+    <string name="about_changelog_view_on_github">Lihat di GitHub</string>
+
+    <!-- Operation Progress Overlay -->
+    <string name="op_overlay_show_log">Tampilkan Log Teknis</string>
+    <string name="op_overlay_hide_log">Sembunyikan Log Teknis</string>
+
+    <!-- Logs Screen -->
+    <string name="logs_subtitle_live_stream">%1$d entri • Live Stream</string>
+    <string name="logs_lines_count_format">%1$d / %2$d Baris</string>
+    <string name="logs_err_generate_report">Gagal membuat laporan: %1$s</string>
+    <string name="logs_err_open_stream">Tidak dapat membuka stream berkas untuk %1$s</string>
+
+    <!-- Notification Service -->
+    <string name="notif_more_apps_count">+%1$d lainnya</string>
+
+    <!-- Storage Partition Telemetry Tags -->
+    <string name="storage_partition_tag_target">Tujuan</string>
+    <string name="storage_partition_tag_portable">Portabel</string>
+
+    <!-- Storage Operations Error Fallbacks -->
+    <string name="op_err_repartition_failed">Partisi ulang gagal</string>
+    <string name="op_err_mount_failed">Gagal mengaitkan partisi</string>
+    <string name="op_err_unmount_failed">Gagal melepas partisi</string>
+    <string name="storage_trim_must_be_mounted">Partisi harus di-mount untuk menjalankan TRIM</string>
+    <string name="storage_trim_completed">Operasi TRIM berhasil diselesaikan.</string>
+    <string name="storage_err_mount_all_failed">Gagal memasang seluruh partisi</string>
+    <string name="storage_err_unmount_all_failed">Gagal melepas seluruh partisi</string>
+    <string name="op_err_move_failed">Pemindahan data gagal</string>
+    <string name="op_err_direct_mount_failed">Pengaitan langsung gagal</string>
+    <string name="update_check_failed">Pemeriksaan gagal</string>
+    <string name="settings_emergency_reset_failed">Reset darurat gagal: %1$s</string>
+    <string name="settings_rescue_script_created">Skrip pemulihan dibuat di %1$s</string>
+    <string name="settings_rescue_script_failed">Gagal membuat skrip pemulihan: %1$s</string>
+    <string name="settings_portability_export_failed">Ekspor gagal</string>
+    <string name="settings_portability_import_failed">Impor gagal</string>
+    <string name="settings_portability_invalid_backup">Berkas cadangan tidak valid: %1$s</string>
+    <string name="settings_portability_err_open_file">Tidak dapat membuka berkas</string>
+    <string name="settings_portability_err_invalid_json">Format JSON tidak valid</string>
+    <string name="storage_err_hardware_io">Kesalahan I/O Perangkat Keras</string>
+
+    <!-- Diagnostics Additional Alerts -->
+    <string name="diag_issue_microsd_space_critical">Ruang penyimpanan MicroSD kritis: hanya tersisa %1$d MB.</string>
+    <string name="diag_no_partition_mounted_at">Tidak ada partisi yang terpasang di %1$s</string>
+    <string name="diag_mount_not_in_proc_mounts">Tidak terpasang di /proc/mounts</string>
+    <string name="diag_log_empty_or_inaccessible">mountx.log kosong atau tidak dapat diakses</string>
+
+    <!-- Storage Manager & Module Engine Exceptions -->
+    <string name="storage_err_fsck_mounted">Tidak dapat memeriksa filesystem saat partisi terpasang. Lepas kaitan partisi terlebih dahulu.</string>
+    <string name="storage_err_label_empty">Label partisi tidak boleh kosong.</string>
+    <string name="storage_err_failed_set_label">Gagal mengubah label partisi (kode keluar %1$d)</string>
+    <string name="storage_err_no_accessible_block_device">Tidak ada block device yang dapat diakses untuk %1$s (diminta: %2$s)</string>
+    <string name="storage_err_no_partitions_in_scheme">Tidak ada partisi yang ditentukan dalam skema.</string>
+    <string name="storage_err_fdisk_write_failed">Gagal menulis tabel partisi melalui fdisk: %1$s</string>
+    <string name="storage_err_partition_format_failed">Galat format partisi %1$d: %2$s</string>
+    <string name="storage_err_copy_failed">Gagal menyalin %1$s ke %2$s (kode keluar %3$d): %4$s</string>
+    <string name="storage_err_no_active_points">Tidak ada titik kait aktif yang dikonfigurasikan untuk migrasi.</string>
+    <string name="storage_err_internal_data_not_exist">Jalur data internal tidak ditemukan: %1$s</string>
+    <string name="storage_err_internal_obb_not_exist">Jalur OBB internal tidak ditemukan: %1$s</string>
+    <string name="storage_err_sd_data_not_exist">Jalur data SD tidak ditemukan: %1$s</string>
+    <string name="storage_err_sd_obb_not_exist">Jalur OBB SD tidak ditemukan: %1$s</string>
+    <string name="storage_err_no_mounted_partitions">Tidak ada partisi terpasang pada %1$s. Pasang minimal satu partisi sebelum menjalankan TRIM.</string>
+    <string name="storage_err_mount_point_empty">Titik pasang (mount point) tidak boleh kosong.</string>
+    <string name="storage_err_no_f2fs_gc_urgent">Tidak ada filesystem F2FS aktif dengan dukungan gc_urgent yang terdeteksi.</string>
+    <string name="storage_err_direct_block_read_failed">Pembacaan blok langsung gagal: 0 record tersalin</string>
+    <string name="module_err_copy_files">Gagal menyalin berkas modul: %1$s</string>
+
 </resources>
 
 

@@ -235,7 +235,7 @@ fun LogsScreen(
         topBar = {
             CompactScreenHeader(
                 title = stringResource(R.string.logs_title),
-                subtitle = "${allLines.size} entries • Live Stream",
+                subtitle = stringResource(R.string.logs_subtitle_live_stream, allLines.size),
                 actions = {
                     // Unified Modern Save Log Button (SAF Document Creation)
                     IconButton(
@@ -344,7 +344,7 @@ fun LogsScreen(
                 }
 
                 Text(
-                    text = "${filteredLines.size} / ${allLines.size} Lines",
+                    text = stringResource(R.string.logs_lines_count_format, filteredLines.size, allLines.size),
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )

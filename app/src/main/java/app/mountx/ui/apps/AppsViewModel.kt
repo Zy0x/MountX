@@ -640,7 +640,7 @@ class AppsViewModel @Inject constructor(
                         _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
                     }
                 } else {
-                    _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
+                    _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_move_failed)
                 }
             } finally {
                 _isMovingData.value = false
@@ -679,7 +679,7 @@ class AppsViewModel @Inject constructor(
                 if (result.isSuccess) {
                     _moveMessage.value = "SUCCESS"
                 } else {
-                    _moveMessage.value = result.exceptionOrNull()?.message ?: "Direct mount failed"
+                    _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_direct_mount_failed)
                 }
 
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, targetBase)
@@ -800,7 +800,7 @@ class AppsViewModel @Inject constructor(
                     _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
                 }
             } else {
-                _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
+                _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_move_failed)
             }
         }
     }

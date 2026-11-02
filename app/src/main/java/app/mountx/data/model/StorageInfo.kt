@@ -1,5 +1,8 @@
 package app.mountx.data.model
 
+import app.mountx.MountXApp
+import app.mountx.R
+
 /** Root solutions supported by MountX */
 enum class RootSolution {
     MAGISK,
@@ -99,12 +102,16 @@ data class PartitionInfo(
         get() = if (partitionNumber > 0) "Part $partitionNumber" else name.takeLast(6)
 
     val shortName: String
-        get() = when {
-            isTargetMount -> "Part $partitionNumber (Target)"
-            isPortableMount -> "Part $partitionNumber (Portable)"
-            partitionNumber > 0 && fsType.isNotBlank() -> "Part $partitionNumber (${fsType.uppercase()})"
-            partitionNumber > 0 -> "Part $partitionNumber"
-            else -> name.takeLast(6)
+        get() {
+            val targetTag = runCatching { MountXApp.instance.getString(R.string.storage_partition_tag_target) }.getOrDefault("Target")
+            val portableTag = runCatching { MountXApp.instance.getString(R.string.storage_partition_tag_portable) }.getOrDefault("Portable")
+            return when {
+                isTargetMount -> "Part $partitionNumber ($targetTag)"
+                isPortableMount -> "Part $partitionNumber ($portableTag)"
+                partitionNumber > 0 && fsType.isNotBlank() -> "Part $partitionNumber (${fsType.uppercase()})"
+                partitionNumber > 0 -> "Part $partitionNumber"
+                else -> name.takeLast(6)
+            }
         }
 }
 

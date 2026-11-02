@@ -1142,6 +1142,8 @@ private fun StorageTabContent(
         val apkInternalDir = if (apkSrc.endsWith(".apk")) java.io.File(apkSrc).parent ?: apkSrc else apkSrc
         val libSrc = packageInfo?.applicationInfo?.nativeLibraryDir ?: "/data/app/$pkg/lib"
 
+        val defaultUsbOtgTitle = context.getString(R.string.manage_location_badge_usb_otg)
+
         fun getDiskDetails(path: String, diskUuid: String?): Pair<Boolean, String?> {
             val resolvedUuid = diskUuid
                 ?: prioritizedPoints.firstOrNull { !it.diskUuid.isNullOrBlank() }?.diskUuid
@@ -1150,7 +1152,7 @@ private fun StorageTabContent(
                 (path.isNotBlank() && d.partitions.any { it.mountPoint != null && path.startsWith(it.mountPoint) })
             } ?: availableDisks.firstOrNull { it.diskType != DiskType.USB_OTG }
             val isUsb = disk?.diskType == DiskType.USB_OTG || path.startsWith("/mnt/media_rw/")
-            val label = disk?.hardwareTitle ?: if (isUsb) "USB OTG" else defaultMicroSdTitle
+            val label = disk?.hardwareTitle ?: if (isUsb) defaultUsbOtgTitle else defaultMicroSdTitle
             return Pair(isUsb, label)
         }
 
@@ -1166,7 +1168,7 @@ private fun StorageTabContent(
                 Triple(size, apkDefaultDesc, true)
             }
             safeBreakdown.ext2ApkBytes > 16 * 1024L && internalApkTotalBytes > 64 * 1024L -> {
-                val targetName = if (isApkUsb) (apkDiskLabel ?: "USB OTG") else (apkDiskLabel ?: defaultMicroSdTitle)
+                val targetName = if (isApkUsb) (apkDiskLabel ?: defaultUsbOtgTitle) else (apkDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     internalApkTotalBytes,
                     context.getString(R.string.category_item_on_storage, apkDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2ApkBytes), targetName),
@@ -1192,7 +1194,7 @@ private fun StorageTabContent(
                 Triple(size, libDefaultDesc, true)
             }
             safeBreakdown.ext2LibBytes > 16 * 1024L && safeBreakdown.libBytes > 64 * 1024L -> {
-                val targetName = if (isLibUsb) (libDiskLabel ?: "USB OTG") else (libDiskLabel ?: defaultMicroSdTitle)
+                val targetName = if (isLibUsb) (libDiskLabel ?: defaultUsbOtgTitle) else (libDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.libBytes,
                     context.getString(R.string.category_item_on_storage, libDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2LibBytes), targetName),
@@ -1220,7 +1222,7 @@ private fun StorageTabContent(
                 Triple(size, privateDefaultDesc, true)
             }
             safeBreakdown.ext2PrivateBytes > 16 * 1024L && safeBreakdown.dataBytes > 64 * 1024L -> {
-                val targetName = if (isPrivateUsb) (privateDiskLabel ?: "USB OTG") else (privateDiskLabel ?: defaultMicroSdTitle)
+                val targetName = if (isPrivateUsb) (privateDiskLabel ?: defaultUsbOtgTitle) else (privateDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.dataBytes,
                     context.getString(R.string.category_item_on_storage, privateDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2PrivateBytes), targetName),
@@ -1246,7 +1248,7 @@ private fun StorageTabContent(
                 Triple(size, cacheDefaultDesc, true)
             }
             safeBreakdown.ext2CacheBytes > 16 * 1024L && safeBreakdown.cacheBytes > 64 * 1024L -> {
-                val targetName = if (isCacheUsb) (cacheDiskLabel ?: "USB OTG") else (cacheDiskLabel ?: defaultMicroSdTitle)
+                val targetName = if (isCacheUsb) (cacheDiskLabel ?: defaultUsbOtgTitle) else (cacheDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.cacheBytes,
                     context.getString(R.string.category_item_on_storage, cacheDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2CacheBytes), targetName),
@@ -1272,7 +1274,7 @@ private fun StorageTabContent(
                 Triple(size, dataDefaultDesc, true)
             }
             safeBreakdown.ext2DataBytes > 16 * 1024L && safeBreakdown.ext1DataBytes > 64 * 1024L -> {
-                val targetName = if (isDataUsb) (dataDiskLabel ?: "USB OTG") else (dataDiskLabel ?: defaultMicroSdTitle)
+                val targetName = if (isDataUsb) (dataDiskLabel ?: defaultUsbOtgTitle) else (dataDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1DataBytes,
                     context.getString(R.string.category_item_on_storage, dataDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2DataBytes), targetName),
@@ -1302,7 +1304,7 @@ private fun StorageTabContent(
                 Triple(size, obbDefaultDesc, true)
             }
             safeBreakdown.ext2ObbBytes > 16 * 1024L && safeBreakdown.ext1ObbBytes > 64 * 1024L -> {
-                val targetName = if (isObbUsb) (obbDiskLabel ?: "USB OTG") else (obbDiskLabel ?: defaultMicroSdTitle)
+                val targetName = if (isObbUsb) (obbDiskLabel ?: defaultUsbOtgTitle) else (obbDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1ObbBytes,
                     context.getString(R.string.category_item_on_storage, obbDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2ObbBytes), targetName),
@@ -1329,7 +1331,7 @@ private fun StorageTabContent(
                 Triple(size, mediaDefaultDesc, true)
             }
             safeBreakdown.ext2MediaBytes > 16 * 1024L && safeBreakdown.ext1MediaBytes > 64 * 1024L -> {
-                val targetName = if (isMediaUsb) (mediaDiskLabel ?: "USB OTG") else (mediaDiskLabel ?: defaultMicroSdTitle)
+                val targetName = if (isMediaUsb) (mediaDiskLabel ?: defaultUsbOtgTitle) else (mediaDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1MediaBytes,
                     context.getString(R.string.category_item_on_storage, mediaDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2MediaBytes), targetName),
@@ -2654,7 +2656,7 @@ private fun StorageTabContent(
                         categoryToDelete = null
                         inspectingCategory = null
                     } else {
-                        val msg = context.getString(R.string.category_inspector_delete_failed, errMsg ?: "Unknown error")
+                        val msg = context.getString(R.string.category_inspector_delete_failed, errMsg ?: context.getString(R.string.common_unknown_error))
                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                     }
                 }
@@ -5692,15 +5694,16 @@ private fun AppInfoTabContent(
     }
 
     val installerPackage = remember(packageInfo) {
+        val defaultInstaller = context.getString(R.string.app_detail_installer_system_sideload)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                context.packageManager.getInstallSourceInfo(game.packageName).installingPackageName ?: "Sistem / Sideload"
+                context.packageManager.getInstallSourceInfo(game.packageName).installingPackageName ?: defaultInstaller
             } else {
                 @Suppress("DEPRECATION")
-                context.packageManager.getInstallerPackageName(game.packageName) ?: "Sistem / Sideload"
+                context.packageManager.getInstallerPackageName(game.packageName) ?: defaultInstaller
             }
         } catch (_: Exception) {
-            "Sistem / Sideload"
+            defaultInstaller
         }
     }
 
@@ -5716,7 +5719,7 @@ private fun AppInfoTabContent(
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, value)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "$label disalin", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.common_copied_toast, label), Toast.LENGTH_SHORT).show()
     }
 
     if (showUnmountedLaunchDialog) {
@@ -6033,7 +6036,7 @@ private fun InfoRowItem(
             ) {
                 Icon(
                     imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "Copy",
+                    contentDescription = stringResource(R.string.common_copy),
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
                     modifier = Modifier.size(15.dp)
                 )

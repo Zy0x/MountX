@@ -882,7 +882,7 @@ class StorageManager(
         runCatching {
             val mountsRes = RootShell.exec("grep -F \"$blockDevice\" /proc/mounts 2>/dev/null")
             if (mountsRes.output.isNotBlank()) {
-                error("Cannot check filesystem while partition is mounted. Please unmount first.")
+                error(getAppContext().getString(R.string.storage_err_fsck_mounted))
             }
 
             val cmd = when {
@@ -946,7 +946,7 @@ class StorageManager(
         runCatching {
             val sanitizedLabel = newLabel.trim().replace("\"", "")
             if (sanitizedLabel.isBlank()) {
-                error("Partition label cannot be empty.")
+                error(getAppContext().getString(R.string.storage_err_label_empty))
             }
 
             val cmd = when {
@@ -971,7 +971,7 @@ class StorageManager(
             if (res.isSuccess || res.output.contains("set", ignoreCase = true) || res.output.isBlank()) {
                 "Partition label updated to \"$sanitizedLabel\" successfully."
             } else {
-                error(res.output.ifBlank { "Failed to set partition label (exit code ${res.code})" })
+                error(res.output.ifBlank { getAppContext().getString(R.string.storage_err_failed_set_label, res.code) })
             }
         }
     }
@@ -1151,7 +1151,7 @@ class StorageManager(
             }
 
             if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
-                error("No accessible block device found for $mountPoint (requested: $blockDevice)")
+                error(getAppContext().getString(R.string.storage_err_no_accessible_block_device, mountPoint, blockDevice))
             }
             
             // Try primary fsType with optimized game streaming flags
@@ -1629,7 +1629,7 @@ class StorageManager(
         partitions: List<PartitionSchemeConfig>
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            if (partitions.isEmpty()) error("No partitions specified in scheme.")
+            if (partitions.isEmpty()) error(getAppContext().getString(R.string.storage_err_no_partitions_in_scheme))
 
             // 1. Unmount all partitions currently mounted on this disk
             val mountsRes = RootShell.exec("grep -F \"$diskPath\" /proc/mounts 2>/dev/null")
@@ -1695,7 +1695,7 @@ class StorageManager(
                 fdiskScript.append("w\\n")
                 val res = RootShell.exec("printf '$fdiskScript' | fdisk \"$diskPath\" 2>/dev/null")
                 if (!res.isSuccess) {
-                    error("Failed to write partition table via fdisk: ${res.output}")
+                    error(getAppContext().getString(R.string.storage_err_fdisk_write_failed, res.output))
                 }
             }
 
@@ -1720,7 +1720,7 @@ class StorageManager(
                     label = cfg.label
                 )
                 if (formatRes.isFailure) {
-                    error("Partition $partNum format error: ${formatRes.exceptionOrNull()?.message}")
+                    error(getAppContext().getString(R.string.storage_err_partition_format_failed, partNum, formatRes.exceptionOrNull()?.message ?: ""))
                 }
             }
         }
@@ -2141,7 +2141,7 @@ class StorageManager(
                 RootShell.exec("rm -rf \"$destDir\"")
             }
             val fullErr = if (errDetail.isNotBlank()) errDetail else if (streamRes.stderr.isNotEmpty()) streamRes.stderr.joinToString("\n") else ""
-            error("Failed to copy $sourceDir to $destDir (exit code $copyExitCode): $fullErr")
+            error(getAppContext().getString(R.string.storage_err_copy_failed, sourceDir, destDir, copyExitCode, fullErr))
         }
 
         // Integrity Verification: Verify destination contains data before source can be deleted
@@ -2819,7 +2819,7 @@ class StorageManager(
                 mountPoints.map { it.copy(enabled = true) }
             }
             if (rawActivePoints.isEmpty()) {
-                error("No active mount points configured for migration.")
+                error(getAppContext().getString(R.string.storage_err_no_active_points))
             }
 
             // Dynamically resolve live APK directory from PackageManager so stale /data/app/~~old_hash paths are never used
@@ -2953,7 +2953,7 @@ class StorageManager(
                     val reqMb = requiredTotal / (1024 * 1024)
                     val availMb = freeBytes / (1024 * 1024)
                     val deficitMb = deficit / (1024 * 1024)
-                    val targetLabel = if (isToSd) "MicroSD" else getAppContext().getString(R.string.manage_internal_memory_label)
+                    val targetLabel = if (isToSd) getAppContext().getString(R.string.manage_location_badge_microsd) else getAppContext().getString(R.string.manage_internal_memory_label)
                     throw InsufficientStorageException(
                         requiredBytes = requiredTotal,
                         availableBytes = freeBytes,
@@ -3232,7 +3232,7 @@ class StorageManager(
                 val reqMb = requiredTotal / (1024 * 1024)
                 val availMb = freeBytes / (1024 * 1024)
                 val deficitMb = deficit / (1024 * 1024)
-                val targetLabel = if (isToSd) "MicroSD" else getAppContext().getString(R.string.manage_internal_memory_label)
+                val targetLabel = if (isToSd) getAppContext().getString(R.string.manage_location_badge_microsd) else getAppContext().getString(R.string.manage_internal_memory_label)
                 throw InsufficientStorageException(
                     requiredBytes = requiredTotal,
                     availableBytes = freeBytes,
@@ -3335,7 +3335,7 @@ class StorageManager(
                                     safeCleanSourceDirectory(internalData, sdData, packageName)
                                 }
                             } else if (target == MigrationTarget.DATA_ONLY) {
-                                error("Internal data path does not exist: $internalData")
+                                error(getAppContext().getString(R.string.storage_err_internal_data_not_exist, internalData))
                             }
                         }
 
@@ -3371,7 +3371,7 @@ class StorageManager(
                                     safeCleanSourceDirectory(internalObb, sdObb, packageName)
                                 }
                             } else if (target == MigrationTarget.OBB_ONLY) {
-                                error("Internal OBB path does not exist: $internalObb")
+                                error(getAppContext().getString(R.string.storage_err_internal_obb_not_exist, internalObb))
                             }
                         }
                     }
@@ -3408,7 +3408,7 @@ class StorageManager(
                                     RootShell.exec("rmdir \"$sdData\" 2>/dev/null")
                                 }
                             } else if (target == MigrationTarget.DATA_ONLY) {
-                                error("SD data path does not exist: $sdData")
+                                error(getAppContext().getString(R.string.storage_err_sd_data_not_exist, sdData))
                             }
                         }
 
@@ -3444,7 +3444,7 @@ class StorageManager(
                                     RootShell.exec("rmdir \"$sdObb\" 2>/dev/null")
                                 }
                             } else if (target == MigrationTarget.OBB_ONLY) {
-                                error("SD OBB path does not exist: $sdObb")
+                                error(getAppContext().getString(R.string.storage_err_sd_obb_not_exist, sdObb))
                             }
                         }
 
@@ -3644,7 +3644,7 @@ class StorageManager(
             }
 
             if (results.isEmpty()) {
-                error("No mounted partitions found on ${disk.hardwareTitle}. Mount at least one partition before trimming.")
+                error(getAppContext().getString(R.string.storage_err_no_mounted_partitions, disk.hardwareTitle))
             }
 
             val summary = when {
@@ -3785,7 +3785,7 @@ class StorageManager(
      */
     suspend fun executePartitionTrim(mountPoint: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            if (mountPoint.isBlank()) error("Mount point cannot be empty")
+            if (mountPoint.isBlank()) error(getAppContext().getString(R.string.storage_err_mount_point_empty))
             val targetMnt = resolveDirectMountPoint(mountPoint)
             val res = RootShell.exec("(fstrim -v \"$targetMnt\" 2>&1 || busybox fstrim -v \"$targetMnt\" 2>&1)")
             val out = res.output.ifBlank { res.stderr.joinToString("\n") }
@@ -3802,7 +3802,7 @@ class StorageManager(
             val nodesRes = RootShell.exec("ls /sys/fs/f2fs/*/gc_urgent 2>/dev/null")
             val nodes = nodesRes.stdout.filter { it.isNotBlank() }
             if (nodes.isEmpty()) {
-                error("No active F2FS filesystem with gc_urgent support detected.")
+                error(getAppContext().getString(R.string.storage_err_no_f2fs_gc_urgent))
             }
             for (node in nodes) {
                 RootShell.exec("echo 1 > \"$node\" 2>/dev/null")
@@ -3828,7 +3828,7 @@ class StorageManager(
             val recordsMatch = Regex("""(\d+)\+\d+\s+records\s+out""").find(output)
             val recordsOut = recordsMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
             if (recordsOut <= 0 || output.contains("bad iflag", ignoreCase = true) || output.contains("Permission denied", ignoreCase = true)) {
-                error(output.ifBlank { "Direct block read failed: 0 records copied" })
+                error(output.ifBlank { getAppContext().getString(R.string.storage_err_direct_block_read_failed) })
             }
 
             // Extract exact bytes and seconds for high-precision calculation

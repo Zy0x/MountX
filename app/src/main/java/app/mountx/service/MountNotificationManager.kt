@@ -235,7 +235,7 @@ class MountNotificationManager @Inject constructor(
                     bigStyle.addLine("• ${g.displayName}$gSize$diskTag")
                 }
                 if (mountedGames.size > 6) {
-                    bigStyle.addLine("+${mountedGames.size - 6} more")
+                    bigStyle.addLine(context.getString(R.string.notif_more_apps_count, mountedGames.size - 6))
                 }
 
                 // 6. Notification Builder (Clean, single high-value Unmount action, tap opens app)
