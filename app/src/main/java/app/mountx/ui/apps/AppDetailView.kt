@@ -3577,6 +3577,7 @@ private fun CategoryCardItem(
 
                     val badgeLabel = when {
                         !item.isMicroSd -> stringResource(R.string.common_internal)
+                        !item.storageTitle.isNullOrBlank() -> item.storageTitle
                         item.isUsbOtg -> stringResource(R.string.manage_location_badge_usb_otg)
                         else -> stringResource(R.string.common_external)
                     }
@@ -3593,6 +3594,8 @@ private fun CategoryCardItem(
                                 fontWeight = FontWeight.SemiBold
                             ),
                             color = badgeTint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                         )
                     }
