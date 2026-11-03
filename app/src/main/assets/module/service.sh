@@ -64,6 +64,7 @@ MOUNTPOINTS_FILE="${MODULE_DIR}/mountpoints.conf"
 GAMELIST_FILE="${MODULE_DIR}/gamelist.conf"
 LOG_FILE="${MODULE_DIR}/mountx.log"
 BOOT_FLAG_FILE="/dev/.mountx_booted"
+PID_FILE="/dev/.mountx_service.pid"
 
 # ── Default configuration values ─────────────────────────────────────────────
 SD_BASE="/data/sdext2"
@@ -1595,6 +1596,7 @@ check_safe_uninstall() {
         chmod 775 /data/media/0/Android/obb 2>/dev/null
         restorecon -R /data/media/0/Android 2>/dev/null
         touch "${MODULE_DIR}/disable" 2>/dev/null
+        rm -f "${PID_FILE}" "${BOOT_FLAG_FILE}" 2>/dev/null
         exit 0
     fi
 }
@@ -1602,12 +1604,26 @@ check_safe_uninstall() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
     rm -f /dev/.mountx_unmounted 2>/dev/null
-    wait_for_boot
-    check_safe_uninstall
-    load_config
-    mount_sd
-    cleanup_stale_mounts
-    apply_io_tweaks
+
+    local is_live_reload=0
+    [ -f "${BOOT_FLAG_FILE}" ] && is_live_reload=1
+
+    if [ ${is_live_reload} -eq 0 ]; then
+        wait_for_boot
+        check_safe_uninstall
+        load_config
+        mount_sd
+        cleanup_stale_mounts
+        apply_io_tweaks
+    else
+        log_info "MountX running in live-reload mode (system already booted). Preserving active mounts."
+        check_safe_uninstall
+        load_config
+        if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+            mount_sd
+        fi
+        apply_io_tweaks
+    fi
 
     # Ensure localized subdirectories exist without placing .nomedia on $SD_BASE/MountX
     mkdir -p "${SD_BASE}/MountX/Android/data" \
@@ -1634,9 +1650,26 @@ main() {
     # Whitelist MountX in system Doze/battery optimization so background transfers never get killed
     dumpsys deviceidle whitelist +app.mountx 2>/dev/null
 
+    # Single-Instance Supervisor Guard: terminate previous watchdog supervisor before starting new one
+    if [ -f "${PID_FILE}" ]; then
+        local _prev_pid
+        _prev_pid=$(cat "${PID_FILE}" 2>/dev/null | tr -d ' \r\t\n')
+        if [ -n "${_prev_pid}" ] && [ "${_prev_pid}" != "$$" ] && [ -d "/proc/${_prev_pid}" ]; then
+            log_info "[Supervisor] Stopping previous watchdog supervisor (PID=${_prev_pid})..."
+            kill -9 "${_prev_pid}" 2>/dev/null || true
+            pkill -P "${_prev_pid}" 2>/dev/null || true
+        fi
+    fi
+    for _orphan in $(pgrep -f "${MODULE_DIR}/service.sh" 2>/dev/null); do
+        if [ "${_orphan}" != "$$" ] && [ "${_orphan}" != "$PPID" ]; then
+            kill -9 "${_orphan}" 2>/dev/null || true
+        fi
+    done
+
 # ── Immortal Watchdog Supervisor ──────────────────────────────────────────────
 watchdog_supervisor() {
     log_info "[Supervisor] Starting immortal watchdog supervisor (PID=$$)..."
+    echo "$$" > "${PID_FILE}" 2>/dev/null
     while true; do
         mount_watchdog
         local exit_code=$?

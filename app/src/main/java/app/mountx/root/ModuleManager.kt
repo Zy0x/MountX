@@ -106,6 +106,17 @@ object ModuleManager {
                 [ -f "$MODULE_DIR/config.conf" ] && cp -f "$MODULE_DIR/config.conf" /data/local/tmp/mountx_cfg.bak 2>/dev/null || true
                 [ -f "$MODULE_DIR/gamelist.conf" ] && cp -f "$MODULE_DIR/gamelist.conf" /data/local/tmp/mountx_game.bak 2>/dev/null || true
 
+                # 1b. Gracefully terminate running background watchdog daemon before file sync
+                # This ensures the shell interpreter does not read corrupted byte offsets during file replacement
+                if [ -f "/dev/.mountx_service.pid" ]; then
+                    _old_pid=$(cat /dev/.mountx_service.pid 2>/dev/null | tr -d ' \r\t\n')
+                    [ -n "${'$'}_old_pid" ] && kill -9 "${'$'}_old_pid" 2>/dev/null || true
+                    rm -f /dev/.mountx_service.pid 2>/dev/null || true
+                fi
+                pkill -f "$MODULE_DIR/service.sh" 2>/dev/null || true
+                pkill -f "$ALT_MODULE_DIR/service.sh" 2>/dev/null || true
+                pkill -f "mount_watchdog" 2>/dev/null || true
+
                 cp -rf $stagingPath/* $MODULE_DIR/
 
                 # 2. Restore preserved user configuration
@@ -135,6 +146,12 @@ object ModuleManager {
                     fi
                 fi
                 chcon -R u:object_r:magisk_file:s0 $MODULE_DIR 2>/dev/null || true
+
+                # 4. Zero-Reboot Live Daemon Relaunch:
+                # Spawn the new service.sh immediately in background with zero reboot required
+                if [ -f "$MODULE_DIR/service.sh" ]; then
+                    nohup /system/bin/sh "$MODULE_DIR/service.sh" >/dev/null 2>&1 &
+                fi
             """.trimIndent()
 
             val res = RootShell.exec(installCmd)
@@ -199,9 +216,30 @@ object ModuleManager {
                 RootShell.exec("rm -rf $MODULE_DIR/META-INF $MODULE_DIR/customize.sh $MODULE_DIR/MountX.apk /data/local/tmp/MountX* /data/local/tmp/mountx* 2>/dev/null || true")
             }
 
-            if (installedVersionCode < currentVersionCode || !binExists) {
-                AppLogger.info(TAG, "Syncing outdated or incomplete module: installed=$installedVersionCode, current=$currentVersionCode, binExists=$binExists")
+            // Check if service.sh file size differs from bundled asset (e.g. script update without versionCode bump)
+            val bundledServiceSize = runCatching {
+                context.assets.open("module/service.sh").use { it.available().toLong() }
+            }.getOrDefault(0L)
+
+            val installedServiceSize = RootShell.execForOutput("stat -c%s \"$MODULE_DIR/service.sh\" 2>/dev/null")
+                .trim()
+                .toLongOrNull() ?: 0L
+
+            val isScriptModified = bundledServiceSize > 0L && bundledServiceSize != installedServiceSize
+
+            // Check if service daemon is alive
+            val isDaemonRunning = RootShell.exec("pgrep -f '$MODULE_DIR/service.sh' >/dev/null 2>&1").isSuccess
+
+            val isOutdated = installedVersionCode < currentVersionCode || !binExists || isScriptModified
+
+            if (isOutdated) {
+                AppLogger.info(TAG, "Syncing outdated or modified module: installed=$installedVersionCode, current=$currentVersionCode, scriptModified=$isScriptModified, binExists=$binExists")
                 installModuleDirectly(context)
+                true
+            } else if (!isDaemonRunning && !isModuleDisabled()) {
+                // Daemon died or was killed - revive it cleanly with live reload
+                AppLogger.info(TAG, "Reviving dormant root watchdog daemon...")
+                RootShell.exec("nohup /system/bin/sh \"$MODULE_DIR/service.sh\" >/dev/null 2>&1 &")
                 true
             } else {
                 hasInstallerResidue
