@@ -13,6 +13,8 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -26,6 +28,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -1619,36 +1624,40 @@ private fun StorageTabContent(
     val extColor = if (hasUsbCategory) Color(0xFF00ACC1) else Color(0xFF3BA71A)
     val extLabel = if (hasUsbCategory) stringResource(R.string.game_detail_legend_usb) else stringResource(R.string.game_detail_legend_microsd)
 
-    val chartSlices = remember(chartBreakdown, hasUsbCategory, extLabel, extColor) {
+    var selectedSubPage by remember { mutableIntStateOf(0) }
+
+    // Slices for Media Mode (Internal Phone vs External MicroSD/USB)
+    val mediaSlices = remember(chartBreakdown, extLabel, extColor) {
         listOfNotNull(
-            if (!chartBreakdown.isApkMounted && chartBreakdown.apkBytes > 0) {
-                ChartSlice("Apk", context.getString(R.string.category_item_apk_title), chartBreakdown.apkBytes, Color(0xFFE91E63))
+            if (chartBreakdown.phoneInternalBytes > 0) {
+                ChartSlice("Phone", context.getString(R.string.game_detail_legend_phone), chartBreakdown.phoneInternalBytes, Color(0xFFDF4006))
             } else null,
-            if (!chartBreakdown.isLibMounted && chartBreakdown.libBytes > 0) {
-                ChartSlice("Lib", context.getString(R.string.category_item_lib_title), chartBreakdown.libBytes, Color(0xFFFB8C00))
-            } else null,
-            if (!chartBreakdown.isApkMounted && chartBreakdown.dexBytes > 0) {
-                ChartSlice("Dex", context.getString(R.string.game_detail_slice_dex), chartBreakdown.dexBytes, Color(0xFFAB47BC))
-            } else null,
-            if (!chartBreakdown.isPrivateMounted && chartBreakdown.dataBytes > 0) {
-                ChartSlice("Data", context.getString(R.string.category_item_private_title), chartBreakdown.dataBytes, Color(0xFF00ACC1))
-            } else null,
-            if (!chartBreakdown.isCacheMounted && chartBreakdown.cacheBytes > 0) {
-                ChartSlice("Cache", context.getString(R.string.category_item_cache_title), chartBreakdown.cacheBytes, Color(0xFFE57373))
-            } else null,
-            if (chartBreakdown.physicalExt1Bytes > 0) {
-                ChartSlice("Ext1", context.getString(R.string.game_detail_slice_shared_internal), chartBreakdown.physicalExt1Bytes, Color(0xFF3149FF))
-            } else null,
-            if (chartBreakdown.ext2Bytes > 0) {
-                ChartSlice("Ext2", extLabel, chartBreakdown.ext2Bytes, extColor)
-            } else null,
-            if (chartBreakdown.customBytes > 0) {
-                ChartSlice("Custom", context.getString(R.string.game_detail_slice_custom), chartBreakdown.customBytes, Color(0xFF00BFA5))
+            if (chartBreakdown.microSdBytes > 0) {
+                ChartSlice("External", extLabel, chartBreakdown.microSdBytes, extColor)
             } else null
         )
     }
 
-    val chartPagerState = rememberPagerState(pageCount = { 2 })
+    // Slices for Component Breakdown Mode (Apk, Lib, Private, Cache, Data, Obb, Media, Custom)
+    val componentSlices = remember(categories) {
+        categories.mapNotNull { item ->
+            val color = when (item.id) {
+                "apk" -> Color(0xFFE91E63)
+                "lib" -> Color(0xFFFB8C00)
+                "private" -> Color(0xFF00ACC1)
+                "cache" -> Color(0xFFE57373)
+                "data" -> Color(0xFF3149FF)
+                "obb" -> Color(0xFF5C6BC0)
+                "media" -> Color(0xFF8E24AA)
+                else -> Color(0xFF00BFA5)
+            }
+            if (item.bytes > 0L) {
+                ChartSlice(item.id, item.title, item.bytes, color)
+            } else null
+        }
+    }
+
+    val activeChartSlices = if (selectedSubPage == 0) mediaSlices else componentSlices
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -1798,300 +1807,337 @@ private fun StorageTabContent(
             ) {
                 ConcentricStorageChart(
                     breakdown = chartBreakdown,
-                    slices = chartSlices,
+                    slices = activeChartSlices,
                     isUsb = hasUsbCategory,
-                    modifier = Modifier.size(126.dp)
+                    centerPrimaryText = if (selectedSubPage == 1 && chartBreakdown.totalBytes > 0) FormatUtils.formatLegendBytes(chartBreakdown.totalBytes) else null,
+                    centerSubText = if (selectedSubPage == 1 && chartBreakdown.totalBytes > 0) stringResource(R.string.game_detail_legend_total) else null,
+                    modifier = Modifier
+                        .size(126.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            selectedSubPage = if (selectedSubPage == 0) 1 else 0
+                        }
                 )
 
-                // Right Column: 2 Sub-Pages (Storage Media vs Components) with Smooth Dot Indicators
+                // Right Column: Segmented Switcher & Sub-Page Content
                 Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(126.dp)
+                        .pointerInput(Unit) {
+                            detectHorizontalDragGestures { _, dragAmount ->
+                                if (dragAmount < -25f && selectedSubPage == 0) {
+                                    selectedSubPage = 1
+                                } else if (dragAmount > 25f && selectedSubPage == 1) {
+                                    selectedSubPage = 0
+                                }
+                            }
+                        },
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    HorizontalPager(
-                        state = chartPagerState,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { page ->
-                        when (page) {
-                            0 -> {
-                                // ── SUB-PAGE 1: STORAGE MEDIA (Phone Memory, MicroSD, Total) ──
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(end = 2.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                coroutineScope.launch {
-                                                    chartPagerState.animateScrollToPage(1)
-                                                }
-                                            }
-                                            .padding(bottom = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.game_detail_subpage_media_title).uppercase(),
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                letterSpacing = 0.5.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "1/2 ›",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                    }
-
-                                    // 1. Phone Memory (Internal)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Smartphone,
-                                                contentDescription = null,
-                                                tint = Color(0xFFDF4006),
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.game_detail_legend_phone),
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium
-                                                ),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        Text(
-                                            text = FormatUtils.formatLegendBytes(chartBreakdown.phoneInternalBytes),
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = Color(0xFFDF4006),
-                                            maxLines = 1
-                                        )
-                                    }
-
-                                    // 2. MicroSD Card / External Storage
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        ) {
-                                            Icon(
-                                                imageVector = extIcon,
-                                                contentDescription = null,
-                                                tint = extColor,
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                            Text(
-                                                text = extLabel,
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium
-                                                ),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        Text(
-                                            text = FormatUtils.formatLegendBytes(chartBreakdown.microSdBytes),
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = extColor,
-                                            maxLines = 1
-                                        )
-                                    }
-
-                                    HorizontalDivider(
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                        modifier = Modifier.padding(vertical = 2.dp)
-                                    )
-
-                                    // 3. Grand Total (Total)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.game_detail_legend_total),
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = FormatUtils.formatLegendBytes(chartBreakdown.totalBytes),
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                            1 -> {
-                                // ── SUB-PAGE 2: COMPONENT BREAKDOWN (Outer Ring Colors & Details) ──
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(end = 2.dp)
-                                        .verticalScroll(rememberScrollState()),
-                                    verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                coroutineScope.launch {
-                                                    chartPagerState.animateScrollToPage(0)
-                                                }
-                                            }
-                                            .padding(bottom = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = stringResource(R.string.game_detail_subpage_components_title).uppercase(),
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                letterSpacing = 0.5.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "‹ 2/2",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                    }
-
-                                    if (chartSlices.isEmpty()) {
-                                        Text(
-                                            text = stringResource(R.string.game_detail_no_components),
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    } else {
-                                        chartSlices.forEach { slice ->
-                                            val fraction = if (chartBreakdown.totalBytes > 0) {
-                                                slice.bytes.toDouble() / chartBreakdown.totalBytes.toDouble()
-                                            } else 0.0
-                                            val pct = (fraction * 100).roundToInt()
-                                            val pctStr = if (pct > 0) "$pct%" else "<1%"
-
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                                    modifier = Modifier.weight(1f, fill = false)
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(6.5.dp)
-                                                            .background(slice.color, CircleShape)
-                                                    )
-                                                    Text(
-                                                        text = slice.label,
-                                                        style = MaterialTheme.typography.labelSmall.copy(
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.SemiBold
-                                                        ),
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                                Text(
-                                                    text = "${FormatUtils.formatLegendBytes(slice.bytes)} ($pctStr)",
-                                                    style = MaterialTheme.typography.labelSmall.copy(
-                                                        fontSize = 9.5.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    ),
-                                                    color = slice.color,
-                                                    maxLines = 1,
-                                                    modifier = Modifier.padding(start = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // ── Smooth Dot Indicator with Touch & Tap Support ──
+                    // 1. Elegant Segmented Capsule Switcher: [ Media | Details ]
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 2.dp),
-                        horizontalArrangement = Arrangement.Center,
+                            .height(28.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .border(
+                                width = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        repeat(2) { index ->
-                            val isSelected = chartPagerState.currentPage == index
-                            val dotWidth by animateDpAsState(
-                                targetValue = if (isSelected) 14.dp else 5.dp,
-                                label = "chartDotWidth"
-                            )
-                            val dotColor = if (isSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 32.dp, height = 24.dp)
-                                    .clickable {
-                                        coroutineScope.launch {
-                                            chartPagerState.animateScrollToPage(index)
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(width = dotWidth, height = 5.dp)
-                                        .background(dotColor, RoundedCornerShape(2.5.dp))
+                        // Tab 0: Media
+                        val isMediaSelected = selectedSubPage == 0
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(
+                                    color = if (isMediaSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(6.dp)
                                 )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    selectedSubPage = 0
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.game_detail_subpage_media_title),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = if (isMediaSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isMediaSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+
+                        // Tab 1: Details
+                        val isDetailsSelected = selectedSubPage == 1
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(
+                                    color = if (isDetailsSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    selectedSubPage = 1
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.game_detail_subpage_components_title),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = if (isDetailsSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isDetailsSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    // 2. Animated Content Area (bounded height: 92.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(92.dp)
+                    ) {
+                        AnimatedContent(
+                            targetState = selectedSubPage,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150))
+                            },
+                            label = "ChartLegendSubPageTransition"
+                        ) { targetPage ->
+                            when (targetPage) {
+                                0 -> {
+                                    // ── STORAGE MEDIA: Phone, MicroSD, Total ──
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        // 1. Phone Memory
+                                        val internalPct = if (chartBreakdown.totalBytes > 0) {
+                                            ((chartBreakdown.phoneInternalBytes.toDouble() / chartBreakdown.totalBytes.toDouble()) * 100).roundToInt()
+                                        } else 0
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Smartphone,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFDF4006),
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = stringResource(R.string.game_detail_legend_phone),
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                text = if (chartBreakdown.totalBytes > 0) "${FormatUtils.formatLegendBytes(chartBreakdown.phoneInternalBytes)} ($internalPct%)" else FormatUtils.formatLegendBytes(0L),
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = Color(0xFFDF4006),
+                                                maxLines = 1
+                                            )
+                                        }
+
+                                        // 2. MicroSD Card / USB
+                                        val extPct = if (chartBreakdown.totalBytes > 0) {
+                                            ((chartBreakdown.microSdBytes.toDouble() / chartBreakdown.totalBytes.toDouble()) * 100).roundToInt()
+                                        } else 0
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            ) {
+                                                Icon(
+                                                    imageVector = extIcon,
+                                                    contentDescription = null,
+                                                    tint = extColor,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = extLabel,
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                text = if (chartBreakdown.totalBytes > 0) "${FormatUtils.formatLegendBytes(chartBreakdown.microSdBytes)} ($extPct%)" else FormatUtils.formatLegendBytes(0L),
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = extColor,
+                                                maxLines = 1
+                                            )
+                                        }
+
+                                        HorizontalDivider(
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                            thickness = 0.5.dp
+                                        )
+
+                                        // 3. Grand Total
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.game_detail_legend_total),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = FormatUtils.formatLegendBytes(chartBreakdown.totalBytes),
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                                1 -> {
+                                    // ── DETAILS / COMPONENTS BREAKDOWN ──
+                                    val activeCategories = remember(categories) {
+                                        categories.filter { it.bytes > 0L }
+                                    }
+                                    val totalCompBytes = remember(categories, chartBreakdown) {
+                                        val sum = categories.sumOf { it.bytes }
+                                        if (sum > 0L) sum else chartBreakdown.totalBytes
+                                    }
+
+                                    if (activeCategories.isEmpty()) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.game_detail_no_components),
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 10.5.sp
+                                                ),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    } else {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .verticalScroll(rememberScrollState()),
+                                            verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)
+                                        ) {
+                                            activeCategories.forEach { item ->
+                                                val fraction = if (totalCompBytes > 0) {
+                                                    item.bytes.toDouble() / totalCompBytes.toDouble()
+                                                } else 0.0
+                                                val pct = (fraction * 100).roundToInt()
+                                                val pctStr = if (pct > 0) "$pct%" else "<1%"
+
+                                                val color = when (item.id) {
+                                                    "apk" -> Color(0xFFE91E63)
+                                                    "lib" -> Color(0xFFFB8C00)
+                                                    "private" -> Color(0xFF00ACC1)
+                                                    "cache" -> Color(0xFFE57373)
+                                                    "data" -> Color(0xFF3149FF)
+                                                    "obb" -> Color(0xFF5C6BC0)
+                                                    "media" -> Color(0xFF8E24AA)
+                                                    else -> Color(0xFF00BFA5)
+                                                }
+
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(6.dp)
+                                                                .background(color, CircleShape)
+                                                        )
+                                                        Text(
+                                                            text = item.title,
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Medium
+                                                            ),
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = "${FormatUtils.formatLegendBytes(item.bytes)} ($pctStr)",
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        ),
+                                                        color = color,
+                                                        maxLines = 1,
+                                                        modifier = Modifier.padding(start = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -6498,6 +6544,8 @@ internal fun ConcentricStorageChart(
     breakdown: AppStorageBreakdown,
     slices: List<ChartSlice>? = null,
     isUsb: Boolean = false,
+    centerPrimaryText: String? = null,
+    centerSubText: String? = null,
     modifier: Modifier = Modifier
 ) {
     val totalBytes = breakdown.totalBytes
@@ -6554,27 +6602,48 @@ internal fun ConcentricStorageChart(
         val diameter = size.minDimension
         val center = Offset(size.width / 2f, size.height / 2f)
 
-        if (totalBytes <= 0L) {
-            drawCircle(
-                color = neutralTrack,
-                radius = diameter * 0.45f,
-                center = center,
-                style = Stroke(width = diameter * 0.16f)
-            )
-            drawCircle(
-                color = neutralTrack.copy(alpha = 0.5f),
-                radius = diameter * 0.28f,
-                center = center
-            )
-            return@Canvas
-        }
-
-        // 1. Draw Clean Outer Donut Ring with Background Track
         val outerRadius = diameter * 0.48f
         val innerRadius = diameter * 0.34f
         val strokeWidth = outerRadius - innerRadius
         val ringCenterRadius = (outerRadius + innerRadius) / 2f
 
+        if (totalBytes <= 0L) {
+            drawCircle(
+                color = neutralTrack.copy(alpha = 0.35f),
+                radius = ringCenterRadius,
+                center = center,
+                style = Stroke(width = strokeWidth)
+            )
+            val emptyMainPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.argb(140, 160, 175, 190)
+                textSize = with(density) { 15.sp.toPx() }
+                textAlign = android.graphics.Paint.Align.CENTER
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+            val emptySubPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.argb(100, 150, 165, 180)
+                textSize = with(density) { 9.sp.toPx() }
+                textAlign = android.graphics.Paint.Align.CENTER
+                isAntiAlias = true
+            }
+            val textCenterY = center.y - (with(density) { 3.dp.toPx() })
+            drawContext.canvas.nativeCanvas.drawText(
+                centerPrimaryText ?: "0%",
+                center.x,
+                textCenterY + (emptyMainPaint.textSize / 3f),
+                emptyMainPaint
+            )
+            drawContext.canvas.nativeCanvas.drawText(
+                centerSubText ?: "0.0 B",
+                center.x,
+                textCenterY + (emptyMainPaint.textSize / 3f) + (with(density) { 13.dp.toPx() }),
+                emptySubPaint
+            )
+            return@Canvas
+        }
+
+        // 1. Draw Clean Outer Donut Ring with Background Track
         drawCircle(
             color = neutralTrack.copy(alpha = 0.35f),
             radius = ringCenterRadius,
@@ -6606,17 +6675,18 @@ internal fun ConcentricStorageChart(
         val extPct = breakdown.externalPercent
         val internalPct = breakdown.internalPercent
 
-        val primaryText = when {
+        val primaryText = centerPrimaryText ?: when {
             extPct >= 100 -> "100%"
             internalPct >= 100 -> "100%"
             else -> "$extPct%"
         }
-        val subText = when {
+        val subText = centerSubText ?: when {
             extPct >= 100 -> if (isUsb) "USB" else "MicroSD"
             internalPct >= 100 -> "Internal"
             else -> "Offloaded"
         }
         val primaryColor = when {
+            centerPrimaryText != null -> extColor
             extPct >= 100 -> extColor
             internalPct >= 100 -> internalColor
             else -> extColor

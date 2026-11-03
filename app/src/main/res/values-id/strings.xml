@@ -1298,8 +1298,8 @@
     <string name="module_export_failed">Gagal ekspor: %1$s</string>
     <string name="module_op_processing">Memproses…</string>
     <!-- App Detail Chart Sub-pages & Slices -->
-    <string name="game_detail_subpage_media_title">Media Penyimpanan</string>
-    <string name="game_detail_subpage_components_title">Komponen</string>
+    <string name="game_detail_subpage_media_title">Media</string>
+    <string name="game_detail_subpage_components_title">Rincian</string>
     <string name="game_detail_slice_dex">Dex (Kode)</string>
     <string name="game_detail_slice_shared_internal">Data Aplikasi (HP)</string>
     <string name="game_detail_slice_custom">Kustom</string>
