@@ -22,6 +22,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -492,32 +493,43 @@ fun AppDetailView(
                                 fontSize = 11.5.sp,
                                 lineHeight = 14.sp
                             ),
-                            color = Color(0xFF00838F),
+                            color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        Text(
-                            text = stringResource(R.string.game_detail_version, versionName, versionCode.toString()),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 11.sp,
-                                lineHeight = 13.sp
-                            ),
-                            color = Color(0xFF00838F),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        Text(
-                            text = stringResource(R.string.game_detail_install_time, installTimeStr),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 10.5.sp,
-                                lineHeight = 13.sp
-                            ),
-                            color = Color(0xFF00838F),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "v$versionName ($versionCode)",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 10.5.sp,
+                                    lineHeight = 13.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (installTimeStr.isNotBlank()) {
+                                Text(
+                                    text = "•",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
+                                    color = MaterialTheme.colorScheme.outlineVariant
+                                )
+                                Text(
+                                    text = installTimeStr,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 10.sp,
+                                        lineHeight = 13.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -1739,30 +1751,26 @@ private fun StorageTabContent(
                     breakdown = chartBreakdown,
                     slices = chartSlices,
                     isUsb = hasUsbCategory,
-                    modifier = Modifier.size(152.dp)
+                    modifier = Modifier.size(126.dp)
                 )
 
                 // Right Column: 2 Sub-Pages (Storage Media vs Components) with Smooth Dot Indicators
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(152.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     HorizontalPager(
                         state = chartPagerState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
+                        modifier = Modifier.fillMaxWidth()
                     ) { page ->
                         when (page) {
                             0 -> {
                                 // ── SUB-PAGE 1: STORAGE MEDIA (Phone Memory, MicroSD, Total) ──
                                 Column(
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fillMaxWidth()
                                         .padding(end = 2.dp),
-                                    verticalArrangement = Arrangement.Center
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier
@@ -1772,7 +1780,7 @@ private fun StorageTabContent(
                                                     chartPagerState.animateScrollToPage(1)
                                                 }
                                             }
-                                            .padding(bottom = 4.dp),
+                                            .padding(bottom = 2.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -1796,10 +1804,15 @@ private fun StorageTabContent(
                                     }
 
                                     // 1. Phone Memory (Internal)
-                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                            modifier = Modifier.weight(1f, fill = false)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Smartphone,
@@ -1810,30 +1823,35 @@ private fun StorageTabContent(
                                             Text(
                                                 text = stringResource(R.string.game_detail_legend_phone),
                                                 style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 10.5.sp,
-                                                    fontWeight = FontWeight.SemiBold
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium
                                                 ),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                         Text(
                                             text = FormatUtils.formatLegendBytes(chartBreakdown.phoneInternalBytes),
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontSize = 13.sp,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold
                                             ),
                                             color = Color(0xFFDF4006),
-                                            modifier = Modifier.padding(start = 18.dp)
+                                            maxLines = 1
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.height(4.dp))
-
                                     // 2. MicroSD Card / External Storage
-                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                            modifier = Modifier.weight(1f, fill = false)
                                         ) {
                                             Icon(
                                                 imageVector = extIcon,
@@ -1844,47 +1862,48 @@ private fun StorageTabContent(
                                             Text(
                                                 text = extLabel,
                                                 style = MaterialTheme.typography.labelSmall.copy(
-                                                    fontSize = 10.5.sp,
-                                                    fontWeight = FontWeight.SemiBold
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium
                                                 ),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                         Text(
                                             text = FormatUtils.formatLegendBytes(chartBreakdown.microSdBytes),
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontSize = 13.sp,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold
                                             ),
                                             color = extColor,
-                                            modifier = Modifier.padding(start = 18.dp)
+                                            maxLines = 1
                                         )
                                     }
 
                                     HorizontalDivider(
                                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                                        modifier = Modifier
-                                            .fillMaxWidth(0.95f)
-                                            .padding(vertical = 4.dp)
+                                        modifier = Modifier.padding(vertical = 2.dp)
                                     )
 
                                     // 3. Grand Total (Total)
                                     Row(
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
                                             text = stringResource(R.string.game_detail_legend_total),
-                                            style = MaterialTheme.typography.titleMedium.copy(
-                                                fontSize = 12.5.sp,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.5.sp,
                                                 fontWeight = FontWeight.Bold
                                             ),
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
                                             text = FormatUtils.formatLegendBytes(chartBreakdown.totalBytes),
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontSize = 12.5.sp,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.5.sp,
                                                 fontWeight = FontWeight.Bold
                                             ),
                                             color = MaterialTheme.colorScheme.onSurface
@@ -2300,9 +2319,9 @@ private fun StorageTabContent(
         }
 
         if (isSelectionMode) {
-            Spacer(modifier = Modifier.height(140.dp).navigationBarsPadding())
+            Spacer(modifier = Modifier.height(180.dp).navigationBarsPadding())
         } else {
-            Spacer(modifier = Modifier.height(20.dp).navigationBarsPadding())
+            Spacer(modifier = Modifier.height(24.dp).navigationBarsPadding())
         }
     }
 
@@ -3221,22 +3240,24 @@ private fun CategoryCardItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (isSelectionMode) {
                 Checkbox(
                     checked = isChecked,
                     onCheckedChange = { onToggleCheck() },
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier
+                        .size(24.dp)
+                        .padding(top = 2.dp)
                 )
             }
 
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .background(
                         color = item.iconTint.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(8.dp)
@@ -3246,61 +3267,76 @@ private fun CategoryCardItem(
                     imageVector = item.icon,
                     contentDescription = null,
                     tint = item.iconTint,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(1.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
+                // Row 1: Title + Status Dot on Left, Size on Right
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (item.isMicroSd) {
+                            val isCatActive = item.isCategoryMounted
+                            val dotColor = if (isCatActive) adaptiveEmerald() else adaptiveCrimson()
+                            Box(
+                                modifier = Modifier
+                                    .size(6.5.dp)
+                                    .background(dotColor, CircleShape)
+                            )
+                        }
+                    }
+
                     Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontSize = 13.5.sp,
+                        text = FormatUtils.formatExactBytes(item.bytes),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1
                     )
-                    if (item.isMicroSd) {
-                        val isCatActive = item.isCategoryMounted
-                        val dotColor = if (isCatActive) adaptiveEmerald() else adaptiveCrimson()
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .background(dotColor, CircleShape)
-                        )
-                    }
                 }
+
+                // Row 2: Subtitle (Full width of column, never vertically crushed)
                 Text(
                     text = item.subtitle,
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 10.5.sp
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
                     ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = FormatUtils.formatExactBytes(item.bytes),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
 
+                // Row 3: Badges (Full width of column, spacedBy(5.dp))
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     if (isSelectionMode && item.isRisk) {
                         Surface(
@@ -3311,38 +3347,46 @@ private fun CategoryCardItem(
                             Text(
                                 text = stringResource(R.string.manage_badge_performance_risk),
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 9.sp,
+                                    fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
                                 color = Color(0xFFE53935),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }
                     }
 
+                    val isMicroSd = item.isMicroSd
+                    val isUsb = item.isUsbOtg
+                    val badgeBg = if (isMicroSd) {
+                        if (isUsb) Color(0x1A00ACC1) else Color(0x1A3BA71A)
+                    } else MaterialTheme.colorScheme.surfaceVariant
+                    val badgeBorder = if (isMicroSd) {
+                        if (isUsb) Color(0xFF00ACC1).copy(alpha = 0.5f) else Color(0xFF3BA71A).copy(alpha = 0.5f)
+                    } else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    val badgeTint = if (isMicroSd) {
+                        if (isUsb) Color(0xFF00ACC1) else Color(0xFF3BA71A)
+                    } else MaterialTheme.colorScheme.onSurfaceVariant
+
+                    val badgeLabel = when {
+                        !item.isMicroSd -> stringResource(R.string.common_internal)
+                        item.isUsbOtg -> stringResource(R.string.manage_location_badge_usb_otg)
+                        else -> stringResource(R.string.common_external)
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = if (item.isMicroSd) (if (item.isUsbOtg) Color(0x1A00ACC1) else Color(0x1A3BA71A)) else MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(
-                            0.5.dp,
-                            if (item.isMicroSd) (if (item.isUsbOtg) Color(0xFF00ACC1).copy(alpha = 0.5f) else Color(0xFF3BA71A).copy(alpha = 0.5f))
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
+                        color = badgeBg,
+                        border = BorderStroke(0.5.dp, badgeBorder)
                     ) {
-                        val badgeText = when {
-                            !item.isMicroSd -> "[Internal]"
-                            item.isUsbOtg -> "[USB OTG]"
-                            !item.storageTitle.isNullOrBlank() -> "[${item.storageTitle}]"
-                            else -> "[MicroSD]"
-                        }
                         Text(
-                            text = badgeText,
+                            text = badgeLabel,
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = if (item.isMicroSd) (if (item.isUsbOtg) Color(0xFF00ACC1) else Color(0xFF3BA71A)) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            color = badgeTint,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                         )
                     }
 
@@ -3357,11 +3401,11 @@ private fun CategoryCardItem(
                             Text(
                                 text = methodBadge,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 9.sp,
+                                    fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
                                 color = if (isImg) Color(0xFF7E57C2) else Color(0xFF00ACC1),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }
                     }
@@ -3373,7 +3417,9 @@ private fun CategoryCardItem(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier
+                        .size(16.dp)
+                        .align(Alignment.CenterVertically)
                 )
             }
         }
@@ -6381,19 +6427,24 @@ internal fun ConcentricStorageChart(
             return@Canvas
         }
 
-        // 1. Draw Outer Donut Ring
+        // 1. Draw Clean Outer Donut Ring with Background Track
         val outerRadius = diameter * 0.48f
-        val innerRadius = diameter * 0.33f
+        val innerRadius = diameter * 0.34f
         val strokeWidth = outerRadius - innerRadius
         val ringCenterRadius = (outerRadius + innerRadius) / 2f
 
-        var currentAngle = -90f
+        drawCircle(
+            color = neutralTrack.copy(alpha = 0.35f),
+            radius = ringCenterRadius,
+            center = center,
+            style = Stroke(width = strokeWidth)
+        )
 
+        var currentAngle = -90f
         activeSlices.forEach { slice ->
             if (slice.bytes > 0) {
                 val fraction = slice.bytes.toDouble() / totalBytes.toDouble()
                 val sweep = (fraction * 360f).toFloat()
-                val pct = (fraction * 100).roundToInt()
 
                 drawArc(
                     color = slice.color,
@@ -6405,90 +6456,57 @@ internal fun ConcentricStorageChart(
                     style = Stroke(width = strokeWidth)
                 )
 
-                if (pct >= 4) {
-                    val midAngleRad = Math.toRadians((currentAngle + sweep / 2f).toDouble())
-                    val textX = center.x + (ringCenterRadius * cos(midAngleRad)).toFloat()
-                    val textY = center.y + (ringCenterRadius * sin(midAngleRad)).toFloat() + (textPaint.textSize / 3f)
-
-                    drawContext.canvas.nativeCanvas.drawText(
-                        "$pct %",
-                        textX,
-                        textY,
-                        textPaint
-                    )
-                }
-
                 currentAngle += sweep
             }
         }
 
-        // 2. Draw Inner Circle (Phone Internal vs MicroSD)
-        val centerCircleRadius = innerRadius - 3.dp.toPx()
-        val internalPct = breakdown.internalPercent
+        // 2. Hollow Center with High-Contrast Primary Stat & Subtitle (No overlapping discs)
         val extPct = breakdown.externalPercent
+        val internalPct = breakdown.internalPercent
 
-        if (extPct == 0) {
-            // 100% on Phone Internal Memory
-            drawCircle(
-                color = internalColor,
-                radius = centerCircleRadius,
-                center = center
-            )
-            drawContext.canvas.nativeCanvas.drawText(
-                "$internalPct%",
-                center.x,
-                center.y + (centerTextPaint.textSize / 3f),
-                centerTextPaint
-            )
-        } else if (internalPct == 0) {
-            // 100% on MicroSD Card
-            drawCircle(
-                color = extColor,
-                radius = centerCircleRadius,
-                center = center
-            )
-            drawContext.canvas.nativeCanvas.drawText(
-                "$extPct%",
-                center.x,
-                center.y + (centerTextPaint.textSize / 3f),
-                centerTextPaint
-            )
-        } else {
-            // Split between Phone Internal and MicroSD
-            val internalSweep = (internalPct / 100f) * 360f
-            drawArc(
-                color = internalColor,
-                startAngle = -90f,
-                sweepAngle = internalSweep,
-                useCenter = true,
-                topLeft = Offset(center.x - centerCircleRadius, center.y - centerCircleRadius),
-                size = Size(centerCircleRadius * 2f, centerCircleRadius * 2f)
-            )
-            drawArc(
-                color = extColor,
-                startAngle = -90f + internalSweep,
-                sweepAngle = 360f - internalSweep,
-                useCenter = true,
-                topLeft = Offset(center.x - centerCircleRadius, center.y - centerCircleRadius),
-                size = Size(centerCircleRadius * 2f, centerCircleRadius * 2f)
-            )
-
-            // Dotted divider vertical line between sectors
-            drawContext.canvas.nativeCanvas.drawLine(
-                center.x,
-                center.y - centerCircleRadius * 0.65f,
-                center.x,
-                center.y + centerCircleRadius * 0.65f,
-                dashPaint
-            )
-
-            val textY = center.y + (centerTextPaint.textSize / 3f)
-            val leftX = center.x - centerCircleRadius * 0.45f
-            val rightX = center.x + centerCircleRadius * 0.45f
-
-            drawContext.canvas.nativeCanvas.drawText("$internalPct%", leftX, textY, centerTextPaint)
-            drawContext.canvas.nativeCanvas.drawText("$extPct%", rightX, textY, centerTextPaint)
+        val primaryText = when {
+            extPct >= 100 -> "100%"
+            internalPct >= 100 -> "100%"
+            else -> "$extPct%"
         }
+        val subText = when {
+            extPct >= 100 -> if (isUsb) "USB" else "MicroSD"
+            internalPct >= 100 -> "Internal"
+            else -> "Offloaded"
+        }
+        val primaryColor = when {
+            extPct >= 100 -> extColor
+            internalPct >= 100 -> internalColor
+            else -> extColor
+        }
+
+        val mainTextPaint = android.graphics.Paint().apply {
+            color = primaryColor.toArgb()
+            textSize = with(density) { 15.sp.toPx() }
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        val subTextPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(170, 150, 165, 180)
+            textSize = with(density) { 9.sp.toPx() }
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+
+        val textCenterY = center.y - (with(density) { 3.dp.toPx() })
+        drawContext.canvas.nativeCanvas.drawText(
+            primaryText,
+            center.x,
+            textCenterY + (mainTextPaint.textSize / 3f),
+            mainTextPaint
+        )
+        drawContext.canvas.nativeCanvas.drawText(
+            subText,
+            center.x,
+            textCenterY + (mainTextPaint.textSize / 3f) + (with(density) { 13.dp.toPx() }),
+            subTextPaint
+        )
     }
 }
 
