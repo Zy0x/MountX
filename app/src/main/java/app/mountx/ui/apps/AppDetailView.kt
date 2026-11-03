@@ -1622,18 +1622,59 @@ private fun StorageTabContent(
     val hasUsbCategory = categories.any { it.isMicroSd && it.isUsbOtg }
     val extIcon = if (hasUsbCategory) Icons.Default.Usb else Icons.Default.SdCard
     val extColor = if (hasUsbCategory) Color(0xFF00ACC1) else Color(0xFF3BA71A)
-    val extLabel = if (hasUsbCategory) stringResource(R.string.game_detail_legend_usb) else stringResource(R.string.game_detail_legend_microsd)
+
+    // Complete external storage hardware title (e.g. "Samsung MicroSD YD4QD" or "SanDisk Ultra USB 3.0")
+    val resolvedExtFullTitle = remember(categories, availableDisks, defaultMicroSdTitle, hasUsbCategory) {
+        val mountedCategoryTitle = categories.firstOrNull { it.isMicroSd && !it.storageTitle.isNullOrBlank() }?.storageTitle
+        if (!mountedCategoryTitle.isNullOrBlank()) {
+            return@remember mountedCategoryTitle
+        }
+        val anyCategoryTitle = categories.firstOrNull { !it.storageTitle.isNullOrBlank() }?.storageTitle
+        if (!anyCategoryTitle.isNullOrBlank()) {
+            return@remember anyCategoryTitle
+        }
+        val primaryDisk = availableDisks.firstOrNull { it.diskType != DiskType.USB_OTG }
+            ?: availableDisks.firstOrNull()
+        if (primaryDisk != null && primaryDisk.hardwareTitle.isNotBlank()) {
+            return@remember primaryDisk.hardwareTitle
+        }
+        if (defaultMicroSdTitle.isNotBlank()) defaultMicroSdTitle else if (hasUsbCategory) "USB OTG" else "MicroSD"
+    }
+
+    // Smart compact storage label for circular chart center (e.g. "Samsung SD", "SanDisk USB", "MicroSD")
+    val resolvedExtShortTitle = remember(resolvedExtFullTitle, hasUsbCategory) {
+        val clean = resolvedExtFullTitle.trim()
+        when {
+            clean.isBlank() -> if (hasUsbCategory) "USB" else "MicroSD"
+            clean.length <= 10 -> clean
+            clean.contains("MicroSD", ignoreCase = true) -> {
+                val idx = clean.indexOf("MicroSD", ignoreCase = true)
+                val brand = if (idx > 0) clean.substring(0, idx).trim() else ""
+                if (brand.isNotBlank() && brand.length <= 8) "$brand SD" else "MicroSD"
+            }
+            clean.contains("SD", ignoreCase = true) -> {
+                val idx = clean.indexOf("SD", ignoreCase = true)
+                val brand = if (idx > 0) clean.substring(0, idx).trim() else ""
+                if (brand.isNotBlank() && brand.length <= 8) "$brand SD" else "SD Card"
+            }
+            hasUsbCategory || clean.contains("USB", ignoreCase = true) -> {
+                val brand = clean.split(" ").firstOrNull()?.trim() ?: "USB"
+                if (brand.isNotBlank() && brand.length <= 8) "$brand USB" else "USB"
+            }
+            else -> clean.split(" ").firstOrNull()?.take(10) ?: clean.take(10)
+        }
+    }
 
     var selectedSubPage by remember { mutableIntStateOf(0) }
 
     // Slices for Media Mode (Internal Phone vs External MicroSD/USB)
-    val mediaSlices = remember(chartBreakdown, extLabel, extColor) {
+    val mediaSlices = remember(chartBreakdown, resolvedExtFullTitle, extColor) {
         listOfNotNull(
             if (chartBreakdown.phoneInternalBytes > 0) {
                 ChartSlice("Phone", context.getString(R.string.game_detail_legend_phone), chartBreakdown.phoneInternalBytes, Color(0xFFDF4006))
             } else null,
             if (chartBreakdown.microSdBytes > 0) {
-                ChartSlice("External", extLabel, chartBreakdown.microSdBytes, extColor)
+                ChartSlice("External", resolvedExtFullTitle, chartBreakdown.microSdBytes, extColor)
             } else null
         )
     }
@@ -1809,8 +1850,13 @@ private fun StorageTabContent(
                     breakdown = chartBreakdown,
                     slices = activeChartSlices,
                     isUsb = hasUsbCategory,
+                    externalTitle = resolvedExtShortTitle,
                     centerPrimaryText = if (selectedSubPage == 1 && chartBreakdown.totalBytes > 0) FormatUtils.formatLegendBytes(chartBreakdown.totalBytes) else null,
-                    centerSubText = if (selectedSubPage == 1 && chartBreakdown.totalBytes > 0) stringResource(R.string.game_detail_legend_total) else null,
+                    centerSubText = if (selectedSubPage == 1 && chartBreakdown.totalBytes > 0) {
+                        stringResource(R.string.game_detail_legend_total)
+                    } else if (chartBreakdown.externalPercent >= 100) {
+                        resolvedExtShortTitle
+                    } else null,
                     modifier = Modifier
                         .size(126.dp)
                         .clickable(
@@ -1996,7 +2042,7 @@ private fun StorageTabContent(
                                                     modifier = Modifier.size(13.dp)
                                                 )
                                                 Text(
-                                                    text = extLabel,
+                                                    text = resolvedExtFullTitle,
                                                     style = MaterialTheme.typography.labelSmall.copy(
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.Medium
@@ -6544,6 +6590,7 @@ internal fun ConcentricStorageChart(
     breakdown: AppStorageBreakdown,
     slices: List<ChartSlice>? = null,
     isUsb: Boolean = false,
+    externalTitle: String? = null,
     centerPrimaryText: String? = null,
     centerSubText: String? = null,
     modifier: Modifier = Modifier
@@ -6681,7 +6728,7 @@ internal fun ConcentricStorageChart(
             else -> "$extPct%"
         }
         val subText = centerSubText ?: when {
-            extPct >= 100 -> if (isUsb) "USB" else "MicroSD"
+            extPct >= 100 -> externalTitle ?: if (isUsb) "USB" else "MicroSD"
             internalPct >= 100 -> "Internal"
             else -> "Offloaded"
         }

@@ -116,13 +116,14 @@ class DiagnosticManager @Inject constructor(
                 val isAbnormal = when {
                     reasonName.equals("USER REQUESTED", ignoreCase = true) -> false
                     reasonName.equals("EXIT_SELF", ignoreCase = true) -> false
+                    reasonName.equals("USER STOPPED", ignoreCase = true) -> false
+                    reasonName.contains("LOW_MEMORY", ignoreCase = true) -> false // Standard Android OS background cache reclamation
                     reasonName.equals("OTHER KILLS BY SYSTEM", ignoreCase = true) &&
                             subreasonName.equals("ISOLATED NOT NEEDED", ignoreCase = true) -> false
                     reasonName.equals("OTHER KILLS BY SYSTEM", ignoreCase = true) &&
                             subreasonName.equals("KILL UID", ignoreCase = true) -> true
                     reasonName.contains("CRASH", ignoreCase = true) -> true
                     reasonName.contains("ANR", ignoreCase = true) -> true
-                    reasonName.contains("LOW_MEMORY", ignoreCase = true) -> true
                     desc.contains("MANAGE_EXTERNAL_STORAGE", ignoreCase = true) -> true
                     else -> false
                 }
