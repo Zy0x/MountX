@@ -1494,6 +1494,26 @@
     <string name="storage_repairing_internal">Memperbaiki penyimpanan internal emulasi…</string>
     <string name="storage_repair_internal_success">Penyimpanan internal berhasil dipulihkan dan terpasang.</string>
     <string name="storage_repair_internal_failed">Gagal memulihkan penyimpanan internal. Periksa log.</string>
+
+    <!-- UX & Safety Enhancements -->
+    <string name="status_apk_not_installed">APK Tidak Terpasang</string>
+    <string name="app_detail_uninstalled_banner_title">Aplikasi Tidak Terpasang di Perangkat</string>
+    <string name="app_detail_uninstalled_banner_desc">Seluruh data aplikasi (%1$s) tersimpan aman di MicroSD. Pasang kembali aplikasi (resmi atau modifikasi) kapan saja untuk menyinkronkan data secara otomatis.</string>
+    <string name="app_uninstalled_mount_blocked_toast">Silakan pasang kembali %1$s sebelum mengaktifkan kait (mount).</string>
+    <string name="btn_reconcile_permissions">Perbaiki Izin Data</string>
+    <string name="reconciling_permissions">Menyelaraskan izin data…</string>
+    <string name="toast_reconcile_success">Izin penyimpanan dan konteks SELinux berhasil disinkronkan (UID %1$s).</string>
+    <string name="toast_reconcile_failed">Gagal menyelaraskan izin data: %1$s</string>
+    <string name="category_preset_optimal">⚡ Cepat &amp; Aman</string>
+    <string name="category_preset_optimal_desc">Data + OBB + Cache (membiarkan APK &amp; Lib di internal flash demi performa maksimal)</string>
+    <string name="category_preset_all">📦 Pilih Semua</string>
+    <string name="category_preset_deselect">Hapus Pilihan</string>
+    <string name="btn_clean_all_cache">Bersihkan Seluruh Cache</string>
+    <string name="dialog_clean_all_cache_title">Bersihkan Seluruh Cache Aplikasi</string>
+    <string name="dialog_clean_all_cache_msg">MountX akan menghapus berkas cache sementara dari seluruh aplikasi yang dikelola di MicroSD dan penyimpanan internal. Akun tersimpan, progres game, dan data utama akan tetap aman 100%.</string>
+    <string name="cleaning_all_cache">Membersihkan cache seluruh aplikasi…</string>
+    <string name="toast_clean_all_cache_success">Berhasil membersihkan cache untuk %1$d aplikasi (%2$s dibebaskan).</string>
+    <string name="toast_clean_all_cache_none">Tidak ada cache sementara yang perlu dibersihkan.</string>
 </resources>
 
 

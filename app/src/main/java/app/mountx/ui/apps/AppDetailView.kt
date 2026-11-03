@@ -196,6 +196,7 @@ fun GameDetailView(
     onUnmount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
+    onReconcilePermissions: (() -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -227,6 +228,7 @@ fun GameDetailView(
     onUnmount = onUnmount,
     onToggleMount = onToggleMount,
     onDeleteCategoryData = onDeleteCategoryData,
+    onReconcilePermissions = onReconcilePermissions,
     isRefreshing = isRefreshing,
     onRefresh = onRefresh,
     modifier = modifier
@@ -262,6 +264,7 @@ fun AppDetailView(
     onUnmount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
+    onReconcilePermissions: (() -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -498,17 +501,21 @@ fun AppDetailView(
                             overflow = TextOverflow.Ellipsis
                         )
 
+                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                        val warnAmber = if (isDark) SunsetAmber else WarmAmberLight
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "v$versionName ($versionCode)",
+                                text = if (packageInfo != null) "v$versionName ($versionCode)" else stringResource(R.string.status_apk_not_installed),
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 10.5.sp,
-                                    lineHeight = 13.sp
+                                    lineHeight = 13.sp,
+                                    fontWeight = if (packageInfo == null) FontWeight.SemiBold else FontWeight.Normal
                                 ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (packageInfo != null) MaterialTheme.colorScheme.onSurfaceVariant else warnAmber,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -537,6 +544,47 @@ fun AppDetailView(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                     modifier = Modifier.padding(vertical = 1.dp)
                 )
+
+                if (packageInfo == null) {
+                    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                    val warnAmber = if (isDark) SunsetAmber else WarmAmberLight
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = warnAmber.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, warnAmber.copy(alpha = 0.4f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = warnAmber,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.app_detail_uninstalled_banner_title),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                                    color = warnAmber
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.app_detail_uninstalled_banner_desc,
+                                        FormatUtils.formatBytes(game.dataSizeBytes)
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 13.5.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Capsule Tab Row (Storage vs Manage)
                 DetailCapsuleTabRow(
@@ -635,7 +683,8 @@ fun AppDetailView(
                             game = game,
                             packageInfo = packageInfo,
                             onMount = onMount,
-                            onToggleMount = onToggleMount
+                            onToggleMount = onToggleMount,
+                            onReconcilePermissions = onReconcilePermissions
                         )
                     }
                 }
@@ -2077,6 +2126,72 @@ private fun StorageTabContent(
                     ),
                     color = MaterialTheme.colorScheme.primary
                 )
+            }
+        }
+
+        if (isSelectionMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // ⚡ Fast & Safe (Data + OBB + Cache)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            val availableOptimal = categories.map { it.id }.filter { it == "data" || it == "obb" || it == "cache" }.toSet()
+                            selectedCategoryIds = if (availableOptimal.isNotEmpty()) availableOptimal else setOf("data", "obb")
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.category_preset_optimal),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // 📦 Select All
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            selectedCategoryIds = categories.map { it.id }.toSet()
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.category_preset_all),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    }
+                }
             }
         }
 
@@ -5678,6 +5793,7 @@ private fun AppInfoTabContent(
     packageInfo: android.content.pm.PackageInfo?,
     onMount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
+    onReconcilePermissions: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -5897,6 +6013,32 @@ private fun AppInfoTabContent(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+
+        // Reconcile Permissions Button (especially useful for modded APKs or UID changes)
+        OutlinedButton(
+            onClick = {
+                onReconcilePermissions?.invoke()
+            },
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Lock,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.btn_reconcile_permissions),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.primary
+            )
         }
 
         // ── Section 1: Identitas Paket & Versi ──

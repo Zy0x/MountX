@@ -1510,6 +1510,26 @@
     <string name="storage_repairing_internal">Repairing emulated internal storage…</string>
     <string name="storage_repair_internal_success">Internal storage successfully restored and mounted.</string>
     <string name="storage_repair_internal_failed">Failed to restore internal storage. Check logs.</string>
+
+    <!-- UX & Safety Enhancements -->
+    <string name="status_apk_not_installed">APK Not Installed</string>
+    <string name="app_detail_uninstalled_banner_title">Application Not Installed on Device</string>
+    <string name="app_detail_uninstalled_banner_desc">All app data (%1$s) is preserved safely on MicroSD. Reinstall the app (official or modded) anytime to automatically synchronize and resume with all data intact.</string>
+    <string name="app_uninstalled_mount_blocked_toast">Please reinstall %1$s before enabling mount.</string>
+    <string name="btn_reconcile_permissions">Reconcile Permissions</string>
+    <string name="reconciling_permissions">Reconciling permissions…</string>
+    <string name="toast_reconcile_success">Storage permissions and SELinux context synchronized successfully (UID %1$s).</string>
+    <string name="toast_reconcile_failed">Failed to reconcile permissions: %1$s</string>
+    <string name="category_preset_optimal">⚡ Fast &amp; Safe</string>
+    <string name="category_preset_optimal_desc">Data + OBB + Cache (leaves APK &amp; Lib on internal flash for peak performance)</string>
+    <string name="category_preset_all">📦 Select All</string>
+    <string name="category_preset_deselect">Deselect All</string>
+    <string name="btn_clean_all_cache">Clean All Caches</string>
+    <string name="dialog_clean_all_cache_title">Clean All App Caches</string>
+    <string name="dialog_clean_all_cache_msg">MountX will clear temporary cache files across all managed applications on MicroSD and internal storage. Saved accounts, games progress, and primary data will remain completely intact.</string>
+    <string name="cleaning_all_cache">Cleaning cache across all apps…</string>
+    <string name="toast_clean_all_cache_success">Cleaned cache for %1$d apps (%2$s freed).</string>
+    <string name="toast_clean_all_cache_none">No temporary cache found to clean.</string>
 </resources>
 
 

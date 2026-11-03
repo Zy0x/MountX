@@ -23,6 +23,8 @@ import app.mountx.data.repository.StorageRepository
 import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -935,6 +937,76 @@ class AppsViewModel @Inject constructor(
                 onResult(true, null)
             } else {
                 onResult(false, res.exceptionOrNull()?.message)
+            }
+        }
+    }
+
+    private val _isReconciling = MutableStateFlow(false)
+    val isReconciling: StateFlow<Boolean> = _isReconciling.asStateFlow()
+
+    private val _isCleaningCache = MutableStateFlow(false)
+    val isCleaningCache: StateFlow<Boolean> = _isCleaningCache.asStateFlow()
+
+    fun reconcileApp(game: GameEntry, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isReconciling.value = true
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val result = gameRepository.reconcileApp(game, sdBase)
+                if (result.isSuccess) {
+                    onComplete(true, null)
+                } else {
+                    onComplete(false, result.exceptionOrNull()?.message)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.message)
+            } finally {
+                _isReconciling.value = false
+            }
+        }
+    }
+
+    fun cleanAllCaches(onComplete: (cleanedApps: Int, freedBytes: Long) -> Unit) {
+        viewModelScope.launch {
+            _isCleaningCache.value = true
+            var cleanedCount = 0
+            var totalFreed = 0L
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val gamesList = apps.value
+                withContext(Dispatchers.IO) {
+                    for (game in gamesList) {
+                        var appFreed = 0L
+                        val pkg = game.packageName
+                        val cachePaths = listOf(
+                            "$sdBase/MountX/Android/data/$pkg/cache",
+                            "$sdBase/Android/data/$pkg/cache",
+                            "/data/media/0/Android/data/$pkg/cache",
+                            "/data/user/0/$pkg/cache",
+                            "/data/data/$pkg/cache"
+                        )
+                        for (cp in cachePaths) {
+                            if (RootShell.exists(cp)) {
+                                val duOut = RootShell.exec("du -sk \"$cp\" 2>/dev/null").output.trim()
+                                val kb = duOut.split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L
+                                val sizeBefore = kb * 1024L
+                                if (sizeBefore > 0L) {
+                                    RootShell.exec("find \"$cp\" -mindepth 1 -delete 2>/dev/null || rm -rf \"$cp\"/* 2>/dev/null")
+                                    appFreed += sizeBefore
+                                }
+                            }
+                        }
+                        if (appFreed > 0L) {
+                            cleanedCount++
+                            totalFreed += appFreed
+                        }
+                    }
+                }
+                refreshSizes()
+            } catch (_: Exception) {
+            } finally {
+                _isCleaningCache.value = false
+                onComplete(cleanedCount, totalFreed)
             }
         }
     }

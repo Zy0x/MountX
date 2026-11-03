@@ -119,8 +119,14 @@ fun AppsScreen(
     var showRestructureDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
+        viewModel.loadInstalledApps()
         viewModel.ensureDiscoveredGamesLoaded()
     }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val isCleaningCache by viewModel.isCleaningCache.collectAsState()
+    var showCleanAllCacheDialog by remember { mutableStateOf(false) }
+    val installedPackageSet = remember(installedApps) { installedApps.map { it.packageName }.toSet() }
 
     val vmSelectedGame by viewModel.selectedGameForDetail.collectAsState()
     var showAddSheet by remember { mutableStateOf(false) }
@@ -338,6 +344,27 @@ fun AppsScreen(
             onDeleteCategoryData = { catId, loc, callback ->
                 viewModel.deleteCategoryData(updatedGame.packageName, catId, loc, callback)
             },
+            onReconcilePermissions = {
+                val ctx = context
+                viewModel.reconcileApp(updatedGame) { success, errorMsg ->
+                    if (success) {
+                        val uid = try {
+                            ctx.packageManager.getPackageInfo(updatedGame.packageName, 0).applicationInfo?.uid?.toString() ?: "-"
+                        } catch (_: Exception) { "-" }
+                        android.widget.Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.toast_reconcile_success, uid),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        android.widget.Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.toast_reconcile_failed, errorMsg ?: ""),
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            },
             modifier = modifier
         )
     } else {
@@ -386,6 +413,8 @@ fun AppsScreen(
                 gameToDelete = game
             },
             onCheckIsGameRunning = { pkg -> viewModel.isGameRunning(pkg) },
+            installedPackageSet = installedPackageSet,
+            onCleanAllCacheClick = { showCleanAllCacheDialog = true },
             modifier = modifier
         )
     }
@@ -396,7 +425,6 @@ fun AppsScreen(
     val isPurging by viewModel.isPurging.collectAsState()
     val restoreProgress by viewModel.restoreProgress.collectAsState()
     val restoreMessage by viewModel.restoreMessage.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     gameToDelete?.let { game ->
         DeleteAppConfirmDialog(
@@ -467,6 +495,77 @@ fun AppsScreen(
                 }
             },
             onDismiss = { if (!isRestoring && !isUnmounting && !isPurging) gameToDelete = null }
+        )
+    }
+
+    if (showCleanAllCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isCleaningCache) showCleanAllCacheDialog = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(20.dp),
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteSweep,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.dialog_clean_all_cache_title),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.dialog_clean_all_cache_msg),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.cleanAllCaches { count, freed ->
+                            showCleanAllCacheDialog = false
+                            if (freed > 0L) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_clean_all_cache_success, count, FormatUtils.formatBytes(freed)),
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_clean_all_cache_none),
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = !isCleaningCache
+                ) {
+                    if (isCleaningCache) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text(stringResource(R.string.btn_clean_all_cache))
+                    }
+                }
+            },
+            dismissButton = {
+                if (!isCleaningCache) {
+                    TextButton(onClick = { showCleanAllCacheDialog = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
+                }
+            }
         )
     }
 
@@ -620,11 +719,14 @@ fun GamesContent(
     onCheckIsGameRunning: suspend (String) -> Boolean = { false },
     modifier: Modifier = Modifier,
     discoveredGames: List<DiscoveredGame> = emptyList(),
+    installedPackageSet: Set<String> = emptySet(),
+    onCleanAllCacheClick: () -> Unit = {},
     onImportAllDiscovered: () -> Unit = {},
     onDismissDiscovered: () -> Unit = {},
     onRestructureDiscovered: () -> Unit = {},
     onCleanOrphanDiscovered: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showSortMenu by remember { mutableStateOf(false) }
     var showUnmountAllConfirm by remember { mutableStateOf(false) }
     var gameToUnmount by remember { mutableStateOf<GameEntry?>(null) }
@@ -727,6 +829,30 @@ fun GamesContent(
                                         contentDescription = stringResource(R.string.games_batch_unmount_all),
                                         tint = if (mountedCount > 0) errCrimson
                                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+
+                            // Clean All Caches Action
+                            IconButton(
+                                onClick = onCleanAllCacheClick,
+                                enabled = games.isNotEmpty(),
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            shape = RoundedCornerShape(6.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteSweep,
+                                        contentDescription = stringResource(R.string.btn_clean_all_cache),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
@@ -1039,11 +1165,19 @@ fun GamesContent(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(processedGames, key = { it.packageName }) { game ->
+                            val isInstalled = installedPackageSet.isEmpty() || installedPackageSet.contains(game.packageName)
                             ModernGameCard(
                                 game = game,
                                 isPending = pendingOperations.contains(game.packageName),
+                                isInstalledOnDevice = isInstalled,
                                 onToggleMount = {
-                                    if (game.mountStatus == MountStatus.DISK_DETACHED) {
+                                    if (!isInstalled) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            context.getString(R.string.app_uninstalled_mount_blocked_toast, game.displayName.ifBlank { game.packageName }),
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else if (game.mountStatus == MountStatus.DISK_DETACHED) {
                                         // Ignore toggle when disk is detached
                                     } else if (game.mountStatus == MountStatus.MOUNTED) {
                                         gameToUnmount = game
@@ -1144,6 +1278,7 @@ fun ModernAppCard(
 fun ModernGameCard(
     game: GameEntry,
     isPending: Boolean = false,
+    isInstalledOnDevice: Boolean = true,
     onToggleMount: () -> Unit,
     onCardClick: () -> Unit,
     onCardLongClick: (() -> Unit)? = null
@@ -1231,6 +1366,22 @@ fun ModernGameCard(
                         )
                     }
 
+                    if (!isInstalledOnDevice) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = warnAmber.copy(alpha = 0.16f),
+                            border = BorderStroke(0.8.dp, warnAmber.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = stringResource(R.string.status_apk_not_installed),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = warnAmber,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
                     // Need Migration badge inline
                     if (game.mountStatus == MountStatus.NEED_MIGRATION) {
                         Surface(
@@ -1296,7 +1447,7 @@ fun ModernGameCard(
                 // Compact Switch (Toggle Tactile)
                 Switch(
                     checked = isMounted,
-                    enabled = game.mountStatus != MountStatus.DISK_DETACHED,
+                    enabled = game.mountStatus != MountStatus.DISK_DETACHED && isInstalledOnDevice,
                     onCheckedChange = { onToggleMount() },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
