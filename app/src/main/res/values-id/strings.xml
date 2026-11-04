@@ -1167,6 +1167,7 @@
     <string name="update_badge_available">Pembaruan Tersedia</string>
     <string name="update_whats_new">Catatan Pembaruan</string>
     <string name="update_default_notes">Versi baru MountX telah tersedia dengan peningkatan dan perbaikan sistem.</string>
+    <string name="update_scroll_hint">Gulir ke bawah untuk catatan lengkap</string>
     <string name="update_btn_later">Nanti</string>
     <string name="update_btn_download">Unduh</string>
     <string name="settings_updates_section">Pembaruan Perangkat Lunak</string>

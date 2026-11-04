@@ -1,6 +1,7 @@
 package app.mountx.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -33,11 +35,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -47,6 +54,43 @@ import app.mountx.data.model.UpdateInfo
 import app.mountx.ui.theme.ElectricIndigo
 import app.mountx.ui.theme.ElectricIndigoLight
 import app.mountx.ui.theme.adaptiveEmerald
+
+/**
+ * Lightweight hardware-accelerated scrollbar indicator for scrollable dialog content.
+ */
+fun Modifier.dialogVerticalScrollbar(
+    scrollState: ScrollState,
+    thumbColor: Color,
+    trackColor: Color = Color.Transparent,
+    width: Dp = 4.dp,
+    paddingEnd: Dp = 2.dp
+): Modifier = this.drawWithContent {
+    drawContent()
+    if (scrollState.maxValue > 0) {
+        val viewPortLength = scrollState.viewportSize.toFloat()
+        val totalLength = viewPortLength + scrollState.maxValue.toFloat()
+        val thumbLength = (viewPortLength / totalLength * size.height).coerceIn(24.dp.toPx(), size.height * 0.8f)
+        val scrollFraction = (scrollState.value.toFloat() / scrollState.maxValue.toFloat()).coerceIn(0f, 1f)
+        val thumbOffset = scrollFraction * (size.height - thumbLength)
+        val x = size.width - width.toPx() - paddingEnd.toPx()
+
+        if (trackColor != Color.Transparent) {
+            drawRoundRect(
+                color = trackColor,
+                topLeft = Offset(x, 0f),
+                size = Size(width.toPx(), size.height),
+                cornerRadius = CornerRadius(width.toPx() / 2)
+            )
+        }
+
+        drawRoundRect(
+            color = thumbColor,
+            topLeft = Offset(x, thumbOffset),
+            size = Size(width.toPx(), thumbLength),
+            cornerRadius = CornerRadius(width.toPx() / 2)
+        )
+    }
+}
 
 /**
  * Compact, clean modal dialog notifying user of an available app update.
@@ -63,6 +107,7 @@ fun UpdateOverlayDialog(
     val cardBg = if (isDark) Color(0xFF131620) else Color(0xFFFAF8F5)
     val cardBorder = if (isDark) Color(0xFF232838) else Color(0xFFE5E2DC)
     val secondaryTextColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF57534E)
+    val indigoAccent = if (isDark) ElectricIndigo else ElectricIndigoLight
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -101,7 +146,7 @@ fun UpdateOverlayDialog(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = if (isDark) ElectricIndigo else ElectricIndigoLight
+                            color = indigoAccent
                         )
                         Text(
                             text = stringResource(R.string.update_dialog_title),
@@ -209,18 +254,55 @@ fun UpdateOverlayDialog(
                             stringResource(R.string.update_default_notes)
                         }
 
+                        val scrollState = rememberScrollState()
+                        val scrollbarThumbColor = indigoAccent.copy(alpha = 0.65f)
+                        val scrollbarTrackColor = if (isDark) Color(0xFF232838).copy(alpha = 0.5f) else Color(0xFFE5E2DC).copy(alpha = 0.5f)
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 200.dp)
-                                .verticalScroll(rememberScrollState())
+                                .heightIn(min = 80.dp, max = 290.dp)
+                                .dialogVerticalScrollbar(
+                                    scrollState = scrollState,
+                                    thumbColor = scrollbarThumbColor,
+                                    trackColor = scrollbarTrackColor,
+                                    width = 4.dp,
+                                    paddingEnd = 2.dp
+                                )
+                                .verticalScroll(scrollState)
+                                .padding(end = if (scrollState.maxValue > 0) 10.dp else 0.dp)
                         ) {
                             Text(
                                 text = notes,
                                 fontSize = 12.sp,
                                 lineHeight = 18.sp,
-                                color = secondaryTextColor
+                                color = secondaryTextColor,
+                                modifier = Modifier.fillMaxWidth()
                             )
+                        }
+
+                        // Subtle scroll hint when there is more content below
+                        if (scrollState.canScrollForward) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.update_scroll_hint),
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = indigoAccent
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = indigoAccent,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
                         }
                     }
                 }

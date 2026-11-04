@@ -1183,6 +1183,7 @@
     <string name="update_badge_available">Update Available</string>
     <string name="update_whats_new">What’s New</string>
     <string name="update_default_notes">A new version of MountX is available with improvements and fixes.</string>
+    <string name="update_scroll_hint">Scroll down for full changelog</string>
     <string name="update_btn_later">Later</string>
     <string name="update_btn_download">Download</string>
     <string name="settings_updates_section">Software Updates</string>

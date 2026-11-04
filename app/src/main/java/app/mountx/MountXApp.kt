@@ -51,6 +51,14 @@ class MountXApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Ensure default US English configuration for fresh launches unless overridden by user
+        val defaultLocale = java.util.Locale.US
+        java.util.Locale.setDefault(defaultLocale)
+        val defaultAppConfig = android.content.res.Configuration(resources.configuration)
+        defaultAppConfig.setLocale(defaultLocale)
+        @Suppress("DEPRECATION")
+        resources.updateConfiguration(defaultAppConfig, resources.displayMetrics)
+
         // Configure libsu for root shell access
         Shell.enableVerboseLogging = BuildConfig.DEBUG
         Shell.setDefaultBuilder(
