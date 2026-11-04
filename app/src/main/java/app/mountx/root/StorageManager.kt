@@ -247,38 +247,77 @@ class StorageManager(
                 filesystem = tokens[2].uppercase() // dynamically detect F2FS, EXT4, EROFS, etc.
                 partitionName = devPath.substringAfterLast("/")
 
+                var targetPartition = partitionName
+                if (devPath.contains("dm-")) {
+                    // Resolve true physical slave partition underneath device-mapper
+                    val slavesOut = RootShell.exec("ls /sys/block/$partitionName/slaves/ 2>/dev/null").output.trim()
+                    val slaveList = slavesOut.split(Regex("\\s+")).filter { it.isNotBlank() }
+                    if (slaveList.isNotEmpty()) {
+                        targetPartition = slaveList[0]
+                    } else {
+                        // Fallback to Android standard userdata by-name symlinks
+                        val byNameLink = RootShell.exec("readlink -f /dev/block/by-name/userdata 2>/dev/null || readlink -f /dev/block/bootdevice/by-name/userdata 2>/dev/null").output.trim()
+                        if (byNameLink.isNotBlank() && byNameLink.startsWith("/dev/block/")) {
+                            targetPartition = byNameLink.substringAfterLast("/")
+                        }
+                    }
+                }
+
                 val diskName = when {
-                    partitionName.startsWith("mmcblk") -> partitionName.substringBeforeLast("p")
-                    partitionName.startsWith("nvme") -> partitionName.substringBeforeLast("p")
-                    partitionName.startsWith("sd") -> partitionName.filter { it.isLetter() }
+                    targetPartition.startsWith("mmcblk") -> targetPartition.substringBeforeLast("p")
+                    targetPartition.startsWith("nvme") -> targetPartition.substringBeforeLast("p")
+                    targetPartition.startsWith("sd") -> targetPartition.filter { it.isLetter() }
                     else -> ""
                 }
 
                 if (diskName.isNotBlank()) {
-                    val hw = diskHardwareCache[diskName] ?: run {
-                        val tp = RootShell.exec("cat /sys/block/$diskName/device/type 2>/dev/null").output.trim()
-                        val nm = RootShell.exec("cat /sys/block/$diskName/device/name 2>/dev/null").output.trim()
-                        val md = RootShell.exec("cat /sys/block/$diskName/device/model 2>/dev/null").output.trim()
-                        val sz = RootShell.exec("cat /sys/block/$diskName/size 2>/dev/null").output.trim().toLongOrNull() ?: 0L
-                        val chosenName = if (nm.isNotBlank()) nm else md
-                        HwDiskCache("", chosenName, "", sz, tp)
+                    // For SCSI/UFS devices, primary LUN 0 is typically sda, query probe disk
+                    val probeDisk = if (diskName.startsWith("sd") && !RootShell.exists("/sys/block/$diskName")) "sda" else diskName
+                    val hw = diskHardwareCache[probeDisk] ?: run {
+                        val tp = RootShell.exec("cat /sys/block/$probeDisk/device/type 2>/dev/null").output.trim()
+                        val nm = RootShell.exec("cat /sys/block/$probeDisk/device/name 2>/dev/null").output.trim()
+                        val md = RootShell.exec("cat /sys/block/$probeDisk/device/model 2>/dev/null").output.trim()
+                        val vd = RootShell.exec("cat /sys/block/$probeDisk/device/vendor 2>/dev/null").output.trim()
+                        val sz = RootShell.exec("cat /sys/block/$probeDisk/size 2>/dev/null").output.trim().toLongOrNull() ?: 0L
+                        val chosenName = when {
+                            nm.isNotBlank() -> nm
+                            vd.isNotBlank() && md.isNotBlank() && !md.contains(vd, ignoreCase = true) -> "$vd $md"
+                            md.isNotBlank() -> md
+                            else -> vd
+                        }
+                        HwDiskCache("", chosenName, vd, sz, tp)
                     }
 
                     chipName = hw.model
-                    physicalTotalBytes = if (hw.sizeSectors > 0) hw.sizeSectors * 512L else 0L
-
-                    storageType = when {
-                        hw.type.equals("MMC", ignoreCase = true) || diskName.startsWith("mmcblk") -> "eMMC"
-                        diskName.startsWith("sd") -> "UFS"
-                        diskName.startsWith("nvme") -> "NVMe"
-                        else -> "Flash"
+                    // Ensure physical capacity reflects primary data drive
+                    val actualSectors = if (diskName.startsWith("sd") && diskName != probeDisk) {
+                        val sdcSz = RootShell.exec("cat /sys/block/$diskName/size 2>/dev/null").output.trim().toLongOrNull() ?: 0L
+                        if (sdcSz > 0) sdcSz else hw.sizeSectors
+                    } else {
+                        hw.sizeSectors
                     }
-                } else if (devPath.contains("dm-")) {
-                    storageType = if (java.io.File("/sys/block/mmcblk0").exists()) "eMMC" else "UFS"
-                    val primaryDisk = if (storageType == "eMMC") "mmcblk0" else "sda"
-                    val hw = diskHardwareCache[primaryDisk]
-                    chipName = hw?.model ?: ""
-                    physicalTotalBytes = if ((hw?.sizeSectors ?: 0L) > 0) (hw?.sizeSectors ?: 0L) * 512L else 0L
+                    physicalTotalBytes = if (actualSectors > 0) actualSectors * 512L else 0L
+
+                    // Dynamically determine storage generation: UFS (2.0-4.0), eMMC (5.0-5.1), NVMe
+                    storageType = when {
+                        diskName.startsWith("sd") -> {
+                            detectUfsGeneration()
+                        }
+                        diskName.startsWith("mmcblk") -> {
+                            val mmcType = hw.type.ifBlank {
+                                RootShell.exec("cat /sys/block/$diskName/device/type 2>/dev/null").output.trim()
+                            }
+                            if (mmcType.equals("MMC", ignoreCase = true)) {
+                                detectEmmcGeneration(diskName)
+                            } else if (mmcType.equals("SD", ignoreCase = true)) {
+                                "MicroSD"
+                            } else {
+                                "eMMC"
+                            }
+                        }
+                        diskName.startsWith("nvme") -> "NVMe"
+                        else -> "Internal Flash"
+                    }
                 }
             }
         } catch (_: Exception) {}
@@ -293,9 +332,18 @@ class StorageManager(
             } catch (_: Exception) {}
         }
 
-        // Fallback for storageType
+        // Dynamic hardware fallback — strictly probe bootdevice and controller drivers (NEVER hardcoded)
         if (storageType.isBlank()) {
-            storageType = if (java.io.File("/sys/block/mmcblk0").exists()) "eMMC" else "UFS"
+            val bootDev = RootShell.exec("getprop ro.boot.boot_devices; getprop ro.boot.bootdevice").output.lowercase()
+            storageType = when {
+                bootDev.contains("ufs") || RootShell.exists("/sys/bus/platform/drivers/ufshcd") -> detectUfsGeneration()
+                bootDev.contains("mmc") -> {
+                    val isEmmc = RootShell.exec("cat /sys/block/mmcblk0/device/type 2>/dev/null").output.trim().equals("MMC", ignoreCase = true)
+                    if (isEmmc) detectEmmcGeneration("mmcblk0") else "eMMC"
+                }
+                bootDev.contains("nvme") -> "NVMe"
+                else -> "Internal"
+            }
         }
 
         InternalStorageInfo(
@@ -311,6 +359,68 @@ class StorageManager(
             mountPoint = "/data"
         )
     }
+
+    /**
+     * Dynamically detects UFS specification generation (UFS 2.0, 2.1, 2.2, 3.0, 3.1, 4.0).
+     */
+    private suspend fun detectUfsGeneration(): String {
+        return try {
+            // Check kernel logs for UFS device descriptor wspecversion (0x200=2.0, 0x210=2.1, 0x220=2.2, 0x300=3.0, 0x310=3.1, 0x400=4.0)
+            val logOut = RootShell.exec("logcat -d -b all | grep -iE 'UFS version 0x[0-9a-fA-F]+' | head -n 1").output
+            if (logOut.isNotBlank()) {
+                val hexMatch = Regex("UFS version 0x([0-9a-fA-F]+)", RegexOption.IGNORE_CASE).find(logOut)
+                if (hexMatch != null) {
+                    val hex = hexMatch.groupValues[1].lowercase()
+                    when (hex) {
+                        "400", "410" -> return "UFS 4.0"
+                        "310" -> {
+                            // If kernel warned "invalid UFS version 0x310", it negotiated UFS 2.2 mode on this controller
+                            return if (logOut.contains("invalid", ignoreCase = true)) "UFS 2.2" else "UFS 3.1"
+                        }
+                        "300" -> return "UFS 3.0"
+                        "220" -> return "UFS 2.2"
+                        "210" -> return "UFS 2.1"
+                        "200" -> return "UFS 2.0"
+                    }
+                }
+            }
+
+            // Check TurboWrite sysfs node (TurboWrite is a signature feature of UFS 2.2 and UFS 3.1)
+            val hasTurboWrite = RootShell.exists("/sys/devices/platform/bootdevice/ufstw_lu2") ||
+                RootShell.exists("/sys/devices/platform/bootdevice/ufstw")
+            if (hasTurboWrite) {
+                return "UFS 2.2"
+            }
+
+            // Check dmesg gear info
+            val gearOut = RootShell.exec("dmesg 2>/dev/null | grep -iE 'gear=\\[[0-9]+' | head -n 1").output
+            if (gearOut.contains("gear=[4") || gearOut.contains("gear=[5")) {
+                return "UFS 3.1"
+            }
+
+            "UFS"
+        } catch (_: Exception) {
+            "UFS"
+        }
+    }
+
+    /**
+     * Dynamically detects eMMC specification generation (eMMC 5.0, 5.1).
+     */
+    private suspend fun detectEmmcGeneration(diskName: String): String {
+        return try {
+            val rev = RootShell.exec("cat /sys/block/$diskName/device/rev 2>/dev/null").output.trim().lowercase()
+            when {
+                rev.contains("0x8") || rev.contains("0x08") -> "eMMC 5.1"
+                rev.contains("0x7") || rev.contains("0x07") -> "eMMC 5.0"
+                rev.contains("0x6") || rev.contains("0x06") -> "eMMC 4.5"
+                else -> "eMMC"
+            }
+        } catch (_: Exception) {
+            "eMMC"
+        }
+    }
+
 
     /**
      * Self-healing routine to restore unmountable/detached primary emulated storage (/storage/emulated/0).
