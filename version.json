@@ -1,7 +1,7 @@
 {
-  "version": "2.2.47",
-  "versionCode": 20247,
-  "summary": "Immortal Watchdog Daemon, Storage Engine 3.0, 5s Namespace Canary Recovery & EXDEV Elimination.",
-  "changelog": "• Immortal watchdog daemon with automatic 3s supervisor respawn\n• Rapid 5s runtime namespace canary check preventing EXDEV storage errors\n• Storage Engine 3.0 supporting MicroSD, USB SSD, and OTG drives\n• Sub-second cold-start optimizations and Play Store install protection",
+  "version": "2.2.48",
+  "versionCode": 20248,
+  "summary": "Spotify Loop Container, 100% Bilingual Parity, Zero-Reboot Module Sync & Adaptive I/O Booster Stability.",
+  "changelog": "• Spotify Private Data Loop Container (.img) resolving SELinux & SQLite permission issues\n• 100% strict bilingual parity (1,170 keys in EN & ID) eliminating language leaks\n• Zero-reboot silent module sync & live daemon reload on APK update\n• Adaptive I/O Booster stability across eMMC, low/high-class MicroSD, SSD & UFS storage\n• Dynamic external storage titles and UI scroll stabilization",
   "apkUrl": "https://github.com/Zy0x/MountX/releases/latest"
 }

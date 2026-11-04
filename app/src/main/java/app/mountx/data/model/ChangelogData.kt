@@ -56,12 +56,79 @@ data class ChangelogRelease(
 
 object ChangelogHistory {
     val releases: List<ChangelogRelease> = listOf(
-        // ── v2.2.47 (Latest) ──
+        // ── v2.2.48 (Latest) ──
+        ChangelogRelease(
+            version = "v2.2.48",
+            releaseDate = "04 Nov 2026",
+            summary = "Spotify Loop Container, 100% Bilingual Parity, Zero-Reboot Module Sync & Adaptive I/O Booster Stability across eMMC, MicroSD, SSD & UFS Storage",
+            isLatest = true,
+            categories = listOf(
+                CategoryChange(
+                    category = ChangeCategoryType.ADDED,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Spotify & Private Data Loop Container Engine",
+                            details = listOf(
+                                "Implemented sparse virtual ext4/f2fs loop container images (.mountx/containers/<pkg>_data.img) for large private application storage (/data/data/<pkg>).",
+                                "Added automated SELinux context restoration (u:object_r:app_data_file:s0:c...) and POSIX UID/GID ownership realignment, permanently resolving SQLite and database permission denials for offline music libraries (Spotify) and sensitive app caches.",
+                                "Implemented streaming data migration pipeline (tar -c | tar -x) for zero-loss transfer of complex internal directories directly to loop containers without intermediate archive space exhaustion.",
+                                "Long backing file paths exceeding 64 characters safely leverage busybox losetup to prevent kernel string truncation."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Zero-Reboot Silent Module Sync & Live Daemon Reload",
+                            details = listOf(
+                                "Introduced seamless root module synchronization on app cold-start (checkAndSyncModuleSilently), copying updated scripts and binaries from APK assets to root storage without requiring Magisk/KernelSU/APatch re-flashing.",
+                                "Added graceful daemon termination via /dev/.mountx_service.pid to avoid shell byte-offset corruption during script updates.",
+                                "Implemented live daemon reload (nohup sh service.sh &) that immediately adopts updated watchdog supervisor logic while keeping all active mounts intact without requiring a system reboot.",
+                                "Added dormant daemon watchdog revival guard to automatically restart the background supervisor if terminated by system memory constraints."
+                            )
+                        )
+                    )
+                ),
+                CategoryChange(
+                    category = ChangeCategoryType.IMPROVED,
+                    features = listOf(
+                        FeatureChange(
+                            title = "100% Strict Bilingual Parity (Zero Hardcoded Strings)",
+                            details = listOf(
+                                "Eliminated all Indonesian text leaks in English system locales across the entire application interface.",
+                                "Synchronized values/strings.xml (natural English) and values-id/strings.xml (natural Indonesian) with 1,170 identical translation keys (1:1 parity).",
+                                "Cleaned and refactored string resolution across ViewModels, root managers, and Jetpack Compose screens."
+                            )
+                        ),
+                        FeatureChange(
+                            title = "Adaptive I/O Booster Stability across Storage Hardware",
+                            details = listOf(
+                                "Refined kernel block queue and read-ahead tuning to strictly target the designated block device BDI (/sys/class/block/<disk>/bdi/read_ahead_kb), preventing memory bloat and swap thrashing on zram.",
+                                "Added kernel scheduler compatibility verification before applying requested schedulers (such as none, mq-deadline, bfq), preventing kernel write rejections across diverse device kernels.",
+                                "Improved queue depth and I/O scheduler presets for budget eMMC 5.1, low/high-class MicroSD (UHS-I, A1/A2), external USB SSDs, and UFS 2.x/3.x/4.0 storage."
+                            )
+                        )
+                    )
+                ),
+                CategoryChange(
+                    category = ChangeCategoryType.UI_UX,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Dynamic Storage Branding & UI Polish",
+                            details = listOf(
+                                "Replaced static badges with dynamic hardware titles (e.g. Samsung MicroSD YD4QD, USB, etc.) across donut chart legends and category cards.",
+                                "Replaced nested pager swipe in application detail view with responsive segmented capsules ([ Media | Details ]), resolving infinite height measurement crashes.",
+                                "Eliminated false-positive ANOMALY diagnostics triggered by standard Android OS Low Memory Killer (LMK) background cache cleanup.",
+                                "Verified seamless Google Play Store package update compatibility (e.g., Genshin Impact 39 GB update retaining all 18 active mount endpoints)."
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+        // ── v2.2.47 ──
         ChangelogRelease(
             version = "v2.2.47",
             releaseDate = "31 Oct 2026",
             summary = "Immortal Watchdog Daemon & Storage Engine 3.0: Resilient Process Supervisor, 5s Namespace Canary Recovery, EXDEV Elimination, Sub-Second Cold-Start & Multi-Storage Support",
-            isLatest = true,
+            isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.SYSTEM,

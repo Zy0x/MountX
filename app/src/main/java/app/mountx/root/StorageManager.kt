@@ -3795,7 +3795,7 @@ class StorageManager(
 
             // 1. Set read_ahead_kb
             RootShell.exec("echo ${config.readAheadKb} > $queueDir/read_ahead_kb 2>/dev/null")
-            RootShell.exec("for bdi in /sys/devices/virtual/bdi/*/read_ahead_kb; do [ -f \"\$bdi\" ] && echo ${config.readAheadKb} > \"\$bdi\" 2>/dev/null; done")
+            RootShell.exec("[ -w \"/sys/class/block/$cleanDisk/bdi/read_ahead_kb\" ] && echo ${config.readAheadKb} > \"/sys/class/block/$cleanDisk/bdi/read_ahead_kb\" 2>/dev/null")
 
             // 2. Set scheduler
             if (config.scheduler.isNotBlank()) {

@@ -369,7 +369,13 @@ apply_io_tweaks() {
 
     if [ -d "${queue_dir}" ]; then
         [ -w "${queue_dir}/read_ahead_kb" ] && echo "${READ_AHEAD_KB}" > "${queue_dir}/read_ahead_kb"
-        [ -n "${IO_SCHEDULER}" ] && [ -w "${queue_dir}/scheduler" ] && echo "${IO_SCHEDULER}" > "${queue_dir}/scheduler" 2>/dev/null
+        if [ -n "${IO_SCHEDULER}" ] && [ -w "${queue_dir}/scheduler" ]; then
+            if grep -qw "${IO_SCHEDULER}" "${queue_dir}/scheduler" 2>/dev/null; then
+                echo "${IO_SCHEDULER}" > "${queue_dir}/scheduler" 2>/dev/null
+            else
+                log_warn "Scheduler '${IO_SCHEDULER}' not supported by ${disk_name}. Keeping kernel default."
+            fi
+        fi
         [ -w "${queue_dir}/rq_affinity" ] && echo "${RQ_AFFINITY}" > "${queue_dir}/rq_affinity"
         [ -w "${queue_dir}/nr_requests" ] && echo "${NR_REQUESTS}" > "${queue_dir}/nr_requests"
         [ -w "${queue_dir}/add_random" ] && echo "0" > "${queue_dir}/add_random"
@@ -377,9 +383,10 @@ apply_io_tweaks() {
         [ -w "${queue_dir}/nomerges" ] && echo "0" > "${queue_dir}/nomerges"
     fi
 
-    for bdi in /sys/devices/virtual/bdi/*/read_ahead_kb; do
-        [ -w "${bdi}" ] && echo "${READ_AHEAD_KB}" > "${bdi}" 2>/dev/null
-    done
+    # Target specific block device BDI to prevent zram swap memory bloat
+    if [ -w "/sys/class/block/${disk_name}/bdi/read_ahead_kb" ]; then
+        echo "${READ_AHEAD_KB}" > "/sys/class/block/${disk_name}/bdi/read_ahead_kb" 2>/dev/null
+    fi
 
     if [ -w "/proc/sys/vm/vfs_cache_pressure" ]; then
         echo "${VFS_CACHE_PRESSURE}" > /proc/sys/vm/vfs_cache_pressure
