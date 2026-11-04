@@ -1335,6 +1335,8 @@ class StorageManager(
             // 1. If already mounted cleanly at target mount point, ensure private propagation and return immediately
             if (RootShell.isMountpoint(mountPoint)) {
                 RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
+                val mountedDevice = getMountedDevice(mountPoint) ?: blockDevice
+                exposeStorageToEmulatedStorage(mountedDevice, mountPoint).getOrThrow()
                 return@runCatching Unit
             }
 
@@ -1415,9 +1417,151 @@ class StorageManager(
                 error("Failed to mount $targetDev to $mountPoint: ${res.stderr.joinToString("\n")}")
             }
             RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
+            exposeStorageToEmulatedStorage(targetDev, mountPoint).getOrThrow()
             Unit
         }
     }
+
+    private suspend fun getMountedDevice(mountPoint: String): String? {
+        val escapedMountPoint = shellQuote(mountPoint)
+        return RootShell.execForOutput(
+            "awk -v target=$escapedMountPoint '\$2 == target { print \$1; exit }' /proc/mounts 2>/dev/null"
+        ).trim().takeIf { it.isNotBlank() }
+    }
+
+    private suspend fun exposeStorageToEmulatedStorage(
+        blockDevice: String,
+        mountPoint: String,
+        persistForBoot: Boolean = true,
+        adjustPosixRootPermissions: Boolean = true
+    ): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val deviceName = blockDevice.substringAfterLast('/')
+                require(deviceName.matches(Regex("[A-Za-z0-9._:,-]+"))) {
+                    "Invalid block device name: $deviceName"
+                }
+                require(blockDevice.matches(Regex("/dev/block/[A-Za-z0-9_./:,-]+"))) {
+                    "Unsupported block device path: $blockDevice"
+                }
+
+                val sharedPath = "/data/media/0/MountX/$deviceName"
+                val quotedDevice = shellQuote(blockDevice)
+                val quotedMountPoint = shellQuote(mountPoint)
+                val quotedSharedPath = shellQuote(sharedPath)
+                val rootPermissionCommands = if (adjustPosixRootPermissions) {
+                    """
+                    fs_type=${'$'}(stat -f -c %T $quotedMountPoint 2>/dev/null)
+                    case "${'$'}fs_type" in
+                        ext2/ext3|f2fs)
+                            chown 1023:1023 $quotedMountPoint
+                            chmod 0775 $quotedMountPoint
+                            ;;
+                    esac
+                    """.trimIndent()
+                } else {
+                    ":"
+                }
+                val script = """
+                    set -e
+                    mkdir -p /data/media/0/MountX
+                    restorecon /data/media/0/MountX 2>/dev/null || true
+                    chown 1023:1023 /data/media/0/MountX
+                    chmod 0775 /data/media/0/MountX
+                    $rootPermissionCommands
+                    if mountpoint -q $quotedSharedPath 2>/dev/null; then
+                        mounted_device=${'$'}(awk -v target=$quotedSharedPath '${'$'}2 == target { print ${'$'}1; exit }' /proc/mounts)
+                        if [ "${'$'}mounted_device" != $quotedDevice ]; then
+                            umount -l $quotedSharedPath
+                        else
+                            mount -o remount,bind,rw $quotedSharedPath
+                            mount_options=${'$'}(awk -v target=$quotedSharedPath '${'$'}2 == target { print ${'$'}4; exit }' /proc/mounts)
+                            case ",${'$'}mount_options," in
+                                *,rw,*) ;;
+                                *) echo "Shared storage mount is not read/write" >&2; exit 1 ;;
+                            esac
+                            exit 0
+                        fi
+                    fi
+                    mkdir -p $quotedSharedPath
+                    mount --bind $quotedMountPoint $quotedSharedPath
+                    mount -o remount,bind,rw $quotedSharedPath
+                    mountpoint -q $quotedSharedPath
+                    mount_options=${'$'}(awk -v target=$quotedSharedPath '${'$'}2 == target { print ${'$'}4; exit }' /proc/mounts)
+                    case ",${'$'}mount_options," in
+                        *,rw,*) ;;
+                        *) echo "Shared storage mount is not read/write" >&2; exit 1 ;;
+                    esac
+                """.trimIndent()
+                val result = RootShell.execScript(script)
+                if (!result.isSuccess) {
+                    error("Could not expose $blockDevice at $sharedPath: ${result.stderr.joinToString("\n")}")
+                }
+                if (persistForBoot) persistSelectedBlockDevice(blockDevice)
+            }
+        }
+
+    private suspend fun unpublishStorage(
+        blockDevice: String,
+        mountPoint: String? = null,
+        restorePosixRootPermissions: Boolean = false
+    ): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val deviceName = blockDevice.substringAfterLast('/')
+                if (!deviceName.matches(Regex("[A-Za-z0-9._:,-]+"))) return@runCatching
+
+                val sharedPath = "/data/media/0/MountX/$deviceName"
+                val quotedSharedPath = shellQuote(sharedPath)
+                val restoreRootPermissions = if (restorePosixRootPermissions && !mountPoint.isNullOrBlank()) {
+                    val quotedMountPoint = shellQuote(mountPoint)
+                    """
+                    fs_type=${'$'}(stat -f -c %T $quotedMountPoint 2>/dev/null)
+                    case "${'$'}fs_type" in
+                        ext2/ext3|f2fs)
+                            chown 0:0 $quotedMountPoint
+                            chmod 0755 $quotedMountPoint
+                            ;;
+                    esac
+                    """.trimIndent()
+                } else {
+                    ":"
+                }
+                val result = RootShell.execScript(
+                    """
+                    set -e
+                    if mountpoint -q $quotedSharedPath 2>/dev/null; then
+                        umount -f -l $quotedSharedPath
+                    fi
+                    $restoreRootPermissions
+                    """.trimIndent()
+                )
+                if (!result.isSuccess) {
+                    error("Failed to detach shared storage at $sharedPath: ${result.stderr.joinToString("\n")}")
+                }
+            }
+        }
+
+    private suspend fun persistSelectedBlockDevice(blockDevice: String) {
+        val script = """
+            set -e
+            for cfgFile in /data/adb/modules/MountX/config.conf /data/adb/modules/mountx/config.conf /data/adb/modules/Mountify/config.conf; do
+                if [ -f "${'$'}cfgFile" ]; then
+                    if grep -q '^SD_BLOCK=' "${'$'}cfgFile"; then
+                        sed -i 's|^SD_BLOCK=.*|SD_BLOCK=$blockDevice|' "${'$'}cfgFile"
+                    else
+                        echo 'SD_BLOCK=$blockDevice' >> "${'$'}cfgFile"
+                    fi
+                fi
+            done
+        """.trimIndent()
+        val result = RootShell.execScript(script)
+        if (!result.isSuccess) {
+            error("Could not save the selected storage device for boot mounting: ${result.stderr.joinToString("\n")}")
+        }
+    }
+
+    private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
 
     /**
      * Unmount the SD partition.
@@ -1425,6 +1569,15 @@ class StorageManager(
     suspend fun unmountSdPartition(mountPoint: String = "/data/sdext2"): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
+                val mountedDevice = getMountedDevice(mountPoint)
+                if (!mountedDevice.isNullOrBlank()) {
+                    unpublishStorage(
+                        mountedDevice,
+                        mountPoint,
+                        restorePosixRootPermissions = true
+                    ).getOrThrow()
+                }
+
                 // 1. Unbind any game folders bind-mounted across runtime namespaces
                 val unbindScript = """
                     for m in $(grep "$mountPoint" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
@@ -1473,6 +1626,7 @@ class StorageManager(
                 }
                 RootShell.exec("umount -f -l \"$blockDev\" 2>/dev/null")
             } else {
+                unpublishStorage(blockDev).getOrThrow()
                 // 1. If it has an Android Vold volume (public:major,minor), execute sm unmount
                 val mmRes = RootShell.exec("cat /sys/class/block/$devName/dev 2>/dev/null")
                 val mm = if (mmRes.isSuccess && mmRes.stdout.isNotEmpty()) {
@@ -1528,6 +1682,24 @@ class StorageManager(
                     val checkRes = RootShell.exec("sm list-volumes 2>/dev/null")
                     if (checkRes.isSuccess && checkRes.stdout.any { it.contains("public:$mm mounted") }) {
                         smMounted = true
+                        val volumeUuid = RootShell.execForOutput(
+                            "sm list-volumes public 2>/dev/null | awk -v volume='public:$mm' '\$1 == volume && \$2 == \"mounted\" { print \$3; exit }'"
+                        ).trim()
+                        if (!volumeUuid.matches(Regex("[A-Za-z0-9-]+"))) {
+                            error("Android mounted ${partition.path} but its shared volume path could not be resolved.")
+                        }
+                        val voldMountPoint = "/mnt/media_rw/$volumeUuid"
+                        if (!RootShell.isMountpoint(voldMountPoint)) {
+                            error("Android mounted ${partition.path}, but $voldMountPoint is unavailable.")
+                        }
+                        exposeStorageToEmulatedStorage(
+                            blockDev,
+                            voldMountPoint,
+                            persistForBoot = partition.isTargetMount ||
+                                partition.fsType.equals("f2fs", ignoreCase = true) ||
+                                partition.fsType.equals("ext4", ignoreCase = true),
+                            adjustPosixRootPermissions = false
+                        ).getOrThrow()
                     }
                 }
             }
@@ -4173,4 +4345,3 @@ class StorageManager(
         }
     }
 }
-

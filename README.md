@@ -63,6 +63,9 @@ Running out of space from 50 GB+ games like *Wuthering Waves*, *Genshin Impact*,
 * **Automatic Boot Restoration**<br/>
   Reboot your phone whenever you want. MountX automatically restores all game mounts in the background before you even unlock your screen.
 
+* **Shared Storage Access**<br/>
+  The selected partition is also available at `Internal storage/MountX/<block device name>` for file managers and apps with storage access.
+
 * **Beautiful Dark & Light Themes**<br/>
   Features a high-contrast AMOLED Cyber Dark theme and a soft Sandstone Light theme that adapts to your system setting.
 
