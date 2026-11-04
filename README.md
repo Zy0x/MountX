@@ -125,6 +125,18 @@ Detailed guides and manuals are available in the repository and the [MountX Wiki
 * [Contributing Guide](docs/CONTRIBUTING.md) : Developer guide, code style, and pull request workflow.
 * [Changelog](CHANGELOG.md) : Full release and version history.
 
+### Development with Nix
+
+On `x86_64-linux`, install Nix with flakes enabled, then enter the pinned development environment:
+
+```sh
+nix develop
+bash gradlew assembleDebug
+bash gradlew testDebugUnitTest
+```
+
+The shell provides JDK 17 and Android SDK Platform 35/build tools. To build a release APK, run `bash gradlew assembleRelease`; package the root module separately with `(cd module && zip -r ../MountX-Magisk.zip .)`. Update the pinned Nixpkgs revision with `nix flake update` when intentionally refreshing the toolchain.
+
 <br/>
 
 ## ❤️ Support the Project
