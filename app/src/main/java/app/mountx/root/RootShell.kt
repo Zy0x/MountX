@@ -3,6 +3,8 @@ package app.mountx.root
 import app.mountx.data.model.ShellResult
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -19,17 +21,99 @@ object RootShell {
      */
     val rootExecutionMutex = Mutex()
 
-    /** Returns true if root shell is available, initializing shell session if needed */
-    val isAvailable: Boolean
-        get() {
-            val cached = Shell.isAppGrantedRoot()
-            if (cached != null) return cached
-            return try {
-                Shell.getShell().isRoot
-            } catch (_: Exception) {
-                false
+    /**
+     * Directly tests if 'su' binary responds and grants root to this app UID.
+     * Bypasses any libsu caching bugs or stale non-root state.
+     */
+    fun checkSuDirect(): Boolean {
+        return try {
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val stdout = process.inputStream.bufferedReader().use { it.readText() }
+            val exitCode = process.waitFor()
+            exitCode == 0 && stdout.contains("uid=0")
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Resets libsu's internal cached main shell and static confirmation state.
+     * When libsu boots before root permission is granted, it permanently caches
+     * a non-root 'sh' instance and locks Utils.currentRootState = 0 (false).
+     * This method resets those internals via reflection so libsu is forced to spawn a true root shell.
+     */
+    fun resetLibsuShell(): Boolean {
+        return try {
+            try {
+                Shell.getCachedShell()?.close()
+            } catch (_: Exception) {}
+
+            // 1. Clear MainShell.mainShell[0]
+            try {
+                val mainShellClass = Class.forName("com.topjohnwu.superuser.internal.MainShell")
+                val mainShellField = mainShellClass.getDeclaredField("mainShell")
+                mainShellField.isAccessible = true
+                val array = mainShellField.get(null) as? Array<*>
+                if (array != null && array.isNotEmpty()) {
+                    @Suppress("UNCHECKED_CAST")
+                    (array as Array<Any?>)[0] = null
+                }
+            } catch (e: Exception) {
+                AppLogger.warn("RootShell", "Reflection clear mainShell: ${e.message}")
+            }
+
+            // 2. Reset Utils.currentRootState to -1 (UNKNOWN) so libsu re-queries su
+            try {
+                val utilsClass = Class.forName("com.topjohnwu.superuser.internal.Utils")
+                val rootStateField = utilsClass.getDeclaredField("currentRootState")
+                rootStateField.isAccessible = true
+                rootStateField.setInt(null, -1)
+            } catch (e: Exception) {
+                AppLogger.warn("RootShell", "Reflection reset currentRootState: ${e.message}")
+            }
+
+            // 3. Rebuild main shell
+            val shell = Shell.getShell()
+            AppLogger.info("RootShell", "Libsu shell rebuilt: isRoot=${shell.isRoot}, status=${shell.status}")
+            shell.isRoot
+        } catch (e: Exception) {
+            AppLogger.error("RootShell", "resetLibsuShell failed: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Checks if root shell is available.
+     * When forceRefresh is true or when root was not previously granted,
+     * directly verifies 'su' at OS level and re-elevates libsu's main shell.
+     */
+    fun isRootAvailable(forceRefresh: Boolean = false): Boolean {
+        if (!forceRefresh) {
+            val cached = Shell.getCachedShell()
+            if (cached != null && cached.isRoot && Shell.isAppGrantedRoot() == true) {
+                return true
             }
         }
+
+        // Direct OS-level su verification
+        val hasDirectSu = checkSuDirect()
+        if (!hasDirectSu) {
+            return false
+        }
+
+        // su is granted! Ensure libsu's main shell is elevated
+        val currentCached = Shell.getCachedShell()
+        if (currentCached == null || !currentCached.isRoot) {
+            resetLibsuShell()
+        }
+
+        val activeShell = Shell.getCachedShell()
+        return activeShell != null && activeShell.isRoot
+    }
+
+    /** Returns true if root shell is available, initializing shell session if needed */
+    val isAvailable: Boolean
+        get() = isRootAvailable(forceRefresh = false)
 
     private const val ENV_SETUP = "case \":\$PATH:\" in *\":/data/adb/modules/MountX/bin:\"*) ;; *) export PATH=\"/data/adb/modules/MountX/bin:/data/adb/modules/mountx/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac; "
 
@@ -40,6 +124,13 @@ object RootShell {
      * @param timeoutMillis Hard timeout in milliseconds (default 15000 ms)
      */
     suspend fun exec(cmd: String, timeoutMillis: Long = 15000L): ShellResult = withContext(Dispatchers.IO) {
+        val cached = Shell.getCachedShell()
+        if (cached == null || !cached.isRoot) {
+            if (checkSuDirect()) {
+                resetLibsuShell()
+            }
+        }
+
         val timedResult = withTimeoutOrNull(timeoutMillis) {
             val result = Shell.cmd("$ENV_SETUP$cmd").exec()
             ShellResult(
@@ -63,6 +154,8 @@ object RootShell {
 
     /**
      * Execute a shell command and stream stdout lines in real-time.
+     * Uses an isolated, dedicated OS root process to prevent locking the global libsu Shell
+     * and guarantees all stdout reading happens strictly on Dispatchers.IO (zero UI thread ANR).
      */
     suspend fun execStreaming(
         cmd: String,
@@ -70,19 +163,61 @@ object RootShell {
         onStdoutLine: (String) -> Unit
     ): ShellResult = withContext(Dispatchers.IO) {
         val timedResult = withTimeoutOrNull(timeoutMillis) {
-            val outList = object : com.topjohnwu.superuser.CallbackList<String>() {
-                override fun onAddElement(s: String?) {
-                    if (s != null) {
-                        onStdoutLine(s)
+            val stdoutList = mutableListOf<String>()
+            val stderrList = mutableListOf<String>()
+            var exitCode = 1
+            var process: Process? = null
+
+            try {
+                val fullCmd = "$ENV_SETUP$cmd"
+                val suCmds = listOf(
+                    arrayOf("su", "-M", "-c", fullCmd),
+                    arrayOf("su", "-mm", "-c", fullCmd),
+                    arrayOf("su", "-c", fullCmd)
+                )
+
+                for (suCmd in suCmds) {
+                    try {
+                        process = Runtime.getRuntime().exec(suCmd)
+                        break
+                    } catch (_: Exception) {}
+                }
+
+                if (process == null) {
+                    AppLogger.error("RootShell", "Failed to spawn standalone su process for execStreaming")
+                    return@withTimeoutOrNull ShellResult(emptyList(), listOf("Failed to spawn su process"), 1)
+                }
+
+                val p = process
+                val errReaderJob = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        p.errorStream.bufferedReader().useLines { lines ->
+                            lines.forEach { stderrList.add(it) }
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                p.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { line ->
+                        stdoutList.add(line)
+                        onStdoutLine(line)
                     }
                 }
+
+                errReaderJob.join()
+                exitCode = p.waitFor()
+            } catch (e: Exception) {
+                AppLogger.error("RootShell", "execStreaming error: ${e.message}")
+                stderrList.add(e.message ?: "Unknown error")
+                try { process?.destroyForcibly() } catch (_: Exception) {}
+            } finally {
+                try { process?.destroy() } catch (_: Exception) {}
             }
-            val errList = ArrayList<String>()
-            val result = Shell.cmd("$ENV_SETUP$cmd").to(outList, errList).exec()
+
             ShellResult(
-                stdout = outList,
-                stderr = errList,
-                code = if (result.isSuccess) 0 else 1
+                stdout = stdoutList,
+                stderr = stderrList,
+                code = exitCode
             )
         }
 

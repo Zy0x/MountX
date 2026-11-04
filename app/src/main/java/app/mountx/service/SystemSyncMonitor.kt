@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import app.mountx.MainActivity
 import app.mountx.R
 import app.mountx.data.db.GameDao
+import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountStatus
 import app.mountx.root.MountManager
 import app.mountx.root.RootShell
@@ -44,7 +45,8 @@ sealed class SystemSyncEvent {
 /**
  * Real-Time System Event Bus & Watchdog for MountX.
  * Dynamically monitors Storage connections/disconnections and Package installs/uninstalls.
- * Executes emergency safeguards (process kill + lazy unmount) upon sudden MicroSD ejection or hardware I/O error.
+ * Executes emergency safeguards (process kill + lazy unmount + package suspend) upon sudden MicroSD ejection,
+ * and Self-Healing Package Reconciler upon MicroSD reconnection.
  */
 @Singleton
 private var lastCanaryRecoveryTime = 0L
@@ -101,7 +103,7 @@ class SystemSyncMonitor @Inject constructor(
                     }
                 }
                 ACTION_DISK_ERROR -> {
-                    val err = intent.getStringExtra("error") ?: "Hardware I/O error"
+                    val err = intent.getStringExtra("error") ?: context.getString(app.mountx.R.string.storage_err_hardware_io)
                     scope.launch {
                         handleDiskError("MicroSD", err)
                     }
@@ -212,7 +214,6 @@ class SystemSyncMonitor @Inject constructor(
 
                     if (hasDetachedGames && !hasMountedGames) {
                         // Check if physical MicroSD has been re-inserted
-                        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
                         val hasMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
                         val hasCustomDiskAlive = games.filter { it.mountStatus == MountStatus.DISK_DETACHED }
                             .flatMap { it.mountPoints }
@@ -228,7 +229,9 @@ class SystemSyncMonitor @Inject constructor(
                         // Passive Subsystem / Zygote Soft-Restart Integrity Check:
                         // If DB thinks games are MOUNTED, but either SD base or sample app namespace was dropped,
                         // trigger silent background remount!
-                        if (!isSdBaseMounted) {
+                        if (RootShell.exists("/dev/.mountx_unmounted") || RootShell.exists("/dev/.mountx_migrating")) {
+                            // Intentional user unmount or active migration in progress: skip auto-recovery
+                        } else if (!isSdBaseMounted) {
                             val hasMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
                             if (hasMmc) {
                                 AppLogger.warn("SystemSyncMonitor", "SD_BASE unmounted unexpectedly while games are active. Initiating auto-recovery...")
@@ -242,10 +245,13 @@ class SystemSyncMonitor @Inject constructor(
                                     enabledPoints.isEmpty() || enabledPoints.any { pt ->
                                         val cleanTarget = pt.targetPath.trimEnd('/')
                                         val rel = MountManager.extractRelativePath(pt.targetPath).trimEnd('/')
+                                        val isInternal = pt.isInternalSandboxOrPackageCategory()
                                         RootShell.isMountpoint(cleanTarget) ||
-                                                RootShell.isMountpoint("/storage/emulated/0/$rel") ||
-                                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel") ||
-                                                RootShell.isMountpoint("/data/media/0/$rel")
+                                                (!isInternal && rel.isNotBlank() && (
+                                                    RootShell.isMountpoint("/storage/emulated/0/$rel") ||
+                                                    RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel") ||
+                                                    RootShell.isMountpoint("/data/media/0/$rel")
+                                                ))
                                     }
                                 } else {
                                     val sampleTarget = when (sampleGame.mode) {
@@ -373,8 +379,9 @@ class SystemSyncMonitor @Inject constructor(
                         )
                     }
                     if (hasMountOnEjected) {
-                        AppLogger.warn("SystemSyncMonitor", "Game ${game.displayName} depends on detached storage $ejectedPath. Safely unmounting...")
+                        AppLogger.warn("SystemSyncMonitor", "Game ${game.displayName} depends on detached storage $ejectedPath. Safely unmounting & suspending...")
                         mountManager.unmountGame(game)
+                        RootShell.exec("pm suspend \"${game.packageName}\" 2>/dev/null")
                         gameDao.updateMountStatus(game.packageName, MountStatus.DISK_DETACHED)
                         anyDetached = true
                     }
@@ -393,7 +400,7 @@ class SystemSyncMonitor @Inject constructor(
 
     /**
      * Emergency Protocol when MicroSD is abruptly ejected/unmounted.
-     * 1. Force-stop active game processes (am force-stop).
+     * 1. Force-stop active game processes (am force-stop) and suspend package in Launcher (pm suspend).
      * 2. Execute instant lazy unmount (umount -f -l).
      * 3. Show Heads-Up Emergency Notification.
      * 4. Notify all ViewModels of StorageDisconnected.
@@ -403,7 +410,7 @@ class SystemSyncMonitor @Inject constructor(
 
         val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
 
-        // 1. Kill active game processes and mark status as DISK_DETACHED
+        // 1. Kill active game processes, suspend Launcher icon, and mark status as DISK_DETACHED
         try {
             val games = gameDao.getAllGamesSync()
             for (game in games) {
@@ -412,7 +419,9 @@ class SystemSyncMonitor @Inject constructor(
                     RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
                     AppLogger.warn("SystemSyncMonitor", "Force-stopped active process: ${game.packageName}")
                 }
-                if (game.mountStatus == MountStatus.MOUNTED) {
+                if (game.mountStatus == MountStatus.MOUNTED || game.isEnabled) {
+                    // Suspend package so icon stays visible in Android Launcher (greyed out / paused) instead of crashing
+                    RootShell.exec("pm suspend \"${game.packageName}\" 2>/dev/null")
                     gameDao.updateMountStatus(game.packageName, MountStatus.DISK_DETACHED)
                 }
             }
@@ -477,6 +486,7 @@ class SystemSyncMonitor @Inject constructor(
                     AppLogger.warn("SystemSyncMonitor", "Force-stopped active process: ${game.packageName}")
                 }
                 if (game.mountStatus == MountStatus.MOUNTED) {
+                    RootShell.exec("pm suspend \"${game.packageName}\" 2>/dev/null")
                     gameDao.updateMountStatus(game.packageName, MountStatus.DISK_DETACHED)
                 }
             }
@@ -512,16 +522,15 @@ class SystemSyncMonitor @Inject constructor(
      * Hot-Plug Recovery Protocol: fires when external storage is mounted/re-connected.
      * 1. Wait 3s for vold/FUSE to fully settle the new volume.
      * 2. Re-mount SD partition if not already mounted.
-     * 3. Re-bind all games/apps that are in DISK_DETACHED state.
-     * 4. Post a success notification in the status bar.
-     * 5. Notify ViewModels of StorageMounted event.
+     * 3. Run Self-Healing Package Reconciler for any full-app migrated package that was dropped during cold boot without MicroSD.
+     * 4. Re-bind all games/apps that are in DISK_DETACHED state and unsuspend Launcher icons.
+     * 5. Post a success notification in the status bar and notify ViewModels.
      */
     private suspend fun handleStorageMounted(ctx: Context) {
         AppLogger.info("SystemSyncMonitor", "Storage connected. Waiting ${REMOUNT_SETTLE_MS}ms for volume to settle...")
         delay(REMOUNT_SETTLE_MS)
 
         val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
-        val blockDevice = runCatching { appPreferences.sdBlockDevice.first() }.getOrDefault("")
 
         // Clear unmounted flag as card was just inserted/connected
         RootShell.exec("rm -f /dev/.mountx_unmounted /dev/.mountx_disk_error 2>/dev/null")
@@ -534,20 +543,76 @@ class SystemSyncMonitor @Inject constructor(
             delay(5_000L) // give MountService time to work
         }
 
-        // Re-bind all DISK_DETACHED / UNMOUNTED games
+        // Reconcile & Re-bind all DISK_DETACHED / UNMOUNTED games
         var remountedCount = 0
         try {
             val games = gameDao.getAllGamesSync()
             for (game in games) {
                 if (!game.isEnabled) continue
-                if (game.mountStatus == MountStatus.DISK_DETACHED || game.mountStatus == MountStatus.MOUNTED || game.mountStatus == MountStatus.UNMOUNTED) {
-                    val result = mountManager.mountGame(game, sdBase)
+                val pkg = game.packageName
+                var activeGame = game
+
+                // Self-Healing Package Reconciler:
+                // If user rebooted the device while MicroSD was detached and 100% of the app (including base.apk) was on MicroSD,
+                // PackageManagerService may have dropped the package entry. Automatically re-register from SD base.apk and sync UID!
+                val pmCheck = RootShell.execForOutput("pm path \"$pkg\" 2>/dev/null | head -n 1").trim()
+                if (pmCheck.isBlank()) {
+                    val apkDirCandidates = listOfNotNull(
+                        activeGame.mountPoints.firstOrNull {
+                            it.resolveCategory() == MountPointCategory.APP_PACKAGE && !it.targetPath.contains("/lib")
+                        }?.sourcePath,
+                        "$sdBase/MountX/app/$pkg",
+                        "$sdBase/Android/app/$pkg"
+                    ).distinct()
+
+                    val validSdApkDir = apkDirCandidates.firstOrNull { RootShell.exists("$it/base.apk") }
+                    if (validSdApkDir != null) {
+                        AppLogger.info("SystemSyncMonitor", "Self-Healing Reconciler: Re-registering detached package $pkg from $validSdApkDir...")
+                        val installRes = RootShell.exec("pm install -r -d \"$validSdApkDir\"/*.apk 2>/dev/null")
+                        if (installRes.isSuccess) {
+                            val newApkPath = RootShell.execForOutput("pm path \"$pkg\" 2>/dev/null | head -n 1")
+                                .trim().removePrefix("package:").trim()
+                            val newApkParent = if (newApkPath.isNotBlank()) java.io.File(newApkPath).parent ?: "" else ""
+                            val newUid = RootShell.execForOutput(
+                                "pm list packages -U 2>/dev/null | grep -F \"package:$pkg\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
+                            ).trim().toIntOrNull()
+
+                            if (newUid != null && newUid >= 10000) {
+                                // Sync new UID ownership to Private Data & External Data on MicroSD so save data stays 100% intact
+                                RootShell.exec("chown -R $newUid:$newUid \"$sdBase/MountX/data/$pkg\" \"/data/user/0/$pkg\" 2>/dev/null")
+                                RootShell.exec("chown -R $newUid:1023 \"$sdBase/MountX/Android/data/$pkg\" \"$sdBase/MountX/Android/obb/$pkg\" 2>/dev/null")
+                            }
+                            if (newApkParent.isNotBlank()) {
+                                // Clean newly created internal APK duplicate so bind-mount overlays cleanly without wasting internal storage
+                                RootShell.exec("find \"$newApkParent\" -depth -mindepth 1 -delete 2>/dev/null")
+                                val updatedPoints = activeGame.mountPoints.map { mp ->
+                                    if (mp.resolveCategory() == MountPointCategory.APP_PACKAGE) {
+                                        if (mp.targetPath.contains("/lib") || mp.id.contains("lib")) {
+                                            mp.copy(targetPath = "$newApkParent/lib")
+                                        } else {
+                                            mp.copy(targetPath = newApkParent)
+                                        }
+                                    } else mp
+                                }
+                                activeGame = activeGame.copy(mountPoints = updatedPoints)
+                                gameDao.updateGame(activeGame)
+                            }
+                            AppLogger.success("SystemSyncMonitor", "Self-Healing Reconciler succeeded for $pkg (newUid=$newUid, apkDir=$newApkParent)")
+                        } else {
+                            AppLogger.warn("SystemSyncMonitor", "Self-Healing Reconciler pm install failed for $pkg: ${installRes.output}")
+                        }
+                    }
+                }
+
+                if (activeGame.mountStatus == MountStatus.DISK_DETACHED || activeGame.mountStatus == MountStatus.MOUNTED || activeGame.mountStatus == MountStatus.UNMOUNTED) {
+                    val result = mountManager.mountGame(activeGame, sdBase)
                     if (result.isSuccess) {
-                        gameDao.updateMountStatus(game.packageName, MountStatus.MOUNTED)
+                        RootShell.exec("pm unsuspend \"$pkg\" 2>/dev/null")
+                        gameDao.updateMountStatus(pkg, MountStatus.MOUNTED)
                         remountedCount++
-                        AppLogger.success("SystemSyncMonitor", "Auto-remounted: ${game.displayName}")
+                        AppLogger.success("SystemSyncMonitor", "Auto-remounted & unsuspended: ${activeGame.displayName}")
                     } else {
-                        AppLogger.warn("SystemSyncMonitor", "Failed to remount: ${game.displayName}")
+                        AppLogger.warn("SystemSyncMonitor", "Failed to remount: ${activeGame.displayName}")
                     }
                 }
             }

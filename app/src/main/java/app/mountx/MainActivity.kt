@@ -69,9 +69,19 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var mountNotificationManager: MountNotificationManager
 
+    @Inject
+    lateinit var storageRepository: app.mountx.data.repository.StorageRepository
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { _ -> }
+
+    override fun onResume() {
+        super.onResume()
+        // When app returns to foreground from root manager, settings, or external dialog,
+        // trigger global synchronization so root elevation and storages refresh immediately
+        systemSyncMonitor.notifyRefreshAll()
+    }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -178,7 +188,10 @@ class MainActivity : ComponentActivity() {
 
                         if (showPermissionSheet) {
                             app.mountx.ui.components.PermissionOnboardingSheet(
-                                onDismiss = { showPermissionSheet = false }
+                                onDismiss = {
+                                    showPermissionSheet = false
+                                    storageRepository.refreshStorage()
+                                }
                             )
                         }
 

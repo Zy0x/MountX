@@ -191,7 +191,7 @@ fun AddAppPicker(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
-                                contentDescription = "Menu",
+                                contentDescription = stringResource(R.string.common_menu),
                                 tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -1404,7 +1404,7 @@ private fun ManualAppView(
                 isNameManuallyEdited = true
             },
             label = { Text(stringResource(R.string.add_game_name_label), fontSize = 11.5.sp) },
-            placeholder = { Text("Application Name", fontSize = 11.5.sp) },
+            placeholder = { Text(stringResource(R.string.add_app_manual_name_placeholder), fontSize = 11.5.sp) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             shape = RoundedCornerShape(12.dp),

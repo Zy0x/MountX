@@ -1,6 +1,7 @@
 package app.mountx.data.db
 
 import androidx.room.TypeConverter
+import app.mountx.data.model.InternalMigrationMethod
 import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
 import org.json.JSONArray
@@ -42,6 +43,7 @@ class Converters {
                     put("label", JSONObject.NULL)
                 }
                 put("preserveMedia", item.preserveMedia)
+                put("migrationMethod", item.migrationMethod.name)
             }
             array.put(obj)
         }
@@ -62,6 +64,12 @@ class Converters {
                 } catch (_: Exception) {
                     MountPointCategory.GAME_ASSETS
                 }
+                val methodName = obj.optString("migrationMethod", InternalMigrationMethod.AUTO.name)
+                val migMethod = try {
+                    InternalMigrationMethod.valueOf(methodName)
+                } catch (_: Exception) {
+                    InternalMigrationMethod.AUTO
+                }
                 val config = MountPointConfig(
                     id = obj.optString("id", "mp_$i"),
                     category = cat,
@@ -73,7 +81,8 @@ class Converters {
                     sizeBytes = obj.optLong("sizeBytes", 0L),
                     diskUuid = if (obj.has("diskUuid") && !obj.isNull("diskUuid")) obj.getString("diskUuid") else null,
                     label = if (obj.has("label") && !obj.isNull("label")) obj.getString("label") else null,
-                    preserveMedia = obj.optBoolean("preserveMedia", false)
+                    preserveMedia = obj.optBoolean("preserveMedia", false),
+                    migrationMethod = migMethod
                 )
                 list.add(config.copy(category = config.resolveCategory()))
             }

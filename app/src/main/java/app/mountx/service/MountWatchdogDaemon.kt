@@ -202,8 +202,9 @@ class MountWatchdogDaemon @Inject constructor(
                 val isAlreadyMounted = if (game.mountPoints.isNotEmpty()) {
                     val activeConfigs = game.mountPoints.filter { it.enabled }
                     activeConfigs.isNotEmpty() && activeConfigs.all { mp ->
+                        val rel = MountManager.extractRelativePath(mp.targetPath)
                         activeMounts.contains(mp.targetPath) ||
-                        activeMounts.any { it.endsWith(MountManager.extractRelativePath(mp.targetPath)) } ||
+                        (rel.isNotBlank() && activeMounts.any { it.endsWith(rel) }) ||
                         RootShell.isMountpoint(mp.targetPath)
                     }
                 } else {

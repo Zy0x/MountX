@@ -128,22 +128,55 @@ object PermissionManager {
 
     @SuppressLint("BatteryLife")
     fun requestBatteryOptimizationExemption(context: Context) {
-        try {
-            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+        // 1. If root is available, immediately whitelist app in device idle via root shell
+        if (app.mountx.root.RootShell.isAvailable) {
+            try {
+                Shell.cmd("dumpsys deviceidle whitelist +${context.packageName} 2>/dev/null || cmd deviceidle whitelist +${context.packageName} 2>/dev/null").exec()
+            } catch (_: Exception) {}
+            if (checkBatteryOptimization(context)) {
+                return
+            }
+        }
+
+        // 2. Multi-tier intent dispatch for OEM battery optimizations (AOSP, MIUI/HyperOS, ColorOS, etc.)
+        val candidateIntents = listOf(
+            // Standard AOSP Battery Optimization Request Dialog
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            // System-wide ignore battery optimization list
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            // MIUI / HyperOS specific battery saver action
+            Intent("miui.intent.action.HIDDEN_APPS_CONFIG_ACTIVITY").apply {
+                putExtra("package_name", context.packageName)
+                putExtra("package_label", context.applicationInfo.loadLabel(context.packageManager).toString())
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            // MIUI / HyperOS (Xiaomi / Redmi) specific powerkeeper activity component
+            Intent().apply {
+                component = android.content.ComponentName("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity")
+                putExtra("package_name", context.packageName)
+                putExtra("package_label", context.applicationInfo.loadLabel(context.packageManager).toString())
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            },
+            // App Info Settings (user can navigate to Battery / Power)
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = Uri.parse("package:${context.packageName}")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(intent)
-        } catch (_: Exception) {
+        )
+
+        for (intent in candidateIntents) {
             try {
-                val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(fallback)
-            } catch (_: Exception) {
-                openAppDetailsSettings(context)
-            }
+                context.startActivity(intent)
+                return
+            } catch (_: Exception) {}
         }
+
+        openAppDetailsSettings(context)
     }
 
     fun openAppDetailsSettings(context: Context) {

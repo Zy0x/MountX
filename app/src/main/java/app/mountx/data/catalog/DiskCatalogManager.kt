@@ -1,5 +1,8 @@
 package app.mountx.data.catalog
 
+import android.content.Context
+import app.mountx.R
+import dagger.hilt.android.qualifiers.ApplicationContext
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountPointCategory
@@ -60,7 +63,8 @@ data class DiscoveredGame(
  */
 @Singleton
 class DiskCatalogManager @Inject constructor(
-    private val mountManager: MountManager
+    private val mountManager: MountManager,
+    @ApplicationContext private val context: Context
 ) {
 
     companion object {
@@ -560,7 +564,7 @@ class DiskCatalogManager @Inject constructor(
             val targetDataDir = "$sdBase/MountX/Android/data/$pkg"
             val targetObbDir = "$sdBase/MountX/Android/obb/$pkg"
 
-            onProgress(0.1f, "Menyiapkan direktori standar MountX...")
+            onProgress(0.1f, context.getString(R.string.catalog_step_prep_dirs))
             RootShell.exec("mkdir -p \"$sdBase/MountX/Android/data\" \"$sdBase/MountX/Android/obb\" 2>/dev/null")
 
             val origData = if (game.originalPath != null && RootShell.exists(game.originalPath)) {
@@ -570,7 +574,7 @@ class DiskCatalogManager @Inject constructor(
             } else null
 
             if (origData != null && origData != targetDataDir) {
-                onProgress(0.35f, "Memindahkan struktur data game ke MountX/Android/data...")
+                onProgress(0.35f, context.getString(R.string.catalog_step_moving_data))
                 val mvRes = RootShell.exec("mv -f \"$origData\" \"$targetDataDir\" 2>/dev/null")
                 if (!mvRes.isSuccess) {
                     RootShell.exec("cp -a \"$origData\" \"$targetDataDir\" && rm -rf \"$origData\" 2>/dev/null")
@@ -579,14 +583,14 @@ class DiskCatalogManager @Inject constructor(
 
             val origObb = "$sdBase/Android/obb/$pkg"
             if (RootShell.exists(origObb) && origObb != targetObbDir) {
-                onProgress(0.65f, "Memindahkan OBB resource ke MountX/Android/obb...")
+                onProgress(0.65f, context.getString(R.string.catalog_step_moving_obb))
                 val mvObbRes = RootShell.exec("mv -f \"$origObb\" \"$targetObbDir\" 2>/dev/null")
                 if (!mvObbRes.isSuccess) {
                     RootShell.exec("cp -a \"$origObb\" \"$targetObbDir\" && rm -rf \"$origObb\" 2>/dev/null")
                 }
             }
 
-            onProgress(0.85f, "Menyesuaikan izin akses direktori & SELinux...")
+            onProgress(0.85f, context.getString(R.string.catalog_step_adjust_perms))
             val identity = mountManager.resolveAppIdentity(pkg)
             val uid = identity.uid
             val gid = identity.gid
@@ -602,7 +606,7 @@ class DiskCatalogManager @Inject constructor(
                 RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetObbDir\" 2>/dev/null")
             }
 
-            onProgress(1.0f, "Selesai merapikan data game.")
+            onProgress(1.0f, context.getString(R.string.catalog_step_complete))
             AppLogger.success("DiskCatalog", "Successfully restructured $pkg to standard MountX layout.")
         }
     }

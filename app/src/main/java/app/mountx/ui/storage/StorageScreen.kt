@@ -137,6 +137,7 @@ fun StorageScreen(
 ) {
     val storage by viewModel.storageInfo.collectAsState()
     val internalStorage by viewModel.internalStorageInfo.collectAsState()
+    val isRepairingInternalStorage by viewModel.isRepairingInternalStorage.collectAsState()
     val diskInfo by viewModel.diskInfo.collectAsState()
     val allDisks by viewModel.allDisks.collectAsState()
     val selectedDiskForDetail by viewModel.selectedDiskForDetail.collectAsState()
@@ -186,6 +187,19 @@ fun StorageScreen(
     var showFormatDialog by remember { mutableStateOf(false) }
     var showRepartitionFinalConfirm by remember { mutableStateOf(false) }
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.detectPartitions(force = true)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.detectPartitions(force = false)
     }
@@ -218,6 +232,8 @@ fun StorageScreen(
         StorageContent(
             storage = storage,
             internalStorage = internalStorage,
+            onRepairInternalStorage = { viewModel.repairInternalStorage() },
+            isRepairingInternalStorage = isRepairingInternalStorage,
             diskInfo = diskInfo,
             allDisks = if (allDisks.isNotEmpty()) allDisks else (if (diskInfo != null) listOf(diskInfo!!) else emptyList()),
             statusMessage = statusMessage,
@@ -639,6 +655,8 @@ fun StorageScreen(
 fun StorageContent(
     storage: StorageInfo?,
     internalStorage: InternalStorageInfo? = null,
+    onRepairInternalStorage: () -> Unit = {},
+    isRepairingInternalStorage: Boolean = false,
     diskInfo: SdCardDiskInfo? = null,
     allDisks: List<SdCardDiskInfo> = emptyList(),
     statusMessage: String? = null,
@@ -695,7 +713,9 @@ fun StorageContent(
                                 MultiDiskVisualMapSection(
                                     internalStorage = internalStorage,
                                     disks = effectiveDisks,
-                                    onOpenDiskDetail = onOpenDiskDetail
+                                    onOpenDiskDetail = onOpenDiskDetail,
+                                    onRepairInternalStorage = onRepairInternalStorage,
+                                    isRepairingInternalStorage = isRepairingInternalStorage
                                 )
                             }
                         }
@@ -721,7 +741,9 @@ fun StorageContent(
                             MultiDiskVisualMapSection(
                                 internalStorage = internalStorage,
                                 disks = effectiveDisks,
-                                onOpenDiskDetail = onOpenDiskDetail
+                                onOpenDiskDetail = onOpenDiskDetail,
+                                onRepairInternalStorage = onRepairInternalStorage,
+                                isRepairingInternalStorage = isRepairingInternalStorage
                             )
                         }
                     }
@@ -911,7 +933,7 @@ private fun MultiDiskTelemetryCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Internal Storage (/data)",
+                                text = stringResource(R.string.storage_internal_partition_name),
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -1157,6 +1179,8 @@ private fun MultiDiskVisualMapSection(
     internalStorage: InternalStorageInfo? = null,
     disks: List<SdCardDiskInfo>,
     onOpenDiskDetail: (SdCardDiskInfo) -> Unit,
+    onRepairInternalStorage: () -> Unit = {},
+    isRepairingInternalStorage: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1169,7 +1193,11 @@ private fun MultiDiskVisualMapSection(
 
         // Internal Storage — always first, read-only Protected card
         if (internalStorage != null) {
-            InternalDiskVisualMapCard(internalStorage = internalStorage)
+            InternalDiskVisualMapCard(
+                internalStorage = internalStorage,
+                onRepairInternalStorage = onRepairInternalStorage,
+                isRepairing = isRepairingInternalStorage
+            )
         }
 
         if (disks.isEmpty() && internalStorage == null) {
@@ -1224,6 +1252,8 @@ private fun MultiDiskVisualMapSection(
 @Composable
 private fun InternalDiskVisualMapCard(
     internalStorage: InternalStorageInfo,
+    onRepairInternalStorage: () -> Unit = {},
+    isRepairing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
@@ -1259,8 +1289,13 @@ private fun InternalDiskVisualMapCard(
                 }
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
+                    val typeTitle = if (internalStorage.storageType.isNotBlank() && internalStorage.storageType != "Internal") {
+                        "Internal Storage (${internalStorage.storageType})"
+                    } else {
+                        stringResource(R.string.storage_internal_partition_name)
+                    }
                     Text(
-                        text = stringResource(R.string.storage_internal_partition_name),
+                        text = typeTitle,
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
@@ -1270,8 +1305,11 @@ private fun InternalDiskVisualMapCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
+                    val chipPart = if (internalStorage.chipName.isNotBlank()) "${internalStorage.chipName} • " else ""
+                    val fsPart = if (internalStorage.filesystem.isNotBlank()) " • ${internalStorage.filesystem}" else ""
+                    val physPart = if (internalStorage.physicalTotalBytes > 0) " (${app.mountx.util.FormatUtils.formatBytes(internalStorage.physicalTotalBytes)})" else ""
                     Text(
-                        text = "/data • F2FS",
+                        text = "${chipPart}/data$fsPart$physPart",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
@@ -1279,29 +1317,56 @@ private fun InternalDiskVisualMapCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                // Protected badge
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = AmberWarn.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, AmberWarn.copy(alpha = 0.45f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                // Protected or Unmounted badge
+                if (!internalStorage.isEmulatedMounted) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.45f))
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = AmberWarn,
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.storage_internal_protected_badge),
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            fontWeight = FontWeight.Bold,
-                            color = AmberWarn
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.storage_internal_unmounted_badge),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = AmberWarn.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, AmberWarn.copy(alpha = 0.45f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = AmberWarn,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.storage_internal_protected_badge),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = AmberWarn
+                            )
+                        }
                     }
                 }
             }
@@ -1337,6 +1402,63 @@ private fun InternalDiskVisualMapCard(
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
                     color = healthColor
                 )
+            }
+
+            if (!internalStorage.isEmulatedMounted) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.storage_internal_unmounted_warning_title),
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = stringResource(R.string.storage_internal_unmounted_warning_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        FilledTonalButton(
+                            onClick = onRepairInternalStorage,
+                            enabled = !isRepairing,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        ) {
+                            if (isRepairing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onError
+                                )
+                            } else {
+                                Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.storage_repair_internal_btn),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1380,8 +1502,13 @@ private fun InternalDiskVisualMapCard(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
+                        val barText = if (internalStorage.partitionName.isNotBlank()) {
+                            internalStorage.partitionName
+                        } else {
+                            "userdata"
+                        }
                         Text(
-                            text = "userdata",
+                            text = barText,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
                             color = labelColor,
                             maxLines = 1,
@@ -1420,11 +1547,31 @@ private fun InternalDiskVisualMapCard(
                 )
             },
             confirmButton = {
-                FilledTonalButton(
-                    onClick = { showDialog = false },
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(text = "OK", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (!internalStorage.isEmulatedMounted) {
+                        FilledTonalButton(
+                            onClick = {
+                                onRepairInternalStorage()
+                                showDialog = false
+                            },
+                            enabled = !isRepairing,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        ) {
+                            Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = stringResource(R.string.storage_repair_internal_btn), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+                    FilledTonalButton(
+                        onClick = { showDialog = false },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(text = stringResource(R.string.common_ok), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                    }
                 }
             },
             containerColor = MaterialTheme.colorScheme.surface,
@@ -2236,7 +2383,7 @@ private fun PartitionWizardDialog(
                                     Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        "Bagi Rata",
+                                        stringResource(R.string.storage_wizard_auto_balance),
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -2812,7 +2959,7 @@ private fun SingleFormatDialog(
                         isRecommended = false,
                         isKernelSupported = fat32Supported,
                         title = "FAT32",
-                        subtitle = "Universal portable storage",
+                        subtitle = stringResource(R.string.format_fat32_desc),
                         onSelect = { chosenFs = FilesystemType.FAT32 }
                     )
                     FormatFsRadioOption(
@@ -2963,7 +3110,7 @@ private fun FormatFsRadioOption(
                         color = if (isKernelSupported) emeraldBg else AmberWarn.copy(alpha = 0.15f)
                     ) {
                         Text(
-                            text = if (isKernelSupported) "Kernel Ready" else "Unsupported",
+                            text = if (isKernelSupported) stringResource(R.string.format_kernel_ready) else stringResource(R.string.format_kernel_unsupported),
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isKernelSupported) emeraldColor else AmberWarn,
@@ -2998,10 +3145,10 @@ private fun FsckReportDialog(
     }
 
     val statusBadgeText = when (report.status) {
-        FsckStatus.CLEAN -> "Clean (Integritas Baik)"
-        FsckStatus.REPAIRED -> "Diperbaiki Otomatis"
-        FsckStatus.DIRTY_WARNING -> "Peringatan Direktori Kotor"
-        FsckStatus.ERROR -> "Kesalahan Kritis"
+        FsckStatus.CLEAN -> stringResource(R.string.fsck_status_clean)
+        FsckStatus.REPAIRED -> stringResource(R.string.fsck_status_repaired)
+        FsckStatus.DIRTY_WARNING -> stringResource(R.string.fsck_status_dirty_warning)
+        FsckStatus.ERROR -> stringResource(R.string.fsck_status_error)
     }
 
     AlertDialog(
@@ -3016,7 +3163,7 @@ private fun FsckReportDialog(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Diagnostik Filesystem (fsck)",
+                    text = stringResource(R.string.fsck_dialog_title),
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 )
             }
@@ -3074,7 +3221,7 @@ private fun FsckReportDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Files / Inodes", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.fsck_files_inodes), fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     val filesStr = if (report.totalFiles > 0) "${report.filesCount} / ${report.totalFiles}" else "${report.filesCount}"
                                     Text(filesStr, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                                 }
@@ -3084,7 +3231,7 @@ private fun FsckReportDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text("Alokasi Blok", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.fsck_block_allocation), fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     val blocksStr = if (report.totalBlocks > 0) "${report.blocksCount} / ${report.totalBlocks}" else "${report.blocksCount}"
                                     Text(blocksStr, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                                 }
@@ -3110,7 +3257,7 @@ private fun FsckReportDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (isExpandedLog) "Sembunyikan Log Shell" else "Lihat Output Shell (Raw Log)",
+                                text = if (isExpandedLog) stringResource(R.string.fsck_log_hide) else stringResource(R.string.fsck_log_view_raw),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.primary
@@ -3488,7 +3635,7 @@ private fun EjectDiskConfirmDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "${mountedPartitions.size} partisi terpasang",
+                                text = stringResource(R.string.storage_partitions_mounted_count, mountedPartitions.size),
                                 fontSize = 10.sp,
                                 color = crimsonColor,
                                 fontWeight = FontWeight.SemiBold

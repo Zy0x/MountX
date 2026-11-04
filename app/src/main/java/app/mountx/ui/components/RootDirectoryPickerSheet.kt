@@ -25,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,6 +65,7 @@ fun RootDirectoryPickerSheet(
     onDismiss: () -> Unit,
     onPathSelected: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     var currentPath by remember {
@@ -111,7 +113,7 @@ fun RootDirectoryPickerSheet(
             }
         }
         if (items == null) {
-            errorMessage = "Akses ditolak atau gagal membaca direktori"
+            errorMessage = context.getString(R.string.file_picker_access_denied)
             directories = emptyList()
         } else {
             directories = items
@@ -174,13 +176,13 @@ fun RootDirectoryPickerSheet(
                     }
                     Column {
                         Text(
-                            text = "Penjelajah Berkas Root",
+                            text = stringResource(R.string.file_picker_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) Color(0xFFFAF8F5) else Color(0xFF1C1917)
                         )
                         Text(
-                            text = "Pilih direktori penyimpanan sistem atau kartu memori",
+                            text = stringResource(R.string.file_picker_subtitle),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
                         )
@@ -193,7 +195,7 @@ fun RootDirectoryPickerSheet(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Tutup",
+                        contentDescription = stringResource(R.string.common_close),
                         tint = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
                     )
                 }
@@ -373,7 +375,7 @@ fun RootDirectoryPickerSheet(
                                 )
                             ) {
                                 Text(
-                                    text = "Kembali ke Direktori Induk",
+                                    text = stringResource(R.string.file_picker_back_to_parent),
                                     color = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight,
                                     fontSize = 12.sp
                                 )
@@ -386,7 +388,7 @@ fun RootDirectoryPickerSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "(Direktori kosong atau tidak ada subfolder)",
+                            text = stringResource(R.string.file_picker_empty_dir),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C)
                         )
@@ -416,12 +418,12 @@ fun RootDirectoryPickerSheet(
                                     ) {
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                            contentDescription = "Induk",
+                                            contentDescription = stringResource(R.string.file_picker_parent_desc),
                                             tint = if (isDark) Color(0xFFA8A29E) else Color(0xFF78716C),
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Text(
-                                            text = ".. (Kembali ke folder induk)",
+                                            text = stringResource(R.string.file_picker_parent_item),
                                             style = MaterialTheme.typography.bodyMedium.copy(
                                                 fontSize = 12.5.sp,
                                                 fontWeight = FontWeight.Medium
@@ -533,7 +535,7 @@ fun RootDirectoryPickerSheet(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "⚠️ Virtual Kernel Filesystem dilarang untuk mounting",
+                                text = stringResource(R.string.file_picker_kernel_fs_blocked),
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                                 color = if (isDark) WarmCrimsonDark else WarmCrimsonLight,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
@@ -558,7 +560,7 @@ fun RootDirectoryPickerSheet(
                                 .height(44.dp)
                         ) {
                             Text(
-                                text = "Batal",
+                                text = stringResource(R.string.common_cancel),
                                 color = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight,
                                 fontWeight = FontWeight.Medium
                             )
@@ -588,7 +590,7 @@ fun RootDirectoryPickerSheet(
                                 .height(44.dp)
                         ) {
                             Text(
-                                text = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) "Pilih (Risiko Tinggi)" else "Pilih Folder Ini",
+                                text = if (securityLevel == PathSecurityLevel.HIGH_RISK_SYSTEM) stringResource(R.string.file_picker_select_high_risk) else stringResource(R.string.file_picker_select_folder),
                                 color = if (securityLevel == PathSecurityLevel.HARD_BLOCKED_KERNEL) (if (isDark) Color(0xFFA8A29E) else Color(0xFF9CA3AF)) else Color.White,
                                 fontWeight = FontWeight.Bold
                             )
@@ -664,7 +666,7 @@ private fun HighRiskDirectoryConfirmDialog(
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = "Peringatan Risiko Sistem",
+                    text = stringResource(R.string.file_picker_system_risk_title),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = crimson
                 )
@@ -673,7 +675,7 @@ private fun HighRiskDirectoryConfirmDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "Anda memilih direktori sistem inti:",
+                    text = stringResource(R.string.file_picker_system_risk_chosen),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -693,7 +695,7 @@ private fun HighRiskDirectoryConfirmDialog(
                     )
                 }
                 Text(
-                    text = "Mengaitkan bind-mount pada direktori ini dapat menyebabkan kegagalan booting (bootloop), penolakan izin konteks SELinux, atau kerusakan sistem.",
+                    text = stringResource(R.string.file_picker_system_risk_warning),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -713,7 +715,7 @@ private fun HighRiskDirectoryConfirmDialog(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Saya memahami risiko kerusakan sistem",
+                        text = stringResource(R.string.file_picker_system_risk_agree),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -730,7 +732,7 @@ private fun HighRiskDirectoryConfirmDialog(
                     disabledContainerColor = crimson.copy(alpha = 0.25f)
                 )
             ) {
-                Text("Tetap Gunakan Jalur Ini", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.file_picker_system_risk_confirm), color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -742,7 +744,7 @@ private fun HighRiskDirectoryConfirmDialog(
                     containerColor = if (isDark) OutlinedNeutralBgDark else OutlinedNeutralBgLight
                 )
             ) {
-                Text("Batal", color = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight)
+                Text(stringResource(R.string.common_cancel), color = if (isDark) OutlinedNeutralTextDark else OutlinedNeutralTextLight)
             }
         }
     )

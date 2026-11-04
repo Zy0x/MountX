@@ -48,8 +48,8 @@ data class AppStorageBreakdown(
     /** Physical internal storage occupied by system & private folders (excluding bind-mounts from SD) */
     val physicalInternalBytes: Long
         get() {
-            var sum = dexBytes
-            if (!isApkMounted) sum += apkBytes
+            var sum = 0L
+            if (!isApkMounted) sum += apkBytes + dexBytes
             if (!isLibMounted) sum += libBytes
             if (!isPrivateMounted) sum += dataBytes
             if (!isCacheMounted) sum += cacheBytes

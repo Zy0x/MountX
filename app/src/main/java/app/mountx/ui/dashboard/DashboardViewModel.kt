@@ -1,5 +1,7 @@
 package app.mountx.ui.dashboard
 
+import app.mountx.R
+
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -164,21 +166,34 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    fun refresh() {
+    fun refresh(force: Boolean = true) {
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                // Use cached info for instant render, refresh in background only after initial display
-                val info = RootDetector.getRootAndModuleInfo(forceRefresh = false)
+                // When force is true (manual pull-to-refresh or onResume after permission grant), force fresh detection
+                val info = RootDetector.getRootAndModuleInfo(forceRefresh = force)
                 _rootSolution.value = info.rootSolution
                 _isModuleInstalled.value = info.isModuleInstalled
                 _moduleVersion.value = info.moduleVersion
 
+                if (force) {
+                    storageRepository.refreshStorage()
+                }
+
+                val sdBase = appPreferences.sdBasePath.first()
+
+                // If root is active, block device is configured, and sdBase is not mounted, attempt auto-mounting backing partition
+                if (info.rootSolution != RootSolution.NONE && !RootShell.isMountpoint(sdBase)) {
+                    val blockDevice = appPreferences.sdBlockDevice.first().trim()
+                    if (blockDevice.isNotBlank() && RootShell.exists(blockDevice)) {
+                        storageRepository.mountSdPartition(blockDevice, sdBase)
+                    }
+                }
+
                 // Refresh game mount statuses first to detect detached storage
                 gameRepository.refreshMountStatuses()
 
-                val sdBase = appPreferences.sdBasePath.first()
-                val disks = storageRepository.getAllDisks(sdBase)
+                val disks = storageRepository.getAllDisks(sdBase, force = force)
                 _allDisks.value = disks
 
                 val worstHealth = disks.map { it.effectiveHealth }.firstOrNull { it != app.mountx.data.model.DiskHealthStatus.HEALTHY }
@@ -189,7 +204,7 @@ class DashboardViewModel @Inject constructor(
 
                 if (hasDiskErrorFile || worstHealth == app.mountx.data.model.DiskHealthStatus.ERROR_IO) {
                     _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.ERROR_IO
-                    _diskErrorDetails.value = disks.firstOrNull { it.healthErrorDetails != null }?.healthErrorDetails ?: "Hardware I/O error"
+                    _diskErrorDetails.value = disks.firstOrNull { it.healthErrorDetails != null }?.healthErrorDetails ?: context.getString(app.mountx.R.string.storage_err_hardware_io)
                 } else if (disks.isEmpty() && (hasDetachedGames || hasConfiguredStorage)) {
                     _diskHealthStatus.value = app.mountx.data.model.DiskHealthStatus.DISCONNECTED
                     _diskErrorDetails.value = context.getString(app.mountx.R.string.dashboard_disk_detached_desc)
@@ -433,8 +448,8 @@ class DashboardViewModel @Inject constructor(
                 val activePoints = selectedPoints.map { it.copy(enabled = true) }
                 _operationProgress.value = OperationProgress(
                     type = OperationType.MOUNT,
-                    title = "Kaitkan Langsung",
-                    subtitle = "${game.displayName} • ${activePoints.size} Kategori",
+                    title = context.getString(R.string.op_direct_mount_title),
+                    subtitle = context.getString(R.string.op_game_categories_subtitle, game.displayName, activePoints.size),
                     progressPercent = 0.1f
                 )
                 gameRepository.directMountGame(game, activePoints, targetBase) { prog ->

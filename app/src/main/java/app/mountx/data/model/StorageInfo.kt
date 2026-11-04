@@ -1,5 +1,8 @@
 package app.mountx.data.model
 
+import app.mountx.MountXApp
+import app.mountx.R
+
 /** Root solutions supported by MountX */
 enum class RootSolution {
     MAGISK,
@@ -46,12 +49,19 @@ data class StorageInfo(
         if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
 }
 
-/** Internal device storage telemetry (/data) */
+/** Internal device storage telemetry (/data) and dynamically discovered hardware storage chip details */
 @androidx.compose.runtime.Immutable
 data class InternalStorageInfo(
     val totalBytes: Long = 0L,
     val usedBytes: Long = 0L,
-    val freeBytes: Long = 0L
+    val freeBytes: Long = 0L,
+    val isEmulatedMounted: Boolean = true,
+    val storageType: String = "",
+    val chipName: String = "",
+    val physicalTotalBytes: Long = 0L,
+    val filesystem: String = "",
+    val partitionName: String = "",
+    val mountPoint: String = "/data"
 ) {
     val usedPercent: Float
         get() = if (totalBytes > 0) usedBytes.toFloat() / totalBytes.toFloat() else 0f
@@ -99,12 +109,16 @@ data class PartitionInfo(
         get() = if (partitionNumber > 0) "Part $partitionNumber" else name.takeLast(6)
 
     val shortName: String
-        get() = when {
-            isTargetMount -> "Part $partitionNumber (Target)"
-            isPortableMount -> "Part $partitionNumber (Portable)"
-            partitionNumber > 0 && fsType.isNotBlank() -> "Part $partitionNumber (${fsType.uppercase()})"
-            partitionNumber > 0 -> "Part $partitionNumber"
-            else -> name.takeLast(6)
+        get() {
+            val targetTag = runCatching { MountXApp.instance.getString(R.string.storage_partition_tag_target) }.getOrDefault("Target")
+            val portableTag = runCatching { MountXApp.instance.getString(R.string.storage_partition_tag_portable) }.getOrDefault("Portable")
+            return when {
+                isTargetMount -> "Part $partitionNumber ($targetTag)"
+                isPortableMount -> "Part $partitionNumber ($portableTag)"
+                partitionNumber > 0 && fsType.isNotBlank() -> "Part $partitionNumber (${fsType.uppercase()})"
+                partitionNumber > 0 -> "Part $partitionNumber"
+                else -> name.takeLast(6)
+            }
         }
 }
 

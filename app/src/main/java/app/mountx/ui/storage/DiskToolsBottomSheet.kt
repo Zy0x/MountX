@@ -408,7 +408,7 @@ private fun DiskToolsHubView(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Product Name", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.storage_hw_product_name), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(hardwareDetails.productName, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
@@ -424,7 +424,7 @@ private fun DiskToolsHubView(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(stringResource(R.string.storage_hw_bus_speed), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(hardwareDetails.busClockMhz.ifBlank { "Standard High-Speed" }, fontSize = 10.5.sp, color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5))
+                        Text(hardwareDetails.busClockMhz.ifBlank { stringResource(R.string.storage_hw_bus_standard) }, fontSize = 10.5.sp, color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5))
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),

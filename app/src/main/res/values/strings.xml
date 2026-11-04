@@ -67,6 +67,7 @@
     <string name="dashboard_internal_storage">Internal Storage</string>
     <string name="dashboard_games_offloaded_format">%1$d apps offloaded · %2$s freed</string>
     <string name="dashboard_free_suffix">%1$s free</string>
+    <string name="dashboard_free_of_total_format">%1$s / %2$s free</string>
     <string name="dashboard_active_count_format">%1$d / %2$d Active</string>
     <string name="dashboard_mounted_count_format">%1$d / %2$d Mounted</string>
 
@@ -448,6 +449,25 @@
     <string name="logs_clear">Clear Log</string>
     <string name="logs_clear_confirm">Clear all log entries?</string>
     <string name="logs_cleared">Log cleared.</string>
+    <string name="logs_filter_warn">Warning</string>
+    <string name="logs_diagnostic_report">Copy Diagnostic Report</string>
+    <string name="logs_diagnostic_report_copied">Diagnostic report copied to clipboard!</string>
+    <string name="logs_daemon_healthy">Daemon Healthy</string>
+    <string name="logs_daemon_error">Daemon Issues Detected</string>
+    <string name="logs_save_log">Save Log</string>
+    <string name="logs_saved_success">Log saved: %1$s</string>
+    <string name="logs_action_open">Open</string>
+    <string name="logs_save_failed">Failed to save log</string>
+    <string name="app_detail_health_title">Mount &amp; System Health</string>
+    <string name="app_detail_health_healthy">All storage categories active &amp; synchronized</string>
+    <string name="app_detail_health_anomaly">Anomaly detected: %1$s</string>
+    <string name="app_detail_health_permissions_ok">System storage permissions verified</string>
+    <string name="app_detail_health_permissions_warn">Storage permission attention needed</string>
+    <string name="status_anomaly">Anomaly</string>
+    <string name="health_summary_missing_targets">Mount targets missing in /proc/mounts</string>
+    <string name="health_summary_perm_revoked">Storage permission revoked by Android</string>
+    <string name="health_summary_mounted_healthy">Mounted &amp; Healthy (%1$d active targets)</string>
+    <string name="health_summary_idle">Unmounted / Idle</string>
 
     <!-- Settings Screen -->
     <string name="settings_title">Settings</string>
@@ -923,6 +943,7 @@
     <string name="manage_btn_back_step">← Back</string>
     <string name="manage_btn_continue_step">Continue →</string>
     <string name="manage_summary_title">Migration Summary</string>
+        <string name="manage_summary_categories_suffix">categories</string>
     <string name="manage_summary_selected_data">Selected data</string>
     <string name="manage_summary_total_size">Total size</string>
     <string name="manage_summary_from">From</string>
@@ -932,6 +953,24 @@
     <string name="manage_tab_placeholder_title">Additional Management</string>
     <string name="manage_tab_placeholder_desc">Advanced management features will be available in future updates.</string>
     <string name="manage_badge_performance_risk">Performance Risk</string>
+    <!-- System Category 3-Method Storage Engine & Batch Customization -->
+    <string name="manage_method_selector_title">System Category Storage Method</string>
+    <string name="manage_method_selector_subtitle">Choose how internal and system data are stored on target storage:</string>
+    <string name="manage_method_auto_title">Auto (Recommended)</string>
+    <string name="manage_method_auto_desc">Intelligently selects the best format for target storage</string>
+    <string name="manage_method_auto_badge_native">Optimal</string>
+    <string name="manage_method_auto_badge_container">Container</string>
+    <string name="manage_method_native_title">Direct Native Folder</string>
+    <string name="manage_method_native_desc">Direct folder access with native performance</string>
+    <string name="manage_method_native_badge">EXT4 / F2FS</string>
+    <string name="manage_method_container_title">Virtual EXT4 Container (.img)</string>
+    <string name="manage_method_container_desc">Isolated loop storage for non-Linux filesystem safety</string>
+    <string name="manage_method_container_badge">Universal</string>
+    <string name="manage_method_non_posix_guard_notice">Target partition uses [%1$s]. Android requires POSIX permissions for Method 1. Use Auto or Method 2 (.img) to prevent application crashes.</string>
+    <string name="manage_method_customize_per_category">Customize Method per Category</string>
+    <string name="manage_method_external_note">App Data &amp; OBB automatically use Native Folder (Android standard, supports &gt;40GB+ on all filesystems).</string>
+    <string name="manage_method_badge_native_short">[Folder]</string>
+    <string name="manage_method_badge_container_short">[.img]</string>
     <string name="manage_cat_private_data">Private Data</string>
     <string name="manage_cat_private_data_desc">Application internal data (/data/data)</string>
     <string name="manage_cat_apk_sub_short">App installation files</string>
@@ -1137,6 +1176,7 @@
     <string name="dashboard_disk_detached_hero_desc">MicroSD card is missing or not detected. Apps cannot safely access bound data.</string>
     <string name="dashboard_disk_detached_badge">Storage Disconnected</string>
     <string name="dashboard_disk_detached_action_rescan">Rescan Storage</string>
+    <string name="dashboard_check_root_action">Check Root</string>
 
     <!-- App Update System & Dialog -->
     <string name="update_dialog_title">Software Update</string>
@@ -1226,6 +1266,270 @@
     <string name="category_data_private">Private Data</string>
     <string name="trim_warning_needs_fsck">Warning: One or more partitions require filesystem integrity repair (fsck).</string>
     <string name="trim_not_supported">Partition driver or filesystem does not currently support TRIM/discard operations.</string>
+    <!-- Candidate Directory Titles & Descriptions -->
+    <string name="candidate_data_title">Data (Android/data)</string>
+    <string name="candidate_data_desc">In-game asset and download data (/Android/data). The largest component of games.</string>
+    <string name="candidate_obb_title">OBB (Android/obb)</string>
+    <string name="candidate_obb_desc">Game installation package archive files (/Android/obb). Safe to mount to MicroSD.</string>
+    <string name="candidate_media_title">Media &amp; Downloads (Android/media &amp; Public)</string>
+    <string name="candidate_media_desc">Public media files and downloads folder. Automatically includes .nomedia file on MicroSD.</string>
+    <string name="candidate_cache_title">Cache &amp; Temporary (Android/data/cache)</string>
+    <string name="candidate_cache_desc">Cache and temporary files. Recommended to remain on internal flash to prevent micro-stuttering.</string>
+    <string name="candidate_private_title">Private Data (/data/data)</string>
+    <string name="candidate_app_package_title">App Package (APK &amp; Native Libs)</string>
+
+    <!-- App Detail Category Item Titles & Subtitles -->
+    <string name="category_item_apk_title">APK</string>
+    <string name="category_item_apk_desc">Application package file</string>
+    <string name="category_item_lib_title">Lib</string>
+    <string name="category_item_lib_desc">Native application libraries</string>
+    <string name="category_item_private_title">Private Data</string>
+    <string name="category_item_private_desc">Internal application data</string>
+    <string name="category_item_cache_title">Cache</string>
+    <string name="category_item_cache_desc">Temporary cache</string>
+    <string name="category_item_data_title">App Data</string>
+    <string name="category_item_data_desc">Primary application data</string>
+    <string name="category_item_obb_title">OBB</string>
+    <string name="category_item_obb_desc">Application expansion file</string>
+    <string name="category_item_media_title">Media &amp; Downloads</string>
+    <string name="category_item_media_desc">Media files &amp; downloads</string>
+    <string name="category_item_on_storage">%1$s • %2$s on %3$s</string>
+    <string name="category_item_custom_title">Custom (%1$s)</string>
+
+    <!-- App Mount Configuration Sheet -->
+    <string name="mount_config_cache_notice">Note: Recommended to keep on internal flash so shader compilation does not stutter.</string>
+    <string name="mount_config_locked_reason_prefix">Reason: %1$s</string>
+    <string name="mount_config_custom_prefix">Custom: %1$s</string>
+    <string name="mount_config_apply_and_link">Apply &amp; Link (%1$s)</string>
+    <string name="mount_config_placeholder_example">Example: Android/data/%1$s/files/assets</string>
+    <string name="mount_config_select_folder">Select Folder</string>
+
+    <!-- Migration Safety -->
+    <string name="error_migration_unmount_failed_before_restore">CRITICAL: Failed to unmount %1$s prior to internal restoration. Aborted to prevent data loss on external storage.</string>
+    <!-- Module Management & Direct Installation -->
+    <string name="module_install_direct_success">MountX module installed and activated successfully!</string>
+    <string name="module_enable_success">Module re-enabled successfully!</string>
+    <string name="module_op_failed">Failed: %1$s</string>
+    <string name="module_export_success">ZIP saved to Downloads: %1$s</string>
+    <string name="module_export_failed">Export failed: %1$s</string>
+    <string name="module_op_processing">Processing…</string>
+    <!-- App Detail Chart Sub-pages & Slices -->
+    <string name="game_detail_subpage_media_title">Media</string>
+    <string name="game_detail_subpage_components_title">Details</string>
+    <string name="game_detail_slice_dex">Dex (Code)</string>
+    <string name="game_detail_slice_shared_internal">App Data (Phone)</string>
+    <string name="game_detail_slice_custom">Custom</string>
+    <string name="game_detail_no_components">No components measured yet</string>
+
+    <!-- Bilingual Parity & Localized String Audit Additions -->
+    <string name="status_active">Active</string>
+    <string name="settings_permissions_all_granted_desc">All system permissions and access rights are actively optimal.</string>
+    <string name="settings_permissions_all_granted">All Permissions Granted</string>
+    <string name="file_picker_access_denied">Access denied or failed to read directory</string>
+    <string name="file_picker_title">Root File Explorer</string>
+    <string name="file_picker_subtitle">Select system storage directory or memory card</string>
+    <string name="file_picker_back_to_parent">Back to Parent Directory</string>
+    <string name="file_picker_empty_dir">(Directory empty or no subfolders)</string>
+    <string name="file_picker_parent_desc">Parent</string>
+    <string name="file_picker_parent_item">.. (Back to parent directory)</string>
+    <string name="file_picker_kernel_fs_blocked">⚠️ Virtual Kernel Filesystem is prohibited from mounting</string>
+    <string name="file_picker_select_high_risk">Select (High Risk)</string>
+    <string name="file_picker_select_folder">Select This Folder</string>
+    <string name="file_picker_system_risk_title">System Risk Warning</string>
+    <string name="file_picker_system_risk_chosen">You selected a core system directory:</string>
+    <string name="file_picker_system_risk_warning">Binding mounts to this directory may cause boot failure (bootloop), SELinux context denials, or system instability.</string>
+    <string name="file_picker_system_risk_agree">I understand the risks of system instability</string>
+    <string name="file_picker_system_risk_confirm">Keep Using This Path</string>
+    <string name="app_detail_cannot_open_directly">Application cannot be launched directly</string>
+    <string name="app_detail_cannot_open_settings">Failed to open application settings</string>
+    <string name="migration_microsd_default">MicroSD Default</string>
+    <string name="format_fat32">FAT32</string>
+    <string name="format_fat32_desc">Universal portable storage (4GB file size limit)</string>
+    <string name="fsck_dialog_title">Filesystem Diagnostics (fsck)</string>
+    <string name="fsck_status_clean">Clean (Integrity Healthy)</string>
+    <string name="fsck_status_repaired">Automatically Repaired</string>
+    <string name="fsck_status_dirty_warning">Dirty Directory Warning</string>
+    <string name="fsck_status_error">Critical Filesystem Error</string>
+    <string name="fsck_files_inodes">Files / Inodes</string>
+    <string name="fsck_block_allocation">Block Allocation</string>
+    <string name="storage_partitions_mounted_count">%1$d partitions mounted</string>
+    <string name="storage_hw_product_name">Product Name</string>
+    <string name="storage_hw_bus_standard">Standard High-Speed</string>
+    <string name="mount_config_fat32_warning">MicroSD partition is FAT32: 4 GB file size limit applies to Virtual Containers and does not natively support POSIX permissions.</string>
+    <string name="mount_config_scanning_dirs">Scanning application directories…</string>
+    <string name="smart_restructure_explanation">The following application data is outside MountX standard hierarchy. MountX will atomically migrate it into MountX/Android/ so it mounts smoothly and safely on boot.</string>
+    <string name="op_direct_mount_title">Direct Mount</string>
+    <string name="op_unmount_categories_title">Unmount Categories</string>
+    <string name="op_mount_game_title">Mounting Game Data</string>
+    <string name="op_game_categories_subtitle">%1$s • %2$d Categories</string>
+    <string name="op_io_kernel_params_synced">I/O kernel parameters synced to the block device subsystem.</string>
+    <string name="op_io_test_completed_success">I/O test completed successfully.</string>
+    <string name="op_f2fs_gc_completed">F2FS Garbage Collection completed, flash blocks consolidated.</string>
+    <string name="mount_step_sandbox_perms">Preparing Sandbox Identity &amp; Permissions</string>
+    <string name="mount_step_check_microsd">Checking MicroSD Directories</string>
+    <string name="mount_step_bind_vfs">Binding VFS to Runtime Namespaces</string>
+    <string name="mount_step_verify_selinux">Verifying Mounts &amp; SELinux</string>
+    <string name="mount_step_mount_complete">Mount Operation Completed</string>
+    <string name="mount_step_stop_app">Stopping Application Process</string>
+    <string name="mount_step_unbind_vfs">Unmounting Selected VFS Namespaces</string>
+    <string name="mount_step_restore_selinux">Restoring SELinux Context</string>
+    <string name="mount_step_unmount_complete">Unmount Operation Completed</string>
+    <string name="catalog_step_prep_dirs">Setting up MountX standard directories…</string>
+    <string name="catalog_step_adjust_perms">Adjusting directory access permissions &amp; SELinux…</string>
+    <string name="catalog_step_complete">Finished organizing game data.</string>
+    <string name="storage_msg_stopping_app">Stopping application process (%1$s)…</string>
+    <string name="storage_msg_unmount_failed_abort">Failed to unmount %1$s. Restore aborted for data safety.</string>
+    <string name="storage_msg_internal_insufficient">Internal memory insufficient for restore! Required: %1$d MB (including 250 MB system buffer), Available: %2$d MB.</string>
+    <string name="storage_msg_restoring_perms">Restoring permissions and SELinux security context…</string>
+    <string name="storage_msg_fat32_limit_exceeded">FAT32 Limit Exceeded: File %1$s is &gt;= 4 GB. FAT32 cannot store this file. Please reformat storage partition to F2FS or exFAT.</string>
+    <string name="storage_msg_transfer_cancelled_by_user">Transfer operation was cancelled by user.</string>
+    <string name="storage_msg_integrity_verification_failed">Data integrity verification failed! Destination size (%1$d bytes) does not match source (%2$d bytes). Migration aborted to protect data.</string>
+    <string name="storage_msg_non_posix_target">Target partition is Non-POSIX (%1$s). Internal categories require Method 2 (.img) or Auto.</string>
+    <string name="storage_msg_target_insufficient_space">Insufficient space on %1$s! Required: %2$d MB (including cluster slack compensation), Available: %3$d MB (Short by %4$d MB).</string>
+    <string name="storage_msg_critical_unmount_failed_before_internal">CRITICAL: Failed to unmount before moving to internal storage. Operation aborted to preserve data integrity.</string>
+    <string name="storage_msg_operation_complete">Operation Complete</string>
+    <string name="catalog_step_moving_data">Moving game data structure to MountX/Android/data…</string>
+    <string name="catalog_step_moving_obb">Moving OBB resources to MountX/Android/obb…</string>
+    <string name="mount_occlusion_hazard_msg">Game data is still in internal storage. Move data to MicroSD first before mounting.</string>
+    <string name="storage_wizard_auto_balance">Split Evenly</string>
+    <string name="format_kernel_ready">Kernel Ready</string>
+    <string name="format_kernel_unsupported">Unsupported</string>
+    <string name="fsck_log_hide">Hide Shell Log</string>
+    <string name="fsck_log_view_raw">View Raw Shell Output</string>
+    <string name="op_f2fs_gc_mode_label">GC Mode</string>
+    <string name="op_f2fs_gc_mode_urgent">Urgent (Level 1)</string>
+    <string name="settings_emergency_reset_success_msg">Emergency reset completed. All mounts detached and permissions restored.</string>
+    <string name="logs_share_title">Share MountX Log</string>
+    <string name="diag_issue_root_shell_failed">Root shell access failed or timed out.</string>
+    <string name="diag_issue_microsd_readonly">MicroSD storage partition is read-only or not writable.</string>
+    <string name="diag_issue_watchdog_inactive">Watchdog daemon service.sh is not actively running.</string>
+    <string name="op_detail_disk">Disk</string>
+
+    <!-- Common UI Actions & Descriptors -->
+    <string name="common_copy">Copy</string>
+    <string name="common_copied_toast">%1$s copied to clipboard</string>
+    <string name="common_locked">Locked</string>
+    <string name="common_menu">Menu</string>
+    <string name="common_unknown_device">Unknown Device</string>
+    <string name="common_unknown_error">Unknown error</string>
+
+    <!-- App Detail -->
+    <string name="app_detail_installer_system_sideload">System / Sideload</string>
+    <string name="manage_location_badge_usb_otg">USB OTG</string>
+
+    <!-- Smart Restructure Dialog -->
+    <string name="smart_restructure_title">MicroSD Data Restructuring</string>
+    <string name="smart_restructure_subtitle">%1$d apps need restructuring</string>
+    <string name="smart_restructure_legacy_path">Legacy Path</string>
+    <string name="smart_restructure_in_progress">Processing restructuring…</string>
+    <string name="smart_restructure_btn_confirm">Restructure Now</string>
+    <string name="smart_restructure_btn_later">Maybe Later</string>
+
+    <!-- Manual Add App Sheet -->
+    <string name="add_app_manual_name_placeholder">Application Name</string>
+
+    <!-- About Screen Actions & Changelog -->
+    <string name="about_btn_view_changelog">View</string>
+    <string name="about_changelog_view_earlier_n">View earlier versions (%1$s)</string>
+    <string name="about_changelog_older_releases_n">%1$d older releases</string>
+    <string name="about_changelog_older_releases_one">1 older release</string>
+    <string name="about_changelog_badge_latest">Latest</string>
+    <string name="about_changelog_hide_details">Hide Details</string>
+    <string name="about_changelog_view_details">View Details</string>
+    <string name="about_changelog_view_on_github">View on GitHub</string>
+
+    <!-- Operation Progress Overlay -->
+    <string name="op_overlay_show_log">Show Technical Log</string>
+    <string name="op_overlay_hide_log">Hide Technical Log</string>
+
+    <!-- Logs Screen -->
+    <string name="logs_subtitle_live_stream">%1$d entries • Live Stream</string>
+    <string name="logs_lines_count_format">%1$d / %2$d Lines</string>
+    <string name="logs_err_generate_report">Failed to generate report: %1$s</string>
+    <string name="logs_err_open_stream">Could not open stream for %1$s</string>
+
+    <!-- Notification Service -->
+    <string name="notif_more_apps_count">+%1$d more</string>
+
+    <!-- Storage Partition Telemetry Tags -->
+    <string name="storage_partition_tag_target">Target</string>
+    <string name="storage_partition_tag_portable">Portable</string>
+
+    <!-- Storage Operations Error Fallbacks -->
+    <string name="op_err_repartition_failed">Repartition failed</string>
+    <string name="op_err_mount_failed">Mount failed</string>
+    <string name="op_err_unmount_failed">Unmount failed</string>
+    <string name="storage_trim_must_be_mounted">Partition must be mounted to run TRIM</string>
+    <string name="storage_trim_completed">TRIM completed successfully.</string>
+    <string name="storage_err_mount_all_failed">Failed to mount all partitions</string>
+    <string name="storage_err_unmount_all_failed">Failed to unmount all partitions</string>
+    <string name="op_err_move_failed">Data transfer failed</string>
+    <string name="op_err_direct_mount_failed">Direct mount failed</string>
+    <string name="update_check_failed">Check failed</string>
+    <string name="settings_emergency_reset_failed">Emergency reset failed: %1$s</string>
+    <string name="settings_rescue_script_created">Rescue script created at %1$s</string>
+    <string name="settings_rescue_script_failed">Failed to create rescue script: %1$s</string>
+    <string name="settings_portability_export_failed">Export failed</string>
+    <string name="settings_portability_import_failed">Import failed</string>
+    <string name="settings_portability_invalid_backup">Invalid backup file: %1$s</string>
+    <string name="settings_portability_err_open_file">Unable to open file</string>
+    <string name="settings_portability_err_invalid_json">Invalid JSON format</string>
+    <string name="storage_err_hardware_io">Hardware I/O error</string>
+
+    <!-- Diagnostics Additional Alerts -->
+    <string name="diag_issue_microsd_space_critical">MicroSD storage space critical: only %1$d MB remaining.</string>
+    <string name="diag_no_partition_mounted_at">No partition mounted at %1$s</string>
+    <string name="diag_mount_not_in_proc_mounts">Not mounted in /proc/mounts</string>
+    <string name="diag_log_empty_or_inaccessible">mountx.log is empty or inaccessible</string>
+
+    <!-- Storage Manager & Module Engine Exceptions -->
+    <string name="storage_err_fsck_mounted">Cannot check filesystem while partition is mounted. Please unmount first.</string>
+    <string name="storage_err_label_empty">Partition label cannot be empty.</string>
+    <string name="storage_err_failed_set_label">Failed to set partition label (exit code %1$d)</string>
+    <string name="storage_err_no_accessible_block_device">No accessible block device found for %1$s (requested: %2$s)</string>
+    <string name="storage_err_no_partitions_in_scheme">No partitions specified in scheme.</string>
+    <string name="storage_err_fdisk_write_failed">Failed to write partition table via fdisk: %1$s</string>
+    <string name="storage_err_partition_format_failed">Partition %1$d format error: %2$s</string>
+    <string name="storage_err_copy_failed">Failed to copy %1$s to %2$s (exit code %3$d): %4$s</string>
+    <string name="storage_err_no_active_points">No active mount points configured for migration.</string>
+    <string name="storage_err_internal_data_not_exist">Internal data path does not exist: %1$s</string>
+    <string name="storage_err_internal_obb_not_exist">Internal OBB path does not exist: %1$s</string>
+    <string name="storage_err_sd_data_not_exist">SD data path does not exist: %1$s</string>
+    <string name="storage_err_sd_obb_not_exist">SD OBB path does not exist: %1$s</string>
+    <string name="storage_err_no_mounted_partitions">No mounted partitions found on %1$s. Mount at least one partition before trimming.</string>
+    <string name="storage_err_mount_point_empty">Mount point cannot be empty.</string>
+    <string name="storage_err_no_f2fs_gc_urgent">No active F2FS filesystem with gc_urgent support detected.</string>
+    <string name="storage_err_direct_block_read_failed">Direct block read failed: 0 records copied</string>
+    <string name="module_err_copy_files">Failed to copy module files: %1$s</string>
+
+    <!-- Emulated Internal Storage Recovery -->
+    <string name="storage_internal_unmounted_badge">Unmounted</string>
+    <string name="storage_internal_unmounted_warning_title">Emulated Storage Detached</string>
+    <string name="storage_internal_unmounted_warning_desc">Virtual emulated storage (/storage/emulated/0) was unmounted by the system. Games and apps cannot detect files.</string>
+    <string name="storage_repair_internal_btn">Repair</string>
+    <string name="storage_repairing_internal">Repairing emulated internal storage…</string>
+    <string name="storage_repair_internal_success">Internal storage successfully restored and mounted.</string>
+    <string name="storage_repair_internal_failed">Failed to restore internal storage. Check logs.</string>
+
+    <!-- UX & Safety Enhancements -->
+    <string name="status_apk_not_installed">APK Not Installed</string>
+    <string name="app_detail_uninstalled_banner_title">Application Not Installed on Device</string>
+    <string name="app_detail_uninstalled_banner_desc">All app data (%1$s) is preserved safely on MicroSD. Reinstall the app (official or modded) anytime to automatically synchronize and resume with all data intact.</string>
+    <string name="app_uninstalled_mount_blocked_toast">Please reinstall %1$s before enabling mount.</string>
+    <string name="btn_reconcile_permissions">Reconcile Permissions</string>
+    <string name="reconciling_permissions">Reconciling permissions…</string>
+    <string name="toast_reconcile_success">Storage permissions and SELinux context synchronized successfully (UID %1$s).</string>
+    <string name="toast_reconcile_failed">Failed to reconcile permissions: %1$s</string>
+    <string name="category_preset_optimal">⚡ Fast &amp; Safe</string>
+    <string name="category_preset_optimal_desc">Data + OBB + Cache (leaves APK &amp; Lib on internal flash for peak performance)</string>
+    <string name="category_preset_all">📦 Select All</string>
+    <string name="category_preset_deselect">Deselect All</string>
+    <string name="btn_clean_all_cache">Clean All Caches</string>
+    <string name="dialog_clean_all_cache_title">Clean All App Caches</string>
+    <string name="dialog_clean_all_cache_msg">MountX will clear temporary cache files across all managed applications on MicroSD and internal storage. Saved accounts, games progress, and primary data will remain completely intact.</string>
+    <string name="cleaning_all_cache">Cleaning cache across all apps…</string>
+    <string name="toast_clean_all_cache_success">Cleaned cache for %1$d apps (%2$s freed).</string>
+    <string name="toast_clean_all_cache_none">No temporary cache found to clean.</string>
 </resources>
 
 

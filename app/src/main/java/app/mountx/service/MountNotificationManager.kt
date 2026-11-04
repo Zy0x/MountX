@@ -140,7 +140,8 @@ class MountNotificationManager @Inject constructor(
                         enabledPoints.isEmpty() || enabledPoints.any { pt ->
                             val cleanTarget = pt.targetPath.trimEnd('/')
                             val rel = MountManager.extractRelativePath(pt.targetPath).trimEnd('/')
-                            val mountCount = RootShell.execForOutput("grep -cE '($cleanTarget|$rel)' /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
+                            val grepPattern = if (rel.isNotBlank()) "($cleanTarget|$rel)" else cleanTarget
+                            val mountCount = RootShell.execForOutput("grep -cE '$grepPattern' /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
                             mountCount > 0
                         }
                     } else {
@@ -234,7 +235,7 @@ class MountNotificationManager @Inject constructor(
                     bigStyle.addLine("• ${g.displayName}$gSize$diskTag")
                 }
                 if (mountedGames.size > 6) {
-                    bigStyle.addLine("+${mountedGames.size - 6} more")
+                    bigStyle.addLine(context.getString(R.string.notif_more_apps_count, mountedGames.size - 6))
                 }
 
                 // 6. Notification Builder (Clean, single high-value Unmount action, tap opens app)
@@ -520,7 +521,7 @@ class MountNotificationManager @Inject constructor(
                             .setSmallIcon(R.drawable.ic_notification)
                             .setColor(0xFF00E676.toInt())
                             .setContentTitle(progress.title)
-                            .setContentText(progress.subtitle.ifBlank { "Operasi Selesai" })
+                            .setContentText(progress.subtitle.ifBlank { context.getString(R.string.storage_msg_operation_complete) })
                             .setPriority(NotificationCompat.PRIORITY_LOW)
                             .setAutoCancel(true)
                             .setContentIntent(pendingIntent)

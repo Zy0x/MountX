@@ -1,5 +1,7 @@
 package app.mountx.ui.apps
 
+import app.mountx.R
+
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,6 +11,7 @@ import app.mountx.data.model.AppStorageBreakdown
 import app.mountx.data.model.AppEntry
 import app.mountx.data.model.GameEntry
 import app.mountx.data.model.InstalledAppInfo
+import app.mountx.data.model.InternalMigrationMethod
 import app.mountx.data.model.MigrationTarget
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountStatus
@@ -20,6 +23,8 @@ import app.mountx.data.repository.StorageRepository
 import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,6 +54,7 @@ class AppsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val systemSyncMonitor: app.mountx.service.SystemSyncMonitor,
     private val mountNotificationManager: app.mountx.service.MountNotificationManager,
+    private val diagnosticManager: app.mountx.data.diagnostics.DiagnosticManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -156,6 +162,9 @@ class AppsViewModel @Inject constructor(
     private val _detailedStorage = MutableStateFlow<AppStorageBreakdown?>(null)
     val detailedStorage: StateFlow<AppStorageBreakdown?> = _detailedStorage.asStateFlow()
 
+    private val _appHealth = MutableStateFlow<app.mountx.data.diagnostics.AppHealthTelemetry?>(null)
+    val appHealth: StateFlow<app.mountx.data.diagnostics.AppHealthTelemetry?> = _appHealth.asStateFlow()
+
     private val _operationProgress = MutableStateFlow<OperationProgress?>(null)
     val operationProgress: StateFlow<OperationProgress?> = _operationProgress.asStateFlow()
 
@@ -173,6 +182,7 @@ class AppsViewModel @Inject constructor(
     fun clearDetailedStorage() {
         _activePackageName.value = null
         _detailedStorage.value = null
+        _appHealth.value = null
     }
 
     fun setSearchQuery(query: String) {
@@ -203,10 +213,14 @@ class AppsViewModel @Inject constructor(
         if (cached != null && !force) {
             _detailedStorage.value = cached
             _storageBreakdown.value = Pair(cached.ext1Bytes, cached.ext2Bytes)
+            viewModelScope.launch {
+                _appHealth.value = diagnosticManager.getAppHealth(packageName)
+            }
             return
         }
         // When switching to a new package without cache, clear detailedStorage to avoid stale cross-game data leak
         _detailedStorage.value = null
+        _appHealth.value = null
         viewModelScope.launch {
             try {
                 app.mountx.util.AppLogger.info("GamesVM", "loadStorageBreakdown started for $packageName")
@@ -219,6 +233,7 @@ class AppsViewModel @Inject constructor(
                     _detailedStorage.value = breakdown
                     _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
                 }
+                _appHealth.value = diagnosticManager.getAppHealth(packageName)
             } catch (e: Exception) {
                 app.mountx.util.AppLogger.error("GamesVM", "loadStorageBreakdown failed for $packageName: ${e.message}")
             }
@@ -246,6 +261,8 @@ class AppsViewModel @Inject constructor(
                 }
                 // 3. Sync mount status without global multi-app rescan
                 gameRepository.refreshMountStatuses()
+                // 4. Update live health telemetry
+                _appHealth.value = diagnosticManager.getAppHealth(packageName)
             } catch (e: Exception) {
                 app.mountx.util.AppLogger.error("GamesVM", "refreshAppDetail failed for $packageName: ${e.message}")
             } finally {
@@ -438,11 +455,11 @@ class AppsViewModel @Inject constructor(
         }
     }
 
-    fun loadAvailableDisks() {
+    fun loadAvailableDisks(force: Boolean = false) {
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
-            val detected = storageRepository.detectPartitions(sdBase)
-            _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
+            val detected = storageRepository.detectPartitions(sdBase, force = force)
+            _availableDisks.value = storageRepository.getAllDisks(sdBase, detected, force = force)
         }
     }
 
@@ -451,8 +468,8 @@ class AppsViewModel @Inject constructor(
             _isScanningDisks.value = true
             try {
                 val sdBase = appPreferences.sdBasePath.first()
-                val detected = storageRepository.detectPartitions(sdBase)
-                _availableDisks.value = storageRepository.getAllDisks(sdBase, detected)
+                val detected = storageRepository.detectPartitions(sdBase, force = true)
+                _availableDisks.value = storageRepository.getAllDisks(sdBase, detected, force = true)
             } finally {
                 _isScanningDisks.value = false
             }
@@ -482,7 +499,7 @@ class AppsViewModel @Inject constructor(
             _isRefreshing.value = true
             try {
                 val sdBase = appPreferences.sdBasePath.first()
-                loadAvailableDisks()
+                loadAvailableDisks(force = true)
                 gameRepository.refreshMountStatuses()
                 gameRepository.calculateDataSizesBatch(games.value, sdBase)
                 scanDiscoveredGames()
@@ -516,11 +533,36 @@ class AppsViewModel @Inject constructor(
                 val rawPoints = if (mountPoints.isNotEmpty()) mountPoints else {
                     game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
                 }
-                val effectivePoints = if (direction == MoveDirection.TO_SD && rawPoints.none { it.enabled }) {
+                val basePoints = if (direction == MoveDirection.TO_SD && rawPoints.none { it.enabled }) {
                     rawPoints.map { it.copy(enabled = true) }
                 } else {
                     rawPoints
                 }
+                val sdInspection = if (direction == MoveDirection.TO_SD) storageRepository.inspectStorageTarget(sdBase) else null
+                val effectivePoints = basePoints.map { pt ->
+                    if (direction == MoveDirection.TO_SD && pt.isInternalSandboxOrPackageCategory() && sdInspection != null) {
+                        val useContainer = when (pt.migrationMethod) {
+                            InternalMigrationMethod.AUTO -> sdInspection.isNonPosix
+                            InternalMigrationMethod.NATIVE_FOLDER -> false
+                            InternalMigrationMethod.CONTAINER_IMG -> true
+                        }
+                        val targetSrc = if (useContainer) {
+                            pt.containerImgPath?.ifBlank { null } ?: pt.resolveContainerImgPath(sdBase, packageName)
+                        } else {
+                            pt.resolveNativeFolderPath(sdBase, packageName)
+                        }
+                        pt.copy(
+                            sourcePath = targetSrc,
+                            isVirtualContainer = useContainer,
+                            containerImgPath = if (useContainer) targetSrc else null
+                        )
+                    } else {
+                        pt
+                    }
+                }
+
+                // Flag migration in progress to prevent background watchdog auto-recovery from interfering
+                RootShell.exec("touch /dev/.mountx_migrating")
 
                 // Force stop active process before migration
                 RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
@@ -553,8 +595,9 @@ class AppsViewModel @Inject constructor(
                             // Mark moved points as disabled, update game status to UNMOUNTED
                             val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
                             val updatedPoints = currentPoints.map { pt ->
-                                if (effectivePoints.any { it.isSameTargetAs(pt) }) {
-                                    pt.copy(enabled = false)
+                                val moved = effectivePoints.firstOrNull { it.isSameTargetAs(pt) }
+                                if (moved != null) {
+                                    moved.copy(enabled = false)
                                 } else {
                                     pt
                                 }
@@ -562,7 +605,7 @@ class AppsViewModel @Inject constructor(
                             val allDisabled = updatedPoints.none { it.enabled }
                             val updated = game.copy(
                                 mountPoints = updatedPoints,
-                                mountStatus = MountStatus.UNMOUNTED,
+                                mountStatus = if (allDisabled) MountStatus.UNMOUNTED else MountStatus.MOUNTED,
                                 isEnabled = if (allDisabled) false else game.isEnabled
                             )
                             gameRepository.updateGame(updated)
@@ -599,11 +642,12 @@ class AppsViewModel @Inject constructor(
                         _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
                     }
                 } else {
-                    _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
+                    _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_move_failed)
                 }
             } finally {
                 _isMovingData.value = false
                 _pendingOperations.update { it - packageName }
+                RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
             }
         }
     }
@@ -621,8 +665,8 @@ class AppsViewModel @Inject constructor(
                 _isMovingData.value = true
                 val initialProgress = OperationProgress(
                     type = OperationType.MOUNT,
-                    title = "Kaitkan Langsung",
-                    subtitle = "${game.displayName} • ${points.size} Kategori",
+                    title = context.getString(R.string.op_direct_mount_title),
+                    subtitle = context.getString(R.string.op_game_categories_subtitle, game.displayName, points.size),
                     progressPercent = 0.1f
                 )
                 _operationProgress.value = initialProgress
@@ -637,7 +681,7 @@ class AppsViewModel @Inject constructor(
                 if (result.isSuccess) {
                     _moveMessage.value = "SUCCESS"
                 } else {
-                    _moveMessage.value = result.exceptionOrNull()?.message ?: "Direct mount failed"
+                    _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_direct_mount_failed)
                 }
 
                 val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, targetBase)
@@ -649,6 +693,7 @@ class AppsViewModel @Inject constructor(
             } finally {
                 _isMovingData.value = false
                 _pendingOperations.update { it - packageName }
+                RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
             }
         }
     }
@@ -664,8 +709,8 @@ class AppsViewModel @Inject constructor(
                 val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
                 val initialProgress = OperationProgress(
                     type = OperationType.UNMOUNT,
-                    title = "Melepaskan Kaitan Kategori",
-                    subtitle = "${game.displayName} • ${points.size} Kategori",
+                    title = context.getString(R.string.op_unmount_categories_title),
+                    subtitle = context.getString(R.string.op_game_categories_subtitle, game.displayName, points.size),
                     progressPercent = 0.2f
                 )
                 _operationProgress.value = initialProgress
@@ -757,7 +802,7 @@ class AppsViewModel @Inject constructor(
                     _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
                 }
             } else {
-                _moveMessage.value = result.exceptionOrNull()?.message ?: "Move failed"
+                _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_move_failed)
             }
         }
     }
@@ -892,6 +937,76 @@ class AppsViewModel @Inject constructor(
                 onResult(true, null)
             } else {
                 onResult(false, res.exceptionOrNull()?.message)
+            }
+        }
+    }
+
+    private val _isReconciling = MutableStateFlow(false)
+    val isReconciling: StateFlow<Boolean> = _isReconciling.asStateFlow()
+
+    private val _isCleaningCache = MutableStateFlow(false)
+    val isCleaningCache: StateFlow<Boolean> = _isCleaningCache.asStateFlow()
+
+    fun reconcileApp(game: GameEntry, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isReconciling.value = true
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val result = gameRepository.reconcileApp(game, sdBase)
+                if (result.isSuccess) {
+                    onComplete(true, null)
+                } else {
+                    onComplete(false, result.exceptionOrNull()?.message)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.message)
+            } finally {
+                _isReconciling.value = false
+            }
+        }
+    }
+
+    fun cleanAllCaches(onComplete: (cleanedApps: Int, freedBytes: Long) -> Unit) {
+        viewModelScope.launch {
+            _isCleaningCache.value = true
+            var cleanedCount = 0
+            var totalFreed = 0L
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val gamesList = apps.value
+                withContext(Dispatchers.IO) {
+                    for (game in gamesList) {
+                        var appFreed = 0L
+                        val pkg = game.packageName
+                        val cachePaths = listOf(
+                            "$sdBase/MountX/Android/data/$pkg/cache",
+                            "$sdBase/Android/data/$pkg/cache",
+                            "/data/media/0/Android/data/$pkg/cache",
+                            "/data/user/0/$pkg/cache",
+                            "/data/data/$pkg/cache"
+                        )
+                        for (cp in cachePaths) {
+                            if (RootShell.exists(cp)) {
+                                val duOut = RootShell.exec("du -sk \"$cp\" 2>/dev/null").output.trim()
+                                val kb = duOut.split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L
+                                val sizeBefore = kb * 1024L
+                                if (sizeBefore > 0L) {
+                                    RootShell.exec("find \"$cp\" -mindepth 1 -delete 2>/dev/null || rm -rf \"$cp\"/* 2>/dev/null")
+                                    appFreed += sizeBefore
+                                }
+                            }
+                        }
+                        if (appFreed > 0L) {
+                            cleanedCount++
+                            totalFreed += appFreed
+                        }
+                    }
+                }
+                refreshSizes()
+            } catch (_: Exception) {
+            } finally {
+                _isCleaningCache.value = false
+                onComplete(cleanedCount, totalFreed)
             }
         }
     }

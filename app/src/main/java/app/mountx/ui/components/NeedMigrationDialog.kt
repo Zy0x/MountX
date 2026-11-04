@@ -46,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -91,12 +92,13 @@ fun NeedMigrationDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val amberColor = if (isDark) Color(0xFFFFB74D) else Color(0xFFF57C00)
     val pkg = game.packageName
 
     // 1. Build partition targets
-    val partitionTargets = remember(availableDisks, defaultSdBase) {
+    val partitionTargets = remember(availableDisks, defaultSdBase, context) {
         val list = mutableListOf<MigrationPartitionTarget>()
         availableDisks.forEach { disk ->
             val diskTitle = disk.displayName.ifBlank { disk.diskName }
@@ -131,7 +133,7 @@ fun NeedMigrationDialog(
         if (list.isEmpty()) {
             list.add(
                 MigrationPartitionTarget(
-                    label = "MicroSD Default",
+                    label = context.getString(R.string.migration_microsd_default),
                     subLabel = defaultSdBase,
                     mountPoint = defaultSdBase,
                     freeBytes = 0L
@@ -147,7 +149,7 @@ fun NeedMigrationDialog(
     var isPartitionDropdownExpanded by remember { mutableStateOf(false) }
 
     // 2. Build Category Options
-    val categoryOptions = remember(game) {
+    val categoryOptions = remember(game, context) {
         val options = mutableListOf<MigrationCategoryOption>()
         val existingData = game.mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
         val existingObb = game.mountPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
@@ -157,7 +159,7 @@ fun NeedMigrationDialog(
             MigrationCategoryOption(
                 id = "data",
                 category = MountPointCategory.EXTERNAL_DATA,
-                title = "Data Game",
+                title = context.getString(R.string.migration_category_data),
                 pathHint = "Android/data/$pkg",
                 icon = Icons.Default.Storage,
                 originalConfig = existingData
@@ -167,7 +169,7 @@ fun NeedMigrationDialog(
             MigrationCategoryOption(
                 id = "obb",
                 category = MountPointCategory.OBB_STORAGE,
-                title = "Resource OBB",
+                title = context.getString(R.string.migration_category_obb),
                 pathHint = "Android/obb/$pkg",
                 icon = Icons.Default.FolderZip,
                 originalConfig = existingObb
@@ -178,7 +180,7 @@ fun NeedMigrationDialog(
                 MigrationCategoryOption(
                     id = "media",
                     category = MountPointCategory.MEDIA_DOWNLOADS,
-                    title = "Media & Unduhan",
+                    title = context.getString(R.string.migration_category_media),
                     pathHint = "Android/media/$pkg",
                     icon = Icons.Default.PermMedia,
                     originalConfig = existingMedia

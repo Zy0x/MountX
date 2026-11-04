@@ -64,10 +64,11 @@ MOUNTPOINTS_FILE="${MODULE_DIR}/mountpoints.conf"
 GAMELIST_FILE="${MODULE_DIR}/gamelist.conf"
 LOG_FILE="${MODULE_DIR}/mountx.log"
 BOOT_FLAG_FILE="/dev/.mountx_booted"
+PID_FILE="/dev/.mountx_service.pid"
 
 # ── Default configuration values ─────────────────────────────────────────────
 SD_BASE="/data/sdext2"
-SD_BLOCK="/dev/block/mmcblk0p3"
+SD_BLOCK=""
 FS_TYPE="f2fs"
 IO_TWEAKS_ENABLED=1
 READ_AHEAD_KB=2048
@@ -91,9 +92,18 @@ log_warn()  { log "WARN " "$@"; }
 log_error() { log "ERROR" "$@"; }
 
 # ── Initialise log for this boot ──────────────────────────────────────────────
+# Read dynamic version from module.prop
+MOD_VER=$(grep -E '^version=' "${MODULE_DIR}/module.prop" 2>/dev/null | cut -d= -f2 | tr -d '\r\n')
+[ -z "${MOD_VER}" ] && MOD_VER="v2.2.47"
+
+# Log rotation: prevent infinite log growth (> 2MB)
+if [ -f "${LOG_FILE}" ] && [ "$(stat -c%s "${LOG_FILE}" 2>/dev/null || echo 0)" -gt 2097152 ]; then
+    tail -n 500 "${LOG_FILE}" > "${LOG_FILE}.tmp" 2>/dev/null && mv -f "${LOG_FILE}.tmp" "${LOG_FILE}" 2>/dev/null
+fi
+
 {
     echo "============================================================"
-    echo " MountX service started (v2.2.39) — $(date)"
+    echo " MountX service started (${MOD_VER}) — $(date)"
     echo "============================================================"
 } >> "${LOG_FILE}"
 
@@ -126,6 +136,76 @@ load_config() {
     log_info "Config loaded — SD_BASE=${SD_BASE} SD_BLOCK=${SD_BLOCK} FS_TYPE=${FS_TYPE} IO_TWEAKS=${IO_TWEAKS_ENABLED}"
 }
 
+# ── Authoritative Emulated Primary Storage Health Probe ───────────────────────
+is_emulated_storage_ready() {
+    # 1. Framework/Vold volume check
+    if ! sm list-volumes 2>/dev/null | grep -q 'emulated;0 mounted'; then
+        if ! dumpsys mount 2>/dev/null | grep -q "VolumeInfo{emulated;0}:.*state=MOUNTED"; then
+            return 1
+        fi
+    fi
+    # 2. Live read access probe (confirms FUSE/sdcardfs is healthy and responsive)
+    if ! ls /storage/emulated/0 >/dev/null 2>&1; then
+        return 1
+    fi
+    return 0
+}
+
+# ── Emulated Primary Storage Self-Healing & Vold Mount Recovery ───────────────
+repair_emulated_storage() {
+    log_warn "[Repair] Initiating emulated internal storage self-healing..."
+
+    # 1. Sweep away all child bind-mounts on emulated/runtime storage
+    while read -r _dev _mnt _rest; do
+        case "${_mnt}" in
+            /data/media/*/Android/data/*|/data/media/*/Android/obb/*|\
+            /data/media/*/Android/media/*|\
+            /storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*|\
+            /storage/emulated/*/Android/media/*|\
+            /mnt/runtime/*/emulated/*/Android/data/*|/mnt/runtime/*/emulated/*/Android/obb/*|\
+            /mnt/runtime/*/emulated/*/Android/media/*|\
+            /mnt/user/*/emulated/*/Android/data/*|/mnt/user/*/emulated/*/Android/obb/*|\
+            /mnt/user/*/emulated/*/Android/media/*|\
+            /mnt/pass_through/*/emulated/*/Android/data/*|/mnt/pass_through/*/emulated/*/Android/obb/*|\
+            /mnt/pass_through/*/emulated/*/Android/media/*|\
+            /mnt/androidwritable/*/emulated/*/Android/data/*|/mnt/androidwritable/*/emulated/*/Android/obb/*|\
+            /mnt/androidwritable/*/emulated/*/Android/media/*|\
+            /mnt/installer/*/emulated/*/Android/data/*|/mnt/installer/*/emulated/*/Android/obb/*|\
+            /mnt/installer/*/emulated/*/Android/media/*)
+                umount -f -l "${_mnt}" 2>/dev/null
+                ;;
+        esac
+    done < /proc/mounts
+
+    # 2. Unmount base sdcardfs/fuse mounts if stuck/unmounted
+    umount -l /mnt/runtime/default/emulated 2>/dev/null
+    umount -l /mnt/runtime/read/emulated 2>/dev/null
+    umount -l /mnt/runtime/write/emulated 2>/dev/null
+    umount -l /mnt/runtime/full/emulated 2>/dev/null
+    umount -l /mnt/pass_through/0/emulated 2>/dev/null
+    umount -l /storage/emulated 2>/dev/null
+    umount -l /mnt/user/0/emulated 2>/dev/null
+    umount -l /mnt/installer/0/emulated 2>/dev/null
+    umount -l /mnt/androidwritable/0/emulated 2>/dev/null
+
+    # 3. Clean up any dummy directories created on tmpfs /storage/emulated/0
+    if [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" = "tmpfs" ]; then
+        rm -rf /storage/emulated/0 2>/dev/null
+    fi
+
+    # 4. Trigger Vold / StorageManager to mount emulated;0
+    sm mount 'emulated;0' 2>/dev/null || sm mount 'emulated:0' 2>/dev/null
+    sleep 2
+
+    if is_emulated_storage_ready; then
+        log_info "[Repair] Emulated storage successfully recovered and mounted."
+        return 0
+    else
+        log_warn "[Repair] Emulated storage recovery still pending..."
+        return 1
+    fi
+}
+
 # ── Wait until Android and Primary Storage have finished booting ──────────────
 wait_for_boot() {
     log_info "Waiting for sys.boot_completed…"
@@ -133,26 +213,30 @@ wait_for_boot() {
         sleep 2
     done
 
-    log_info "Boot completed detected. Waiting for primary emulated storage and FUSE readiness…"
+    log_info "Boot completed detected. Waiting for primary emulated storage and Vold readiness…"
     local retries=0
     while true; do
-        if [ -d "/data/media/0" ] && \
-           mountpoint -q "/storage/emulated" 2>/dev/null && \
-           grep -q " /storage/emulated " /proc/mounts 2>/dev/null && \
-           [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" != "tmpfs" ] && \
-           [ -d "/storage/emulated/0" ]; then
+        if is_emulated_storage_ready; then
             break
         fi
         sleep 2
         retries=$((retries + 1))
+        # Self-healing: if emulated storage is stuck or unmountable during boot, auto-repair
+        if [ ${retries} -ge 5 ] && [ $((retries % 5)) -eq 0 ]; then
+            if sm list-volumes all 2>/dev/null | grep -qE "emulated;[0-9]+ (unmountable|ejecting)|emulated:[0-9]+ (unmountable|ejecting)" || \
+               ! mountpoint -q "/storage/emulated" 2>/dev/null; then
+                log_warn "Primary emulated storage is unmountable or unmounted. Triggering automated repair..."
+                repair_emulated_storage
+            fi
+        fi
         if [ $((retries % 15)) -eq 0 ]; then
-            log_info "Waiting for primary storage FUSE decryption/unlock (${retries}s)..."
+            log_info "Waiting for primary storage readiness (${retries}s)..."
         fi
     done
 
-    # Give Vold, FUSE daemon, and runtime namespaces extra time to settle
-    sleep 3
-    log_info "Primary storage, FUSE, and user directory readiness confirmed."
+    # Give Vold, sdcard daemon, and runtime namespaces extra time to settle before applying bind mounts
+    sleep 5
+    log_info "Primary storage and runtime namespaces readiness confirmed."
 }
 
 # ── Mount the SD partition (Smart Multi-FS: blkid detection + NTFS support) ───
@@ -167,7 +251,7 @@ mount_sd() {
 if [ ! -b "${SD_BLOCK}" ]; then
             # Dynamic fallback: check if mmcblk0p3 exists, or find f2fs partition on mmcblk
             if [ -b "/dev/block/mmcblk0p3" ]; then
-                SD_BLOCK="/dev/block/mmcblk0p3"
+                SD_BLOCK=""
             else
                 local f2fs_dev
                 f2fs_dev=$(blkid /dev/block/mmcblk* 2>/dev/null | grep 'TYPE="f2fs"' | head -n 1 | cut -d: -f1)
@@ -285,7 +369,13 @@ apply_io_tweaks() {
 
     if [ -d "${queue_dir}" ]; then
         [ -w "${queue_dir}/read_ahead_kb" ] && echo "${READ_AHEAD_KB}" > "${queue_dir}/read_ahead_kb"
-        [ -n "${IO_SCHEDULER}" ] && [ -w "${queue_dir}/scheduler" ] && echo "${IO_SCHEDULER}" > "${queue_dir}/scheduler" 2>/dev/null
+        if [ -n "${IO_SCHEDULER}" ] && [ -w "${queue_dir}/scheduler" ]; then
+            if grep -qw "${IO_SCHEDULER}" "${queue_dir}/scheduler" 2>/dev/null; then
+                echo "${IO_SCHEDULER}" > "${queue_dir}/scheduler" 2>/dev/null
+            else
+                log_warn "Scheduler '${IO_SCHEDULER}' not supported by ${disk_name}. Keeping kernel default."
+            fi
+        fi
         [ -w "${queue_dir}/rq_affinity" ] && echo "${RQ_AFFINITY}" > "${queue_dir}/rq_affinity"
         [ -w "${queue_dir}/nr_requests" ] && echo "${NR_REQUESTS}" > "${queue_dir}/nr_requests"
         [ -w "${queue_dir}/add_random" ] && echo "0" > "${queue_dir}/add_random"
@@ -293,9 +383,10 @@ apply_io_tweaks() {
         [ -w "${queue_dir}/nomerges" ] && echo "0" > "${queue_dir}/nomerges"
     fi
 
-    for bdi in /sys/devices/virtual/bdi/*/read_ahead_kb; do
-        [ -w "${bdi}" ] && echo "${READ_AHEAD_KB}" > "${bdi}" 2>/dev/null
-    done
+    # Target specific block device BDI to prevent zram swap memory bloat
+    if [ -w "/sys/class/block/${disk_name}/bdi/read_ahead_kb" ]; then
+        echo "${READ_AHEAD_KB}" > "/sys/class/block/${disk_name}/bdi/read_ahead_kb" 2>/dev/null
+    fi
 
     if [ -w "/proc/sys/vm/vfs_cache_pressure" ]; then
         echo "${VFS_CACHE_PRESSURE}" > /proc/sys/vm/vfs_cache_pressure
@@ -372,14 +463,22 @@ apply_permissions() {
     [ ! -d "${sandbox_dir}" ] && sandbox_dir="/data/data/${pkg}"
 
     # Sandbox integrity: fast non-recursive check (avoids boot freeze)
+    # Strictly maintain canonical 0700 sandbox isolation to prevent RASP anti-tamper crashes
     if [ -d "${sandbox_dir}" ]; then
         local cur_sb_u
         cur_sb_u=$(stat -c '%u' "${sandbox_dir}" 2>/dev/null)
         if [ "${cur_sb_u}" != "${app_uid}" ]; then
             chown "${app_uid}:${app_uid}" "${sandbox_dir}" 2>/dev/null
         fi
-        chmod 775 "${sandbox_dir}" 2>/dev/null
-        [ -d "${sandbox_dir}/databases" ] && chmod 771 "${sandbox_dir}/databases" 2>/dev/null
+        chmod 700 "${sandbox_dir}" 2>/dev/null
+        [ -d "${sandbox_dir}/databases" ] && chmod 700 "${sandbox_dir}/databases" 2>/dev/null
+    fi
+
+    # APatch stealth isolation: automatically add app to APatch exclusion list so RASP/anti-tamper engines never detect root hooks
+    if [ -f /data/adb/ap/package_config ]; then
+        if ! grep -q "^${pkg}," /data/adb/ap/package_config 2>/dev/null; then
+            echo "${pkg},1,0,${app_uid},0," >> /data/adb/ap/package_config 2>/dev/null
+        fi
     fi
 
     # MicroSD target permissions: app_uid, GID 1023 (media_rw), mode 777, SELinux media_rw_data_file
@@ -406,6 +505,20 @@ bind_mount_to_runtime_namespaces() {
     local user_id="$4"
     [ -z "${user_id}" ] && user_id="0"
 
+    case "${dst}" in
+        /storage/emulated/*|/data/media/*|/sdcard/*|*/Android/*)
+            ;;
+        *)
+            # Non-emulated system destination (e.g. /data/app, /data/user): mount directly to dst only!
+            su -mm -c "
+                mkdir -p \"${dst}\" 2>/dev/null
+                mount -o bind \"${src}\" \"${dst}\" 2>/dev/null
+                mount --make-rprivate \"${dst}\" 2>/dev/null
+            "
+            return 0
+            ;;
+    esac
+
     local app_uid=""
     if [ -n "${pkg}" ]; then
         if [ -d "/data/data/${pkg}" ]; then
@@ -422,14 +535,17 @@ bind_mount_to_runtime_namespaces() {
     fi
     [ -z "${app_uid}" ] && app_uid=10000
 
-    # Extract relative path from dst across any user profile
+    # Extract relative path from dst across any user profile (ONLY for external storage!)
     local rel=""
     case "${dst}" in
-        */Android/*)
+        */Android/data/*|*/Android/obb/*|*/Android/media/*)
             rel="Android/"$(echo "${dst}" | sed 's|.*/Android/||')
             ;;
+        /sdcard/*|/storage/emulated/*|/data/media/*|/mnt/user/*)
+            rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||')
+            ;;
         *)
-            rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||;s|^/||')
+            rel=""
             ;;
     esac
 
@@ -459,7 +575,7 @@ bind_mount_to_runtime_namespaces() {
             else
                 mount -o bind "${_s}" "${_t}" 2>/dev/null
             fi
-            mount --make-shared "${_t}" 2>/dev/null
+            mount --make-rprivate "${_t}" 2>/dev/null
         }
 
         if [ -n "${REL}" ]; then
@@ -478,8 +594,7 @@ bind_mount_to_runtime_namespaces() {
                 "/mnt/pass_through/${USER_ID}/emulated/${USER_ID}" \
                 "/mnt/user/${USER_ID}/primary" \
                 "/mnt/user/${USER_ID}/emulated/${USER_ID}" \
-                "/storage/emulated/${USER_ID}" \
-                "/data/media/${USER_ID}"
+                "/storage/emulated/${USER_ID}"
             do
                 if [ -d "${R}" ]; then
                     case "${R}" in
@@ -488,13 +603,13 @@ bind_mount_to_runtime_namespaces() {
                             if ! mountpoint -q "/storage/emulated" 2>/dev/null || ! grep -q " /storage/emulated " /proc/mounts 2>/dev/null; then
                                 continue
                             fi
-                            if [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" = "tmpfs" ]; then
+                            if ! is_emulated_storage_ready; then
                                 continue
                             fi
                             ;;
                     esac
                     TARGET="${R}/${REL}"
-                    if ! mountpoint -q "${TARGET}" 2>/dev/null; then
+                    if ! mountpoint -q "${TARGET}" 2>/dev/null && ! grep -qF " ${TARGET} " /proc/mounts 2>/dev/null; then
                         mkdir -p "${TARGET}" 2>/dev/null
                         do_mount "${SRC}" "${TARGET}"
                     fi
@@ -507,14 +622,8 @@ bind_mount_to_runtime_namespaces() {
             fi
         fi
 
-        # Pre-emptively stop any stale app process / pushservice that started before boot mount
+        # Pre-emptively grant storage permissions and inject mounts into active app process mount namespace if already spawned
         if [ -n "${PKG}" ]; then
-            # Auto-grant storage permissions for boot-mounted apps to guarantee zero-crash execution
-            appops set "${PKG}" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null
-            appops set "${PKG}" LEGACY_STORAGE allow 2>/dev/null
-            pm grant "${PKG}" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null
-            pm grant "${PKG}" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null
-
             pids=$(pgrep -f "^${PKG}" 2>/dev/null)
             if [ -n "${pids}" ]; then
                 for p in ${pids}; do
@@ -526,11 +635,17 @@ bind_mount_to_runtime_namespaces() {
                             nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
                             nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "${DST}" 2>/dev/null
                         fi
-                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-shared "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
-                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-shared "${DST}" 2>/dev/null
+                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-rprivate "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
+                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-rprivate "${DST}" 2>/dev/null
                     fi
                 done
-                am force-stop "${PKG}" 2>/dev/null
+            else
+                # Auto-grant storage permissions only when app is not running
+                # (Android OS forcefully kills all UID processes if MANAGE_EXTERNAL_STORAGE is changed while alive)
+                appops set "${PKG}" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null
+                appops set "${PKG}" LEGACY_STORAGE allow 2>/dev/null
+                pm grant "${PKG}" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null
+                pm grant "${PKG}" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null
             fi
         fi
     '
@@ -540,6 +655,13 @@ bind_mount_to_runtime_namespaces() {
         count=$(grep -c "${rel}" /proc/mounts 2>/dev/null || echo 0)
     else
         count=$(grep -c " ${dst}" /proc/mounts 2>/dev/null || echo 0)
+    fi
+    local app_pids
+    app_pids=$(pgrep -f "^${pkg}" 2>/dev/null || true)
+    if [ -n "${app_pids}" ]; then
+        log_info "  [${pkg}] App active (PID=${app_pids}): hot-injected into namespaces. Storage AppOps deferred to protect active session."
+    else
+        log_info "  [${pkg}] App idle: verified storage permissions (MANAGE_EXTERNAL_STORAGE, LEGACY, READ/WRITE)."
     fi
     log_info "  [${pkg}] Bind-mounted to ${count} targets in /proc/mounts: ${src} → ${dst}"
 }
@@ -706,24 +828,44 @@ load_mountpoints() {
             live_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed -n 's/^package://p' | tr -d '\r')
             if [ -n "${live_apk_path}" ]; then
                 live_apk_dir=$(dirname "${live_apk_path}")
-                if [ -n "${live_apk_dir}" ] && [ "${live_apk_dir}" != "${dst}" ]; then
-                    log_warn "  [${pkg}] APP_PACKAGE relocated by system update: ${dst} -> ${live_apk_dir}"
-                    if mountpoint -q "${dst}" 2>/dev/null; then
-                        umount -f -l "${dst}" 2>/dev/null
-                    fi
-                    dst="${live_apk_dir}"
+                if [ -n "${live_apk_dir}" ]; then
+                    case "${dst}" in
+                        */lib/*|*/lib)
+                            lib_sub=$(echo "${dst}" | sed 's|.*/lib|lib|')
+                            new_dst="${live_apk_dir}/${lib_sub}"
+                            if [ "${new_dst}" != "${dst}" ]; then
+                                log_warn "  [${pkg}] APP_PACKAGE (lib) relocated: ${dst} -> ${new_dst}"
+                                if mountpoint -q "${dst}" 2>/dev/null; then
+                                    umount -f -l "${dst}" 2>/dev/null
+                                fi
+                                dst="${new_dst}"
+                            fi
+                            ;;
+                        *)
+                            if [ "${live_apk_dir}" != "${dst}" ]; then
+                                log_warn "  [${pkg}] APP_PACKAGE relocated by system update: ${dst} -> ${live_apk_dir}"
+                                if mountpoint -q "${dst}" 2>/dev/null; then
+                                    umount -f -l "${dst}" 2>/dev/null
+                                fi
+                                dst="${live_apk_dir}"
+                            fi
+                            ;;
+                    esac
                 fi
             fi
         fi
 
-        # Extract relative path to inspect user-facing runtime namespace
+        # Extract relative path to inspect user-facing runtime namespace (ONLY for external storage!)
         local rel=""
         case "${dst}" in
-            */Android/*)
+            */Android/data/*|*/Android/obb/*|*/Android/media/*)
                 rel="Android/"$(echo "${dst}" | sed 's|.*/Android/||')
                 ;;
+            /sdcard/*|/storage/emulated/*|/data/media/*|/mnt/user/*)
+                rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||')
+                ;;
             *)
-                rel=$(echo "${dst}" | sed 's|^/sdcard/||;s|^/storage/emulated/[0-9]*/||;s|^/data/media/[0-9]*/||;s|^/mnt/user/[0-9]*/primary/||;s|^/mnt/user/[0-9]*/emulated/[0-9]*/||;s|^/||')
+                rel=""
                 ;;
         esac
 
@@ -825,22 +967,200 @@ load_mountpoints() {
                         break
                     fi
                 done
+                local losetup_bin="losetup"
+                [ -x "${MODULE_DIR}/bin/busybox" ] && losetup_bin="${MODULE_DIR}/bin/busybox losetup"
                 if [ -z "${ldev}" ]; then
-                    ldev=$(losetup -f 2>/dev/null)
+                    ldev=$(${losetup_bin} -f 2>/dev/null || losetup -f 2>/dev/null)
                     if [ -n "${ldev}" ]; then
-                        losetup "${ldev}" "${src}" 2>/dev/null || ldev=$(losetup -fs "${src}" 2>/dev/null)
+                        ${losetup_bin} --direct-io=on "${ldev}" "${src}" 2>/dev/null || ${losetup_bin} "${ldev}" "${src}" 2>/dev/null || ldev=$(${losetup_bin} -fs "${src}" 2>/dev/null) || losetup "${ldev}" "${src}" 2>/dev/null
                     fi
                 fi
                 if [ -n "${ldev}" ]; then
                     mkdir -p "${dst}" 2>/dev/null
                     mount -t ext4 -o rw,noatime "${ldev}" "${dst}" 2>/dev/null
                     if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
-                        apply_permissions "${pkg}" "${dst}" "${user_id}"
-                        log_info "  [${pkg}] Loop container mounted: ${ldev} -> ${dst}"
-                        entries=$((entries + 1))
-                        continue
+                        case "${cat}" in
+                            APP_PACKAGE)
+                                mount -o remount,bind,exec "${dst}" 2>/dev/null || mount -o remount,exec "${dst}" 2>/dev/null
+                                chown -R 1000:1000 "${dst}" 2>/dev/null
+                                chmod -R 755 "${dst}" 2>/dev/null
+                                restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:apk_data_file:s0 "${dst}" 2>/dev/null
+                                log_info "  [${pkg}] Loop container mounted (APP_PACKAGE): ${ldev} -> ${dst}"
+                                entries=$((entries + 1))
+                                continue
+                                ;;
+                            CACHE_SHADERS)
+                                local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                                [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                                chown -R "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                                chmod -R 700 "${dst}" 2>/dev/null
+                                restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                                log_info "  [${pkg}] Loop container mounted (CACHE_SHADERS): ${ldev} -> ${dst}"
+                                entries=$((entries + 1))
+                                continue
+                                ;;
+                            *)
+                                local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                                [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                                chown "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                                chmod 700 "${dst}" 2>/dev/null
+                                chmod -R u+rwX,go-rwx "${dst}" 2>/dev/null
+                                find "${dst}" -type d -exec chmod 700 {} + 2>/dev/null
+                                find "${dst}" -type f -exec chmod 600 {} + 2>/dev/null
+                                restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                                if [ -d "/data/data/${pkg}" ] && ! grep -qF " /data/data/${pkg} " /proc/mounts 2>/dev/null; then
+                                    mount -o bind "${dst}" "/data/data/${pkg}" 2>/dev/null
+                                fi
+                                if [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}" ] && ! grep -qF " /data_mirror/data_ce/null/${user_id}/${pkg} " /proc/mounts 2>/dev/null; then
+                                    mount -o bind "${dst}" "/data_mirror/data_ce/null/${user_id}/${pkg}" 2>/dev/null
+                                fi
+                                # Self-healing: ensure direct boot storage and ART profile directories exist to prevent Zygote crash
+                                mkdir -p "/data/user_de/${user_id}/${pkg}/cache" "/data/user_de/${user_id}/${pkg}/code_cache" 2>/dev/null
+                                chown "${app_uid}:${app_uid}" "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                                chmod 700 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                                restorecon -FR "/data/user_de/${user_id}/${pkg}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                                if [ ! -d "/data/misc/profiles/cur/${user_id}/${pkg}" ]; then
+                                    mkdir -p "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                                    chown "${app_uid}:${app_uid}" "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                                    chmod 700 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                                    chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                                fi
+                                log_info "  [${pkg}] Loop container mounted: ${ldev} -> ${dst}"
+                                entries=$((entries + 1))
+                                continue
+                                ;;
+                        esac
                     fi
                 fi
+                ;;
+        esac
+
+        # PRIVATE_INTERNAL (Engine A Direct Folder), APP_PACKAGE, and CACHE_SHADERS must be bind-mounted directly to dst
+        # NEVER pass to bind_mount_to_runtime_namespaces
+        case "${cat}" in
+            PRIVATE_INTERNAL)
+                mkdir -p "${src}" "${dst}" 2>/dev/null
+                local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                [ -z "${app_uid}" ] && app_uid=$(pm list packages -U 2>/dev/null | grep -F "package:${pkg} " | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+                [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                chown -R "${app_uid}:${app_uid}" "${src}" 2>/dev/null
+                chmod 700 "${src}" 2>/dev/null
+                chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
+                find "${src}" -type d -exec chmod 700 {} + 2>/dev/null
+                find "${src}" -type f -exec chmod 600 {} + 2>/dev/null
+                restorecon -FR "${src}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
+                mount -o bind "${src}" "${dst}" 2>/dev/null
+                if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
+                    chown "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                    chmod 700 "${dst}" 2>/dev/null
+                    restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                    if [ -d "/data/data/${pkg}" ] && ! grep -qF " /data/data/${pkg} " /proc/mounts 2>/dev/null; then
+                        mount -o bind "${dst}" "/data/data/${pkg}" 2>/dev/null
+                    fi
+                    if [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}" ] && ! grep -qF " /data_mirror/data_ce/null/${user_id}/${pkg} " /proc/mounts 2>/dev/null; then
+                        mount -o bind "${dst}" "/data_mirror/data_ce/null/${user_id}/${pkg}" 2>/dev/null
+                    fi
+                    mkdir -p "/data/user_de/${user_id}/${pkg}/cache" "/data/user_de/${user_id}/${pkg}/code_cache" 2>/dev/null
+                    chown "${app_uid}:${app_uid}" "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                    chmod 700 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                    restorecon -FR "/data/user_de/${user_id}/${pkg}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/${user_id}/${pkg}" 2>/dev/null
+                    if [ ! -d "/data/misc/profiles/cur/${user_id}/${pkg}" ]; then
+                        mkdir -p "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                        chown "${app_uid}:${app_uid}" "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                        chmod 700 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                        chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
+                    fi
+                    log_info "  [${pkg}] Engine A Direct Private Data folder mounted: ${src} -> ${dst}"
+                    entries=$((entries + 1))
+                    continue
+                fi
+                ;;
+            APP_PACKAGE)
+                # Dynamic APK target resolution & Self-Healing Package Reconciler
+                local real_apk_path
+                real_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed 's/^package://')
+                if [ -z "${real_apk_path}" ] && [ -f "${src}/base.apk" ]; then
+                    log_info "  [${pkg}] Self-Healing Reconciler: re-registering detached package from ${src}..."
+                    pm install -r -d "${src}"/*.apk >/dev/null 2>&1
+                    real_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed 's/^package://')
+                    if [ -n "${real_apk_path}" ]; then
+                        local new_apk_dir=$(dirname "${real_apk_path}")
+                        find "${new_apk_dir}" -depth -mindepth 1 -delete 2>/dev/null
+                        local new_uid=$(id -u "${pkg}" 2>/dev/null)
+                        [ -n "${new_uid}" ] && [ -d "${SD_BASE}/MountX/data/${pkg}" ] && chown -R "${new_uid}:${new_uid}" "${SD_BASE}/MountX/data/${pkg}" 2>/dev/null
+                    fi
+                fi
+                if [ -n "${real_apk_path}" ]; then
+                    local real_apk_dir
+                    real_apk_dir=$(dirname "${real_apk_path}")
+                    if echo "${dst}" | grep -q "/lib"; then
+                        if [ -d "${src}/arm64" ]; then
+                            dst="${real_apk_dir}/lib/arm64"
+                            src="${src}/arm64"
+                        elif echo "${dst}" | grep -q "/lib/arm64"; then
+                            dst="${real_apk_dir}/lib/arm64"
+                        elif echo "${dst}" | grep -q "/lib/arm"; then
+                            dst="${real_apk_dir}/lib/arm"
+                        else
+                            dst="${real_apk_dir}/lib/arm64"
+                        fi
+                    else
+                        dst="${real_apk_dir}"
+                    fi
+                fi
+                if grep -qF " ${dst} " /proc/mounts 2>/dev/null || mountpoint -q "${dst}" 2>/dev/null; then
+                    # Two-Stage Promotion: Ensure target has RW & exec permissions after boot completion
+                    mount -o remount,bind,rw,exec "${dst}" 2>/dev/null || mount -o remount,rw,exec "${dst}" 2>/dev/null
+                    mount --make-rprivate "${dst}" 2>/dev/null
+                    pm unsuspend "${pkg}" >/dev/null 2>&1
+                    log_info "  [${pkg}] App package target ${dst} already mounted, promoted to RW/exec."
+                    entries=$((entries + 1))
+                    continue
+                fi
+                mkdir -p "${dst}" 2>/dev/null
+                mount -o bind "${src}" "${dst}" 2>/dev/null
+                mount -o remount,bind,rw,exec "${dst}" 2>/dev/null || mount -o remount,rw,exec "${dst}" 2>/dev/null
+                mount --make-rprivate "${dst}" 2>/dev/null
+                chown -R 1000:1000 "${dst}" 2>/dev/null
+                chmod -R 755 "${dst}" 2>/dev/null
+                pm unsuspend "${pkg}" >/dev/null 2>&1
+                log_info "  [${pkg}] App package bind-mounted directly: ${src} -> ${dst}"
+                entries=$((entries + 1))
+                continue
+                ;;
+            CACHE_SHADERS)
+                mkdir -p "${src}" "${dst}" 2>/dev/null
+                local app_uid=$(id -u "${pkg}" 2>/dev/null)
+                [ -z "${app_uid}" ] && app_uid=$(pm list packages -U 2>/dev/null | grep -F "package:${pkg} " | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+                [ -z "${app_uid}" ] && app_uid="${APP_UID}"
+                chown -R "${app_uid}:${app_uid}" "${src}" 2>/dev/null
+                chmod 700 "${src}" 2>/dev/null
+                chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
+                chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
+                mount -o bind "${src}" "${dst}" 2>/dev/null
+                mount --make-rprivate "${dst}" 2>/dev/null
+                chown -R "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                chmod 700 "${dst}" 2>/dev/null
+                restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                if [ -d "/data/data/${pkg}/cache" ] && ! grep -qF " /data/data/${pkg}/cache " /proc/mounts 2>/dev/null; then
+                    mount -o bind "${src}" "/data/data/${pkg}/cache" 2>/dev/null
+                fi
+                if [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}/cache" ] && ! grep -qF " /data_mirror/data_ce/null/${user_id}/${pkg}/cache " /proc/mounts 2>/dev/null; then
+                    mount -o bind "${src}" "/data_mirror/data_ce/null/${user_id}/${pkg}/cache" 2>/dev/null
+                fi
+                log_info "  [${pkg}] Cache shaders bind-mounted directly: ${src} -> ${dst}"
+                entries=$((entries + 1))
+                continue
+                ;;
+        esac
+
+        # Hard Guard: Never pass /data/app, /data/user, or /data/data to emulated runtime namespaces
+        case "${dst}" in
+            /data/app/*|/data/user/*|/data/data/*)
+                mkdir -p "${dst}" 2>/dev/null
+                mount -o bind "${src}" "${dst}" 2>/dev/null
+                entries=$((entries + 1))
+                continue
                 ;;
         esac
 
@@ -978,24 +1298,26 @@ mount_watchdog() {
     # A soft restart (SystemServer / Zygote restart without kernel reboot) changes
     # the zygote64 PID but does NOT trigger service.sh re-execution. We detect
     # this by comparing the current zygote64 PID against the one recorded at boot.
-    # NOTE: Use pidof with fallback to ps -A to ensure accurate PID across
-    # both toybox and busybox ps implementations (busybox ps $2 is USER, not PID).
     _get_zygote_pid() {
         local p
         p=$(pidof zygote64 2>/dev/null)
+        [ -z "${p}" ] && p=$(toybox pidof zygote64 2>/dev/null)
+        [ -z "${p}" ] && p=$(busybox pidof zygote64 2>/dev/null)
         [ -z "${p}" ] && p=$(pidof zygote 2>/dev/null)
+        [ -z "${p}" ] && p=$(toybox pidof zygote 2>/dev/null)
+        [ -z "${p}" ] && p=$(busybox pidof zygote 2>/dev/null)
         if [ -n "${p}" ]; then
             echo "${p%% *}"
             return 0
         fi
-        p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote64$" | awk '{print $1}' | head -n 1)
-        [ -z "${p}" ] && p=$(ps -A 2>/dev/null | grep -E "[[:space:]]zygote$" | awk '{print $1}' | head -n 1)
+        p=$(pgrep -f "^zygote64$" 2>/dev/null | head -n 1)
+        [ -z "${p}" ] && p=$(pgrep -f "^zygote$" 2>/dev/null | head -n 1)
         echo "${p}"
     }
     ZYGOTE_PID_LAST=$(_get_zygote_pid)
     local LAST_DISK_ATTACHED=0
     local blk_dev="${SD_BLOCK}"
-    [ -z "${blk_dev}" ] && blk_dev="/dev/block/mmcblk0p3"
+    # No hardcoded fallback
     { [ -b "${blk_dev}" ] || [ -b "/dev/block/mmcblk0" ]; } && LAST_DISK_ATTACHED=1
     log_info "[Watchdog] Starting. PID=$$, Zygote64=${ZYGOTE_PID_LAST:-N/A}, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
 
@@ -1018,7 +1340,7 @@ mount_watchdog() {
 
             if [ ! -b "${blk_dev}" ] && [ -b "/dev/block/mmcblk0p3" ]; then
                 blk_dev="/dev/block/mmcblk0p3"
-                SD_BLOCK="/dev/block/mmcblk0p3"
+                SD_BLOCK=""
             fi
 
             log_info "[Watchdog] Auto-mounting ${blk_dev} to ${SD_BASE} after hotplug..."
@@ -1039,8 +1361,8 @@ mount_watchdog() {
         fi
         LAST_DISK_ATTACHED=${current_disk_attached}
 
-        # Intentional unmount guard: if user unmounted via MountX UI or notification (while card is still attached), do not re-mount
-        [ -f "/dev/.mountx_unmounted" ] && return 0
+        # Intentional unmount or active migration guard: do not re-mount while transferring/unmounted
+        [ -f "/dev/.mountx_unmounted" ] || [ -f "/dev/.mountx_migrating" ] && return 0
 
         # Immortal watchdog: runs continuously without artificial uptime limits
 
@@ -1115,14 +1437,24 @@ mount_watchdog() {
             fi
         fi
 
-        # Sample canary paths for Zygote namespace check
-        local sample_dst=""
-        local sample_pkg=""
-        if [ -f "${MOUNTPOINTS_FILE}" ]; then
-            local sample_line
-            sample_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
-            sample_dst=$(echo "${sample_line}" | cut -d'|' -f4)
-            sample_pkg=$(echo "${sample_line}" | cut -d'|' -f1)
+        # Check 1c: Primary Internal Storage Emulated Mount Integrity Probe
+        if ! is_emulated_storage_ready; then
+            log_warn "[Watchdog] Primary emulated storage lost or unmountable! Triggering automated repair..."
+            repair_emulated_storage
+            if is_emulated_storage_ready; then
+                cleanup_stale_mounts
+                apply_all_mounts
+                am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+            fi
+        fi
+
+        # Check 1b: Kernel Read-Only Remount Protection Probe
+        if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+            if grep -qF " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -q " ro,"; then
+                log_error "[Storage] CRITICAL: MicroSD ${SD_BASE} has been remounted READ-ONLY by kernel! Writes will fail with EROFS."
+                echo "ro_error" > "/dev/.mountx_disk_error"
+                am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "ro_error" -p app.mountx >/dev/null 2>&1
+            fi
         fi
 
         # ── Check 3: Zygote soft restart detection ────────────────────────────
@@ -1130,12 +1462,8 @@ mount_watchdog() {
         # and all per-app mount namespaces (/mnt/runtime/*/emulated/0/Android/...)
         # are torn down. The base mount at /data/media/0/ survives but games
         # launched after the soft restart get empty internal namespaces.
-        # We detect this via two independent signals:
-        #   A) Zygote64 PID changed from the value recorded at watchdog start
-        #   B) /mnt/runtime namespace mount count for first game dropped to 0
+        # We detect this via the authoritative Zygote PID change (Primary, 100% definitive).
         local soft_restart=0
-
-        # Signal A: Zygote PID change
         local zygote_pid_now
         zygote_pid_now=$(_get_zygote_pid)
         if [ -n "${zygote_pid_now}" ] && [ -n "${ZYGOTE_PID_LAST}" ] && \
@@ -1143,17 +1471,6 @@ mount_watchdog() {
             log_warn "[Watchdog] Zygote PID changed: ${ZYGOTE_PID_LAST} → ${zygote_pid_now}. Soft restart detected!"
             ZYGOTE_PID_LAST="${zygote_pid_now}"
             soft_restart=1
-        fi
-
-        # Signal B: Namespace mount count dropped (check /mnt/runtime for first game)
-        if [ ${soft_restart} -eq 0 ] && [ -n "${sample_pkg}" ]; then
-            local ns_count
-            ns_count=$(grep "/mnt/runtime.*${sample_pkg}" /proc/mounts 2>/dev/null | wc -l)
-            if [ "${ns_count}" -eq 0 ] && grep -qF " ${sample_dst} " /proc/mounts 2>/dev/null; then
-                # Base mount exists but namespace mounts are gone → soft restart symptom
-                log_warn "[Watchdog] Namespace mounts for ${sample_pkg} lost (count=0) while base mount exists. Soft restart suspected."
-                soft_restart=1
-            fi
         fi
 
         if [ ${soft_restart} -eq 1 ]; then
@@ -1166,39 +1483,38 @@ mount_watchdog() {
                     esac
                 done < "${MOUNTPOINTS_FILE}"
             fi
+            # IMMEDIATELY sweep away stale mounts BEFORE waiting for framework/Vold
+            log_warn "[Watchdog] Soft restart recovery: clearing stale bind mounts immediately..."
+            repair_emulated_storage
+
             log_warn "[Watchdog] Soft restart recovery: waiting for framework (AMS/PMS) and storage readiness..."
             wait_for_framework
 
-            # Wait for storage readiness
+            # Wait for storage readiness with active self-healing
             local s_tries=0
             while [ ${s_tries} -lt 15 ]; do
-                if mountpoint -q "/storage/emulated" 2>/dev/null && [ -d "/storage/emulated/0" ]; then
+                if is_emulated_storage_ready; then
                     break
                 fi
-                sleep 1
+                if [ $((s_tries % 5)) -eq 0 ]; then
+                    repair_emulated_storage
+                fi
+                sleep 2
                 s_tries=$((s_tries + 1))
             done
-            sleep 2
+            sleep 3
+
+            # Guard: NEVER call apply_all_mounts if emulated storage is not fully ready!
+            if ! is_emulated_storage_ready; then
+                log_error "[Watchdog] /storage/emulated is NOT healthy after soft restart! Aborting apply_all_mounts to prevent corruption."
+                repair_emulated_storage
+                return 1
+            fi
 
             # Ensure SD_BASE is mounted
             if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
                 mount_sd
             fi
-
-            # Sweep away any stale base /data/media and runtime mounts to clear sdcardfs EXDEV locks
-            while read -r dev mnt rest; do
-                case "${mnt}" in
-                    /data/media/*/Android/data/*|/data/media/*/Android/obb/*|\
-                    /storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*|\
-                    /mnt/runtime/*/emulated/*/Android/data/*|/mnt/runtime/*/emulated/*/Android/obb/*|\
-                    /mnt/user/*/emulated/*/Android/data/*|/mnt/user/*/emulated/*/Android/obb/*|\
-                    /mnt/pass_through/*/emulated/*/Android/data/*|/mnt/pass_through/*/emulated/*/Android/obb/*|\
-                    /mnt/androidwritable/*/emulated/*/Android/data/*|/mnt/androidwritable/*/emulated/*/Android/obb/*|\
-                    /mnt/installer/*/emulated/*/Android/data/*|/mnt/installer/*/emulated/*/Android/obb/*)
-                        umount -f -l "${mnt}" 2>/dev/null
-                        ;;
-                esac
-            done < /proc/mounts
 
             cleanup_stale_mounts
             apply_io_tweaks
@@ -1222,23 +1538,24 @@ mount_watchdog() {
             [ ${CHECK_INTERVAL} -gt ${MAX_INTERVAL} ] && CHECK_INTERVAL=${MAX_INTERVAL}
             log_info "[Watchdog] System stable (${CONSECUTIVE_OK} checks OK). Interval → ${CHECK_INTERVAL}s."
         fi
+
+        local free_mb
+        free_mb=$(df -m "${SD_BASE}" 2>/dev/null | tail -n 1 | awk '{print $4}')
+        local active_apps=0
+        if [ -f "${MOUNTPOINTS_FILE}" ]; then
+            active_apps=$(cut -d'|' -f1 "${MOUNTPOINTS_FILE}" 2>/dev/null | sort -u | wc -l)
+        fi
+        log_info "[Watchdog] Heartbeat #${CONSECUTIVE_OK} OK (Zygote64=${ZYGOTE_PID_LAST:-N/A}, Disk=${SD_BASE} [${FS_TYPE}, free=${free_mb:-0}MB], MountedApps=${active_apps:-0})."
+        if [ -n "${free_mb}" ] && [ "${free_mb}" -lt 500 ] 2>/dev/null; then
+            log_warn "[Storage] Low storage alert: only ${free_mb}MB free on ${SD_BASE}!"
+        fi
     }
 
     # ── High-Responsiveness Timer Loop with Sliced Sleep ──────────────────────
     # Sleeps in 5s slices while rapidly monitoring Zygote PID and physical disk
     # attachment so that soft reboots, subsystem crashes, and hotplug events
     # are caught and recovered within <= 5s, without CPU/battery penalty.
-    # Sample canary paths for rapid runtime namespace check
-    local canary_dst=""
-    local canary_pkg=""
-    if [ -f "${MOUNTPOINTS_FILE}" ]; then
-        local first_line
-        first_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
-        canary_dst=$(echo "${first_line}" | cut -d'|' -f4)
-        canary_pkg=$(echo "${first_line}" | cut -d'|' -f1)
-    fi
-
-    log_info "[Watchdog] Using sliced sleep loop (5s slice, ${CHECK_INTERVAL}s health check, canary=${canary_pkg:-none})."
+    log_info "[Watchdog] Using sliced sleep loop (5s slice, ${CHECK_INTERVAL}s health check)."
     local slice=5
     local elapsed=0
     while true; do
@@ -1255,22 +1572,6 @@ mount_watchdog() {
             continue
         fi
 
-        # Check 1.5: Rapid Runtime Namespace Canary Check (FUSE/sdcardfs EXDEV dead-lock guard)
-        # If the base mount (/data/media) exists but runtime namespaces (/mnt/runtime) dropped to 0,
-        # Android storage subsystem reset without Zygote PID change. Catch and recover within <= 5s.
-        if [ -n "${canary_pkg}" ] && [ -n "${canary_dst}" ]; then
-            if grep -qF " ${canary_dst} " /proc/mounts 2>/dev/null; then
-                local fast_ns_count
-                fast_ns_count=$(grep "/mnt/runtime.*${canary_pkg}" /proc/mounts 2>/dev/null | wc -l)
-                if [ "${fast_ns_count}" -eq 0 ]; then
-                    log_warn "[Watchdog] Immediate namespace drop detected for ${canary_pkg} (count=0)! Triggering recovery..."
-                    elapsed=0
-                    check_mounts
-                    continue
-                fi
-            fi
-        fi
-
         # Check 2: Rapid physical disk attachment detection (hotplug)
         local fast_disk=0
         { [ -b "${blk_dev}" ] || [ -b "/dev/block/mmcblk0" ]; } && fast_disk=1
@@ -1285,13 +1586,6 @@ mount_watchdog() {
         if [ ${elapsed} -ge ${CHECK_INTERVAL} ]; then
             elapsed=0
             check_mounts
-            # Refresh canary target from mountpoints.conf
-            if [ -f "${MOUNTPOINTS_FILE}" ]; then
-                local first_line
-                first_line=$(grep -v '^#' "${MOUNTPOINTS_FILE}" 2>/dev/null | head -n 1 | tr -d '\r')
-                canary_dst=$(echo "${first_line}" | cut -d'|' -f4)
-                canary_pkg=$(echo "${first_line}" | cut -d'|' -f1)
-            fi
         fi
     done
 }
@@ -1309,6 +1603,7 @@ check_safe_uninstall() {
         chmod 775 /data/media/0/Android/obb 2>/dev/null
         restorecon -R /data/media/0/Android 2>/dev/null
         touch "${MODULE_DIR}/disable" 2>/dev/null
+        rm -f "${PID_FILE}" "${BOOT_FLAG_FILE}" 2>/dev/null
         exit 0
     fi
 }
@@ -1316,12 +1611,26 @@ check_safe_uninstall() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
     rm -f /dev/.mountx_unmounted 2>/dev/null
-    wait_for_boot
-    check_safe_uninstall
-    load_config
-    mount_sd
-    cleanup_stale_mounts
-    apply_io_tweaks
+
+    local is_live_reload=0
+    [ -f "${BOOT_FLAG_FILE}" ] && is_live_reload=1
+
+    if [ ${is_live_reload} -eq 0 ]; then
+        wait_for_boot
+        check_safe_uninstall
+        load_config
+        mount_sd
+        cleanup_stale_mounts
+        apply_io_tweaks
+    else
+        log_info "MountX running in live-reload mode (system already booted). Preserving active mounts."
+        check_safe_uninstall
+        load_config
+        if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+            mount_sd
+        fi
+        apply_io_tweaks
+    fi
 
     # Ensure localized subdirectories exist without placing .nomedia on $SD_BASE/MountX
     mkdir -p "${SD_BASE}/MountX/Android/data" \
@@ -1348,9 +1657,26 @@ main() {
     # Whitelist MountX in system Doze/battery optimization so background transfers never get killed
     dumpsys deviceidle whitelist +app.mountx 2>/dev/null
 
+    # Single-Instance Supervisor Guard: terminate previous watchdog supervisor before starting new one
+    if [ -f "${PID_FILE}" ]; then
+        local _prev_pid
+        _prev_pid=$(cat "${PID_FILE}" 2>/dev/null | tr -d ' \r\t\n')
+        if [ -n "${_prev_pid}" ] && [ "${_prev_pid}" != "$$" ] && [ -d "/proc/${_prev_pid}" ]; then
+            log_info "[Supervisor] Stopping previous watchdog supervisor (PID=${_prev_pid})..."
+            kill -9 "${_prev_pid}" 2>/dev/null || true
+            pkill -P "${_prev_pid}" 2>/dev/null || true
+        fi
+    fi
+    for _orphan in $(pgrep -f "${MODULE_DIR}/service.sh" 2>/dev/null); do
+        if [ "${_orphan}" != "$$" ] && [ "${_orphan}" != "$PPID" ]; then
+            kill -9 "${_orphan}" 2>/dev/null || true
+        fi
+    done
+
 # ── Immortal Watchdog Supervisor ──────────────────────────────────────────────
 watchdog_supervisor() {
     log_info "[Supervisor] Starting immortal watchdog supervisor (PID=$$)..."
+    echo "$$" > "${PID_FILE}" 2>/dev/null
     while true; do
         mount_watchdog
         local exit_code=$?

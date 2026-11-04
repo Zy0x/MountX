@@ -142,6 +142,24 @@ class StorageViewModel @Inject constructor(
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
+    private val _isRepairingInternalStorage = MutableStateFlow(false)
+    val isRepairingInternalStorage: StateFlow<Boolean> = _isRepairingInternalStorage.asStateFlow()
+
+    fun repairInternalStorage() {
+        if (_isRepairingInternalStorage.value) return
+        viewModelScope.launch {
+            _isRepairingInternalStorage.value = true
+            _statusMessage.value = context.getString(R.string.storage_repairing_internal)
+            val success = storageRepository.repairInternalStorage()
+            if (success) {
+                _statusMessage.value = context.getString(R.string.storage_repair_internal_success)
+            } else {
+                _statusMessage.value = context.getString(R.string.storage_repair_internal_failed)
+            }
+            _isRepairingInternalStorage.value = false
+        }
+    }
+
     private val _operationProgress = MutableStateFlow<OperationState?>(null)
     val operationProgress: StateFlow<OperationState?> = _operationProgress.asStateFlow()
 
@@ -284,6 +302,9 @@ class StorageViewModel @Inject constructor(
             _isScanning.value = true
         }
         try {
+            if (force) {
+                storageRepository.refreshStorage()
+            }
             val sdBase = appPreferences.sdBasePath.first()
             val hierarchy = storageRepository.getStorageHierarchy(sdBase, force = force)
             val detected = hierarchy.partitions
@@ -526,7 +547,7 @@ class StorageViewModel @Inject constructor(
                 _isWizardOpen.value = false
                 detectPartitions(force = true)
             } else {
-                val err = result.exceptionOrNull()?.message ?: "Repartition failed"
+                val err = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_repartition_failed)
                 _repartitionError.value = err
                 _statusMessage.value = err
             }
@@ -554,7 +575,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "MOUNT_OK"
                 detectPartitions(force = true)
             } else {
-                _statusMessage.value = result.exceptionOrNull()?.message ?: "Mount failed"
+                _statusMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_mount_failed)
             }
         }
     }
@@ -576,7 +597,7 @@ class StorageViewModel @Inject constructor(
                     updatePartitionMountedState(partition.path, isMounted = true)
                     detectPartitionsInternal(force = true)
                 } else {
-                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Mount failed"
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_mount_failed)
                 }
             } finally {
                 _mountingPartitionPath.value = null
@@ -594,7 +615,7 @@ class StorageViewModel @Inject constructor(
                     _statusMessage.value = "UNMOUNT_OK"
                     detectPartitionsInternal(force = true)
                 } else {
-                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_unmount_failed)
                 }
             } finally {
                 _unmountingPartitionPath.value = null
@@ -612,7 +633,7 @@ class StorageViewModel @Inject constructor(
                     updatePartitionMountedState(partition.path, isMounted = false)
                     detectPartitionsInternal(force = true)
                 } else {
-                    _statusMessage.value = result.exceptionOrNull()?.message ?: "Unmount failed"
+                    _statusMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_unmount_failed)
                 }
             } finally {
                 _unmountingPartitionPath.value = null
@@ -755,7 +776,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "IO_APPLY_OK"
                 _operationProgress.value = OperationState.Success(
                     title = context.getString(R.string.op_io_booster_success_title),
-                    message = "I/O kernel parameters synced to the block device subsystem.",
+                    message = context.getString(R.string.op_io_kernel_params_synced),
                     details = listOf(
                         context.getString(R.string.op_detail_read_ahead) to "${config.readAheadKb} KB",
                         context.getString(R.string.op_detail_scheduler) to config.scheduler,
@@ -846,7 +867,7 @@ class StorageViewModel @Inject constructor(
                 _benchmarkResult.value = benchResult
                 _operationProgress.value = OperationState.Success(
                     title = context.getString(R.string.op_benchmark_success_title),
-                    message = "I/O test completed successfully.",
+                    message = context.getString(R.string.op_io_test_completed_success),
                     details = listOf(
                         context.getString(R.string.op_detail_seq_read) to "${String.format(java.util.Locale.US, "%.1f", benchResult?.sequentialReadMbPerSec ?: 0.0)} MB/s",
                         context.getString(R.string.op_detail_latency) to "${String.format(java.util.Locale.US, "%.2f", benchResult?.accessLatencyMs ?: 0.0)} ms",
@@ -945,7 +966,7 @@ class StorageViewModel @Inject constructor(
     fun runPartitionTrim(partition: PartitionInfo) {
         val mnt = partition.mountPoint
         if (mnt.isNullOrBlank()) {
-            _statusMessage.value = "Partition must be mounted to run TRIM"
+            _statusMessage.value = context.getString(R.string.storage_trim_must_be_mounted)
             return
         }
         viewModelScope.launch {
@@ -959,7 +980,7 @@ class StorageViewModel @Inject constructor(
             _isTrimming.value = false
             _operationProgress.value = null
             if (res.isSuccess) {
-                val out = res.getOrNull() ?: "TRIM complete."
+                val out = res.getOrNull() ?: context.getString(R.string.storage_trim_completed)
                 _trimOutput.value = out
             } else {
                 val err = res.exceptionOrNull()?.message ?: context.getString(R.string.op_trim_error_title)
@@ -989,10 +1010,10 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "F2FS_GC_OK"
                 _operationProgress.value = OperationState.Success(
                     title = context.getString(R.string.op_f2fs_gc_success_title),
-                    message = "F2FS Garbage Collection completed, flash blocks consolidated.",
+                    message = context.getString(R.string.op_f2fs_gc_completed),
                     details = listOf(
-                        "Disk" to disk.hardwareTitle,
-                        "Mode GC" to "Urgent (Level 1)"
+                        context.getString(R.string.op_detail_disk) to disk.hardwareTitle,
+                        context.getString(R.string.op_f2fs_gc_mode_label) to context.getString(R.string.op_f2fs_gc_mode_urgent)
                     )
                 )
             } else {
@@ -1016,7 +1037,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "MOUNT_ALL_OK"
                 detectPartitions(force = true)
             } else {
-                _statusMessage.value = res.exceptionOrNull()?.message ?: "Failed to mount all partitions"
+                _statusMessage.value = res.exceptionOrNull()?.message ?: context.getString(R.string.storage_err_mount_all_failed)
             }
         }
     }
@@ -1030,7 +1051,7 @@ class StorageViewModel @Inject constructor(
                 _statusMessage.value = "UNMOUNT_ALL_OK"
                 detectPartitions(force = true)
             } else {
-                _statusMessage.value = res.exceptionOrNull()?.message ?: "Failed to unmount all partitions"
+                _statusMessage.value = res.exceptionOrNull()?.message ?: context.getString(R.string.storage_err_unmount_all_failed)
             }
         }
     }

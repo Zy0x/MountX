@@ -8,7 +8,21 @@ ui_print "                   MountX                       "
 ui_print "     Kernel VFS Bind-Mount Game Engine          "
 ui_print "************************************************"
 
-# 1. Check Architecture & Android API Level
+# 1. Preserve Existing User Configuration (Upgrade Protection)
+PREV_MOD=""
+if [ -d "/data/adb/modules/MountX" ]; then
+    PREV_MOD="/data/adb/modules/MountX"
+elif [ -d "/data/adb/modules/mountx" ]; then
+    PREV_MOD="/data/adb/modules/mountx"
+fi
+
+if [ -n "$PREV_MOD" ]; then
+    ui_print "- Preserving existing configuration..."
+    [ -f "$PREV_MOD/config.conf" ] && cp -f "$PREV_MOD/config.conf" /data/local/tmp/mountx_cfg.bak 2>/dev/null
+    [ -f "$PREV_MOD/gamelist.conf" ] && cp -f "$PREV_MOD/gamelist.conf" /data/local/tmp/mountx_game.bak 2>/dev/null
+fi
+
+# 2. Check Architecture & Android API Level
 ui_print "- Checking Android Environment..."
 API=$(getprop ro.build.version.sdk)
 if [ -n "$API" ] && [ "$API" -lt 29 ]; then
@@ -16,7 +30,7 @@ if [ -n "$API" ] && [ "$API" -lt 29 ]; then
 fi
 ui_print "  [✓] Android $(getprop ro.build.version.release) (API $API) verified."
 
-# 2. Extract and Install Companion APK
+# 3. Extract and Install Companion APK
 APK_FILE=""
 if [ -f "$MODPATH/MountX.apk" ]; then
     APK_FILE="$MODPATH/MountX.apk"
@@ -45,10 +59,11 @@ if [ -n "$APK_FILE" ] && [ -f "$APK_FILE" ]; then
     rm -f "$APK_FILE"
 fi
 
-# 3. Setup Permissions
+# 4. Setup Permissions
 ui_print "- Setting permissions..."
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm "$MODPATH/service.sh" 0 0 0755
+[ -f "$MODPATH/post-fs-data.sh" ] && set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
 set_perm "$MODPATH/uninstall.sh" 0 0 0755
 [ -f "$MODPATH/banner.png" ] && set_perm "$MODPATH/banner.png" 0 0 0644
 
@@ -58,7 +73,7 @@ if [ -d "$MODPATH/bin" ]; then
     set_perm_recursive "$MODPATH/bin" 0 0 0755 0755
     if [ -f "$MODPATH/bin/busybox" ]; then
         set_perm "$MODPATH/bin/busybox" 0 0 0755
-        for _tool in fstrim awk flock blkid losetup fdisk; do
+        for _tool in fstrim awk flock blkid losetup fdisk tar; do
             if [ ! -e "$MODPATH/bin/${_tool}" ] && ! command -v "${_tool}" >/dev/null 2>&1; then
                 ln -sf "$MODPATH/bin/busybox" "$MODPATH/bin/${_tool}" 2>/dev/null || true
             fi
@@ -69,9 +84,31 @@ if [ -d "$MODPATH/bin" ]; then
     fi
 fi
 
-# 4. Prepare MountX Data Directories
+# Restore preserved user configurations if existed
+if [ -f /data/local/tmp/mountx_cfg.bak ]; then
+    cp -f /data/local/tmp/mountx_cfg.bak "$MODPATH/config.conf" 2>/dev/null
+    set_perm "$MODPATH/config.conf" 0 0 0644
+    rm -f /data/local/tmp/mountx_cfg.bak
+    ui_print "  [✓] Restored user config.conf"
+fi
+if [ -f /data/local/tmp/mountx_game.bak ]; then
+    cp -f /data/local/tmp/mountx_game.bak "$MODPATH/gamelist.conf" 2>/dev/null
+    set_perm "$MODPATH/gamelist.conf" 0 0 0644
+    rm -f /data/local/tmp/mountx_game.bak
+    ui_print "  [✓] Restored user gamelist.conf"
+fi
+
+# 5. Prepare MountX Data Directories
 mkdir -p /data/sdext2
 chmod 777 /data/sdext2 2>/dev/null
+
+# 6. Zero-Residue Policy: Purge Installation Files & Residual Artifacts
+ui_print "- Purging installation residue (Zero-Residue Policy)..."
+rm -rf "$MODPATH/META-INF" 2>/dev/null || true
+rm -f "$MODPATH/MountX.apk" 2>/dev/null || true
+rm -f /data/local/tmp/MountX* /data/local/tmp/mountx* 2>/dev/null || true
+rm -rf /data/adb/modules/Mountify /data/adb/modules_update/Mountify 2>/dev/null || true
+rm -f "$MODPATH/customize.sh" 2>/dev/null || true
 
 ui_print "************************************************"
 ui_print "  MountX Module installed successfully!         "

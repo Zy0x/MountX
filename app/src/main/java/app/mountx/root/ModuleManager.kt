@@ -3,6 +3,7 @@ package app.mountx.root
 import android.content.Context
 import android.media.MediaScannerConnection
 import android.os.Environment
+import app.mountx.R
 import app.mountx.data.model.RootSolution
 import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
@@ -101,16 +102,42 @@ object ModuleManager {
             val stagingPath = cacheDir.absolutePath
             val installCmd = """
                 mkdir -p $MODULE_DIR
+                # 1. Preserve existing user configuration if already present
+                [ -f "$MODULE_DIR/config.conf" ] && cp -f "$MODULE_DIR/config.conf" /data/local/tmp/mountx_cfg.bak 2>/dev/null || true
+                [ -f "$MODULE_DIR/gamelist.conf" ] && cp -f "$MODULE_DIR/gamelist.conf" /data/local/tmp/mountx_game.bak 2>/dev/null || true
+
+                # 1b. Gracefully terminate running background watchdog daemon before file sync
+                # This ensures the shell interpreter does not read corrupted byte offsets during file replacement
+                if [ -f "/dev/.mountx_service.pid" ]; then
+                    _old_pid=$(cat /dev/.mountx_service.pid 2>/dev/null | tr -d ' \r\t\n')
+                    [ -n "${'$'}_old_pid" ] && kill -9 "${'$'}_old_pid" 2>/dev/null || true
+                    rm -f /dev/.mountx_service.pid 2>/dev/null || true
+                fi
+                pkill -f "$MODULE_DIR/service.sh" 2>/dev/null || true
+                pkill -f "$ALT_MODULE_DIR/service.sh" 2>/dev/null || true
+                pkill -f "mount_watchdog" 2>/dev/null || true
+
                 cp -rf $stagingPath/* $MODULE_DIR/
+
+                # 2. Restore preserved user configuration
+                [ -f /data/local/tmp/mountx_cfg.bak ] && { cp -f /data/local/tmp/mountx_cfg.bak "$MODULE_DIR/config.conf"; rm -f /data/local/tmp/mountx_cfg.bak; } || true
+                [ -f /data/local/tmp/mountx_game.bak ] && { cp -f /data/local/tmp/mountx_game.bak "$MODULE_DIR/gamelist.conf"; rm -f /data/local/tmp/mountx_game.bak; } || true
+
+                # 3. Zero-Residue Policy: Purge installation-only files and legacy artifacts
+                rm -rf $MODULE_DIR/META-INF 2>/dev/null || true
+                rm -f $MODULE_DIR/customize.sh $MODULE_DIR/MountX.apk 2>/dev/null || true
+                rm -rf /data/adb/modules/Mountify /data/adb/modules_update/Mountify 2>/dev/null || true
+                rm -f /data/local/tmp/MountX* /data/local/tmp/mountx* 2>/dev/null || true
+
                 rm -f $MODULE_DIR/disable $MODULE_DIR/remove
                 chmod -R 755 $MODULE_DIR
                 chmod 644 $MODULE_DIR/module.prop $MODULE_DIR/config.conf $MODULE_DIR/banner.png 2>/dev/null || true
-                chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh $MODULE_DIR/customize.sh 2>/dev/null || true
+                chmod 755 $MODULE_DIR/service.sh $MODULE_DIR/uninstall.sh $MODULE_DIR/post-fs-data.sh 2>/dev/null || true
                 if [ -d "$MODULE_DIR/bin" ]; then
                     chmod -R 755 "$MODULE_DIR/bin" 2>/dev/null || true
                     if [ -f "$MODULE_DIR/bin/busybox" ]; then
                         chmod 755 "$MODULE_DIR/bin/busybox" 2>/dev/null || true
-                        for tool in fstrim awk flock blkid losetup fdisk; do
+                        for tool in fstrim awk flock blkid losetup fdisk tar; do
                             [ ! -e "$MODULE_DIR/bin/${'$'}tool" ] && ln -sf "$MODULE_DIR/bin/busybox" "$MODULE_DIR/bin/${'$'}tool" 2>/dev/null || true
                         done
                     fi
@@ -119,13 +146,19 @@ object ModuleManager {
                     fi
                 fi
                 chcon -R u:object_r:magisk_file:s0 $MODULE_DIR 2>/dev/null || true
+
+                # 4. Zero-Reboot Live Daemon Relaunch:
+                # Spawn the new service.sh immediately in background with zero reboot required
+                if [ -f "$MODULE_DIR/service.sh" ]; then
+                    nohup /system/bin/sh "$MODULE_DIR/service.sh" >/dev/null 2>&1 &
+                fi
             """.trimIndent()
 
             val res = RootShell.exec(installCmd)
             cacheDir.deleteRecursively()
 
             if (!res.isSuccess) {
-                throw IllegalStateException("Failed to copy module files: ${res.stderr.joinToString(" ")}")
+                throw IllegalStateException(context.getString(app.mountx.R.string.module_err_copy_files, res.stderr.joinToString(" ")))
             }
 
             // Also execute Magisk / KSU CLI if available for registry sync
@@ -145,7 +178,7 @@ object ModuleManager {
 
             RootDetector.getRootAndModuleInfo(forceRefresh = true)
             AppLogger.success(TAG, "MountX module installed and activated directly via Root")
-            "Modul MountX berhasil dipasang dan diaktifkan!"
+            context.getString(R.string.module_install_direct_success)
         }
     }
 
@@ -175,13 +208,41 @@ object ModuleManager {
                 ?.toIntOrNull() ?: 0
 
             val currentVersionCode = app.mountx.BuildConfig.VERSION_CODE
-            val binExists = RootShell.exists("$MODULE_DIR/bin/busybox")
-            if (installedVersionCode < currentVersionCode || !binExists) {
-                AppLogger.info(TAG, "Syncing outdated or incomplete module: installed=$installedVersionCode, current=$currentVersionCode, binExists=$binExists")
+            val binExists = RootShell.exists("$MODULE_DIR/bin/busybox") && RootShell.exists("$MODULE_DIR/post-fs-data.sh")
+            val hasInstallerResidue = RootShell.exists("$MODULE_DIR/customize.sh") || RootShell.exists("$MODULE_DIR/META-INF")
+
+            if (hasInstallerResidue) {
+                AppLogger.info(TAG, "Purging legacy installer residue from module directory (Zero-Residue Policy)")
+                RootShell.exec("rm -rf $MODULE_DIR/META-INF $MODULE_DIR/customize.sh $MODULE_DIR/MountX.apk /data/local/tmp/MountX* /data/local/tmp/mountx* 2>/dev/null || true")
+            }
+
+            // Check if service.sh file size differs from bundled asset (e.g. script update without versionCode bump)
+            val bundledServiceSize = runCatching {
+                context.assets.open("module/service.sh").use { it.available().toLong() }
+            }.getOrDefault(0L)
+
+            val installedServiceSize = RootShell.execForOutput("stat -c%s \"$MODULE_DIR/service.sh\" 2>/dev/null")
+                .trim()
+                .toLongOrNull() ?: 0L
+
+            val isScriptModified = bundledServiceSize > 0L && bundledServiceSize != installedServiceSize
+
+            // Check if service daemon is alive
+            val isDaemonRunning = RootShell.exec("pgrep -f '$MODULE_DIR/service.sh' >/dev/null 2>&1").isSuccess
+
+            val isOutdated = installedVersionCode < currentVersionCode || !binExists || isScriptModified
+
+            if (isOutdated) {
+                AppLogger.info(TAG, "Syncing outdated or modified module: installed=$installedVersionCode, current=$currentVersionCode, scriptModified=$isScriptModified, binExists=$binExists")
                 installModuleDirectly(context)
                 true
+            } else if (!isDaemonRunning && !isModuleDisabled()) {
+                // Daemon died or was killed - revive it cleanly with live reload
+                AppLogger.info(TAG, "Reviving dormant root watchdog daemon...")
+                RootShell.exec("nohup /system/bin/sh \"$MODULE_DIR/service.sh\" >/dev/null 2>&1 &")
+                true
             } else {
-                false
+                hasInstallerResidue
             }
         }
     }

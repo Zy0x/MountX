@@ -74,6 +74,10 @@ class StorageRepository @Inject constructor(
     fun getCachedDisks(): List<SdCardDiskInfo> = cachedHierarchy?.disks ?: emptyList()
     fun getCachedPartitions(): List<PartitionInfo> = cachedHierarchy?.partitions ?: emptyList()
 
+    suspend fun inspectStorageTarget(targetDir: String) = withContext(Dispatchers.IO) {
+        storageManager.inspectStorageTarget(targetDir)
+    }
+
     fun invalidateCache() {
         cachedHierarchy = null
         lastScanTimeMillis = 0L
@@ -151,6 +155,12 @@ class StorageRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             storageManager.getInternalStorageInfo()
         }
+
+    suspend fun repairInternalStorage(): Boolean = withContext(Dispatchers.IO) {
+        val ok = storageManager.repairEmulatedStorage()
+        refreshStorage()
+        ok
+    }
 
     suspend fun detectBlockDevices(): List<String> = withContext(Dispatchers.IO) {
         storageManager.detectBlockDevices()

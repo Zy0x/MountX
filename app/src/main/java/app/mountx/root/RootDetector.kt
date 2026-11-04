@@ -23,14 +23,19 @@ object RootDetector {
      * Batch-detect root solution, module installation, and version in a single shell call.
      */
     suspend fun getRootAndModuleInfo(forceRefresh: Boolean = false): RootModuleInfo = withContext(Dispatchers.IO) {
-        if (!forceRefresh) {
-            cachedInfo?.let { return@withContext it }
+        if (forceRefresh) {
+            cachedInfo = null
+        } else {
+            val cached = cachedInfo
+            if (cached != null && cached.rootSolution != RootSolution.NONE) {
+                return@withContext cached
+            }
         }
 
-        if (!RootShell.isAvailable) {
-            val none = RootModuleInfo()
-            cachedInfo = none
-            return@withContext none
+        if (!RootShell.isRootAvailable(forceRefresh = forceRefresh)) {
+            // Do not permanently cache RootSolution.NONE so that root elevation
+            // is detected immediately upon app resume or re-check.
+            return@withContext RootModuleInfo()
         }
 
         val batchScript = """
@@ -97,7 +102,9 @@ object RootDetector {
         }
 
         val info = RootModuleInfo(rootSol, modInstalled, modVer)
-        cachedInfo = info
+        if (rootSol != RootSolution.NONE) {
+            cachedInfo = info
+        }
         info
     }
 

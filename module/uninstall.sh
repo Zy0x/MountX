@@ -44,8 +44,13 @@ if [ -d "/data/media/999/Android" ]; then
     restorecon -FR /data/media/999/Android 2>/dev/null
 fi
 
-# 4. Clean up runtime memory buffers and temporary mounts in /dev/mountx/
+# 4. Clean up runtime memory buffers, mounts, and sentinels in /dev/
 rm -rf /dev/mountx 2>/dev/null
+rm -f /dev/.mountx* 2>/dev/null
+
+# 5. Clean up temporary installation and legacy residue (Zero-Residue Policy)
+rm -f /data/local/tmp/MountX* /data/local/tmp/mountx* 2>/dev/null
+rm -rf /data/adb/modules/Mountify /data/adb/modules/mountx 2>/dev/null
 
 # Exit cleanly
 exit 0

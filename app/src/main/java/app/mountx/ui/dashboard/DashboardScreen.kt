@@ -178,6 +178,19 @@ fun DashboardScreen(
     val operationProgress by viewModel.operationProgress.collectAsState()
     val pendingOperations by viewModel.pendingOperations.collectAsState()
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refresh(force = true)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     DisposableEffect(Unit) {
         viewModel.startLiveStoragePulse()
         onDispose {
@@ -201,7 +214,7 @@ fun DashboardScreen(
         pendingOperations = pendingOperations,
         onDismissOperationProgress = { viewModel.clearOperationProgress() },
         onCancelOperation = { viewModel.cancelOperation() },
-        onRefresh = { viewModel.refresh() },
+        onRefresh = { viewModel.refresh(force = true) },
         onNavigateToGames = onNavigateToGames,
         onNavigateToStorage = onNavigateToStorage,
         onNavigateToLogs = onNavigateToLogs,
@@ -280,7 +293,8 @@ fun DashboardContent(
     Scaffold(
         topBar = {
             SleekCompactHeader(
-                status = status
+                status = status,
+                onRefresh = onRefresh
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -314,7 +328,8 @@ fun DashboardContent(
                             diskErrorDetails = diskErrorDetails,
                             onInstallModuleClick = { showModuleInstallDialog = true },
                             onEmergencyUnmountClick = onEmergencyUnmountClick,
-                            onDiagnoseClick = onNavigateToStorage
+                            onDiagnoseClick = onNavigateToStorage,
+                            onCheckRootClick = onRefresh
                         )
                     }
                     item {
@@ -386,7 +401,8 @@ fun DashboardContent(
                         diskErrorDetails = diskErrorDetails,
                         onInstallModuleClick = { showModuleInstallDialog = true },
                         onEmergencyUnmountClick = onEmergencyUnmountClick,
-                        onDiagnoseClick = onNavigateToStorage
+                        onDiagnoseClick = onNavigateToStorage,
+                        onCheckRootClick = onRefresh
                     )
                 }
                 item {
@@ -526,7 +542,8 @@ fun DashboardContent(
 
 @Composable
 private fun SleekCompactHeader(
-    status: AppStatus
+    status: AppStatus,
+    onRefresh: () -> Unit = {}
 ) {
     Surface(
         color = MaterialTheme.colorScheme.background,
@@ -592,7 +609,9 @@ private fun SleekCompactHeader(
                     shape = RoundedCornerShape(16.dp),
                     color = ledGlow,
                     border = BorderStroke(1.dp, ledColor.copy(alpha = 0.45f)),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .height(30.dp)
+                        .clickable { onRefresh() }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp),
@@ -631,7 +650,8 @@ private fun ContextualAlertBanner(
     diskErrorDetails: String? = null,
     onInstallModuleClick: () -> Unit = {},
     onEmergencyUnmountClick: () -> Unit = {},
-    onDiagnoseClick: () -> Unit = {}
+    onDiagnoseClick: () -> Unit = {},
+    onCheckRootClick: () -> Unit = {}
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val errColor = if (isDark) NeonCrimson else TerracottaRedLight
@@ -800,6 +820,7 @@ private fun ContextualAlertBanner(
 
         status.rootSolution == RootSolution.NONE -> {
             Card(
+                onClick = onCheckRootClick,
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = errContainer
@@ -814,14 +835,14 @@ private fun ContextualAlertBanner(
                     Surface(
                         shape = CircleShape,
                         color = errColor.copy(alpha = 0.18f),
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(34.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
                                 tint = errColor,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
@@ -840,6 +861,21 @@ private fun ContextualAlertBanner(
                             text = stringResource(R.string.dashboard_no_root_desc),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    FilledTonalButton(
+                        onClick = onCheckRootClick,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = errColor.copy(alpha = 0.15f),
+                            contentColor = errColor
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.dashboard_check_root_action),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                         )
                     }
                 }
@@ -1550,14 +1586,62 @@ private fun DashboardTelemetryCard(
                 val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                 DiskTelemetryRow(
                     icon = Icons.Default.PhoneAndroid,
-                    iconTint = if (isDark) ElectricCyan else MaterialTheme.colorScheme.primary,
+                    iconTint = if (!internalStorage.isEmulatedMounted) {
+                        if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                    } else if (isDark) ElectricCyan else MaterialTheme.colorScheme.primary,
                     label = stringResource(R.string.dashboard_internal_storage),
-                    subLabel = "/data",
+                    subLabel = if (!internalStorage.isEmulatedMounted) {
+                        stringResource(R.string.storage_internal_unmounted_badge)
+                    } else {
+                        val typeStr = if (internalStorage.storageType.isNotBlank() && internalStorage.storageType != "Internal") {
+                            val chipStr = if (internalStorage.chipName.isNotBlank()) " ${internalStorage.chipName}" else ""
+                            val physStr = if (internalStorage.physicalTotalBytes > 0) " (${FormatUtils.formatBytes(internalStorage.physicalTotalBytes)})" else ""
+                            "${internalStorage.storageType}$chipStr$physStr • "
+                        } else ""
+                        val fsStr = if (internalStorage.filesystem.isNotBlank()) " • ${internalStorage.filesystem}" else ""
+                        "${typeStr}/data$fsStr"
+                    },
                     usedRatio = intUsedRatio,
                     usedBytes = internalStorage.usedBytes,
                     totalBytes = internalStorage.totalBytes,
                     freeBytes = internalStorage.freeBytes
                 )
+                if (!internalStorage.isEmulatedMounted) {
+                    val warnColor = if (isDark) WarmCrimsonDark else WarmCrimsonLight
+                    val warnBg = if (isDark) WarmCrimsonBorderDark.copy(alpha = 0.2f) else WarmCrimsonBorderLight.copy(alpha = 0.15f)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = warnBg,
+                        border = BorderStroke(1.dp, warnColor.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToStorage)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = warnColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.storage_internal_unmounted_warning_title),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold),
+                                color = warnColor,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = warnColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
                 if (disks.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
@@ -1698,7 +1782,7 @@ private fun DiskTelemetryRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (totalBytes > 0) stringResource(R.string.dashboard_free_suffix, FormatUtils.formatBytes(freeBytes)) else "—",
+                    text = if (totalBytes > 0) stringResource(R.string.dashboard_free_of_total_format, FormatUtils.formatBytes(freeBytes), FormatUtils.formatBytes(totalBytes)) else "-",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )

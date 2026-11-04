@@ -75,7 +75,8 @@ class AppPreferences @Inject constructor(
     }
 
     val sdBlockDevice: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_SD_BLOCK_DEVICE] ?: "/dev/block/mmcblk0p3"
+        val saved = prefs[KEY_SD_BLOCK_DEVICE] ?: ""
+        if (saved == "/dev/block/mmcblk0p3") "" else saved
     }
 
     val autoMountOnBoot: Flow<Boolean> = context.dataStore.data.map { prefs ->

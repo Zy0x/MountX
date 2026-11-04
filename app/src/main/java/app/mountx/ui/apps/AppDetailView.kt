@@ -13,22 +13,30 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,6 +44,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
@@ -89,6 +99,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -105,6 +116,7 @@ import app.mountx.data.model.DiskType
 import app.mountx.data.model.MountMode
 import app.mountx.data.model.MountPointCategory
 import app.mountx.data.model.MountPointConfig
+import app.mountx.data.model.InternalMigrationMethod
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.PartitionInfo
@@ -129,6 +141,13 @@ import app.mountx.ui.theme.WarmCrimsonBorderDark
 import app.mountx.ui.theme.WarmCrimsonBorderLight
 import app.mountx.ui.theme.WarmCrimsonDark
 import app.mountx.ui.theme.WarmCrimsonLight
+import app.mountx.ui.theme.adaptiveEmerald
+import app.mountx.ui.theme.adaptiveEmeraldContainer
+import app.mountx.ui.theme.adaptiveCrimson
+import app.mountx.ui.theme.adaptiveCrimsonContainer
+import app.mountx.ui.theme.adaptiveAmber
+import app.mountx.ui.theme.adaptiveAmberContainer
+import app.mountx.data.diagnostics.AppHealthTelemetry
 import app.mountx.util.FormatUtils
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -157,6 +176,7 @@ data class OcclusionWarningData(
 fun GameDetailView(
     game: GameEntry,
     breakdown: AppStorageBreakdown? = null,
+    healthTelemetry: AppHealthTelemetry? = null,
     isMoving: Boolean = false,
     moveMessage: String? = null,
     onClearMoveMessage: () -> Unit = {},
@@ -181,12 +201,14 @@ fun GameDetailView(
     onUnmount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
+    onReconcilePermissions: (() -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) = AppDetailView(
     game = game,
     breakdown = breakdown,
+    healthTelemetry = healthTelemetry,
     isMoving = isMoving,
     moveMessage = moveMessage,
     onClearMoveMessage = onClearMoveMessage,
@@ -211,6 +233,7 @@ fun GameDetailView(
     onUnmount = onUnmount,
     onToggleMount = onToggleMount,
     onDeleteCategoryData = onDeleteCategoryData,
+    onReconcilePermissions = onReconcilePermissions,
     isRefreshing = isRefreshing,
     onRefresh = onRefresh,
     modifier = modifier
@@ -221,6 +244,7 @@ fun GameDetailView(
 fun AppDetailView(
     game: GameEntry,
     breakdown: AppStorageBreakdown? = null,
+    healthTelemetry: AppHealthTelemetry? = null,
     isMoving: Boolean = false,
     moveMessage: String? = null,
     onClearMoveMessage: () -> Unit = {},
@@ -245,6 +269,7 @@ fun AppDetailView(
     onUnmount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
+    onReconcilePermissions: (() -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -268,8 +293,7 @@ fun AppDetailView(
         } else if (candidateDirectories.isNotEmpty()) {
             candidateDirectories.map { cd ->
                 val isContainer = cd.isVirtualContainer ||
-                    cd.category == app.mountx.data.model.MountPointCategory.PRIVATE_INTERNAL ||
-                    cd.sdPath.endsWith(".img")
+                    cd.sdPath.endsWith(".img", ignoreCase = true)
                 MountPointConfig(
                     id = cd.id,
                     category = cd.category,
@@ -324,7 +348,7 @@ fun AppDetailView(
                 navigationIcon = {
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(28.dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -345,87 +369,90 @@ fun AppDetailView(
                     }
                 },
                 actions = {
-                    // System App Details Button
-                    IconButton(
-                        onClick = {
-                            try {
-                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.fromParts("package", game.packageName, null)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            } catch (_: Exception) {
-                            }
-                        },
-                        modifier = Modifier.size(38.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(26.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    shape = RoundedCornerShape(6.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = stringResource(R.string.game_detail_system_info),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    if (isDraftMode) {
-                        if (onSaveGame != null) {
-                            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                            val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
-                            IconButton(
-                                onClick = { onSaveGame(game.copy(mountPoints = currentMountPoints)) },
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(26.dp)
-                                        .background(
-                                            color = activeEmerald.copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(6.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = stringResource(R.string.common_save),
-                                        tint = activeEmerald,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        // Delete App Button
+                        // System App Details Button
                         IconButton(
-                            onClick = onDelete,
-                            modifier = Modifier.size(38.dp)
+                            onClick = {
+                                try {
+                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", game.packageName, null)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {
+                                }
+                            },
+                            modifier = Modifier.size(28.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(26.dp)
                                     .background(
-                                        color = NeonCrimson.copy(alpha = 0.15f),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
                                         shape = RoundedCornerShape(6.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = stringResource(R.string.dialog_delete_app_title),
-                                    tint = NeonCrimson,
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = stringResource(R.string.game_detail_system_info),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(15.dp)
                                 )
+                            }
+                        }
+
+                        if (isDraftMode) {
+                            if (onSaveGame != null) {
+                                val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                                val activeEmerald = if (isDark) CyberEmerald else ForestGreenLight
+                                IconButton(
+                                    onClick = { onSaveGame(game.copy(mountPoints = currentMountPoints)) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(26.dp)
+                                            .background(
+                                                color = activeEmerald.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(6.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = stringResource(R.string.common_save),
+                                            tint = activeEmerald,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Delete App Button
+                            IconButton(
+                                onClick = onDelete,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .background(
+                                            color = NeonCrimson.copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = stringResource(R.string.dialog_delete_app_title),
+                                        tint = NeonCrimson,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -474,32 +501,47 @@ fun AppDetailView(
                                 fontSize = 11.5.sp,
                                 lineHeight = 14.sp
                             ),
-                            color = Color(0xFF00838F),
+                            color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        Text(
-                            text = stringResource(R.string.game_detail_version, versionName, versionCode.toString()),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 11.sp,
-                                lineHeight = 13.sp
-                            ),
-                            color = Color(0xFF00838F),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                        val warnAmber = if (isDark) SunsetAmber else WarmAmberLight
 
-                        Text(
-                            text = stringResource(R.string.game_detail_install_time, installTimeStr),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 10.5.sp,
-                                lineHeight = 13.sp
-                            ),
-                            color = Color(0xFF00838F),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (packageInfo != null) "v$versionName ($versionCode)" else stringResource(R.string.status_apk_not_installed),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 10.5.sp,
+                                    lineHeight = 13.sp,
+                                    fontWeight = if (packageInfo == null) FontWeight.SemiBold else FontWeight.Normal
+                                ),
+                                color = if (packageInfo != null) MaterialTheme.colorScheme.onSurfaceVariant else warnAmber,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (installTimeStr.isNotBlank()) {
+                                Text(
+                                    text = "•",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
+                                    color = MaterialTheme.colorScheme.outlineVariant
+                                )
+                                Text(
+                                    text = installTimeStr,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 10.sp,
+                                        lineHeight = 13.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -507,6 +549,47 @@ fun AppDetailView(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                     modifier = Modifier.padding(vertical = 1.dp)
                 )
+
+                if (packageInfo == null) {
+                    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                    val warnAmber = if (isDark) SunsetAmber else WarmAmberLight
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = warnAmber.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, warnAmber.copy(alpha = 0.4f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = warnAmber,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.app_detail_uninstalled_banner_title),
+                                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                                    color = warnAmber
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.app_detail_uninstalled_banner_desc,
+                                        FormatUtils.formatBytes(game.dataSizeBytes)
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 13.5.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Capsule Tab Row (Storage vs Manage)
                 DetailCapsuleTabRow(
@@ -541,6 +624,7 @@ fun AppDetailView(
                             internalFreeBytes = internalFreeBytes,
                             isMoving = isMoving,
                             moveMessage = moveMessage,
+                            healthTelemetry = healthTelemetry,
                             sdBase = sdBase,
                             onMove = { dir, pts, disk, partition, strategy ->
                                 val updatedPoints = currentMountPoints.map { pt ->
@@ -604,7 +688,8 @@ fun AppDetailView(
                             game = game,
                             packageInfo = packageInfo,
                             onMount = onMount,
-                            onToggleMount = onToggleMount
+                            onToggleMount = onToggleMount,
+                            onReconcilePermissions = onReconcilePermissions
                         )
                     }
                 }
@@ -704,7 +789,9 @@ private data class UnifiedCategoryItem(
     val preserveMedia: Boolean = false,
     val userId: Int = 0,
     val isUsbOtg: Boolean = false,
-    val storageTitle: String? = null
+    val storageTitle: String? = null,
+    val isVirtualContainer: Boolean = false,
+    val migrationMethod: InternalMigrationMethod = InternalMigrationMethod.AUTO
 )
 
 private fun resolveUserIdFromPath(path: String): Int {
@@ -725,12 +812,29 @@ private fun resolveSdPath(sdBase: String, relativeMountXPath: String): String {
     }
 }
 
+private fun isPosixStorageTarget(
+    sdBase: String,
+    availableDisks: List<SdCardDiskInfo> = emptyList(),
+    targetPartition: PartitionInfo? = null
+): Boolean {
+    val fsType = (targetPartition?.fsType
+        ?: availableDisks.flatMap { it.partitions }.firstOrNull { part ->
+            part.mountPoint != null && sdBase.startsWith(part.mountPoint)
+        }?.fsType
+        ?: if (sdBase.startsWith("/data/sdext")) "f2fs" else "").lowercase()
+    return fsType in listOf("ext4", "f2fs", "ext2", "ext3", "btrfs", "xfs")
+}
+
 private fun buildTargetMountPoints(
     selectedCategoryIds: Set<String>,
     currentMountPoints: List<MountPointConfig>,
     game: GameEntry,
     sdBase: String,
-    packageInfo: android.content.pm.PackageInfo? = null
+    packageInfo: android.content.pm.PackageInfo? = null,
+    availableDisks: List<SdCardDiskInfo> = emptyList(),
+    targetPartition: PartitionInfo? = null,
+    direction: MoveDirection = MoveDirection.TO_SD,
+    migrationMethods: Map<String, InternalMigrationMethod> = emptyMap()
 ): List<MountPointConfig> {
     val result = mutableListOf<MountPointConfig>()
     val pkg = game.packageName
@@ -739,6 +843,7 @@ private fun buildTargetMountPoints(
         if (apkSrc.endsWith(".apk")) java.io.File(apkSrc).parent ?: apkSrc else apkSrc
     } else "/data/app/$pkg"
     val libDir = packageInfo?.applicationInfo?.nativeLibraryDir ?: "$apkDir/lib"
+    val isPosixTarget = isPosixStorageTarget(sdBase, availableDisks, targetPartition)
 
     for (catId in selectedCategoryIds) {
         val existing = currentMountPoints
@@ -753,21 +858,52 @@ private fun buildTargetMountPoints(
                     "data" -> pt.resolveCategory() == MountPointCategory.EXTERNAL_DATA
                     "obb" -> pt.resolveCategory() == MountPointCategory.OBB_STORAGE
                     "media" -> pt.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS
-                    "apk" -> pt.resolveCategory() == MountPointCategory.APP_PACKAGE && !pt.targetPath.contains("/lib", ignoreCase = true) && pt.id != "lib"
-                    "lib" -> pt.targetPath.contains("/lib", ignoreCase = true) || pt.id == "lib"
+                    "apk" -> pt.resolveCategory() == MountPointCategory.APP_PACKAGE && !pt.isLibTarget() && pt.id != "lib"
+                    "lib" -> pt.isLibTarget()
                     "private", "private_internal" -> (pt.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL || pt.id in listOf("private", "private_internal")) && !pt.targetPath.contains("/cache", ignoreCase = true)
                     "cache" -> pt.resolveCategory() == MountPointCategory.CACHE_SHADERS || pt.targetPath.contains("/cache", ignoreCase = true) || pt.id == "cache"
                     else -> pt.id == catId
                 }
             }
 
+        val isPrivateCat = catId in listOf("private", "private_internal") || existing?.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
+        val isCacheCat = catId == "cache" || existing?.resolveCategory() == MountPointCategory.CACHE_SHADERS
+        val isApkCat = (catId == "apk" || existing?.resolveCategory() == MountPointCategory.APP_PACKAGE) && !(existing?.isLibTarget() ?: (catId == "lib"))
+        val isLibCat = catId == "lib" || existing?.isLibTarget() == true
+        val isInternalCat = isPrivateCat || isCacheCat || isApkCat || isLibCat || existing?.isInternalSandboxOrPackageCategory() == true
+
+        val method = if (isInternalCat) {
+            migrationMethods[catId] ?: migrationMethods["default"] ?: existing?.migrationMethod ?: InternalMigrationMethod.AUTO
+        } else {
+            InternalMigrationMethod.NATIVE_FOLDER
+        }
+
+        val isContainer = when {
+            !isInternalCat -> false
+            direction == MoveDirection.TO_INTERNAL -> existing?.isEffectivelyVirtualContainer() ?: false
+            else -> when (method) {
+                InternalMigrationMethod.AUTO -> !isPosixTarget
+                InternalMigrationMethod.CONTAINER_IMG -> true
+                InternalMigrationMethod.NATIVE_FOLDER -> false
+            }
+        }
+
+        val containerPath = if (isContainer) {
+            when {
+                isLibCat -> "$sdBase/.mountx/containers/${pkg}_lib.img"
+                isApkCat -> "$sdBase/.mountx/containers/${pkg}_apk.img"
+                isCacheCat -> "$sdBase/.mountx/containers/${pkg}_cache.img"
+                else -> "$sdBase/.mountx/containers/${pkg}_data.img"
+            }
+        } else null
+
         if (existing != null) {
-            val isContainer = existing.isEffectivelyVirtualContainer() ||
-                catId in listOf("private", "private_internal") ||
-                existing.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL
-            val containerPath = if (isContainer) "$sdBase/.mountx/containers/${pkg}_data.img" else null
             val updatedSource = when {
                 isContainer -> containerPath!!
+                isLibCat -> "$sdBase/MountX/lib/$pkg"
+                isApkCat -> "$sdBase/MountX/app/$pkg"
+                isCacheCat -> "$sdBase/MountX/cache/$pkg"
+                isPrivateCat -> "$sdBase/MountX/data/$pkg"
                 existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> {
                     val subFolder = if (existing.targetPath.endsWith("/files")) "MountX/Android/data/$pkg/files" else "MountX/Android/data/$pkg"
                     if (existing.sourcePath.isNotBlank() && (existing.diskUuid != null || existing.id.startsWith("custom_")) && existing.sourcePath.startsWith(sdBase)) {
@@ -790,25 +926,14 @@ private fun buildTargetMountPoints(
                         resolveSdPath(sdBase, "MountX/Android/media/$pkg")
                     }
                 }
-                existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> {
-                    if (catId == "lib" || existing.id.startsWith("lib_") || existing.targetPath.contains("/lib")) {
-                        "$sdBase/MountX/lib/$pkg"
-                    } else {
-                        "$sdBase/MountX/app/$pkg"
-                    }
-                }
                 existing.resolveCategory() == MountPointCategory.GAME_ASSETS -> resolveSdPath(sdBase, "MountX/Android/data/$pkg/files")
                 else -> existing.sourcePath
             }
             val updatedTarget = when {
-                isContainer -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg"
-                existing.resolveCategory() == MountPointCategory.APP_PACKAGE -> {
-                    if (catId == "lib" || existing.id.startsWith("lib_") || existing.targetPath.contains("/lib")) {
-                        if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/data/app/$pkg/lib")) existing.targetPath else libDir
-                    } else {
-                        if (existing.targetPath.isNotBlank() && !existing.targetPath.startsWith("/data/app/$pkg")) existing.targetPath else apkDir
-                    }
-                }
+                isContainer || isPrivateCat -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg"
+                isCacheCat -> if (existing.targetPath.isNotBlank() && existing.targetPath.startsWith("/data")) existing.targetPath else "/data/user/0/$pkg/cache"
+                isLibCat -> libDir
+                isApkCat -> apkDir
                 existing.resolveCategory() == MountPointCategory.EXTERNAL_DATA -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/data/$pkg" else existing.targetPath
                 existing.resolveCategory() == MountPointCategory.OBB_STORAGE -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/obb/$pkg" else existing.targetPath
                 existing.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS -> if (existing.targetPath.startsWith("/sdcard")) "/data/media/0/Android/media/$pkg" else existing.targetPath
@@ -820,7 +945,8 @@ private fun buildTargetMountPoints(
                     targetPath = updatedTarget,
                     enabled = true,
                     isVirtualContainer = isContainer,
-                    containerImgPath = containerPath
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
             )
         } else {
@@ -830,51 +956,64 @@ private fun buildTargetMountPoints(
                     category = MountPointCategory.EXTERNAL_DATA,
                     sourcePath = resolveSdPath(sdBase, "MountX/Android/data/$pkg"),
                     targetPath = "/data/media/0/Android/data/$pkg",
-                    enabled = true
+                    enabled = true,
+                    migrationMethod = InternalMigrationMethod.NATIVE_FOLDER
                 )
                 "obb" -> MountPointConfig(
                     id = "ext_obb_$pkg",
                     category = MountPointCategory.OBB_STORAGE,
                     sourcePath = resolveSdPath(sdBase, "MountX/Android/obb/$pkg"),
                     targetPath = "/data/media/0/Android/obb/$pkg",
-                    enabled = true
+                    enabled = true,
+                    migrationMethod = InternalMigrationMethod.NATIVE_FOLDER
                 )
                 "media" -> MountPointConfig(
                     id = "ext_media_$pkg",
                     category = MountPointCategory.MEDIA_DOWNLOADS,
                     sourcePath = resolveSdPath(sdBase, "MountX/Android/media/$pkg"),
                     targetPath = "/data/media/0/Android/media/$pkg",
-                    enabled = true
+                    enabled = true,
+                    migrationMethod = InternalMigrationMethod.NATIVE_FOLDER
                 )
                 "apk" -> MountPointConfig(
                     id = "apk_$pkg",
                     category = MountPointCategory.APP_PACKAGE,
-                    sourcePath = "$sdBase/MountX/app/$pkg",
+                    sourcePath = if (isContainer) containerPath!! else "$sdBase/MountX/app/$pkg",
                     targetPath = apkDir,
-                    enabled = true
+                    enabled = true,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
                 "lib" -> MountPointConfig(
                     id = "lib_$pkg",
                     category = MountPointCategory.APP_PACKAGE,
-                    sourcePath = "$sdBase/MountX/lib/$pkg",
+                    sourcePath = if (isContainer) containerPath!! else "$sdBase/MountX/lib/$pkg",
                     targetPath = libDir,
-                    enabled = true
+                    enabled = true,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
                 "private", "private_internal" -> MountPointConfig(
                     id = "private_$pkg",
                     category = MountPointCategory.PRIVATE_INTERNAL,
-                    sourcePath = "$sdBase/.mountx/containers/${pkg}_data.img",
+                    sourcePath = if (isContainer) containerPath!! else "$sdBase/MountX/data/$pkg",
                     targetPath = "/data/user/0/$pkg",
                     enabled = true,
-                    isVirtualContainer = true,
-                    containerImgPath = "$sdBase/.mountx/containers/${pkg}_data.img"
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
                 "cache" -> MountPointConfig(
                     id = "cache_$pkg",
                     category = MountPointCategory.CACHE_SHADERS,
-                    sourcePath = "$sdBase/MountX/Android/data/$pkg/cache",
+                    sourcePath = if (isContainer) containerPath!! else "$sdBase/MountX/cache/$pkg",
                     targetPath = "/data/user/0/$pkg/cache",
-                    enabled = true
+                    enabled = true,
+                    isVirtualContainer = isContainer,
+                    containerImgPath = containerPath,
+                    migrationMethod = method
                 )
                 else -> null
             }
@@ -892,35 +1031,36 @@ private fun StepBadge(
     isDone: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = modifier
     ) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(26.dp)
+                .size(20.dp)
                 .background(
                     color = when {
                         isDone -> CyberEmerald
                         isActive -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.surfaceVariant
                     },
-                    shape = RoundedCornerShape(13.dp)
+                    shape = CircleShape
                 )
         ) {
             if (isDone) {
                 Icon(
-                    imageVector = Icons.Default.CheckCircle,
+                    imageVector = Icons.Default.Check,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(12.dp)
                 )
             } else {
                 Text(
                     text = stepNumber.toString(),
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     ),
                     color = if (isActive) MaterialTheme.colorScheme.onPrimary
@@ -928,16 +1068,17 @@ private fun StepBadge(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                fontSize = 11.5.sp,
+                fontWeight = if (isActive || isDone) FontWeight.Bold else FontWeight.Medium
             ),
             color = if (isActive) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1
+                    else if (isDone) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -983,6 +1124,7 @@ private fun StorageTabContent(
     internalFreeBytes: Long,
     isMoving: Boolean,
     moveMessage: String?,
+    healthTelemetry: AppHealthTelemetry? = null,
     sdBase: String = "/data/sdext2",
     packageInfo: android.content.pm.PackageInfo? = null,
     onMove: (MoveDirection, List<MountPointConfig>, SdCardDiskInfo?, PartitionInfo?, ConflictStrategy) -> Unit,
@@ -1066,140 +1208,152 @@ private fun StorageTabContent(
         val apkInternalDir = if (apkSrc.endsWith(".apk")) java.io.File(apkSrc).parent ?: apkSrc else apkSrc
         val libSrc = packageInfo?.applicationInfo?.nativeLibraryDir ?: "/data/app/$pkg/lib"
 
+        val defaultUsbOtgTitle = context.getString(R.string.manage_location_badge_usb_otg)
+
         fun getDiskDetails(path: String, diskUuid: String?): Pair<Boolean, String?> {
+            val resolvedUuid = diskUuid
+                ?: prioritizedPoints.firstOrNull { !it.diskUuid.isNullOrBlank() }?.diskUuid
             val disk = availableDisks.firstOrNull { d ->
-                (diskUuid != null && (d.partitions.any { it.uuid.equals(diskUuid, ignoreCase = true) } || d.devicePath.contains(diskUuid))) ||
+                (resolvedUuid != null && (d.partitions.any { it.uuid.equals(resolvedUuid, ignoreCase = true) } || d.devicePath.contains(resolvedUuid))) ||
                 (path.isNotBlank() && d.partitions.any { it.mountPoint != null && path.startsWith(it.mountPoint) })
-            } ?: if (path.startsWith("/mnt/media_rw/")) null else availableDisks.firstOrNull { it.diskType != DiskType.USB_OTG }
+            } ?: availableDisks.firstOrNull { it.diskType != DiskType.USB_OTG }
             val isUsb = disk?.diskType == DiskType.USB_OTG || path.startsWith("/mnt/media_rw/")
-            val label = disk?.hardwareTitle ?: if (isUsb) "USB OTG" else defaultMicroSdTitle
+            val label = disk?.hardwareTitle ?: if (isUsb) defaultUsbOtgTitle else defaultMicroSdTitle
             return Pair(isUsb, label)
         }
 
         val existingApkPoint = prioritizedPoints.firstOrNull { it.id == "apk" || (it.resolveCategory() == MountPointCategory.APP_PACKAGE && !it.targetPath.contains("/lib")) }
         val apkSdPath = existingApkPoint?.sourcePath ?: "$sdBase/MountX/app/$pkg"
         val (isApkUsb, apkDiskLabel) = getDiskDetails(apkSdPath, existingApkPoint?.diskUuid)
-        val isApkCatMounted = safeBreakdown.isApkMounted || (isMounted && existingApkPoint?.enabled == true)
+        val internalApkTotalBytes = safeBreakdown.apkBytes + safeBreakdown.dexBytes
+        val isApkCatMounted = safeBreakdown.isApkMounted || (isMounted && existingApkPoint?.enabled == true && safeBreakdown.ext2ApkBytes > 0L && internalApkTotalBytes <= 4096L)
+        val apkDefaultDesc = context.getString(R.string.category_item_apk_desc)
         val (apkBytes, apkSubtitle, isApkSd) = when {
             isApkCatMounted -> {
-                val size = if (safeBreakdown.ext2ApkBytes > 0L) safeBreakdown.ext2ApkBytes else safeBreakdown.apkBytes
-                Triple(size, "File instalasi aplikasi", true)
+                val size = if (safeBreakdown.ext2ApkBytes > 0L) safeBreakdown.ext2ApkBytes else internalApkTotalBytes
+                Triple(size, apkDefaultDesc, true)
             }
-            safeBreakdown.ext2ApkBytes > 0L && safeBreakdown.apkBytes > 64 * 1024L -> {
-                val targetName = if (isApkUsb) (apkDiskLabel ?: "USB OTG") else defaultMicroSdTitle
+            safeBreakdown.ext2ApkBytes > 16 * 1024L && internalApkTotalBytes > 64 * 1024L -> {
+                val targetName = if (isApkUsb) (apkDiskLabel ?: defaultUsbOtgTitle) else (apkDiskLabel ?: defaultMicroSdTitle)
                 Triple(
-                    safeBreakdown.apkBytes,
-                    "File instalasi aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2ApkBytes)} di $targetName",
+                    internalApkTotalBytes,
+                    context.getString(R.string.category_item_on_storage, apkDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2ApkBytes), targetName),
                     false
                 )
             }
-            safeBreakdown.ext2ApkBytes > 0L && safeBreakdown.apkBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2ApkBytes, "File instalasi aplikasi", true)
+            safeBreakdown.ext2ApkBytes > 16 * 1024L && existingApkPoint?.enabled == true && internalApkTotalBytes <= 16 * 1024L -> {
+                Triple(safeBreakdown.ext2ApkBytes, apkDefaultDesc, true)
             }
             else -> {
-                Triple(safeBreakdown.apkBytes, "File instalasi aplikasi", false)
+                Triple(internalApkTotalBytes, apkDefaultDesc, false)
             }
         }
 
         val existingLibPoint = prioritizedPoints.firstOrNull { it.id == "lib" || (it.resolveCategory() == MountPointCategory.APP_PACKAGE && it.targetPath.contains("/lib")) }
         val libSdPath = existingLibPoint?.sourcePath ?: "$sdBase/MountX/lib/$pkg"
         val (isLibUsb, libDiskLabel) = getDiskDetails(libSdPath, existingLibPoint?.diskUuid)
-        val isLibCatMounted = safeBreakdown.isLibMounted || (isMounted && existingLibPoint?.enabled == true)
+        val isLibCatMounted = safeBreakdown.isLibMounted || (isMounted && existingLibPoint?.enabled == true && safeBreakdown.ext2LibBytes > 16 * 1024L && safeBreakdown.libBytes <= 16 * 1024L)
+        val libDefaultDesc = context.getString(R.string.category_item_lib_desc)
         val (libBytes, libSubtitle, isLibSd) = when {
             isLibCatMounted -> {
                 val size = if (safeBreakdown.ext2LibBytes > 0L) safeBreakdown.ext2LibBytes else safeBreakdown.libBytes
-                Triple(size, "Pustaka asli aplikasi", true)
+                Triple(size, libDefaultDesc, true)
             }
-            safeBreakdown.ext2LibBytes > 0L && safeBreakdown.libBytes > 64 * 1024L -> {
-                val targetName = if (isLibUsb) (libDiskLabel ?: "USB OTG") else defaultMicroSdTitle
+            safeBreakdown.ext2LibBytes > 16 * 1024L && safeBreakdown.libBytes > 64 * 1024L -> {
+                val targetName = if (isLibUsb) (libDiskLabel ?: defaultUsbOtgTitle) else (libDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.libBytes,
-                    "Pustaka asli aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2LibBytes)} di $targetName",
+                    context.getString(R.string.category_item_on_storage, libDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2LibBytes), targetName),
                     false
                 )
             }
-            safeBreakdown.ext2LibBytes > 0L && safeBreakdown.libBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2LibBytes, "Pustaka asli aplikasi", true)
+            safeBreakdown.ext2LibBytes > 16 * 1024L && existingLibPoint?.enabled == true && safeBreakdown.libBytes <= 16 * 1024L -> {
+                Triple(safeBreakdown.ext2LibBytes, libDefaultDesc, true)
             }
             else -> {
-                Triple(safeBreakdown.libBytes, "Pustaka asli aplikasi", false)
+                Triple(safeBreakdown.libBytes, libDefaultDesc, false)
             }
         }
 
         val existingPrivatePoint = prioritizedPoints.firstOrNull { it.id == "private" || it.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL }
-        val privateSdPath = existingPrivatePoint?.sourcePath ?: "$sdBase/.mountx/containers/${pkg}_data.img"
+        val isDefaultPosix = isPosixStorageTarget(sdBase, availableDisks)
+        val privateSdPath = existingPrivatePoint?.sourcePath
+            ?: if (isDefaultPosix) "$sdBase/MountX/data/$pkg" else "$sdBase/.mountx/containers/${pkg}_data.img"
         val (isPrivateUsb, privateDiskLabel) = getDiskDetails(privateSdPath, existingPrivatePoint?.diskUuid)
-        val isPrivateCatMounted = safeBreakdown.isPrivateMounted || (isMounted && existingPrivatePoint?.enabled == true)
+        val isPrivateCatMounted = safeBreakdown.isPrivateMounted || (isMounted && existingPrivatePoint?.enabled == true && safeBreakdown.ext2PrivateBytes > 16 * 1024L && safeBreakdown.dataBytes <= 16 * 1024L)
+        val privateDefaultDesc = context.getString(R.string.category_item_private_desc)
         val (privateBytes, privateSubtitle, isPrivateSd) = when {
             isPrivateCatMounted -> {
                 val size = if (safeBreakdown.ext2PrivateBytes > 0L) safeBreakdown.ext2PrivateBytes else safeBreakdown.dataBytes
-                Triple(size, "Data aplikasi (internal)", true)
+                Triple(size, privateDefaultDesc, true)
             }
-            safeBreakdown.ext2PrivateBytes > 0L && safeBreakdown.dataBytes > 64 * 1024L -> {
-                val targetName = if (isPrivateUsb) (privateDiskLabel ?: "USB OTG") else defaultMicroSdTitle
+            safeBreakdown.ext2PrivateBytes > 16 * 1024L && safeBreakdown.dataBytes > 64 * 1024L -> {
+                val targetName = if (isPrivateUsb) (privateDiskLabel ?: defaultUsbOtgTitle) else (privateDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.dataBytes,
-                    "Data aplikasi (internal) • ${FormatUtils.formatExactBytes(safeBreakdown.ext2PrivateBytes)} di $targetName",
+                    context.getString(R.string.category_item_on_storage, privateDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2PrivateBytes), targetName),
                     false
                 )
             }
-            safeBreakdown.ext2PrivateBytes > 0L && safeBreakdown.dataBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2PrivateBytes, "Data aplikasi (internal)", true)
+            safeBreakdown.ext2PrivateBytes > 16 * 1024L && existingPrivatePoint?.enabled == true && safeBreakdown.dataBytes <= 16 * 1024L -> {
+                Triple(safeBreakdown.ext2PrivateBytes, privateDefaultDesc, true)
             }
             else -> {
-                Triple(safeBreakdown.dataBytes, "Data aplikasi (internal)", false)
+                Triple(safeBreakdown.dataBytes, privateDefaultDesc, false)
             }
         }
 
         val existingCachePoint = prioritizedPoints.firstOrNull { it.id == "cache" || it.resolveCategory() == MountPointCategory.CACHE_SHADERS }
-        val cacheSdPath = existingCachePoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg/cache")
+        val cacheSdPath = existingCachePoint?.sourcePath ?: "$sdBase/MountX/cache/$pkg"
         val (isCacheUsb, cacheDiskLabel) = getDiskDetails(cacheSdPath, existingCachePoint?.diskUuid)
-        val isCacheCatMounted = safeBreakdown.isCacheMounted || (isMounted && existingCachePoint?.enabled == true)
+        val isCacheCatMounted = safeBreakdown.isCacheMounted || (isMounted && existingCachePoint?.enabled == true && safeBreakdown.ext2CacheBytes > 16 * 1024L && safeBreakdown.cacheBytes <= 16 * 1024L)
+        val cacheDefaultDesc = context.getString(R.string.category_item_cache_desc)
         val (cacheBytes, cacheSubtitle, isCacheSd) = when {
             isCacheCatMounted -> {
                 val size = if (safeBreakdown.ext2CacheBytes > 0L) safeBreakdown.ext2CacheBytes else safeBreakdown.cacheBytes
-                Triple(size, "Cache sementara", true)
+                Triple(size, cacheDefaultDesc, true)
             }
-            safeBreakdown.ext2CacheBytes > 0L && safeBreakdown.cacheBytes > 64 * 1024L -> {
-                val targetName = if (isCacheUsb) (cacheDiskLabel ?: "USB OTG") else defaultMicroSdTitle
+            safeBreakdown.ext2CacheBytes > 16 * 1024L && safeBreakdown.cacheBytes > 64 * 1024L -> {
+                val targetName = if (isCacheUsb) (cacheDiskLabel ?: defaultUsbOtgTitle) else (cacheDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.cacheBytes,
-                    "Cache sementara • ${FormatUtils.formatExactBytes(safeBreakdown.ext2CacheBytes)} di $targetName",
+                    context.getString(R.string.category_item_on_storage, cacheDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2CacheBytes), targetName),
                     false
                 )
             }
-            safeBreakdown.ext2CacheBytes > 0L && safeBreakdown.cacheBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2CacheBytes, "Cache sementara", true)
+            safeBreakdown.ext2CacheBytes > 16 * 1024L && existingCachePoint?.enabled == true && safeBreakdown.cacheBytes <= 16 * 1024L -> {
+                Triple(safeBreakdown.ext2CacheBytes, cacheDefaultDesc, true)
             }
             else -> {
-                Triple(safeBreakdown.cacheBytes, "Cache sementara", false)
+                Triple(safeBreakdown.cacheBytes, cacheDefaultDesc, false)
             }
         }
 
         val existingDataPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.EXTERNAL_DATA }
         val dataSdPath = existingDataPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/data/$pkg")
         val (isDataUsb, dataDiskLabel) = getDiskDetails(dataSdPath, existingDataPoint?.diskUuid)
-        val isDataCatMounted = safeBreakdown.isDataMounted || (isMounted && existingDataPoint?.enabled == true)
+        val isDataCatMounted = safeBreakdown.isDataMounted || (isMounted && existingDataPoint?.enabled == true && safeBreakdown.ext2DataBytes > 16 * 1024L && safeBreakdown.ext1DataBytes <= 16 * 1024L)
+        val dataDefaultDesc = context.getString(R.string.category_item_data_desc)
         val (dataBytes, dataSubtitle, isDataSd) = when {
             isDataCatMounted -> {
                 val size = if (safeBreakdown.ext2DataBytes > 0L) safeBreakdown.ext2DataBytes else safeBreakdown.ext1DataBytes
-                Triple(size, "Data utama aplikasi", true)
+                Triple(size, dataDefaultDesc, true)
             }
-            safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes > 64 * 1024L -> {
-                val targetName = if (isDataUsb) (dataDiskLabel ?: "USB OTG") else defaultMicroSdTitle
+            safeBreakdown.ext2DataBytes > 16 * 1024L && safeBreakdown.ext1DataBytes > 64 * 1024L -> {
+                val targetName = if (isDataUsb) (dataDiskLabel ?: defaultUsbOtgTitle) else (dataDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1DataBytes,
-                    "Data utama aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2DataBytes)} di $targetName",
+                    context.getString(R.string.category_item_on_storage, dataDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2DataBytes), targetName),
                     false
                 )
             }
-            safeBreakdown.ext2DataBytes > 0L && safeBreakdown.ext1DataBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2DataBytes, "Data utama aplikasi", true)
+            safeBreakdown.ext2DataBytes > 16 * 1024L && existingDataPoint?.enabled == true && safeBreakdown.ext1DataBytes <= 16 * 1024L -> {
+                Triple(safeBreakdown.ext2DataBytes, dataDefaultDesc, true)
             }
             else -> {
                 Triple(
                     if (safeBreakdown.ext1DataBytes > 0L) safeBreakdown.ext1DataBytes else safeBreakdown.ext1Bytes,
-                    "Data utama aplikasi",
+                    dataDefaultDesc,
                     false
                 )
             }
@@ -1208,51 +1362,53 @@ private fun StorageTabContent(
         val existingObbPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.OBB_STORAGE }
         val obbSdPath = existingObbPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/obb/$pkg")
         val (isObbUsb, obbDiskLabel) = getDiskDetails(obbSdPath, existingObbPoint?.diskUuid)
-        val isObbCatMounted = safeBreakdown.isObbMounted || (isMounted && existingObbPoint?.enabled == true)
+        val isObbCatMounted = safeBreakdown.isObbMounted || (isMounted && existingObbPoint?.enabled == true && safeBreakdown.ext2ObbBytes > 16 * 1024L && safeBreakdown.ext1ObbBytes <= 16 * 1024L)
+        val obbDefaultDesc = context.getString(R.string.category_item_obb_desc)
         val (obbBytes, obbSubtitle, isObbSd) = when {
             isObbCatMounted -> {
                 val size = if (safeBreakdown.ext2ObbBytes > 0L) safeBreakdown.ext2ObbBytes else safeBreakdown.ext1ObbBytes
-                Triple(size, "File ekspansi aplikasi", true)
+                Triple(size, obbDefaultDesc, true)
             }
-            safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes > 64 * 1024L -> {
-                val targetName = if (isObbUsb) (obbDiskLabel ?: "USB OTG") else defaultMicroSdTitle
+            safeBreakdown.ext2ObbBytes > 16 * 1024L && safeBreakdown.ext1ObbBytes > 64 * 1024L -> {
+                val targetName = if (isObbUsb) (obbDiskLabel ?: defaultUsbOtgTitle) else (obbDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1ObbBytes,
-                    "File ekspansi aplikasi • ${FormatUtils.formatExactBytes(safeBreakdown.ext2ObbBytes)} di $targetName",
+                    context.getString(R.string.category_item_on_storage, obbDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2ObbBytes), targetName),
                     false
                 )
             }
-            safeBreakdown.ext2ObbBytes > 0L && safeBreakdown.ext1ObbBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2ObbBytes, "File ekspansi aplikasi", true)
+            safeBreakdown.ext2ObbBytes > 16 * 1024L && existingObbPoint?.enabled == true && safeBreakdown.ext1ObbBytes <= 16 * 1024L -> {
+                Triple(safeBreakdown.ext2ObbBytes, obbDefaultDesc, true)
             }
             else -> {
-                Triple(safeBreakdown.ext1ObbBytes, "File ekspansi aplikasi", false)
+                Triple(safeBreakdown.ext1ObbBytes, obbDefaultDesc, false)
             }
         }
 
         val existingMediaPoint = prioritizedPoints.firstOrNull { it.resolveCategory() == MountPointCategory.MEDIA_DOWNLOADS }
         val mediaSdPath = existingMediaPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/media/$pkg")
         val (isMediaUsb, mediaDiskLabel) = getDiskDetails(mediaSdPath, existingMediaPoint?.diskUuid)
-        val hasMedia = safeBreakdown.ext1MediaBytes > 0L || safeBreakdown.ext2MediaBytes > 0L || existingMediaPoint != null
-        val isMediaCatMounted = safeBreakdown.isMediaMounted || (isMounted && existingMediaPoint?.enabled == true)
+        val hasMedia = safeBreakdown.ext1MediaBytes > 16 * 1024L || safeBreakdown.ext2MediaBytes > 16 * 1024L || existingMediaPoint != null
+        val isMediaCatMounted = safeBreakdown.isMediaMounted || (isMounted && existingMediaPoint?.enabled == true && safeBreakdown.ext2MediaBytes > 16 * 1024L && safeBreakdown.ext1MediaBytes <= 16 * 1024L)
+        val mediaDefaultDesc = context.getString(R.string.category_item_media_desc)
         val (mediaBytes, mediaSubtitle, isMediaSd) = when {
             isMediaCatMounted -> {
                 val size = if (safeBreakdown.ext2MediaBytes > 0L) safeBreakdown.ext2MediaBytes else safeBreakdown.ext1MediaBytes
-                Triple(size, "Berkas media & unduhan", true)
+                Triple(size, mediaDefaultDesc, true)
             }
-            safeBreakdown.ext2MediaBytes > 0L && safeBreakdown.ext1MediaBytes > 64 * 1024L -> {
-                val targetName = if (isMediaUsb) (mediaDiskLabel ?: "USB OTG") else defaultMicroSdTitle
+            safeBreakdown.ext2MediaBytes > 16 * 1024L && safeBreakdown.ext1MediaBytes > 64 * 1024L -> {
+                val targetName = if (isMediaUsb) (mediaDiskLabel ?: defaultUsbOtgTitle) else (mediaDiskLabel ?: defaultMicroSdTitle)
                 Triple(
                     safeBreakdown.ext1MediaBytes,
-                    "Berkas media & unduhan • ${FormatUtils.formatExactBytes(safeBreakdown.ext2MediaBytes)} di $targetName",
+                    context.getString(R.string.category_item_on_storage, mediaDefaultDesc, FormatUtils.formatExactBytes(safeBreakdown.ext2MediaBytes), targetName),
                     false
                 )
             }
-            safeBreakdown.ext2MediaBytes > 0L && safeBreakdown.ext1MediaBytes <= 4096L -> {
-                Triple(safeBreakdown.ext2MediaBytes, "Berkas media & unduhan", true)
+            safeBreakdown.ext2MediaBytes > 16 * 1024L && existingMediaPoint?.enabled == true && safeBreakdown.ext1MediaBytes <= 16 * 1024L -> {
+                Triple(safeBreakdown.ext2MediaBytes, mediaDefaultDesc, true)
             }
             else -> {
-                Triple(safeBreakdown.ext1MediaBytes, "Berkas media & unduhan", false)
+                Triple(safeBreakdown.ext1MediaBytes, mediaDefaultDesc, false)
             }
         }
 
@@ -1261,7 +1417,7 @@ private fun StorageTabContent(
             val mediaSd = existingMediaPoint?.sourcePath ?: resolveSdPath(sdBase, "MountX/Android/media/$pkg")
             UnifiedCategoryItem(
                 id = "media",
-                title = "Media & Unduhan",
+                title = context.getString(R.string.category_item_media_title),
                 subtitle = mediaSubtitle,
                 bytes = mediaBytes,
                 icon = Icons.Default.PermMedia,
@@ -1296,7 +1452,7 @@ private fun StorageTabContent(
             val (isCustomUsb, customDiskLabel) = getDiskDetails(pt.sourcePath, pt.diskUuid)
             UnifiedCategoryItem(
                 id = pt.id,
-                title = pt.label ?: "Kustom (${pt.targetPath.substringAfterLast('/').ifEmpty { pt.targetPath }})",
+                title = pt.label ?: context.getString(R.string.category_item_custom_title, pt.targetPath.substringAfterLast('/').ifEmpty { pt.targetPath }),
                 subtitle = pt.targetPath,
                 bytes = resolvedCustomBytes,
                 icon = Icons.Default.Folder,
@@ -1322,7 +1478,7 @@ private fun StorageTabContent(
         listOfNotNull(
             UnifiedCategoryItem(
                 id = "apk",
-                title = "APK",
+                title = context.getString(R.string.category_item_apk_title),
                 subtitle = apkSubtitle,
                 bytes = apkBytes,
                 icon = Icons.Default.Android,
@@ -1339,11 +1495,13 @@ private fun StorageTabContent(
                 isCategoryMounted = isApkCatMounted,
                 userId = resolveUserIdFromPath(apkInternalDir),
                 isUsbOtg = isApkUsb,
-                storageTitle = apkDiskLabel
+                storageTitle = apkDiskLabel,
+                isVirtualContainer = existingApkPoint?.isEffectivelyVirtualContainer() ?: false,
+                migrationMethod = existingApkPoint?.migrationMethod ?: InternalMigrationMethod.AUTO
             ),
             UnifiedCategoryItem(
                 id = "lib",
-                title = "Lib",
+                title = context.getString(R.string.category_item_lib_title),
                 subtitle = libSubtitle,
                 bytes = libBytes,
                 icon = Icons.Default.Build,
@@ -1360,11 +1518,13 @@ private fun StorageTabContent(
                 isCategoryMounted = isLibCatMounted,
                 userId = resolveUserIdFromPath(libSrc),
                 isUsbOtg = isLibUsb,
-                storageTitle = libDiskLabel
+                storageTitle = libDiskLabel,
+                isVirtualContainer = existingLibPoint?.isEffectivelyVirtualContainer() ?: false,
+                migrationMethod = existingLibPoint?.migrationMethod ?: InternalMigrationMethod.AUTO
             ),
             UnifiedCategoryItem(
                 id = "private",
-                title = "Data Privat",
+                title = context.getString(R.string.category_item_private_title),
                 subtitle = privateSubtitle,
                 bytes = privateBytes,
                 icon = Icons.Default.Lock,
@@ -1381,11 +1541,13 @@ private fun StorageTabContent(
                 isCategoryMounted = isPrivateCatMounted,
                 userId = 0,
                 isUsbOtg = isPrivateUsb,
-                storageTitle = privateDiskLabel
+                storageTitle = privateDiskLabel,
+                isVirtualContainer = existingPrivatePoint?.isEffectivelyVirtualContainer() ?: false,
+                migrationMethod = existingPrivatePoint?.migrationMethod ?: InternalMigrationMethod.AUTO
             ),
             UnifiedCategoryItem(
                 id = "cache",
-                title = "Cache",
+                title = context.getString(R.string.category_item_cache_title),
                 subtitle = cacheSubtitle,
                 bytes = cacheBytes,
                 icon = Icons.Default.Cached,
@@ -1402,11 +1564,13 @@ private fun StorageTabContent(
                 isCategoryMounted = isCacheCatMounted,
                 userId = 0,
                 isUsbOtg = isCacheUsb,
-                storageTitle = cacheDiskLabel
+                storageTitle = cacheDiskLabel,
+                isVirtualContainer = existingCachePoint?.isEffectivelyVirtualContainer() ?: false,
+                migrationMethod = existingCachePoint?.migrationMethod ?: InternalMigrationMethod.AUTO
             ),
             UnifiedCategoryItem(
                 id = "data",
-                title = "Data Aplikasi",
+                title = context.getString(R.string.category_item_data_title),
                 subtitle = dataSubtitle,
                 bytes = dataBytes,
                 icon = Icons.Default.Folder,
@@ -1429,7 +1593,7 @@ private fun StorageTabContent(
             ),
             UnifiedCategoryItem(
                 id = "obb",
-                title = "OBB",
+                title = context.getString(R.string.category_item_obb_title),
                 subtitle = obbSubtitle,
                 bytes = obbBytes,
                 icon = Icons.Default.SdStorage,
@@ -1455,6 +1619,86 @@ private fun StorageTabContent(
     }
 
     val chartBreakdown = safeBreakdown
+    val hasUsbCategory = categories.any { it.isMicroSd && it.isUsbOtg }
+    val extIcon = if (hasUsbCategory) Icons.Default.Usb else Icons.Default.SdCard
+    val extColor = if (hasUsbCategory) Color(0xFF00ACC1) else Color(0xFF3BA71A)
+
+    // Complete external storage hardware title (e.g. "Samsung MicroSD YD4QD" or "SanDisk Ultra USB 3.0")
+    val resolvedExtFullTitle = remember(categories, availableDisks, defaultMicroSdTitle, hasUsbCategory) {
+        val mountedCategoryTitle = categories.firstOrNull { it.isMicroSd && !it.storageTitle.isNullOrBlank() }?.storageTitle
+        if (!mountedCategoryTitle.isNullOrBlank()) {
+            return@remember mountedCategoryTitle
+        }
+        val anyCategoryTitle = categories.firstOrNull { !it.storageTitle.isNullOrBlank() }?.storageTitle
+        if (!anyCategoryTitle.isNullOrBlank()) {
+            return@remember anyCategoryTitle
+        }
+        val primaryDisk = availableDisks.firstOrNull { it.diskType != DiskType.USB_OTG }
+            ?: availableDisks.firstOrNull()
+        if (primaryDisk != null && primaryDisk.hardwareTitle.isNotBlank()) {
+            return@remember primaryDisk.hardwareTitle
+        }
+        if (defaultMicroSdTitle.isNotBlank()) defaultMicroSdTitle else if (hasUsbCategory) "USB OTG" else "MicroSD"
+    }
+
+    // Smart compact storage label for circular chart center (e.g. "Samsung SD", "SanDisk USB", "MicroSD")
+    val resolvedExtShortTitle = remember(resolvedExtFullTitle, hasUsbCategory) {
+        val clean = resolvedExtFullTitle.trim()
+        when {
+            clean.isBlank() -> if (hasUsbCategory) "USB" else "MicroSD"
+            clean.length <= 10 -> clean
+            clean.contains("MicroSD", ignoreCase = true) -> {
+                val idx = clean.indexOf("MicroSD", ignoreCase = true)
+                val brand = if (idx > 0) clean.substring(0, idx).trim() else ""
+                if (brand.isNotBlank() && brand.length <= 8) "$brand SD" else "MicroSD"
+            }
+            clean.contains("SD", ignoreCase = true) -> {
+                val idx = clean.indexOf("SD", ignoreCase = true)
+                val brand = if (idx > 0) clean.substring(0, idx).trim() else ""
+                if (brand.isNotBlank() && brand.length <= 8) "$brand SD" else "SD Card"
+            }
+            hasUsbCategory || clean.contains("USB", ignoreCase = true) -> {
+                val brand = clean.split(" ").firstOrNull()?.trim() ?: "USB"
+                if (brand.isNotBlank() && brand.length <= 8) "$brand USB" else "USB"
+            }
+            else -> clean.split(" ").firstOrNull()?.take(10) ?: clean.take(10)
+        }
+    }
+
+    var selectedSubPage by remember { mutableIntStateOf(0) }
+
+    // Slices for Media Mode (Internal Phone vs External MicroSD/USB)
+    val mediaSlices = remember(chartBreakdown, resolvedExtFullTitle, extColor) {
+        listOfNotNull(
+            if (chartBreakdown.phoneInternalBytes > 0) {
+                ChartSlice("Phone", context.getString(R.string.game_detail_legend_phone), chartBreakdown.phoneInternalBytes, Color(0xFFDF4006))
+            } else null,
+            if (chartBreakdown.microSdBytes > 0) {
+                ChartSlice("External", resolvedExtFullTitle, chartBreakdown.microSdBytes, extColor)
+            } else null
+        )
+    }
+
+    // Slices for Component Breakdown Mode (Apk, Lib, Private, Cache, Data, Obb, Media, Custom)
+    val componentSlices = remember(categories) {
+        categories.mapNotNull { item ->
+            val color = when (item.id) {
+                "apk" -> Color(0xFFE91E63)
+                "lib" -> Color(0xFFFB8C00)
+                "private" -> Color(0xFF00ACC1)
+                "cache" -> Color(0xFFE57373)
+                "data" -> Color(0xFF3149FF)
+                "obb" -> Color(0xFF5C6BC0)
+                "media" -> Color(0xFF8E24AA)
+                else -> Color(0xFF00BFA5)
+            }
+            if (item.bytes > 0L) {
+                ChartSlice(item.id, item.title, item.bytes, color)
+            } else null
+        }
+    }
+
+    val activeChartSlices = if (selectedSubPage == 0) mediaSlices else componentSlices
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -1464,7 +1708,122 @@ private fun StorageTabContent(
                 .padding(horizontal = 14.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-        // ── CONCENTRIC DONUT CHART & 3-TIER LEGEND CARD ──
+        // ── MOUNT & SYSTEM HEALTH TELEMETRY BANNER ──
+        val health = healthTelemetry
+        val isAnomaly = health?.isHealthy == false
+        val isMountedHealth = game.mountStatus == MountStatus.MOUNTED || safeBreakdown.isExt1Mounted
+
+        if (isMountedHealth || isAnomaly) {
+            val bannerContainerColor = when {
+                isAnomaly -> adaptiveCrimsonContainer()
+                else -> adaptiveEmeraldContainer()
+            }
+            val bannerBorderColor = when {
+                isAnomaly -> adaptiveCrimson().copy(alpha = 0.5f)
+                else -> adaptiveEmerald().copy(alpha = 0.45f)
+            }
+            val bannerIconTint = when {
+                isAnomaly -> adaptiveCrimson()
+                else -> adaptiveEmerald()
+            }
+            val bannerIcon = when {
+                isAnomaly -> Icons.Default.Warning
+                else -> Icons.Default.CheckCircle
+            }
+
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = bannerContainerColor),
+                border = BorderStroke(1.dp, bannerBorderColor),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(bannerIconTint.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = bannerIcon,
+                            contentDescription = null,
+                            tint = bannerIconTint,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.app_detail_health_title),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = bannerIconTint.copy(alpha = 0.18f),
+                                border = BorderStroke(0.5.dp, bannerIconTint.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = if (isAnomaly) stringResource(R.string.status_anomaly).uppercase() else stringResource(R.string.disk_health_healthy).uppercase(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.4.sp
+                                    ),
+                                    color = bannerIconTint,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = when {
+                                isAnomaly -> health?.statusSummary ?: stringResource(R.string.status_error)
+                                else -> health?.statusSummary ?: stringResource(R.string.app_detail_health_healthy)
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        if (health?.recentExitReport != null && health.recentExitReport.isAbnormal) {
+                            val exit = health.recentExitReport
+                            Text(
+                                text = "${exit.reasonName} (${exit.subreasonName}) • ${exit.timestamp}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = adaptiveCrimson(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── CONCENTRIC DONUT CHART & 2-SUBPAGE LEGEND CARD ──
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1485,115 +1844,348 @@ private fun StorageTabContent(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 ConcentricStorageChart(
                     breakdown = chartBreakdown,
-                    modifier = Modifier.size(152.dp)
+                    slices = activeChartSlices,
+                    isUsb = hasUsbCategory,
+                    externalTitle = resolvedExtShortTitle,
+                    centerPrimaryText = if (selectedSubPage == 1 && chartBreakdown.totalBytes > 0) FormatUtils.formatLegendBytes(chartBreakdown.totalBytes) else null,
+                    centerSubText = if (selectedSubPage == 1 && chartBreakdown.totalBytes > 0) {
+                        stringResource(R.string.game_detail_legend_total)
+                    } else if (chartBreakdown.externalPercent >= 100) {
+                        resolvedExtShortTitle
+                    } else null,
+                    modifier = Modifier
+                        .size(126.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            selectedSubPage = if (selectedSubPage == 0) 1 else 0
+                        }
                 )
 
-                // Storage Distribution Legend (Phone Memory, MicroSD, Total)
+                // Right Column: Segmented Switcher & Sub-Page Content
                 Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(126.dp)
+                        .pointerInput(Unit) {
+                            detectHorizontalDragGestures { _, dragAmount ->
+                                if (dragAmount < -25f && selectedSubPage == 0) {
+                                    selectedSubPage = 1
+                                } else if (dragAmount > 25f && selectedSubPage == 1) {
+                                    selectedSubPage = 0
+                                }
+                            }
+                        },
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // 1. Phone Memory (Internal)
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Smartphone,
-                                contentDescription = null,
-                                tint = Color(0xFFDF4006),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.game_detail_legend_phone),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = FormatUtils.formatLegendBytes(chartBreakdown.phoneInternalBytes),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = Color(0xFFDF4006),
-                            modifier = Modifier.padding(start = 18.dp)
-                        )
-                    }
-
-                    // 2. MicroSD Card / External Storage
-                    val hasUsbCategory = categories.any { it.isMicroSd && it.isUsbOtg }
-                    val extIcon = if (hasUsbCategory) Icons.Default.Usb else Icons.Default.SdCard
-                    val extColor = if (hasUsbCategory) Color(0xFF00ACC1) else Color(0xFF3BA71A)
-                    val extLabel = if (hasUsbCategory) stringResource(R.string.game_detail_legend_usb) else stringResource(R.string.game_detail_legend_microsd)
-
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = extIcon,
-                                contentDescription = null,
-                                tint = extColor,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = extLabel,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = FormatUtils.formatLegendBytes(chartBreakdown.microSdBytes),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = extColor,
-                            modifier = Modifier.padding(start = 18.dp)
-                        )
-                    }
-
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                        modifier = Modifier
-                            .fillMaxWidth(0.9f)
-                            .padding(vertical = 1.dp)
-                    )
-
-                    // 3. Grand Total (Total)
+                    // 1. Elegant Segmented Capsule Switcher: [ Media | Details ]
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(28.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .border(
+                                width = 0.5.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = stringResource(R.string.game_detail_legend_total),
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = FormatUtils.formatLegendBytes(chartBreakdown.totalBytes),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        // Tab 0: Media
+                        val isMediaSelected = selectedSubPage == 0
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(
+                                    color = if (isMediaSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    selectedSubPage = 0
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.game_detail_subpage_media_title),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = if (isMediaSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isMediaSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+
+                        // Tab 1: Details
+                        val isDetailsSelected = selectedSubPage == 1
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(
+                                    color = if (isDetailsSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    selectedSubPage = 1
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.game_detail_subpage_components_title),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    fontWeight = if (isDetailsSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isDetailsSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    // 2. Animated Content Area (bounded height: 92.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(92.dp)
+                    ) {
+                        AnimatedContent(
+                            targetState = selectedSubPage,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150))
+                            },
+                            label = "ChartLegendSubPageTransition"
+                        ) { targetPage ->
+                            when (targetPage) {
+                                0 -> {
+                                    // ── STORAGE MEDIA: Phone, MicroSD, Total ──
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.SpaceEvenly
+                                    ) {
+                                        // 1. Phone Memory
+                                        val internalPct = if (chartBreakdown.totalBytes > 0) {
+                                            ((chartBreakdown.phoneInternalBytes.toDouble() / chartBreakdown.totalBytes.toDouble()) * 100).roundToInt()
+                                        } else 0
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Smartphone,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFDF4006),
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = stringResource(R.string.game_detail_legend_phone),
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                text = if (chartBreakdown.totalBytes > 0) "${FormatUtils.formatLegendBytes(chartBreakdown.phoneInternalBytes)} ($internalPct%)" else FormatUtils.formatLegendBytes(0L),
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = Color(0xFFDF4006),
+                                                maxLines = 1
+                                            )
+                                        }
+
+                                        // 2. MicroSD Card / USB
+                                        val extPct = if (chartBreakdown.totalBytes > 0) {
+                                            ((chartBreakdown.microSdBytes.toDouble() / chartBreakdown.totalBytes.toDouble()) * 100).roundToInt()
+                                        } else 0
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            ) {
+                                                Icon(
+                                                    imageVector = extIcon,
+                                                    contentDescription = null,
+                                                    tint = extColor,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = resolvedExtFullTitle,
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                text = if (chartBreakdown.totalBytes > 0) "${FormatUtils.formatLegendBytes(chartBreakdown.microSdBytes)} ($extPct%)" else FormatUtils.formatLegendBytes(0L),
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = extColor,
+                                                maxLines = 1
+                                            )
+                                        }
+
+                                        HorizontalDivider(
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                            thickness = 0.5.dp
+                                        )
+
+                                        // 3. Grand Total
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.game_detail_legend_total),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = FormatUtils.formatLegendBytes(chartBreakdown.totalBytes),
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                ),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                                1 -> {
+                                    // ── DETAILS / COMPONENTS BREAKDOWN ──
+                                    val activeCategories = remember(categories) {
+                                        categories.filter { it.bytes > 0L }
+                                    }
+                                    val totalCompBytes = remember(categories, chartBreakdown) {
+                                        val sum = categories.sumOf { it.bytes }
+                                        if (sum > 0L) sum else chartBreakdown.totalBytes
+                                    }
+
+                                    if (activeCategories.isEmpty()) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.game_detail_no_components),
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = 10.5.sp
+                                                ),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    } else {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .verticalScroll(rememberScrollState()),
+                                            verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)
+                                        ) {
+                                            activeCategories.forEach { item ->
+                                                val fraction = if (totalCompBytes > 0) {
+                                                    item.bytes.toDouble() / totalCompBytes.toDouble()
+                                                } else 0.0
+                                                val pct = (fraction * 100).roundToInt()
+                                                val pctStr = if (pct > 0) "$pct%" else "<1%"
+
+                                                val color = when (item.id) {
+                                                    "apk" -> Color(0xFFE91E63)
+                                                    "lib" -> Color(0xFFFB8C00)
+                                                    "private" -> Color(0xFF00ACC1)
+                                                    "cache" -> Color(0xFFE57373)
+                                                    "data" -> Color(0xFF3149FF)
+                                                    "obb" -> Color(0xFF5C6BC0)
+                                                    "media" -> Color(0xFF8E24AA)
+                                                    else -> Color(0xFF00BFA5)
+                                                }
+
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(6.dp)
+                                                                .background(color, CircleShape)
+                                                        )
+                                                        Text(
+                                                            text = item.title,
+                                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Medium
+                                                            ),
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = "${FormatUtils.formatLegendBytes(item.bytes)} ($pctStr)",
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        ),
+                                                        color = color,
+                                                        maxLines = 1,
+                                                        modifier = Modifier.padding(start = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1626,6 +2218,72 @@ private fun StorageTabContent(
                     ),
                     color = MaterialTheme.colorScheme.primary
                 )
+            }
+        }
+
+        if (isSelectionMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // ⚡ Fast & Safe (Data + OBB + Cache)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            val availableOptimal = categories.map { it.id }.filter { it == "data" || it == "obb" || it == "cache" }.toSet()
+                            selectedCategoryIds = if (availableOptimal.isNotEmpty()) availableOptimal else setOf("data", "obb")
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.category_preset_optimal),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // 📦 Select All
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            selectedCategoryIds = categories.map { it.id }.toSet()
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.category_preset_all),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    }
+                }
             }
         }
 
@@ -1713,10 +2371,13 @@ private fun StorageTabContent(
                                 MountPointCategory.OBB_STORAGE -> safeBreakdown.ext2ObbBytes
                                 MountPointCategory.EXTERNAL_DATA -> safeBreakdown.ext2DataBytes
                                 MountPointCategory.MEDIA_DOWNLOADS -> safeBreakdown.ext2MediaBytes
+                                MountPointCategory.APP_PACKAGE -> if (pt.targetPath.contains("/lib") || pt.id.startsWith("lib")) safeBreakdown.ext2LibBytes else safeBreakdown.ext2ApkBytes
+                                MountPointCategory.PRIVATE_INTERNAL -> safeBreakdown.ext2PrivateBytes
+                                MountPointCategory.CACHE_SHADERS -> safeBreakdown.ext2CacheBytes
                                 else -> pt.sizeBytes
                             }
                         }
-                        if (bytes > 0L) bytes else safeBreakdown.ext2Bytes
+                        maxOf(bytes, safeBreakdown.ext2Bytes)
                     }
                     val canRestore = isMounted && (restoreBytes > 0L)
                     OutlinedButton(
@@ -1726,7 +2387,7 @@ private fun StorageTabContent(
                                 direction = MoveDirection.TO_INTERNAL,
                                 totalBytes = restoreBytes,
                                 sourceName = "MicroSD",
-                                destName = "Memori Internal",
+                                destName = context.getString(R.string.manage_internal_memory_label),
                                 destFreeBytes = internalFreeBytes,
                                 destExistingBytes = internalExistingBytes,
                                 targetDisk = null,
@@ -1865,9 +2526,9 @@ private fun StorageTabContent(
         }
 
         if (isSelectionMode) {
-            Spacer(modifier = Modifier.height(140.dp).navigationBarsPadding())
+            Spacer(modifier = Modifier.height(180.dp).navigationBarsPadding())
         } else {
-            Spacer(modifier = Modifier.height(20.dp).navigationBarsPadding())
+            Spacer(modifier = Modifier.height(24.dp).navigationBarsPadding())
         }
     }
 
@@ -2038,10 +2699,10 @@ private fun StorageTabContent(
             } ?: sdBase,
             modalMode = targetModalMode,
             onDismiss = { showTargetModal = false },
-            onConfirmMove = { dir, targetDisk, targetPartition ->
+            onConfirmMove = { dir, targetDisk, targetPartition, migrationMethods ->
                 showTargetModal = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo)
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo, availableDisks, targetPartition, dir, migrationMethods)
                 val isToInternal = dir == MoveDirection.TO_INTERNAL
                 val totalBytes = targetPoints.sumOf { pt ->
                     val cat = pt.resolveCategory()
@@ -2083,8 +2744,8 @@ private fun StorageTabContent(
                 }
 
                 val extLocationName = targetPartition?.shortName ?: targetDisk?.displayName ?: "MicroSD"
-                val sourceName = if (isToInternal) extLocationName else "Memori Internal"
-                val destName = if (isToInternal) "Memori Internal" else extLocationName
+                val sourceName = if (isToInternal) extLocationName else context.getString(R.string.manage_internal_memory_label)
+                val destName = if (isToInternal) context.getString(R.string.manage_internal_memory_label) else extLocationName
 
                 migrationConfirmData = MigrationConfirmData(
                     direction = dir,
@@ -2098,11 +2759,11 @@ private fun StorageTabContent(
                     pointsToMigrate = targetPoints
                 )
             },
-            onConfirmDirectMount = { targetDisk, targetPartition ->
+            onConfirmDirectMount = { targetDisk, targetPartition, migrationMethods ->
                 showTargetModal = false
                 isSelectionMode = false
                 val effectiveSdBase = targetPartition?.mountPoint ?: targetDisk?.mountPath ?: sdBase
-                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo)
+                val targetPoints = buildTargetMountPoints(selectedCategoryIds, mountPoints, game, effectiveSdBase, packageInfo, availableDisks, targetPartition, MoveDirection.TO_SD, migrationMethods)
 
                 val internalBytes = targetPoints.sumOf { pt ->
                     when (pt.resolveCategory()) {
@@ -2221,7 +2882,7 @@ private fun StorageTabContent(
                         categoryToDelete = null
                         inspectingCategory = null
                     } else {
-                        val msg = context.getString(R.string.category_inspector_delete_failed, errMsg ?: "Unknown error")
+                        val msg = context.getString(R.string.category_inspector_delete_failed, errMsg ?: context.getString(R.string.common_unknown_error))
                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                     }
                 }
@@ -2616,7 +3277,7 @@ private fun AddCustomDirectoryDialog(
                         IconButton(onClick = { showRootPickerForInternal = true }) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
-                                contentDescription = "Pilih Folder",
+                                contentDescription = stringResource(R.string.file_picker_select_folder),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -2639,7 +3300,7 @@ private fun AddCustomDirectoryDialog(
                         IconButton(onClick = { showRootPickerForSd = true }) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
-                                contentDescription = "Pilih Folder",
+                                contentDescription = stringResource(R.string.file_picker_select_folder),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -2786,22 +3447,24 @@ private fun CategoryCardItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (isSelectionMode) {
                 Checkbox(
                     checked = isChecked,
                     onCheckedChange = { onToggleCheck() },
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier
+                        .size(24.dp)
+                        .padding(top = 2.dp)
                 )
             }
 
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .background(
                         color = item.iconTint.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(8.dp)
@@ -2811,47 +3474,76 @@ private fun CategoryCardItem(
                     imageVector = item.icon,
                     contentDescription = null,
                     tint = item.iconTint,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(1.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontSize = 13.5.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                // Row 1: Title + Status Dot on Left, Size on Right
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (item.isMicroSd) {
+                            val isCatActive = item.isCategoryMounted
+                            val dotColor = if (isCatActive) adaptiveEmerald() else adaptiveCrimson()
+                            Box(
+                                modifier = Modifier
+                                    .size(6.5.dp)
+                                    .background(dotColor, CircleShape)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = FormatUtils.formatExactBytes(item.bytes),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1
+                    )
+                }
+
+                // Row 2: Subtitle (Full width of column, never vertically crushed)
                 Text(
                     text = item.subtitle,
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 10.5.sp
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
                     ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = FormatUtils.formatExactBytes(item.bytes),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
 
+                // Row 3: Badges (Full width of column, spacedBy(5.dp))
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     if (isSelectionMode && item.isRisk) {
                         Surface(
@@ -2862,39 +3554,70 @@ private fun CategoryCardItem(
                             Text(
                                 text = stringResource(R.string.manage_badge_performance_risk),
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 9.sp,
+                                    fontSize = 9.5.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
                                 color = Color(0xFFE53935),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }
                     }
 
+                    val isMicroSd = item.isMicroSd
+                    val isUsb = item.isUsbOtg
+                    val badgeBg = if (isMicroSd) {
+                        if (isUsb) Color(0x1A00ACC1) else Color(0x1A3BA71A)
+                    } else MaterialTheme.colorScheme.surfaceVariant
+                    val badgeBorder = if (isMicroSd) {
+                        if (isUsb) Color(0xFF00ACC1).copy(alpha = 0.5f) else Color(0xFF3BA71A).copy(alpha = 0.5f)
+                    } else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    val badgeTint = if (isMicroSd) {
+                        if (isUsb) Color(0xFF00ACC1) else Color(0xFF3BA71A)
+                    } else MaterialTheme.colorScheme.onSurfaceVariant
+
+                    val badgeLabel = when {
+                        !item.isMicroSd -> stringResource(R.string.common_internal)
+                        !item.storageTitle.isNullOrBlank() -> item.storageTitle
+                        item.isUsbOtg -> stringResource(R.string.manage_location_badge_usb_otg)
+                        else -> stringResource(R.string.common_external)
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = if (item.isMicroSd) (if (item.isUsbOtg) Color(0x1A00ACC1) else Color(0x1A3BA71A)) else MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(
-                            0.5.dp,
-                            if (item.isMicroSd) (if (item.isUsbOtg) Color(0xFF00ACC1).copy(alpha = 0.5f) else Color(0xFF3BA71A).copy(alpha = 0.5f))
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
+                        color = badgeBg,
+                        border = BorderStroke(0.5.dp, badgeBorder)
                     ) {
-                        val badgeText = when {
-                            !item.isMicroSd -> "[Internal]"
-                            item.isUsbOtg -> "[USB OTG]"
-                            !item.storageTitle.isNullOrBlank() -> "[${item.storageTitle}]"
-                            else -> "[MicroSD]"
-                        }
                         Text(
-                            text = badgeText,
+                            text = badgeLabel,
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
-                            color = if (item.isMicroSd) (if (item.isUsbOtg) Color(0xFF00ACC1) else Color(0xFF3BA71A)) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            color = badgeTint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                         )
+                    }
+
+                    if (item.isMicroSd && (item.id in listOf("private", "cache", "apk", "lib") || item.mountCategory == MountPointCategory.PRIVATE_INTERNAL || item.mountCategory == MountPointCategory.CACHE_SHADERS || item.mountCategory == MountPointCategory.APP_PACKAGE)) {
+                        val isImg = item.isVirtualContainer || item.migrationMethod == InternalMigrationMethod.CONTAINER_IMG
+                        val methodBadge = if (isImg) stringResource(R.string.manage_method_badge_container_short) else stringResource(R.string.manage_method_badge_native_short)
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isImg) Color(0x1A7E57C2) else Color(0x1A00ACC1),
+                            border = BorderStroke(0.5.dp, if (isImg) Color(0xFF7E57C2).copy(alpha = 0.5f) else Color(0xFF00ACC1).copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = methodBadge,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = if (isImg) Color(0xFF7E57C2) else Color(0xFF00ACC1),
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -2904,7 +3627,9 @@ private fun CategoryCardItem(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier
+                        .size(16.dp)
+                        .align(Alignment.CenterVertically)
                 )
             }
         }
@@ -3033,6 +3758,26 @@ private fun CategoryInspectorBottomSheet(
                             color = badgeColor,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
+                    }
+
+                    if (item.isMicroSd && (item.id in listOf("private", "cache", "apk", "lib") || item.mountCategory == MountPointCategory.PRIVATE_INTERNAL || item.mountCategory == MountPointCategory.CACHE_SHADERS || item.mountCategory == MountPointCategory.APP_PACKAGE)) {
+                        val isImg = item.isVirtualContainer || item.migrationMethod == InternalMigrationMethod.CONTAINER_IMG
+                        val methodBadge = if (isImg) stringResource(R.string.manage_method_badge_container_short) else stringResource(R.string.manage_method_badge_native_short)
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isImg) Color(0x1A7E57C2) else Color(0x1A00ACC1),
+                            border = BorderStroke(0.5.dp, if (isImg) Color(0xFF7E57C2).copy(alpha = 0.5f) else Color(0xFF00ACC1).copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = methodBadge,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = if (isImg) Color(0xFF7E57C2) else Color(0xFF00ACC1),
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
                     }
 
                     if (item.userId > 0) {
@@ -3778,8 +4523,17 @@ private fun SmartStoragePartitionBottomSheet(
     currentSdBase: String = "/data/sdext2",
     modalMode: TargetModalMode = TargetModalMode.TRANSFER,
     onDismiss: () -> Unit,
-    onConfirmMove: (dir: MoveDirection, targetDisk: SdCardDiskInfo?, targetPartition: PartitionInfo?) -> Unit,
-    onConfirmDirectMount: ((targetDisk: SdCardDiskInfo?, targetPartition: PartitionInfo?) -> Unit)? = null
+    onConfirmMove: (
+        dir: MoveDirection,
+        targetDisk: SdCardDiskInfo?,
+        targetPartition: PartitionInfo?,
+        migrationMethods: Map<String, InternalMigrationMethod>
+    ) -> Unit,
+    onConfirmDirectMount: ((
+        targetDisk: SdCardDiskInfo?,
+        targetPartition: PartitionInfo?,
+        migrationMethods: Map<String, InternalMigrationMethod>
+    ) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var modalStep by remember { mutableStateOf(1) } // 1: Disk, 2: Partition, 3: Confirmation
@@ -3804,6 +4558,24 @@ private fun SmartStoragePartitionBottomSheet(
         selectedItems.any { it.isRisk }
     }
 
+    val internalSelectedItems = remember(selectedItems) {
+        selectedItems.filter {
+            it.id in listOf("private", "private_internal", "cache", "apk", "lib") ||
+            it.mountCategory == MountPointCategory.PRIVATE_INTERNAL ||
+            it.mountCategory == MountPointCategory.CACHE_SHADERS ||
+            it.mountCategory == MountPointCategory.APP_PACKAGE
+        }
+    }
+    val hasInternalCategories = internalSelectedItems.isNotEmpty()
+
+    var defaultMigrationMethod by remember { mutableStateOf(InternalMigrationMethod.AUTO) }
+    var isCustomMethodMode by remember { mutableStateOf(false) }
+    var categoryMethods by remember(selectedCategoryIds) {
+        mutableStateOf(
+            selectedCategoryIds.associateWith { InternalMigrationMethod.AUTO }.toMutableMap()
+        )
+    }
+
     var isTargetInternal by remember(allSelectedOnMicroSd, modalMode) {
         mutableStateOf(if (modalMode == TargetModalMode.DIRECT_MOUNT) false else allSelectedOnMicroSd)
     }
@@ -3822,6 +4594,26 @@ private fun SmartStoragePartitionBottomSheet(
         mutableStateOf(validPart)
     }
 
+    val targetFsType = (selectedPartition?.fsType
+        ?: selectedDisk?.partitions?.firstOrNull { part ->
+            part.mountPoint != null && (selectedPartition?.mountPoint ?: "").startsWith(part.mountPoint)
+        }?.fsType ?: "").lowercase()
+    val isTargetPosix = targetFsType in listOf("ext4", "f2fs", "ext2", "ext3", "btrfs", "xfs") ||
+        (selectedPartition == null && isPosixStorageTarget(currentSdBase, availableDisks))
+
+    LaunchedEffect(isTargetPosix) {
+        if (!isTargetPosix && defaultMigrationMethod == InternalMigrationMethod.NATIVE_FOLDER) {
+            defaultMigrationMethod = InternalMigrationMethod.AUTO
+        }
+        if (!isTargetPosix) {
+            categoryMethods.forEach { (catId, method) ->
+                if (method == InternalMigrationMethod.NATIVE_FOLDER) {
+                    categoryMethods[catId] = InternalMigrationMethod.AUTO
+                }
+            }
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -3831,6 +4623,8 @@ private fun SmartStoragePartitionBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(horizontal = 18.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -3867,46 +4661,42 @@ private fun SmartStoragePartitionBottomSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 StepBadge(
                     stepNumber = 1,
                     label = stringResource(R.string.manage_step_pick_disk),
                     isActive = modalStep == 1,
-                    isDone = modalStep > 1,
-                    modifier = Modifier.weight(1f)
+                    isDone = modalStep > 1
                 )
 
                 HorizontalDivider(
-                    color = if (modalStep > 1) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    color = if (modalStep > 1) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                     modifier = Modifier
                         .weight(1f)
-                        .padding(bottom = 12.dp)
+                        .padding(horizontal = 6.dp)
                 )
 
                 StepBadge(
                     stepNumber = 2,
                     label = stringResource(R.string.manage_step_pick_partition),
                     isActive = modalStep == 2,
-                    isDone = modalStep > 2,
-                    modifier = Modifier.weight(1f)
+                    isDone = modalStep > 2
                 )
 
                 HorizontalDivider(
-                    color = if (modalStep > 2) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    color = if (modalStep > 2) CyberEmerald else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                     modifier = Modifier
                         .weight(1f)
-                        .padding(bottom = 12.dp)
+                        .padding(horizontal = 6.dp)
                 )
 
                 StepBadge(
                     stepNumber = 3,
                     label = stringResource(R.string.manage_step_confirm),
                     isActive = modalStep == 3,
-                    isDone = false,
-                    modifier = Modifier.weight(1f)
+                    isDone = false
                 )
             }
 
@@ -4268,7 +5058,7 @@ private fun SmartStoragePartitionBottomSheet(
                                             verticalArrangement = Arrangement.spacedBy(1.dp)
                                         ) {
                                             Text(
-                                                text = "Partisi ${partition.partitionNumber} (${partition.fsType.ifBlank { "EXT4" }})",
+                                                text = "${stringResource(R.string.storage_wizard_partition_n, partition.partitionNumber)} (${partition.fsType.ifBlank { "EXT4" }})",
                                                 style = MaterialTheme.typography.titleSmall.copy(
                                                     fontSize = 13.5.sp,
                                                     fontWeight = FontWeight.Bold
@@ -4326,7 +5116,7 @@ private fun SmartStoragePartitionBottomSheet(
                                         verticalArrangement = Arrangement.spacedBy(1.dp)
                                     ) {
                                         Text(
-                                            text = "Partisi 1 (EXT4)",
+                                            text = "${stringResource(R.string.storage_wizard_partition_n, 1)} (EXT4)",
                                             style = MaterialTheme.typography.titleSmall.copy(
                                                 fontSize = 13.5.sp,
                                                 fontWeight = FontWeight.Bold
@@ -4334,7 +5124,7 @@ private fun SmartStoragePartitionBottomSheet(
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Text(
-                                            text = selectedDisk?.hardwareTitle ?: "MicroSD Storage",
+                                            text = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd),
                                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -4387,62 +5177,397 @@ private fun SmartStoragePartitionBottomSheet(
 
                 3 -> {
                     // ── LANGKAH 3: KONFIRMASI ──
+                    val sourceTitle: String
+                    val sourceSubtitle: String?
+                    val sourceIsInternal: Boolean
+
+                    val destTitle: String
+                    val destSubtitle: String?
+                    val destIsInternal: Boolean
+
+                    if (modalMode == TargetModalMode.DIRECT_MOUNT) {
+                        sourceTitle = stringResource(R.string.manage_internal_memory_label)
+                        sourceSubtitle = null
+                        sourceIsInternal = true
+
+                        destTitle = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                        destSubtitle = selectedPartition?.let {
+                            "${stringResource(R.string.storage_wizard_partition_n, it.partitionNumber)} • ${it.fsType.ifBlank { "EXT4" }.uppercase()}"
+                        }
+                        destIsInternal = false
+                    } else if (isTargetInternal) {
+                        sourceTitle = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                        sourceSubtitle = selectedPartition?.let {
+                            "${stringResource(R.string.storage_wizard_partition_n, it.partitionNumber)} • ${it.fsType.ifBlank { "EXT4" }.uppercase()}"
+                        }
+                        sourceIsInternal = false
+
+                        destTitle = stringResource(R.string.manage_internal_memory_label)
+                        destSubtitle = null
+                        destIsInternal = true
+                    } else {
+                        sourceTitle = stringResource(R.string.manage_internal_memory_label)
+                        sourceSubtitle = null
+                        sourceIsInternal = true
+
+                        destTitle = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                        destSubtitle = selectedPartition?.let {
+                            "${stringResource(R.string.storage_wizard_partition_n, it.partitionNumber)} • ${it.fsType.ifBlank { "EXT4" }.uppercase()}"
+                        }
+                        destIsInternal = false
+                    }
+
+                    // Compact Migration Route Card
                     Card(
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                text = stringResource(R.string.manage_summary_title),
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Source Block
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (sourceIsInternal) Icons.Default.PhoneAndroid else Icons.Default.SdCard,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.manage_summary_from).uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.6.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = sourceTitle,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (sourceSubtitle != null) {
+                                        Text(
+                                            text = sourceSubtitle,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = CyberEmerald,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
 
-                            SummaryRow(
-                                label = stringResource(R.string.manage_summary_selected_data),
-                                value = "${selectedCategoryIds.size} kategori"
-                            )
-                            SummaryRow(
-                                label = stringResource(R.string.manage_summary_total_size),
-                                value = FormatUtils.formatExactBytes(totalSelectedBytes)
-                            )
-                            SummaryRow(
-                                label = stringResource(R.string.manage_summary_from),
-                                value = if (modalMode == TargetModalMode.DIRECT_MOUNT) {
-                                    stringResource(R.string.manage_internal_memory_label)
-                                } else if (isTargetInternal) {
-                                    val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
-                                    val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
-                                    "$diskName$partName"
-                                } else {
-                                    stringResource(R.string.manage_internal_memory_label)
+                                // Arrow & Payload
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(horizontal = 6.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                                    ) {
+                                        Text(
+                                            text = FormatUtils.formatExactBytes(totalSelectedBytes),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(15.dp)
+                                    )
                                 }
-                            )
-                            SummaryRow(
-                                label = stringResource(R.string.manage_summary_to),
-                                value = if (modalMode == TargetModalMode.DIRECT_MOUNT) {
-                                    val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
-                                    val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
-                                    "$diskName$partName"
-                                } else if (isTargetInternal) {
-                                    stringResource(R.string.manage_internal_memory_label)
-                                } else {
-                                    val diskName = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
-                                    val partName = selectedPartition?.let { " (Partisi ${it.partitionNumber} - ${it.fsType.ifBlank { "EXT4" }})" } ?: ""
-                                    "$diskName$partName"
+
+                                // Destination Block
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.manage_summary_to).uppercase(),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.6.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                        Icon(
+                                            imageVector = if (destIsInternal) Icons.Default.PhoneAndroid else Icons.Default.SdCard,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = destTitle,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        textAlign = TextAlign.End
+                                    )
+                                    if (destSubtitle != null) {
+                                        Text(
+                                            text = destSubtitle,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = CyberEmerald,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            textAlign = TextAlign.End
+                                        )
+                                    }
                                 }
-                            )
+                            }
+
+                            // Footer line with category count
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.manage_summary_selected_data),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "${selectedCategoryIds.size} ${stringResource(R.string.manage_summary_categories_suffix)}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    // ── STORAGE METHOD SELECTOR (FOR INTERNAL / SYSTEM CATEGORIES) ──
+                    if (!isTargetInternal && hasInternalCategories) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.manage_method_selector_title),
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(R.string.manage_method_selector_subtitle),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            if (!isTargetPosix) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0x1AFFA000),
+                                    border = BorderStroke(0.5.dp, Color(0xFFFFA000).copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFA000),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                R.string.manage_method_non_posix_guard_notice,
+                                                targetFsType.ifBlank { "exFAT/FAT32" }.uppercase()
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, lineHeight = 13.5.sp),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Single Grouped Container for Options
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    MethodOptionRow(
+                                        title = stringResource(R.string.manage_method_auto_title),
+                                        subtitle = stringResource(R.string.manage_method_auto_desc),
+                                        badge = if (isTargetPosix) stringResource(R.string.manage_method_auto_badge_native)
+                                                else stringResource(R.string.manage_method_auto_badge_container),
+                                        badgeColor = CyberEmerald,
+                                        isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.AUTO,
+                                        isEnabled = true,
+                                        onSelect = {
+                                            defaultMigrationMethod = InternalMigrationMethod.AUTO
+                                            isCustomMethodMode = false
+                                        }
+                                    )
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                    MethodOptionRow(
+                                        title = stringResource(R.string.manage_method_native_title),
+                                        subtitle = stringResource(R.string.manage_method_native_desc),
+                                        badge = stringResource(R.string.manage_method_native_badge),
+                                        badgeColor = if (isTargetPosix) Color(0xFF00ACC1) else Color.Gray,
+                                        isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.NATIVE_FOLDER,
+                                        isEnabled = isTargetPosix,
+                                        onSelect = {
+                                            if (isTargetPosix) {
+                                                defaultMigrationMethod = InternalMigrationMethod.NATIVE_FOLDER
+                                                isCustomMethodMode = false
+                                            }
+                                        }
+                                    )
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
+                                    MethodOptionRow(
+                                        title = stringResource(R.string.manage_method_container_title),
+                                        subtitle = stringResource(R.string.manage_method_container_desc),
+                                        badge = stringResource(R.string.manage_method_container_badge),
+                                        badgeColor = Color(0xFF7E57C2),
+                                        isSelected = !isCustomMethodMode && defaultMigrationMethod == InternalMigrationMethod.CONTAINER_IMG,
+                                        isEnabled = true,
+                                        onSelect = {
+                                            defaultMigrationMethod = InternalMigrationMethod.CONTAINER_IMG
+                                            isCustomMethodMode = false
+                                        }
+                                    )
+                                }
+                            }
+
+                            if (internalSelectedItems.size > 1) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isCustomMethodMode = !isCustomMethodMode }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.manage_method_customize_per_category),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Switch(
+                                        checked = isCustomMethodMode,
+                                        onCheckedChange = { isCustomMethodMode = it }
+                                    )
+                                }
+
+                                if (isCustomMethodMode) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        internalSelectedItems.forEach { catItem ->
+                                            val currentMethod = categoryMethods[catItem.id] ?: defaultMigrationMethod
+                                            PerCategoryMethodRow(
+                                                item = catItem,
+                                                currentMethod = currentMethod,
+                                                isPosix = isTargetPosix,
+                                                onMethodSelected = { newMethod ->
+                                                    categoryMethods = categoryMethods.toMutableMap().apply {
+                                                        put(catItem.id, newMethod)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (selectedItems.any { it.id in listOf("data", "obb", "media") }) {
+                                Text(
+                                    text = stringResource(R.string.manage_method_external_note),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 9.5.sp,
+                                        lineHeight = 13.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
+                            }
                         }
                     }
 
@@ -4511,9 +5636,18 @@ private fun SmartStoragePartitionBottomSheet(
                         if (modalMode == TargetModalMode.DIRECT_MOUNT) {
                             Button(
                                 onClick = {
+                                    val effectiveMethods: Map<String, InternalMigrationMethod> = if (isCustomMethodMode) {
+                                        categoryMethods
+                                    } else {
+                                        buildMap {
+                                            put("default", defaultMigrationMethod)
+                                            internalSelectedItems.forEach { put(it.id, defaultMigrationMethod) }
+                                        }
+                                    }
                                     onConfirmDirectMount?.invoke(
                                         selectedDisk,
-                                        selectedPartition
+                                        selectedPartition,
+                                        effectiveMethods
                                     )
                                 },
                                 shape = RoundedCornerShape(10.dp),
@@ -4536,10 +5670,19 @@ private fun SmartStoragePartitionBottomSheet(
                         } else {
                             Button(
                                 onClick = {
+                                    val effectiveMethods: Map<String, InternalMigrationMethod> = if (isCustomMethodMode) {
+                                        categoryMethods
+                                    } else {
+                                        buildMap {
+                                            put("default", defaultMigrationMethod)
+                                            internalSelectedItems.forEach { put(it.id, defaultMigrationMethod) }
+                                        }
+                                    }
                                     onConfirmMove(
                                         if (isTargetInternal) MoveDirection.TO_INTERNAL else MoveDirection.TO_SD,
                                         selectedDisk,
-                                        selectedPartition
+                                        selectedPartition,
+                                        effectiveMethods
                                     )
                                 },
                                 shape = RoundedCornerShape(10.dp),
@@ -4569,6 +5712,173 @@ private fun SmartStoragePartitionBottomSheet(
     }
 }
 
+@Composable
+private fun MethodOptionRow(
+    title: String,
+    subtitle: String,
+    badge: String,
+    badgeColor: Color,
+    isSelected: Boolean,
+    isEnabled: Boolean,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = isEnabled, onClick = onSelect)
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                else Color.Transparent
+            )
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = isSelected,
+            onClick = if (isEnabled) onSelect else null,
+            enabled = isEnabled,
+            modifier = Modifier.size(20.dp)
+        )
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                    ),
+                    color = if (isEnabled) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = badgeColor.copy(alpha = 0.12f),
+                    border = BorderStroke(0.5.dp, badgeColor.copy(alpha = 0.4f))
+                ) {
+                    Text(
+                        text = badge,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = if (isEnabled) badgeColor else Color.Gray,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp
+                ),
+                color = if (isEnabled) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun PerCategoryMethodRow(
+    item: UnifiedCategoryItem,
+    currentMethod: InternalMigrationMethod,
+    isPosix: Boolean,
+    onMethodSelected: (InternalMigrationMethod) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .border(
+                0.5.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                RoundedCornerShape(8.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(
+                imageVector = item.icon,
+                contentDescription = null,
+                tint = item.iconTint,
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            val methods = listOf<Pair<InternalMigrationMethod, String>>(
+                InternalMigrationMethod.AUTO to "Auto",
+                InternalMigrationMethod.NATIVE_FOLDER to "Folder",
+                InternalMigrationMethod.CONTAINER_IMG to ".img"
+            )
+            methods.forEach { (method, label) ->
+                val isSelected = currentMethod == method
+                val isEnabled = method != InternalMigrationMethod.NATIVE_FOLDER || isPosix
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else if (!isEnabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(
+                        0.5.dp,
+                        if (isSelected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    ),
+                    modifier = Modifier.clickable(enabled = isEnabled) { onMethodSelected(method) }
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        ),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                                else if (!isEnabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * Tab 1: App Info Tab (Identitas Paket, Versi, Lingkungan Sandbox & Jalur Direktori)
  */
@@ -4578,6 +5888,7 @@ private fun AppInfoTabContent(
     packageInfo: android.content.pm.PackageInfo?,
     onMount: (() -> Unit)? = null,
     onToggleMount: (() -> Unit)? = null,
+    onReconcilePermissions: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -4589,7 +5900,7 @@ private fun AppInfoTabContent(
         if (launchIntent != null) {
             context.startActivity(launchIntent)
         } else {
-            Toast.makeText(context, "Aplikasi tidak dapat dibuka langsung", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.app_detail_cannot_open_directly), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -4640,15 +5951,16 @@ private fun AppInfoTabContent(
     }
 
     val installerPackage = remember(packageInfo) {
+        val defaultInstaller = context.getString(R.string.app_detail_installer_system_sideload)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                context.packageManager.getInstallSourceInfo(game.packageName).installingPackageName ?: "Sistem / Sideload"
+                context.packageManager.getInstallSourceInfo(game.packageName).installingPackageName ?: defaultInstaller
             } else {
                 @Suppress("DEPRECATION")
-                context.packageManager.getInstallerPackageName(game.packageName) ?: "Sistem / Sideload"
+                context.packageManager.getInstallerPackageName(game.packageName) ?: defaultInstaller
             }
         } catch (_: Exception) {
-            "Sistem / Sideload"
+            defaultInstaller
         }
     }
 
@@ -4664,7 +5976,7 @@ private fun AppInfoTabContent(
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, value)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "$label disalin", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.common_copied_toast, label), Toast.LENGTH_SHORT).show()
     }
 
     if (showUnmountedLaunchDialog) {
@@ -4773,7 +6085,7 @@ private fun AppInfoTabContent(
                         }
                         context.startActivity(intent)
                     } catch (e: Exception) {
-                        Toast.makeText(context, "Gagal membuka setelan aplikasi", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.app_detail_cannot_open_settings), Toast.LENGTH_SHORT).show()
                     }
                 },
                 shape = RoundedCornerShape(12.dp),
@@ -4796,6 +6108,32 @@ private fun AppInfoTabContent(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+
+        // Reconcile Permissions Button (especially useful for modded APKs or UID changes)
+        OutlinedButton(
+            onClick = {
+                onReconcilePermissions?.invoke()
+            },
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Lock,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.btn_reconcile_permissions),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.primary
+            )
         }
 
         // ── Section 1: Identitas Paket & Versi ──
@@ -4981,7 +6319,7 @@ private fun InfoRowItem(
             ) {
                 Icon(
                     imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "Copy",
+                    contentDescription = stringResource(R.string.common_copy),
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
                     modifier = Modifier.size(15.dp)
                 )
@@ -5251,26 +6589,32 @@ fun FloppyDiskIcon(
  * - Inner Circle: Solid Internal vs External representation with dashed dividing line and percentage labels
  */
 @Composable
-fun ConcentricStorageChart(
+internal fun ConcentricStorageChart(
     breakdown: AppStorageBreakdown,
+    slices: List<ChartSlice>? = null,
+    isUsb: Boolean = false,
+    externalTitle: String? = null,
+    centerPrimaryText: String? = null,
+    centerSubText: String? = null,
     modifier: Modifier = Modifier
 ) {
     val totalBytes = breakdown.totalBytes
 
-    val slices = remember(breakdown) {
-        listOfNotNull(
-            ChartSlice("Dex", breakdown.dexBytes, Color(0xFFAB47BC)),
-            ChartSlice("Lib", breakdown.libBytes, Color(0xFFFB8C00)),
-            ChartSlice("Data", breakdown.dataBytes, Color(0xFF00ACC1)),
-            ChartSlice("Cache", breakdown.cacheBytes, Color(0xFFE57373)),
-            if (breakdown.physicalExt1Bytes > 0) ChartSlice("Ext1", breakdown.physicalExt1Bytes, Color(0xFF3149FF)) else null,
-            if (breakdown.ext2Bytes > 0) ChartSlice("Ext2", breakdown.ext2Bytes, Color(0xFF43A047)) else null,
-            ChartSlice("Apk", breakdown.apkBytes, Color(0xFFE91E63))
+    val activeSlices = remember(breakdown, slices, isUsb) {
+        slices ?: listOfNotNull(
+            if (!breakdown.isApkMounted && breakdown.apkBytes > 0) ChartSlice("Apk", "APK", breakdown.apkBytes, Color(0xFFE91E63)) else null,
+            if (!breakdown.isLibMounted && breakdown.libBytes > 0) ChartSlice("Lib", "Lib", breakdown.libBytes, Color(0xFFFB8C00)) else null,
+            if (!breakdown.isApkMounted && breakdown.dexBytes > 0) ChartSlice("Dex", "Dex", breakdown.dexBytes, Color(0xFFAB47BC)) else null,
+            if (!breakdown.isPrivateMounted && breakdown.dataBytes > 0) ChartSlice("Data", "Data", breakdown.dataBytes, Color(0xFF00ACC1)) else null,
+            if (!breakdown.isCacheMounted && breakdown.cacheBytes > 0) ChartSlice("Cache", "Cache", breakdown.cacheBytes, Color(0xFFE57373)) else null,
+            if (breakdown.physicalExt1Bytes > 0) ChartSlice("Ext1", "Shared", breakdown.physicalExt1Bytes, Color(0xFF3149FF)) else null,
+            if (breakdown.ext2Bytes > 0) ChartSlice("Ext2", if (isUsb) "USB" else "MicroSD", breakdown.ext2Bytes, if (isUsb) Color(0xFF00ACC1) else Color(0xFF43A047)) else null,
+            if (breakdown.customBytes > 0) ChartSlice("Custom", "Custom", breakdown.customBytes, Color(0xFF00BFA5)) else null
         )
     }
 
     val internalColor = Color(0xFFDF4006)
-    val extColor = Color(0xFF3BA71A)
+    val extColor = if (isUsb) Color(0xFF00ACC1) else Color(0xFF3BA71A)
     val neutralTrack = MaterialTheme.colorScheme.surfaceVariant
 
     val density = LocalDensity.current
@@ -5308,34 +6652,60 @@ fun ConcentricStorageChart(
         val diameter = size.minDimension
         val center = Offset(size.width / 2f, size.height / 2f)
 
+        val outerRadius = diameter * 0.48f
+        val innerRadius = diameter * 0.34f
+        val strokeWidth = outerRadius - innerRadius
+        val ringCenterRadius = (outerRadius + innerRadius) / 2f
+
         if (totalBytes <= 0L) {
             drawCircle(
-                color = neutralTrack,
-                radius = diameter * 0.45f,
+                color = neutralTrack.copy(alpha = 0.35f),
+                radius = ringCenterRadius,
                 center = center,
-                style = Stroke(width = diameter * 0.16f)
+                style = Stroke(width = strokeWidth)
             )
-            drawCircle(
-                color = neutralTrack.copy(alpha = 0.5f),
-                radius = diameter * 0.28f,
-                center = center
+            val emptyMainPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.argb(140, 160, 175, 190)
+                textSize = with(density) { 15.sp.toPx() }
+                textAlign = android.graphics.Paint.Align.CENTER
+                isFakeBoldText = true
+                isAntiAlias = true
+            }
+            val emptySubPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.argb(100, 150, 165, 180)
+                textSize = with(density) { 9.sp.toPx() }
+                textAlign = android.graphics.Paint.Align.CENTER
+                isAntiAlias = true
+            }
+            val textCenterY = center.y - (with(density) { 3.dp.toPx() })
+            drawContext.canvas.nativeCanvas.drawText(
+                centerPrimaryText ?: "0%",
+                center.x,
+                textCenterY + (emptyMainPaint.textSize / 3f),
+                emptyMainPaint
+            )
+            drawContext.canvas.nativeCanvas.drawText(
+                centerSubText ?: "0.0 B",
+                center.x,
+                textCenterY + (emptyMainPaint.textSize / 3f) + (with(density) { 13.dp.toPx() }),
+                emptySubPaint
             )
             return@Canvas
         }
 
-        // 1. Draw Outer Donut Ring
-        val outerRadius = diameter * 0.48f
-        val innerRadius = diameter * 0.33f
-        val strokeWidth = outerRadius - innerRadius
-        val ringCenterRadius = (outerRadius + innerRadius) / 2f
+        // 1. Draw Clean Outer Donut Ring with Background Track
+        drawCircle(
+            color = neutralTrack.copy(alpha = 0.35f),
+            radius = ringCenterRadius,
+            center = center,
+            style = Stroke(width = strokeWidth)
+        )
 
         var currentAngle = -90f
-
-        slices.forEach { slice ->
+        activeSlices.forEach { slice ->
             if (slice.bytes > 0) {
                 val fraction = slice.bytes.toDouble() / totalBytes.toDouble()
                 val sweep = (fraction * 360f).toFloat()
-                val pct = (fraction * 100).roundToInt()
 
                 drawArc(
                     color = slice.color,
@@ -5347,90 +6717,58 @@ fun ConcentricStorageChart(
                     style = Stroke(width = strokeWidth)
                 )
 
-                if (pct >= 4) {
-                    val midAngleRad = Math.toRadians((currentAngle + sweep / 2f).toDouble())
-                    val textX = center.x + (ringCenterRadius * cos(midAngleRad)).toFloat()
-                    val textY = center.y + (ringCenterRadius * sin(midAngleRad)).toFloat() + (textPaint.textSize / 3f)
-
-                    drawContext.canvas.nativeCanvas.drawText(
-                        "$pct %",
-                        textX,
-                        textY,
-                        textPaint
-                    )
-                }
-
                 currentAngle += sweep
             }
         }
 
-        // 2. Draw Inner Circle (Phone Internal vs MicroSD)
-        val centerCircleRadius = innerRadius - 3.dp.toPx()
-        val internalPct = breakdown.internalPercent
+        // 2. Hollow Center with High-Contrast Primary Stat & Subtitle (No overlapping discs)
         val extPct = breakdown.externalPercent
+        val internalPct = breakdown.internalPercent
 
-        if (extPct == 0) {
-            // 100% on Phone Internal Memory
-            drawCircle(
-                color = internalColor,
-                radius = centerCircleRadius,
-                center = center
-            )
-            drawContext.canvas.nativeCanvas.drawText(
-                "$internalPct%",
-                center.x,
-                center.y + (centerTextPaint.textSize / 3f),
-                centerTextPaint
-            )
-        } else if (internalPct == 0) {
-            // 100% on MicroSD Card
-            drawCircle(
-                color = extColor,
-                radius = centerCircleRadius,
-                center = center
-            )
-            drawContext.canvas.nativeCanvas.drawText(
-                "$extPct%",
-                center.x,
-                center.y + (centerTextPaint.textSize / 3f),
-                centerTextPaint
-            )
-        } else {
-            // Split between Phone Internal and MicroSD
-            val internalSweep = (internalPct / 100f) * 360f
-            drawArc(
-                color = internalColor,
-                startAngle = -90f,
-                sweepAngle = internalSweep,
-                useCenter = true,
-                topLeft = Offset(center.x - centerCircleRadius, center.y - centerCircleRadius),
-                size = Size(centerCircleRadius * 2f, centerCircleRadius * 2f)
-            )
-            drawArc(
-                color = extColor,
-                startAngle = -90f + internalSweep,
-                sweepAngle = 360f - internalSweep,
-                useCenter = true,
-                topLeft = Offset(center.x - centerCircleRadius, center.y - centerCircleRadius),
-                size = Size(centerCircleRadius * 2f, centerCircleRadius * 2f)
-            )
-
-            // Dotted divider vertical line between sectors
-            drawContext.canvas.nativeCanvas.drawLine(
-                center.x,
-                center.y - centerCircleRadius * 0.65f,
-                center.x,
-                center.y + centerCircleRadius * 0.65f,
-                dashPaint
-            )
-
-            val textY = center.y + (centerTextPaint.textSize / 3f)
-            val leftX = center.x - centerCircleRadius * 0.45f
-            val rightX = center.x + centerCircleRadius * 0.45f
-
-            drawContext.canvas.nativeCanvas.drawText("$internalPct%", leftX, textY, centerTextPaint)
-            drawContext.canvas.nativeCanvas.drawText("$extPct%", rightX, textY, centerTextPaint)
+        val primaryText = centerPrimaryText ?: when {
+            extPct >= 100 -> "100%"
+            internalPct >= 100 -> "100%"
+            else -> "$extPct%"
         }
+        val subText = centerSubText ?: when {
+            extPct >= 100 -> externalTitle ?: if (isUsb) "USB" else "MicroSD"
+            internalPct >= 100 -> "Internal"
+            else -> "Offloaded"
+        }
+        val primaryColor = when {
+            centerPrimaryText != null -> extColor
+            extPct >= 100 -> extColor
+            internalPct >= 100 -> internalColor
+            else -> extColor
+        }
+
+        val mainTextPaint = android.graphics.Paint().apply {
+            color = primaryColor.toArgb()
+            textSize = with(density) { 15.sp.toPx() }
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+            isAntiAlias = true
+        }
+        val subTextPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(170, 150, 165, 180)
+            textSize = with(density) { 9.sp.toPx() }
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+
+        val textCenterY = center.y - (with(density) { 3.dp.toPx() })
+        drawContext.canvas.nativeCanvas.drawText(
+            primaryText,
+            center.x,
+            textCenterY + (mainTextPaint.textSize / 3f),
+            mainTextPaint
+        )
+        drawContext.canvas.nativeCanvas.drawText(
+            subText,
+            center.x,
+            textCenterY + (mainTextPaint.textSize / 3f) + (with(density) { 13.dp.toPx() }),
+            subTextPaint
+        )
     }
 }
 
@@ -5522,8 +6860,9 @@ private fun BreakdownRow(
     }
 }
 
-private data class ChartSlice(
+internal data class ChartSlice(
     val name: String,
+    val label: String = name,
     val bytes: Long,
     val color: Color
 )

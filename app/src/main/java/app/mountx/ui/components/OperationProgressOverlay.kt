@@ -331,7 +331,7 @@ private fun SuccessContent(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = if (isLogExpanded) "Hide Technical Log" else "Show Technical Log",
+                text = if (isLogExpanded) stringResource(R.string.op_overlay_hide_log) else stringResource(R.string.op_overlay_show_log),
                 fontSize = 10.5.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -448,7 +448,7 @@ private fun ErrorContent(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = if (isLogExpanded) "Hide Technical Log" else "Show Technical Log",
+                text = if (isLogExpanded) stringResource(R.string.op_overlay_hide_log) else stringResource(R.string.op_overlay_show_log),
                 fontSize = 10.5.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

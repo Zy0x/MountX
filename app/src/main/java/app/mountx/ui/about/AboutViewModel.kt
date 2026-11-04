@@ -13,7 +13,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AboutViewModel @Inject constructor(
-    private val updateChecker: UpdateChecker
+    private val updateChecker: UpdateChecker,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
     private val _isChecking = MutableStateFlow(false)
@@ -34,7 +35,7 @@ class AboutViewModel @Inject constructor(
             if (result.isSuccess) {
                 _updateInfo.value = result.getOrNull()
             } else {
-                _checkError.value = result.exceptionOrNull()?.message ?: "Check failed"
+                _checkError.value = result.exceptionOrNull()?.message ?: context.getString(app.mountx.R.string.update_check_failed)
             }
         }
     }

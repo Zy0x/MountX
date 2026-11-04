@@ -278,7 +278,7 @@ fun AboutScreen(
                             colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                             trailingContent = {
                                 TextButton(onClick = { showChangelogDialog = true }) {
-                                    Text("View")
+                                    Text(stringResource(R.string.about_btn_view_changelog))
                                 }
                             }
                         )
@@ -537,7 +537,7 @@ fun AboutScreen(
                         // Pagination Button: "Lihat versi lainnya (2 versi terdahulu) ⌵"
                         if (visibleCount < ChangelogHistory.releases.size) {
                             val remaining = ChangelogHistory.releases.size - visibleCount
-                            val countLabel = if (remaining > 1) "2 older releases" else "1 older release"
+                            val countLabel = if (remaining > 1) stringResource(R.string.about_changelog_older_releases_n, 2) else stringResource(R.string.about_changelog_older_releases_one)
                             val outlineColor = if (isDark) Color(0xFF6366F1).copy(alpha = 0.45f) else Color(0xFF4F46E5).copy(alpha = 0.45f)
                             val accentColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)
 
@@ -559,7 +559,7 @@ fun AboutScreen(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
                                     Text(
-                                        text = "View earlier versions ($countLabel)",
+                                        text = stringResource(R.string.about_changelog_view_earlier_n, countLabel),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = accentColor
@@ -677,7 +677,7 @@ private fun CompactChangelogReleaseCard(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Latest",
+                                    text = stringResource(R.string.about_changelog_badge_latest),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = emeraldColor
@@ -828,7 +828,7 @@ private fun CompactChangelogReleaseCard(
                         modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)
                     ) {
                         Text(
-                            text = if (isExpanded) "Hide Details" else "View Details",
+                            text = if (isExpanded) stringResource(R.string.about_changelog_hide_details) else stringResource(R.string.about_changelog_view_details),
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (isDark) ElectricIndigo else ElectricIndigoLight
@@ -858,7 +858,7 @@ private fun CompactChangelogReleaseCard(
                         modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)
                     ) {
                         Text(
-                            text = "View on GitHub",
+                            text = stringResource(R.string.about_changelog_view_on_github),
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Medium,
                             color = secondaryTextColor

@@ -1,5 +1,7 @@
 package app.mountx.ui.settings
 
+import app.mountx.R
+
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -97,7 +99,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "/data/sdext2")
 
     val sdBlockDevice: StateFlow<String> = appPreferences.sdBlockDevice
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "/dev/block/mmcblk0p3")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     val autoMountOnBoot: StateFlow<Boolean> = appPreferences.autoMountOnBoot
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
@@ -126,7 +128,7 @@ class SettingsViewModel @Inject constructor(
                     _updateCheckMessage.value = context.getString(app.mountx.R.string.settings_update_up_to_date)
                 }
             } else {
-                _updateCheckMessage.value = result.exceptionOrNull()?.message ?: "Check failed"
+                _updateCheckMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.update_check_failed)
             }
         }
     }
@@ -181,9 +183,9 @@ class SettingsViewModel @Inject constructor(
             val result = emergencyRescueManager.executeEmergencyReset()
             _isExecutingRescue.value = false
             if (result.isSuccess) {
-                _rescueMessage.value = "Emergency reset completed. All mounts detached and permissions restored."
+                _rescueMessage.value = context.getString(R.string.settings_emergency_reset_success_msg)
             } else {
-                _rescueMessage.value = "Emergency reset failed: ${result.exceptionOrNull()?.message}"
+                _rescueMessage.value = context.getString(R.string.settings_emergency_reset_failed, result.exceptionOrNull()?.message ?: "")
             }
         }
     }
@@ -192,9 +194,9 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val result = emergencyRescueManager.generateRescueScript()
             if (result.isSuccess) {
-                _rescueMessage.value = "Rescue script created at ${result.getOrNull()}"
+                _rescueMessage.value = context.getString(R.string.settings_rescue_script_created, result.getOrNull() ?: "")
             } else {
-                _rescueMessage.value = "Failed to create rescue script: ${result.exceptionOrNull()?.message}"
+                _rescueMessage.value = context.getString(R.string.settings_rescue_script_failed, result.exceptionOrNull()?.message ?: "")
             }
         }
     }
@@ -289,7 +291,7 @@ class SettingsViewModel @Inject constructor(
                 _portabilityMessage.value = "SNAPSHOT_EXPORT_OK"
             }.onFailure { ex ->
                 AppLogger.error("Portability", "Snapshot export failed: ${ex.message}")
-                _portabilityMessage.value = ex.message ?: "Export failed"
+                _portabilityMessage.value = ex.message ?: context.getString(R.string.settings_portability_export_failed)
             }
             _isExporting.value = false
         }
@@ -302,17 +304,17 @@ class SettingsViewModel @Inject constructor(
                     context.contentResolver.openInputStream(uri)?.use {
                         it.bufferedReader().readText()
                     }
-                } ?: error("Unable to open file")
+                } ?: error(context.getString(R.string.settings_portability_err_open_file))
 
                 val trimmed = content.trim()
                 if (!trimmed.startsWith("{")) {
-                    error("Invalid JSON format")
+                    error(context.getString(R.string.settings_portability_err_invalid_json))
                 }
 
                 val rootObj = JSONObject(trimmed)
                 val schemaVersion = rootObj.optInt("schemaVersion", 1)
                 val exportedAt = rootObj.optLong("exportTimestamp", 0L)
-                val deviceModel = rootObj.optString("deviceModel", "Unknown Device")
+                val deviceModel = rootObj.optString("deviceModel", context.getString(R.string.common_unknown_device))
                 val appsArr = rootObj.optJSONArray("apps") ?: rootObj.optJSONArray("games") ?: JSONArray()
                 val appNames = mutableListOf<String>()
 
@@ -336,7 +338,7 @@ class SettingsViewModel @Inject constructor(
                 _pendingImportUri.value = uri
             }.onFailure { ex ->
                 AppLogger.error("Portability", "Import validation failed: ${ex.message}")
-                _portabilityMessage.value = "Invalid backup file: ${ex.message}"
+                _portabilityMessage.value = context.getString(R.string.settings_portability_invalid_backup, ex.message ?: "")
             }
         }
     }
@@ -351,7 +353,7 @@ class SettingsViewModel @Inject constructor(
                     context.contentResolver.openInputStream(uri)?.use {
                         it.bufferedReader().readText()
                     }
-                } ?: error("Unable to open file")
+                } ?: error(context.getString(R.string.settings_portability_err_open_file))
 
                 val currentSdBase = appPreferences.sdBasePath.first()
                 val rootObj = JSONObject(content.trim())
@@ -478,11 +480,18 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
 
+                // Reconcile dynamic permissions (UID/GID & SELinux) for all imported apps on this device
+                val allApps = appRepository.observeApps().first()
+                for (a in allApps) {
+                    appRepository.reconcileApp(a, currentSdBase)
+                }
+
                 appRepository.syncModuleConfig()
+                appRepository.syncDiskCatalog(currentSdBase)
                 _portabilityMessage.value = "SNAPSHOT_IMPORT_OK:$importedCount"
             }.onFailure { ex ->
                 AppLogger.error("Portability", "Snapshot import failed: ${ex.message}")
-                _portabilityMessage.value = ex.message ?: "Import failed"
+                _portabilityMessage.value = ex.message ?: context.getString(R.string.settings_portability_import_failed)
             }
             _isImporting.value = false
         }
