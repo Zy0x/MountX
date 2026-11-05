@@ -57,7 +57,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew -Pkotlin.daemon.jvmargs=-Xmx2g assembleRelease --stacktrace
 
       - name: Extract Version Name
         id: version
