@@ -76,6 +76,7 @@ IO_SCHEDULER="none"
 RQ_AFFINITY=2
 NR_REQUESTS=256
 VFS_CACHE_PRESSURE=20
+SHARED_STORAGE_ENABLED=1
 
 # ── Logging helper ────────────────────────────────────────────────────────────
 log() {
@@ -129,6 +130,7 @@ load_config() {
             RQ_AFFINITY)         RQ_AFFINITY="${val}"         ;;
             NR_REQUESTS)         NR_REQUESTS="${val}"         ;;
             VFS_CACHE_PRESSURE)  VFS_CACHE_PRESSURE="${val}"  ;;
+            SHARED_STORAGE_ENABLED) SHARED_STORAGE_ENABLED="${val}" ;;
             *) log_warn "config.conf: unknown key '${key}'"   ;;
         esac
     done < "${CONFIG_FILE}"
@@ -360,6 +362,11 @@ publish_shared_storage() {
         log_warn "Cannot publish shared storage: ${SD_BASE} is not mounted."
         return 1
     fi
+    if [ "${SHARED_STORAGE_ENABLED}" != "1" ]; then
+        log_info "Shared storage exposure is disabled in config."
+        unpublish_shared_storage
+        return 0
+    fi
 
     local mounted_device
     mounted_device=$(awk -v target="${SD_BASE}" '$2 == target { print $1; exit }' /proc/mounts 2>/dev/null)
@@ -382,6 +389,25 @@ publish_shared_storage() {
     chown 1023:1023 "${shared_parent}" 2>/dev/null || true
     chmod 0775 "${shared_parent}" 2>/dev/null || true
 
+    local mounted_fs
+    mounted_fs=$(stat -f -c %T "${SD_BASE}" 2>/dev/null)
+    case "${mounted_fs}" in
+        ext2/ext3|f2fs)
+            chown 1023:1023 "${SD_BASE}" 2>/dev/null || {
+                log_error "Cannot grant media_rw ownership to ${SD_BASE}."
+                return 1
+            }
+            chmod 0775 "${SD_BASE}" 2>/dev/null || {
+                log_error "Cannot make ${SD_BASE} accessible to shared storage."
+                return 1
+            }
+            find "${SD_BASE}" -type d -exec chmod a+rwx {} + || {
+                log_error "Cannot make existing directories on ${SD_BASE} writable."
+                return 1
+            }
+            ;;
+    esac
+
     if mountpoint -q "${shared_path}" 2>/dev/null; then
         local shared_device
         shared_device=$(awk -v target="${shared_path}" '$2 == target { print $1; exit }' /proc/mounts 2>/dev/null)
@@ -402,21 +428,6 @@ publish_shared_storage() {
             return 1
         }
     fi
-
-    local mounted_fs
-    mounted_fs=$(stat -f -c %T "${SD_BASE}" 2>/dev/null)
-    case "${mounted_fs}" in
-        ext2/ext3|f2fs)
-            chown 1023:1023 "${SD_BASE}" 2>/dev/null || {
-                log_error "Cannot grant media_rw ownership to ${SD_BASE}."
-                return 1
-            }
-            chmod 0775 "${SD_BASE}" 2>/dev/null || {
-                log_error "Cannot make ${SD_BASE} accessible to shared storage."
-                return 1
-            }
-            ;;
-    esac
 
     mkdir -p "${shared_path}" 2>/dev/null || {
         log_error "Cannot create shared storage mountpoint ${shared_path}."

@@ -67,6 +67,9 @@ fun SettingsScreen(
     val themeMode by viewModel.themeMode.collectAsState()
     val language by viewModel.language.collectAsState()
     val autoMount by viewModel.autoMountOnBoot.collectAsState()
+    val sharedStorageEnabled by viewModel.sharedStorageEnabled.collectAsState()
+    val isUpdatingSharedStorage by viewModel.isUpdatingSharedStorage.collectAsState()
+    val sharedStorageMessage by viewModel.sharedStorageMessage.collectAsState()
     val autoCheckUpdate by viewModel.autoCheckUpdate.collectAsState()
     val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsState()
     val updateCheckResult by viewModel.updateCheckResult.collectAsState()
@@ -140,13 +143,14 @@ fun SettingsScreen(
                     }
                     else -> msg
                 }
-            } ?: updateCheckMessage
+            } ?: sharedStorageMessage ?: updateCheckMessage
             if (messageToShow != null) {
                 Snackbar(
                     action = {
                         TextButton(onClick = {
                             viewModel.clearRescueMessage()
                             viewModel.clearPortabilityMessage()
+                            viewModel.clearSharedStorageMessage()
                             viewModel.clearUpdateCheckMessage()
                         }) {
                             Text(stringResource(R.string.common_ok), color = MaterialTheme.colorScheme.primary)
@@ -264,32 +268,63 @@ fun SettingsScreen(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.settings_auto_mount),
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = stringResource(R.string.settings_auto_mount_desc),
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_auto_mount),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_auto_mount_desc),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                            Switch(
+                                checked = autoMount,
+                                onCheckedChange = { viewModel.setAutoMountOnBoot(it) }
                             )
                         }
-                        Switch(
-                            checked = autoMount,
-                            onCheckedChange = { viewModel.setAutoMountOnBoot(it) }
-                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                Text(
+                                    text = stringResource(R.string.settings_shared_storage),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_shared_storage_desc),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                            Switch(
+                                checked = sharedStorageEnabled,
+                                enabled = !isUpdatingSharedStorage,
+                                onCheckedChange = { viewModel.setSharedStorageEnabled(it) }
+                            )
+                        }
                     }
                 }
             }

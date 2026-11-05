@@ -472,6 +472,9 @@
     <string name="settings_behavior">Perilaku</string>
     <string name="settings_auto_mount">Auto-mount saat Boot</string>
     <string name="settings_auto_mount_desc">Otomatis mount semua aplikasi saat perangkat menyala.</string>
+    <string name="settings_shared_storage">Tampilkan penyimpanan di Penyimpanan internal</string>
+    <string name="settings_shared_storage_desc">Tampilkan partisi aktif di folder MountX agar dapat diakses aplikasi lain. Berlaku untuk partisi mana pun, sekarang dan setelah reboot.</string>
+    <string name="settings_shared_storage_update_failed">Gagal memperbarui pengaturan penyimpanan bersama.</string>
     <string name="settings_advanced">Lanjutan</string>
     <string name="settings_clear_log">Hapus File Log</string>
     <string name="settings_reset">Reset Pengaturan</string>
@@ -1515,5 +1518,3 @@
     <string name="toast_clean_all_cache_success">Berhasil membersihkan cache untuk %1$d aplikasi (%2$s dibebaskan).</string>
     <string name="toast_clean_all_cache_none">Tidak ada cache sementara yang perlu dibersihkan.</string>
 </resources>
-
-

@@ -15,6 +15,7 @@ import app.mountx.data.model.MountPointConfig
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.UpdateInfo
 import app.mountx.data.repository.AppRepository
+import app.mountx.data.repository.StorageRepository
 import app.mountx.data.rescue.EmergencyRescueManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
@@ -53,6 +54,7 @@ data class SnapshotValidationSummary(
 class SettingsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val appRepository: AppRepository,
+    private val storageRepository: StorageRepository,
     private val emergencyRescueManager: EmergencyRescueManager,
     private val updateChecker: UpdateChecker,
     @ApplicationContext private val context: Context
@@ -66,6 +68,12 @@ class SettingsViewModel @Inject constructor(
 
     private val _updateCheckMessage = MutableStateFlow<String?>(null)
     val updateCheckMessage: StateFlow<String?> = _updateCheckMessage.asStateFlow()
+
+    private val _sharedStorageMessage = MutableStateFlow<String?>(null)
+    val sharedStorageMessage: StateFlow<String?> = _sharedStorageMessage.asStateFlow()
+
+    private val _isUpdatingSharedStorage = MutableStateFlow(false)
+    val isUpdatingSharedStorage: StateFlow<Boolean> = _isUpdatingSharedStorage.asStateFlow()
 
     private val _isExecutingRescue = MutableStateFlow(false)
     val isExecutingRescue: StateFlow<Boolean> = _isExecutingRescue.asStateFlow()
@@ -102,6 +110,9 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     val autoMountOnBoot: StateFlow<Boolean> = appPreferences.autoMountOnBoot
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val sharedStorageEnabled: StateFlow<Boolean> = appPreferences.sharedStorageEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val autoCheckUpdate: StateFlow<Boolean> = appPreferences.autoCheckUpdate
@@ -169,12 +180,47 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { appPreferences.setAutoMountOnBoot(enabled) }
     }
 
+    fun setSharedStorageEnabled(enabled: Boolean) {
+        if (_isUpdatingSharedStorage.value) return
+        viewModelScope.launch {
+            _isUpdatingSharedStorage.value = true
+            _sharedStorageMessage.value = null
+            try {
+                val mountPoint = appPreferences.sdBasePath.first()
+                val result = storageRepository.setSharedStorageEnabled(enabled, mountPoint)
+                if (result.isSuccess) {
+                    appPreferences.setSharedStorageEnabled(enabled)
+                } else {
+                    _sharedStorageMessage.value = result.exceptionOrNull()?.message
+                        ?: context.getString(R.string.settings_shared_storage_update_failed)
+                }
+            } catch (e: Exception) {
+                _sharedStorageMessage.value = e.message
+                    ?: context.getString(R.string.settings_shared_storage_update_failed)
+            } finally {
+                _isUpdatingSharedStorage.value = false
+            }
+        }
+    }
+
+    fun clearSharedStorageMessage() {
+        _sharedStorageMessage.value = null
+    }
+
     fun setConflictStrategy(strategy: ConflictStrategy) {
         viewModelScope.launch { appPreferences.setConflictStrategy(strategy) }
     }
 
     fun resetSettings() {
-        viewModelScope.launch { appPreferences.resetDefaults() }
+        viewModelScope.launch {
+            val mountPoint = appPreferences.sdBasePath.first()
+            val result = storageRepository.setSharedStorageEnabled(true, mountPoint)
+            appPreferences.resetDefaults()
+            if (result.isFailure) {
+                _sharedStorageMessage.value = result.exceptionOrNull()?.message
+                    ?: context.getString(R.string.settings_shared_storage_update_failed)
+            }
+        }
     }
 
     fun executeEmergencyReset() {

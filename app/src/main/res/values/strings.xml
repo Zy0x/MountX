@@ -488,6 +488,9 @@
     <string name="settings_behavior">Behavior</string>
     <string name="settings_auto_mount">Auto-mount on Boot</string>
     <string name="settings_auto_mount_desc">Automatically mount all apps when device boots.</string>
+    <string name="settings_shared_storage">Expose storage in Internal storage</string>
+    <string name="settings_shared_storage_desc">Show the active partition under its MountX folder for other apps. Applies to any selected partition, now and after reboot.</string>
+    <string name="settings_shared_storage_update_failed">Could not update shared storage setting.</string>
     <string name="settings_advanced">Advanced</string>
     <string name="settings_clear_log">Clear Log File</string>
     <string name="settings_reset">Reset Settings</string>
@@ -1531,5 +1534,3 @@
     <string name="toast_clean_all_cache_success">Cleaned cache for %1$d apps (%2$s freed).</string>
     <string name="toast_clean_all_cache_none">No temporary cache found to clean.</string>
 </resources>
-
-

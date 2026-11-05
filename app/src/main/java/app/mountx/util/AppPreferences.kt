@@ -26,6 +26,7 @@ class AppPreferences @Inject constructor(
         val KEY_LANGUAGE = stringPreferencesKey("language")
         val KEY_SD_BASE_PATH = stringPreferencesKey("sd_base_path")
         val KEY_SD_BLOCK_DEVICE = stringPreferencesKey("sd_block_device")
+        val KEY_SHARED_STORAGE_ENABLED = booleanPreferencesKey("shared_storage_enabled")
         val KEY_AUTO_MOUNT = booleanPreferencesKey("auto_mount_on_boot")
         val KEY_IO_TWEAKS_ENABLED = booleanPreferencesKey("io_tweaks_enabled")
         val KEY_IO_PRESET = stringPreferencesKey("io_preset")
@@ -83,6 +84,10 @@ class AppPreferences @Inject constructor(
         prefs[KEY_AUTO_MOUNT] ?: true
     }
 
+    val sharedStorageEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_SHARED_STORAGE_ENABLED] ?: true
+    }
+
     val ioTweaksEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[KEY_IO_TWEAKS_ENABLED] ?: true
     }
@@ -113,6 +118,10 @@ class AppPreferences @Inject constructor(
 
     suspend fun setSdBlockDevice(device: String) {
         context.dataStore.edit { it[KEY_SD_BLOCK_DEVICE] = device }
+    }
+
+    suspend fun setSharedStorageEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_SHARED_STORAGE_ENABLED] = enabled }
     }
 
     suspend fun setAutoMountOnBoot(enabled: Boolean) {
@@ -187,4 +196,3 @@ class AppPreferences @Inject constructor(
         }
     }
 }
-

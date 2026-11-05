@@ -1336,7 +1336,11 @@ class StorageManager(
             if (RootShell.isMountpoint(mountPoint)) {
                 RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
                 val mountedDevice = getMountedDevice(mountPoint) ?: blockDevice
-                exposeStorageToEmulatedStorage(mountedDevice, mountPoint).getOrThrow()
+                if (isSharedStorageEnabled()) {
+                    exposeStorageToEmulatedStorage(mountedDevice, mountPoint).getOrThrow()
+                } else if (mountedDevice.isNotBlank()) {
+                    unpublishStorage(mountedDevice).getOrThrow()
+                }
                 return@runCatching Unit
             }
 
@@ -1417,9 +1421,45 @@ class StorageManager(
                 error("Failed to mount $targetDev to $mountPoint: ${res.stderr.joinToString("\n")}")
             }
             RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
-            exposeStorageToEmulatedStorage(targetDev, mountPoint).getOrThrow()
+            if (isSharedStorageEnabled()) {
+                exposeStorageToEmulatedStorage(targetDev, mountPoint).getOrThrow()
+            }
             Unit
         }
+    }
+
+    suspend fun setSharedStorageEnabled(
+        enabled: Boolean,
+        mountPoint: String = "/data/sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            persistSharedStorageEnabled(enabled)
+            val mountedDevice = getMountedDevice(mountPoint) ?: return@runCatching
+            if (enabled) {
+                exposeStorageToEmulatedStorage(mountedDevice, mountPoint).getOrThrow()
+            } else {
+                unpublishStorage(
+                    mountedDevice,
+                    mountPoint,
+                    restorePosixRootPermissions = true
+                ).getOrThrow()
+            }
+        }
+    }
+
+    private suspend fun isSharedStorageEnabled(): Boolean {
+        val value = RootShell.execForOutput(
+            """
+            for cfgFile in /data/adb/modules/MountX/config.conf /data/adb/modules/mountx/config.conf /data/adb/modules/Mountify/config.conf; do
+                if [ -f "${'$'}cfgFile" ]; then
+                    sed -n 's/^SHARED_STORAGE_ENABLED=//p' "${'$'}cfgFile" | head -n 1
+                    exit 0
+                fi
+            done
+            echo 1
+            """.trimIndent()
+        ).trim()
+        return value != "0"
     }
 
     private suspend fun getMountedDevice(mountPoint: String): String? {
@@ -1449,18 +1489,26 @@ class StorageManager(
                 val quotedDevice = shellQuote(blockDevice)
                 val quotedMountPoint = shellQuote(mountPoint)
                 val quotedSharedPath = shellQuote(sharedPath)
-                val rootPermissionCommands = if (adjustPosixRootPermissions) {
+                val directoryPermissionCommands = if (adjustPosixRootPermissions) {
                     """
                     fs_type=${'$'}(stat -f -c %T $quotedMountPoint 2>/dev/null)
                     case "${'$'}fs_type" in
                         ext2/ext3|f2fs)
                             chown 1023:1023 $quotedMountPoint
                             chmod 0775 $quotedMountPoint
+                            find $quotedMountPoint -type d -exec chmod a+rwx {} +
                             ;;
                     esac
                     """.trimIndent()
                 } else {
-                    ":"
+                    """
+                    fs_type=${'$'}(stat -f -c %T $quotedMountPoint 2>/dev/null)
+                    case "${'$'}fs_type" in
+                        ext2/ext3|f2fs)
+                            find $quotedMountPoint -type d -exec chmod a+rwx {} +
+                            ;;
+                    esac
+                    """.trimIndent()
                 }
                 val script = """
                     set -e
@@ -1468,7 +1516,7 @@ class StorageManager(
                     restorecon /data/media/0/MountX 2>/dev/null || true
                     chown 1023:1023 /data/media/0/MountX
                     chmod 0775 /data/media/0/MountX
-                    $rootPermissionCommands
+                    $directoryPermissionCommands
                     if mountpoint -q $quotedSharedPath 2>/dev/null; then
                         mounted_device=${'$'}(awk -v target=$quotedSharedPath '${'$'}2 == target { print ${'$'}1; exit }' /proc/mounts)
                         if [ "${'$'}mounted_device" != $quotedDevice ]; then
@@ -1558,6 +1606,32 @@ class StorageManager(
         val result = RootShell.execScript(script)
         if (!result.isSuccess) {
             error("Could not save the selected storage device for boot mounting: ${result.stderr.joinToString("\n")}")
+        }
+    }
+
+    private suspend fun persistSharedStorageEnabled(enabled: Boolean) {
+        val value = if (enabled) "1" else "0"
+        val script = """
+            set -e
+            found=0
+            for cfgFile in /data/adb/modules/MountX/config.conf /data/adb/modules/mountx/config.conf /data/adb/modules/Mountify/config.conf; do
+                if [ -f "${'$'}cfgFile" ]; then
+                    found=1
+                    if grep -q '^SHARED_STORAGE_ENABLED=' "${'$'}cfgFile"; then
+                        sed -i 's/^SHARED_STORAGE_ENABLED=.*/SHARED_STORAGE_ENABLED=$value/' "${'$'}cfgFile"
+                    else
+                        echo 'SHARED_STORAGE_ENABLED=$value' >> "${'$'}cfgFile"
+                    fi
+                fi
+            done
+            [ "${'$'}found" -eq 1 ] || {
+                echo "MountX module config.conf was not found" >&2
+                exit 1
+            }
+        """.trimIndent()
+        val result = RootShell.execScript(script)
+        if (!result.isSuccess) {
+            error("Could not save shared storage setting: ${result.stderr.joinToString("\n")}")
         }
     }
 
@@ -1692,14 +1766,16 @@ class StorageManager(
                         if (!RootShell.isMountpoint(voldMountPoint)) {
                             error("Android mounted ${partition.path}, but $voldMountPoint is unavailable.")
                         }
-                        exposeStorageToEmulatedStorage(
-                            blockDev,
-                            voldMountPoint,
-                            persistForBoot = partition.isTargetMount ||
-                                partition.fsType.equals("f2fs", ignoreCase = true) ||
-                                partition.fsType.equals("ext4", ignoreCase = true),
-                            adjustPosixRootPermissions = false
-                        ).getOrThrow()
+                        if (isSharedStorageEnabled()) {
+                            exposeStorageToEmulatedStorage(
+                                blockDev,
+                                voldMountPoint,
+                                persistForBoot = partition.isTargetMount ||
+                                    partition.fsType.equals("f2fs", ignoreCase = true) ||
+                                    partition.fsType.equals("ext4", ignoreCase = true),
+                                adjustPosixRootPermissions = false
+                            ).getOrThrow()
+                        }
                     }
                 }
             }
