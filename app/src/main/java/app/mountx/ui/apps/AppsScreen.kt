@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -99,6 +100,8 @@ fun AppsScreen(
     val games by viewModel.games.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val discoveredGames by viewModel.discoveredGames.collectAsState()
+    val isImportingDiscovered by viewModel.isImportingDiscovered.collectAsState()
+    val importDiscoveredProgress by viewModel.importDiscoveredProgress.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val filterStatus by viewModel.filterStatus.collectAsState()
     val sortOption by viewModel.sortOption.collectAsState()
@@ -374,7 +377,26 @@ fun AppsScreen(
             isBottomBarVisible = isBottomBarVisible,
             onRefresh = { viewModel.refresh() },
             discoveredGames = discoveredGames,
-            onImportAllDiscovered = { viewModel.importAllDiscoveredGames() },
+            isImportingDiscovered = isImportingDiscovered,
+            importDiscoveredProgress = importDiscoveredProgress,
+            onImportAllDiscovered = {
+                val ctx = context
+                viewModel.importAllDiscoveredGames { count ->
+                    if (count > 0) {
+                        android.widget.Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.portability_restore_success, count),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        android.widget.Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.portability_restore_none),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            },
             onDismissDiscovered = { viewModel.dismissDiscovered() },
             onRestructureDiscovered = { showRestructureDialog = true },
             onCleanOrphanDiscovered = { showCleanOrphansDialog = true },
@@ -719,6 +741,8 @@ fun GamesContent(
     onCheckIsGameRunning: suspend (String) -> Boolean = { false },
     modifier: Modifier = Modifier,
     discoveredGames: List<DiscoveredGame> = emptyList(),
+    isImportingDiscovered: Boolean = false,
+    importDiscoveredProgress: Pair<Int, Int> = Pair(0, 0),
     installedPackageSet: Set<String> = emptySet(),
     onCleanAllCacheClick: () -> Unit = {},
     onImportAllDiscovered: () -> Unit = {},
@@ -983,6 +1007,8 @@ fun GamesContent(
             if (discoveredGames.isNotEmpty()) {
                 DiscoveredGamesBanner(
                     discoveredGames = discoveredGames,
+                    isImporting = isImportingDiscovered,
+                    importProgress = importDiscoveredProgress,
                     onImportAll = onImportAllDiscovered,
                     onDismiss = onDismissDiscovered,
                     onRestructure = onRestructureDiscovered,
@@ -1471,6 +1497,8 @@ fun ModernGameCard(
 @Composable
 private fun DiscoveredGamesBanner(
     discoveredGames: List<DiscoveredGame>,
+    isImporting: Boolean = false,
+    importProgress: Pair<Int, Int> = Pair(0, 0),
     onImportAll: () -> Unit,
     onDismiss: () -> Unit,
     onRestructure: () -> Unit = {},
@@ -1568,13 +1596,14 @@ private fun DiscoveredGamesBanner(
             ) {
                 TextButton(
                     onClick = onDismiss,
+                    enabled = !isImporting,
                     modifier = Modifier.height(30.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
                 ) {
                     Text(
                         text = stringResource(R.string.portability_btn_dismiss),
                         style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (!isImporting) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                     )
                 }
 
@@ -1583,11 +1612,14 @@ private fun DiscoveredGamesBanner(
                     Spacer(modifier = Modifier.width(6.dp))
                     Button(
                         onClick = onCleanOrphans,
+                        enabled = !isImporting,
                         modifier = Modifier.height(30.dp),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = adaptiveCrimson(),
-                            contentColor = Color.White
+                            contentColor = Color.White,
+                            disabledContainerColor = adaptiveCrimson().copy(alpha = 0.4f),
+                            disabledContentColor = Color.White.copy(alpha = 0.6f)
                         ),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
                     ) {
@@ -1617,9 +1649,15 @@ private fun DiscoveredGamesBanner(
                     Spacer(modifier = Modifier.width(6.dp))
                     Button(
                         onClick = onRestructure,
+                        enabled = !isImporting,
                         modifier = Modifier.height(30.dp),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigoLight),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ElectricIndigoLight,
+                            contentColor = Color.White,
+                            disabledContainerColor = ElectricIndigoLight.copy(alpha = 0.4f),
+                            disabledContentColor = Color.White.copy(alpha = 0.6f)
+                        ),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
                     ) {
                         Icon(
@@ -1642,23 +1680,63 @@ private fun DiscoveredGamesBanner(
 
                 Spacer(modifier = Modifier.width(6.dp))
                 Button(
-                    onClick = onImportAll,
+                    onClick = {
+                        if (!isImporting) {
+                            onImportAll()
+                        }
+                    },
+                    enabled = !isImporting,
                     modifier = Modifier.height(30.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = activeEmerald,
-                        contentColor = if (isDark) Color.Black else Color.White
+                        contentColor = if (isDark) Color.Black else Color.White,
+                        disabledContainerColor = activeEmerald.copy(alpha = 0.5f),
+                        disabledContentColor = (if (isDark) Color.Black else Color.White).copy(alpha = 0.7f)
                     ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.portability_btn_restore),
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
+                    if (isImporting) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(12.dp),
                             color = if (isDark) Color.Black else Color.White
                         )
-                    )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        val progressLabel = if (importProgress.second > 1) {
+                            stringResource(
+                                R.string.portability_btn_restoring_count,
+                                importProgress.first,
+                                importProgress.second
+                            )
+                        } else {
+                            stringResource(R.string.portability_btn_restoring)
+                        }
+                        Text(
+                            text = progressLabel,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.Black else Color.White
+                            )
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = null,
+                            tint = if (isDark) Color.Black else Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.portability_btn_restore),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.Black else Color.White
+                            )
+                        )
+                    }
                 }
             }
         }

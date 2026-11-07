@@ -689,6 +689,8 @@
     <string name="portability_banner_title">Discovered %1$d App(s) on MicroSD</string>
     <string name="portability_banner_desc">Existing app data was detected on your MicroSD card. Tap to import and reconcile permissions.</string>
     <string name="portability_btn_restore">Restore &amp; Sync</string>
+    <string name="portability_btn_restoring">Restoring…</string>
+    <string name="portability_btn_restoring_count">Restoring (%1$d/%2$d)…</string>
     <string name="portability_btn_restructure">Restructure Paths</string>
     <string name="portability_btn_dismiss">Dismiss</string>
     <string name="portability_sheet_title">MicroSD App Discovery</string>
@@ -697,6 +699,7 @@
     <string name="portability_ready_label">Ready to Sync</string>
     <string name="portability_restore_all">Restore All Apps</string>
     <string name="portability_restore_success">Restored and reconciled %1$d app(s) successfully.</string>
+    <string name="portability_restore_none">No apps to restore or sync.</string>
     <!-- v2.2.11 Dashboard Active Games & Live Namespace Verification -->
     <string name="dashboard_view_all_games_count">View All Apps (%1$d)</string>
     <string name="dashboard_metric_namespaces_standby_ready">Standby (System Ready)</string>

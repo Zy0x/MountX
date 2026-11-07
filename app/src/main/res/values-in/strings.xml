@@ -671,6 +671,8 @@
     <string name="portability_banner_title">Ditemukan %1$d Aplikasi di MicroSD</string>
     <string name="portability_banner_desc">Data aplikasi terdeteksi pada MicroSD Anda. Ketuk untuk memulihkan dan menyinkronkan izin secara instan.</string>
     <string name="portability_btn_restore">Pulihkan &amp; Sinkronkan</string>
+    <string name="portability_btn_restoring">Memulihkan…</string>
+    <string name="portability_btn_restoring_count">Memulihkan (%1$d/%2$d)…</string>
     <string name="portability_btn_restructure">Rapikan Struktur</string>
     <string name="portability_btn_dismiss">Abaikan</string>
     <string name="portability_sheet_title">Deteksi Aplikasi MicroSD</string>
@@ -679,6 +681,7 @@
     <string name="portability_ready_label">Siap Disinkronkan</string>
     <string name="portability_restore_all">Pulihkan Semua Aplikasi</string>
     <string name="portability_restore_success">Berhasil memulihkan dan menyinkronkan izin %1$d aplikasi.</string>
+    <string name="portability_restore_none">Tidak ada aplikasi yang dipulihkan atau disinkronkan.</string>
     <!-- v2.2.11 Dashboard Active Games & Live Namespace Verification -->
     <string name="dashboard_view_all_games_count">Lihat Semua Aplikasi (%1$d)</string>
     <string name="dashboard_metric_namespaces_standby_ready">Standby (Sistem Siap)</string>

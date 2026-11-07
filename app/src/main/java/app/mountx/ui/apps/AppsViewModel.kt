@@ -72,6 +72,12 @@ class AppsViewModel @Inject constructor(
     private val _discoveredGames = MutableStateFlow<List<DiscoveredGame>>(emptyList())
     val discoveredGames: StateFlow<List<DiscoveredGame>> = _discoveredGames.asStateFlow()
 
+    private val _isImportingDiscovered = MutableStateFlow(false)
+    val isImportingDiscovered: StateFlow<Boolean> = _isImportingDiscovered.asStateFlow()
+
+    private val _importDiscoveredProgress = MutableStateFlow(Pair(0, 0))
+    val importDiscoveredProgress: StateFlow<Pair<Int, Int>> = _importDiscoveredProgress.asStateFlow()
+
     private val _isRestructuring = MutableStateFlow(false)
     val isRestructuring: StateFlow<Boolean> = _isRestructuring.asStateFlow()
 
@@ -832,29 +838,67 @@ class AppsViewModel @Inject constructor(
         }
     }
 
-    fun importDiscoveredGame(game: DiscoveredGame) {
+    fun importDiscoveredGame(game: DiscoveredGame, onFinished: ((Boolean) -> Unit)? = null) {
+        if (_isImportingDiscovered.value) return
         viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            gameRepository.importDiscoveredGame(game, sdBase)
-            scanDiscoveredGames()
+            _isImportingDiscovered.value = true
+            _importDiscoveredProgress.value = Pair(1, 1)
+            var success = false
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val result = gameRepository.importDiscoveredGame(game, sdBase)
+                success = result.isSuccess
+                scanDiscoveredGames()
+                refresh()
+            } catch (e: Exception) {
+                app.mountx.util.AppLogger.error("GamesVM", "importDiscoveredGame failed: ${e.message}")
+            } finally {
+                _isImportingDiscovered.value = false
+                _importDiscoveredProgress.value = Pair(0, 0)
+                onFinished?.invoke(success)
+            }
         }
     }
 
-    fun importAllDiscoveredGames() {
+    fun importAllDiscoveredGames(onFinished: ((count: Int) -> Unit)? = null) {
+        if (_isImportingDiscovered.value) return
         viewModelScope.launch {
-            val sdBase = appPreferences.sdBasePath.first()
-            for (g in _discoveredGames.value) {
-                gameRepository.importDiscoveredGame(g, sdBase)
+            val gamesToImport = _discoveredGames.value.toList()
+            if (gamesToImport.isEmpty()) {
+                onFinished?.invoke(0)
+                return@launch
             }
-            scanDiscoveredGames()
+            _isImportingDiscovered.value = true
+            _importDiscoveredProgress.value = Pair(0, gamesToImport.size)
+            var importedCount = 0
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                for ((index, g) in gamesToImport.withIndex()) {
+                    _importDiscoveredProgress.value = Pair(index + 1, gamesToImport.size)
+                    val result = gameRepository.importDiscoveredGame(g, sdBase)
+                    if (result.isSuccess) {
+                        importedCount++
+                    }
+                }
+                scanDiscoveredGames()
+                refresh()
+            } catch (e: Exception) {
+                app.mountx.util.AppLogger.error("GamesVM", "importAllDiscoveredGames failed: ${e.message}")
+            } finally {
+                _isImportingDiscovered.value = false
+                _importDiscoveredProgress.value = Pair(0, 0)
+                onFinished?.invoke(importedCount)
+            }
         }
     }
 
     fun dismissDiscovered() {
+        if (_isImportingDiscovered.value) return
         _discoveredGames.value = emptyList()
     }
 
     fun deleteDiscoveredGame(game: DiscoveredGame) {
+        if (_isImportingDiscovered.value) return
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
             gameRepository.deleteDiscoveredGame(game, sdBase)
@@ -863,6 +907,7 @@ class AppsViewModel @Inject constructor(
     }
 
     fun deleteAllOrphanGames(orphans: List<DiscoveredGame>, onFinished: () -> Unit = {}) {
+        if (_isImportingDiscovered.value) return
         viewModelScope.launch {
             val sdBase = appPreferences.sdBasePath.first()
             for (g in orphans) {
