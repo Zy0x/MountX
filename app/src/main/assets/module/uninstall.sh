@@ -14,6 +14,27 @@ if [ -f "${MODDIR}/config.conf" ]; then
 fi
 SD_BASE="${SD_BASE:-/data/sdext2}"
 
+mounted_device=$(awk -v target="$SD_BASE" '$2 == target { print $1; exit }' /proc/mounts 2>/dev/null)
+device_name="${mounted_device##*/}"
+case "$device_name" in
+    ""|*[!A-Za-z0-9._:,-]*) ;;
+    *)
+        shared_path="/data/media/0/MountX/$device_name"
+        if mountpoint -q "$shared_path" 2>/dev/null; then
+            umount -f -l "$shared_path" 2>/dev/null
+        fi
+        ;;
+esac
+if mountpoint -q "$SD_BASE" 2>/dev/null; then
+    mounted_fs=$(stat -f -c %T "$SD_BASE" 2>/dev/null)
+    case "$mounted_fs" in
+        ext2/ext3|f2fs)
+            chown 0:0 "$SD_BASE" 2>/dev/null
+            chmod 0755 "$SD_BASE" 2>/dev/null
+            ;;
+    esac
+fi
+
 for m in $(grep "$SD_BASE" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
     if [ "$m" != "$SD_BASE" ]; then
         umount -f -l "$m" 2>/dev/null

@@ -76,6 +76,7 @@ IO_SCHEDULER="none"
 RQ_AFFINITY=2
 NR_REQUESTS=256
 VFS_CACHE_PRESSURE=20
+SHARED_STORAGE_ENABLED=1
 
 # ── Logging helper ────────────────────────────────────────────────────────────
 log() {
@@ -129,6 +130,7 @@ load_config() {
             RQ_AFFINITY)         RQ_AFFINITY="${val}"         ;;
             NR_REQUESTS)         NR_REQUESTS="${val}"         ;;
             VFS_CACHE_PRESSURE)  VFS_CACHE_PRESSURE="${val}"  ;;
+            SHARED_STORAGE_ENABLED) SHARED_STORAGE_ENABLED="${val}" ;;
             *) log_warn "config.conf: unknown key '${key}'"   ;;
         esac
     done < "${CONFIG_FILE}"
@@ -352,6 +354,138 @@ if [ ! -b "${SD_BLOCK}" ]; then
 
     log_error "Failed to mount SD after 5 attempts. Continuing without terminating service to preserve system state."
     return 1
+}
+
+# ── Expose the selected partition in Android's shared internal storage ─────────
+publish_shared_storage() {
+    if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+        log_warn "Cannot publish shared storage: ${SD_BASE} is not mounted."
+        return 1
+    fi
+    if [ "${SHARED_STORAGE_ENABLED}" != "1" ]; then
+        log_info "Shared storage exposure is disabled in config."
+        unpublish_shared_storage
+        return 0
+    fi
+
+    local mounted_device
+    mounted_device=$(awk -v target="${SD_BASE}" '$2 == target { print $1; exit }' /proc/mounts 2>/dev/null)
+    [ -z "${mounted_device}" ] && mounted_device="${SD_BLOCK}"
+    local device_name="${mounted_device##*/}"
+    case "${device_name}" in
+        ""|*[!A-Za-z0-9._:,-]*)
+            log_error "Cannot publish shared storage: invalid block device '${mounted_device}'."
+            return 1
+            ;;
+    esac
+
+    local shared_parent="/data/media/0/MountX"
+    local shared_path="${shared_parent}/${device_name}"
+    mkdir -p "${shared_parent}" 2>/dev/null || {
+        log_error "Cannot create shared storage directory ${shared_parent}."
+        return 1
+    }
+    restorecon "${shared_parent}" 2>/dev/null || true
+    chown 1023:1023 "${shared_parent}" 2>/dev/null || true
+    chmod 0775 "${shared_parent}" 2>/dev/null || true
+
+    local mounted_fs
+    mounted_fs=$(stat -f -c %T "${SD_BASE}" 2>/dev/null)
+    case "${mounted_fs}" in
+        ext2/ext3|f2fs)
+            chown 1023:1023 "${SD_BASE}" 2>/dev/null || {
+                log_error "Cannot grant media_rw ownership to ${SD_BASE}."
+                return 1
+            }
+            chmod 0775 "${SD_BASE}" 2>/dev/null || {
+                log_error "Cannot make ${SD_BASE} accessible to shared storage."
+                return 1
+            }
+            find "${SD_BASE}" -type d -exec chmod a+rwx {} + || {
+                log_error "Cannot make existing directories on ${SD_BASE} writable."
+                return 1
+            }
+            ;;
+    esac
+
+    if mountpoint -q "${shared_path}" 2>/dev/null; then
+        local shared_device
+        shared_device=$(awk -v target="${shared_path}" '$2 == target { print $1; exit }' /proc/mounts 2>/dev/null)
+        if [ "${shared_device}" = "${mounted_device}" ]; then
+            mount -o remount,bind,rw "${shared_path}" 2>/dev/null || {
+                log_error "Shared storage mount at ${shared_path} is not writable."
+                return 1
+            }
+            local shared_options
+            shared_options=$(awk -v target="${shared_path}" '$2 == target { print $4; exit }' /proc/mounts 2>/dev/null)
+            case ",${shared_options}," in
+                *,rw,*) log_info "Shared storage already available at ${shared_path}."; return 0 ;;
+                *) log_error "Shared storage mount at ${shared_path} is not writable."; return 1 ;;
+            esac
+        fi
+        umount -l "${shared_path}" 2>/dev/null || {
+            log_error "Cannot replace stale shared storage mount at ${shared_path}."
+            return 1
+        }
+    fi
+
+    mkdir -p "${shared_path}" 2>/dev/null || {
+        log_error "Cannot create shared storage mountpoint ${shared_path}."
+        return 1
+    }
+    if ! mount --bind "${SD_BASE}" "${shared_path}" 2>/dev/null ||
+       ! mount -o remount,bind,rw "${shared_path}" 2>/dev/null ||
+       ! mountpoint -q "${shared_path}" 2>/dev/null; then
+        log_error "Failed to expose ${SD_BASE} at ${shared_path}."
+        return 1
+    fi
+    local shared_options
+    shared_options=$(awk -v target="${shared_path}" '$2 == target { print $4; exit }' /proc/mounts 2>/dev/null)
+    case ",${shared_options}," in
+        *,rw,*) ;;
+        *)
+            log_error "Shared storage mount at ${shared_path} is not writable."
+            umount -l "${shared_path}" 2>/dev/null
+            return 1
+            ;;
+    esac
+
+    log_info "Shared storage available at ${shared_path} (read/write)."
+    return 0
+}
+
+unpublish_shared_storage() {
+    local mounted_device
+    mounted_device=$(awk -v target="${SD_BASE}" '$2 == target { print $1; exit }' /proc/mounts 2>/dev/null)
+    [ -z "${mounted_device}" ] && mounted_device="${SD_BLOCK}"
+    local device_name="${mounted_device##*/}"
+    case "${device_name}" in
+        ""|*[!A-Za-z0-9._:,-]*) return 0 ;;
+    esac
+
+    local shared_path="/data/media/0/MountX/${device_name}"
+    if mountpoint -q "${shared_path}" 2>/dev/null; then
+        local shared_device
+        shared_device=$(awk -v target="${shared_path}" '$2 == target { print $1; exit }' /proc/mounts 2>/dev/null)
+        if [ "${shared_device}" = "${mounted_device}" ]; then
+            umount -f -l "${shared_path}" 2>/dev/null || {
+                log_warn "Could not detach shared storage mount ${shared_path}."
+                return 1
+            }
+            log_info "Detached shared storage mount ${shared_path}."
+        fi
+    fi
+    if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+        local mounted_fs
+        mounted_fs=$(stat -f -c %T "${SD_BASE}" 2>/dev/null)
+        case "${mounted_fs}" in
+            ext2/ext3|f2fs)
+                chown 0:0 "${SD_BASE}" 2>/dev/null
+                chmod 0755 "${SD_BASE}" 2>/dev/null
+                ;;
+        esac
+    fi
+    return 0
 }
 
 # ── Apply kernel I/O queue & latency tweaks ───────────────────────────────────
@@ -1333,6 +1467,7 @@ mount_watchdog() {
             log_info "[Watchdog] Auto-mounting ${blk_dev} to ${SD_BASE} after hotplug..."
             mount_sd
             if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+                publish_shared_storage
                 log_info "[Watchdog] SD_BASE mounted after hotplug. Applying bind mounts..."
                 cleanup_stale_mounts
                 apply_io_tweaks
@@ -1389,6 +1524,7 @@ mount_watchdog() {
             for _bnd in $(grep -E "(/data/media/0/Android|/mnt/runtime/default/emulated/0/Android|/mnt/runtime/read/emulated/0/Android|/mnt/runtime/write/emulated/0/Android|/mnt/runtime/full/emulated/0/Android)" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
                 umount -l "${_bnd}" 2>/dev/null
             done
+            unpublish_shared_storage
             umount -l "${SD_BASE}" 2>/dev/null
             # Broadcast error event to MountX app
             am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
@@ -1409,6 +1545,7 @@ mount_watchdog() {
             log_warn "[Watchdog] SD_BASE ${SD_BASE} lost! Re-mounting..."
             mount_sd
             if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+                publish_shared_storage
                 log_info "[Watchdog] SD_BASE re-mounted. Re-applying bind mounts..."
                 cleanup_stale_mounts
                 apply_io_tweaks
@@ -1503,6 +1640,7 @@ mount_watchdog() {
                 mount_sd
             fi
 
+            publish_shared_storage
             cleanup_stale_mounts
             apply_io_tweaks
             apply_all_mounts
@@ -1618,6 +1756,8 @@ main() {
         fi
         apply_io_tweaks
     fi
+
+    publish_shared_storage
 
     # Ensure localized subdirectories exist without placing .nomedia on $SD_BASE/MountX
     mkdir -p "${SD_BASE}/MountX/Android/data" \

@@ -63,6 +63,9 @@ Running out of space from 50 GB+ games like *Wuthering Waves*, *Genshin Impact*,
 * **Automatic Boot Restoration**<br/>
   Reboot your phone whenever you want. MountX automatically restores all game mounts in the background before you even unlock your screen.
 
+* **Shared Storage Access**<br/>
+  The selected partition can also be available at `Internal storage/MountX/<block device name>` for file managers and apps with storage access. This can be toggled in Settings.
+
 * **Beautiful Dark & Light Themes**<br/>
   Features a high-contrast AMOLED Cyber Dark theme and a soft Sandstone Light theme that adapts to your system setting.
 
@@ -121,6 +124,18 @@ Detailed guides and manuals are available in the repository and the [MountX Wiki
 * [FAQ & Troubleshooting](docs/FAQ.md) : Common questions, crash prevention, and error solutions.
 * [Contributing Guide](docs/CONTRIBUTING.md) : Developer guide, code style, and pull request workflow.
 * [Changelog](CHANGELOG.md) : Full release and version history.
+
+### Development with Nix
+
+On `x86_64-linux`, install Nix with flakes enabled, then enter the pinned development environment:
+
+```sh
+nix develop
+bash gradlew assembleDebug
+bash gradlew testDebugUnitTest
+```
+
+The shell provides JDK 17 and Android SDK Platform 35/build tools. To build a release APK, run `bash gradlew assembleRelease`; package the root module separately with `(cd module && zip -r ../MountX-Magisk.zip .)`. Update the pinned Nixpkgs revision with `nix flake update` when intentionally refreshing the toolchain.
 
 <br/>
 

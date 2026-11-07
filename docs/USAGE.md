@@ -140,6 +140,10 @@ Tap a specific partition to access partition-level tools:
 - **Run Benchmark** — Test I/O speed (useful for validating card quality).
 - **Set as Default** — Set this partition as the active MountX target in Settings.
 
+When a partition is mounted as the active MountX target, it is also exposed read/write at `Internal storage/MountX/<block device name>` (for example, `Internal storage/MountX/mmcblk1p1`). On Ext4/F2FS, MountX makes existing directories writable so apps with access to shared storage can create and delete folders there. Apps still need the Android storage permission appropriate to their version of Android.
+
+Toggle **Expose storage in Internal storage** under **Settings → Behavior** to enable or disable this shared path. The choice applies immediately and is preserved across reboot.
+
 ---
 
 ## I/O Booster

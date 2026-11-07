@@ -232,6 +232,23 @@ class StorageRepository @Inject constructor(
             res
         }
 
+    suspend fun setSharedStorageEnabled(
+        enabled: Boolean,
+        mountPoint: String = "/data/sdext2"
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        AppLogger.info("Storage", "Setting shared storage exposure to $enabled")
+        val result = storageManager.setSharedStorageEnabled(enabled, mountPoint)
+        if (result.isSuccess) {
+            AppLogger.success("Storage", "Shared storage exposure set to $enabled")
+        } else {
+            AppLogger.error(
+                "Storage",
+                "Could not set shared storage exposure: ${result.exceptionOrNull()?.message}"
+            )
+        }
+        result
+    }
+
     suspend fun unmountPartition(partition: PartitionInfo): Result<Unit> =
         withContext(Dispatchers.IO) {
             AppLogger.info("Storage", "Unmounting partition ${partition.path} (${partition.name})")
@@ -432,4 +449,3 @@ class StorageRepository @Inject constructor(
         res
     }
 }
-
