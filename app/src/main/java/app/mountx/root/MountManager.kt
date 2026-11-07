@@ -325,13 +325,8 @@ class MountManager(
             // Clear user-unmounted flag since an intentional mount is taking place
             RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
 
-            // Pre-Mount Process Guard: stop active app if running to prevent file locks or stale namespace
-            val pgrepRes = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
-            if (pgrepRes.isSuccess && pgrepRes.output.isNotBlank()) {
-                RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
-                AppLogger.info("MountManager", "Force-stopped process before mount: ${game.packageName}")
-                delay(200)
-            }
+            // Pre-Mount Process Guard: unconditionally force-stop app to ensure no file locks or stale namespaces exist
+            forceStopApp(game.packageName)
 
             // Dynamic UID/GID resolution directly from stat /data/user/$appUserId/$pkg
             val appUserId = game.mountPoints.firstOrNull()?.let { resolveUserId(it.targetPath) } ?: 0
@@ -821,6 +816,9 @@ class MountManager(
             )
             // Ensure package is unsuspended if it was previously suspended during migration or MicroSD ejection
             RootShell.exec("pm unsuspend \"${game.packageName}\" 2>/dev/null")
+            // Post-Mount Process Guard: force-stop app so Android ActivityManager purges cached process records.
+            // When the user opens the app, Zygote spawns a completely fresh process that cleanly inherits the new mounts.
+            forceStopApp(game.packageName)
             delay(150)
 
             // Step 4: Selesai
@@ -1156,12 +1154,8 @@ class MountManager(
                     )
                 )
 
-                // Pre-Unmount Process Check: force-stop active process if running
-                val pgrepRes = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
-                if (pgrepRes.isSuccess && pgrepRes.output.isNotBlank()) {
-                    RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
-                    AppLogger.info("MountManager", "Force-stopped process before unmount: ${game.packageName}")
-                }
+                // Pre-Unmount Process Check: unconditionally force-stop app to prevent I/O corruption
+                forceStopApp(game.packageName)
 
                 // Step 1: Unmount VFS
                 onProgress?.invoke(
@@ -1287,6 +1281,8 @@ class MountManager(
                     RootShell.exec("restorecon -FR \"/data/media/$uid/Android/data/${game.packageName}\" 2>/dev/null")
                     RootShell.exec("restorecon -FR \"/data/media/$uid/Android/obb/${game.packageName}\" 2>/dev/null")
                 }
+                // Post-Unmount Process Guard: ensure app processes are completely terminated
+                forceStopApp(game.packageName)
                 delay(150)
 
                 // Step 3: Finished
@@ -1350,11 +1346,8 @@ class MountManager(
                 )
             )
 
-            // Force-stop app process if running
-            val pgrepRes = RootShell.exec("pgrep -f \"${game.packageName}\" 2>/dev/null")
-            if (pgrepRes.isSuccess && pgrepRes.output.isNotBlank()) {
-                RootShell.exec("am force-stop \"${game.packageName}\" 2>/dev/null")
-            }
+            // Force-stop app process unconditionally before unmounting
+            forceStopApp(game.packageName)
 
             onProgress?.invoke(
                 OperationProgress(
@@ -1444,6 +1437,7 @@ class MountManager(
                     isSuccess = true
                 )
             )
+            forceStopApp(game.packageName)
             Unit
         }.onFailure { err ->
             onProgress?.invoke(
@@ -1569,10 +1563,25 @@ class MountManager(
     }
 
     /**
+     * Thoroughly terminates all active, cached, and background processes, tasks, and services
+     * for the specified package to prevent stale mount namespaces, open file descriptor leaks,
+     * and force-close crashes upon launching after mount or migration.
+     */
+    suspend fun forceStopApp(packageName: String) = withContext(Dispatchers.IO) {
+        if (packageName.isBlank()) return@withContext
+        AppLogger.info("MountManager", "Force-stopping all processes for package: $packageName")
+        RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
+        RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
+        RootShell.exec("killall -9 \"$packageName\" 2>/dev/null || true")
+        delay(150)
+    }
+
+    /**
      * Checks whether an application process is actively running in the background or foreground.
      */
     suspend fun isGameRunning(packageName: String): Boolean = withContext(Dispatchers.IO) {
-        val pgrepRes = RootShell.exec("pgrep -f \"$packageName\" 2>/dev/null")
+        if (packageName.isBlank()) return@withContext false
+        val pgrepRes = RootShell.exec("pgrep -f \"$packageName\" 2>/dev/null || pidof \"$packageName\" 2>/dev/null")
         pgrepRes.isSuccess && pgrepRes.output.isNotBlank()
     }
 

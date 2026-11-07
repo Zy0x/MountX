@@ -3254,9 +3254,11 @@ class StorageManager(
                 )
             )
 
-            // Deep Package Suspension: freeze app to prevent background file locks, jobs, and alarms
+            // Deep Package Suspension: freeze and terminate app to prevent background file locks, jobs, and alarms
             RootShell.exec("pm suspend \"$packageName\" 2>/dev/null")
             RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
+            RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
+            RootShell.exec("killall -9 \"$packageName\" 2>/dev/null || true")
 
             try {
                 val uid = RootShell.exec(
@@ -3474,8 +3476,11 @@ class StorageManager(
                 if (wakeLock?.isHeld == true) {
                     try { wakeLock.release() } catch (_: Exception) {}
                 }
-                // Ensure target package is always unsuspended
+                // Ensure target package is always unsuspended and cleanly force-stopped
                 RootShell.exec("pm unsuspend \"$packageName\" 2>/dev/null")
+                RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
+                RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
+                RootShell.exec("killall -9 \"$packageName\" 2>/dev/null || true")
             }
         }.onFailure { err ->
             onProgress?.invoke(
@@ -3611,9 +3616,11 @@ class StorageManager(
                 )
             )
 
-            // Deep Package Suspension: freeze app to prevent background file locks, jobs, and alarms
+            // Deep Package Suspension: freeze and terminate app to prevent background file locks, jobs, and alarms
             RootShell.exec("pm suspend \"$packageName\" 2>/dev/null")
             RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
+            RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
+            RootShell.exec("killall -9 \"$packageName\" 2>/dev/null || true")
 
             try {
                 val uid = RootShell.exec(
@@ -3832,8 +3839,11 @@ class StorageManager(
                 if (wakeLock?.isHeld == true) {
                     try { wakeLock.release() } catch (_: Exception) {}
                 }
-                // Ensure target package is always unsuspended
+                // Ensure target package is always unsuspended and cleanly force-stopped
                 RootShell.exec("pm unsuspend \"$packageName\" 2>/dev/null")
+                RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
+                RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
+                RootShell.exec("killall -9 \"$packageName\" 2>/dev/null || true")
             }
         }.onFailure { err ->
             onProgress?.invoke(

@@ -572,6 +572,8 @@ class AppsViewModel @Inject constructor(
 
                 // Force stop active process before migration
                 RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
+                RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
+                RootShell.exec("killall -9 \"$packageName\" 2>/dev/null || true")
 
                 // Always unmount from runtime namespaces first before moving data in either direction
                 // to avoid circular reading/writing across bind mounts
@@ -654,6 +656,8 @@ class AppsViewModel @Inject constructor(
                 _isMovingData.value = false
                 _pendingOperations.update { it - packageName }
                 RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
+                RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
+                RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
             }
         }
     }
@@ -700,6 +704,8 @@ class AppsViewModel @Inject constructor(
                 _isMovingData.value = false
                 _pendingOperations.update { it - packageName }
                 RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
+                RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
+                RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
             }
         }
     }

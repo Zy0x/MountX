@@ -622,33 +622,20 @@ bind_mount_to_runtime_namespaces() {
             fi
         fi
 
-        # Pre-emptively grant storage permissions and inject mounts into active app process mount namespace if already spawned
+        # Pre-emptively stop active app process and auto-grant storage permissions
         if [ -n "${PKG}" ]; then
-            pids=$(pgrep -f "^${PKG}" 2>/dev/null)
-            if [ -n "${pids}" ]; then
-                for p in ${pids}; do
-                    if [ -e "/proc/${p}/ns/mnt" ]; then
-                        if [ "${is_non_posix}" -eq 1 ]; then
-                            nsenter --mount="/proc/${p}/ns/mnt" -- toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid="${APP_UID}",mask=0 "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
-                            nsenter --mount="/proc/${p}/ns/mnt" -- toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid="${APP_UID}",mask=0 "${SRC}" "${DST}" 2>/dev/null
-                        else
-                            nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
-                            nsenter --mount="/proc/${p}/ns/mnt" -- mount --bind "${SRC}" "${DST}" 2>/dev/null
-                        fi
-                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-rprivate "/storage/emulated/${USER_ID}/${REL}" 2>/dev/null
-                        nsenter --mount="/proc/${p}/ns/mnt" -- mount --make-rprivate "${DST}" 2>/dev/null
-                    fi
-                done
-            else
-                # Auto-grant storage permissions only when app is not running
-                # (Android OS forcefully kills all UID processes if MANAGE_EXTERNAL_STORAGE is changed while alive)
-                appops set "${PKG}" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null
-                appops set "${PKG}" LEGACY_STORAGE allow 2>/dev/null
-                pm grant "${PKG}" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null
-                pm grant "${PKG}" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null
-            fi
+            am force-stop "${PKG}" 2>/dev/null
+            pkill -9 -f "${PKG}" 2>/dev/null || true
+            appops set "${PKG}" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null
+            appops set "${PKG}" LEGACY_STORAGE allow 2>/dev/null
+            pm grant "${PKG}" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null
+            pm grant "${PKG}" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null
         fi
     '
+
+    if [ -n "${pkg}" ]; then
+        am force-stop "${pkg}" 2>/dev/null
+    fi
 
     local count=0
     if [ -n "${rel}" ]; then

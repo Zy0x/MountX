@@ -459,6 +459,7 @@ class AppRepository @Inject constructor(
         RootShell.rootExecutionMutex.withLock {
             runCatching {
                 val pkg = game.packageName
+                mountManager.forceStopApp(pkg)
                 AppLogger.info("Games", "Direct-mounting ${game.displayName} ($pkg) to $targetBase")
 
                 val currentPoints = game.mountPoints
@@ -490,6 +491,7 @@ class AppRepository @Inject constructor(
                 calculateDataSize(pkg, targetBase)
                 syncDiskCatalog(targetBase)
                 mountNotificationManager.syncActiveMountNotification()
+                mountManager.forceStopApp(pkg)
                 AppLogger.success("Games", "Direct mount successful for ${game.displayName}")
                 Unit
             }
@@ -764,7 +766,9 @@ class AppRepository @Inject constructor(
                 )
                 gameDao.insertGame(entry)
                 // Reconcile dynamic UID/GID and SELinux
+                mountManager.forceStopApp(game.packageName)
                 diskCatalogManager.reconcileGame(sdBase, entry)
+                mountManager.forceStopApp(game.packageName)
                 syncModuleGamelist()
                 syncDiskCatalog(sdBase)
                 AppLogger.success("Games", "Imported & reconciled portable game: ${game.displayName} (${game.packageName}), size: $realSize bytes, uuid: $preferredUuid")
@@ -772,7 +776,10 @@ class AppRepository @Inject constructor(
         }
 
     suspend fun reconcileApp(entry: GameEntry, sdBase: String = "/data/sdext2") = withContext(Dispatchers.IO) {
-        diskCatalogManager.reconcileGame(sdBase, entry)
+        mountManager.forceStopApp(entry.packageName)
+        val res = diskCatalogManager.reconcileGame(sdBase, entry)
+        mountManager.forceStopApp(entry.packageName)
+        res
     }
 
     suspend fun restructureGame(
