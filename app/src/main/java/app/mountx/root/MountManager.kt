@@ -114,6 +114,7 @@ class MountManager(
          */
         suspend fun resolveBusybox(): String? {
             val candidates = listOf(
+                "/dev/mountx_bin/busybox",
                 "/data/adb/modules/MountX/bin/busybox",
                 "/data/adb/ap/bin/busybox",
                 "/data/adb/ksu/bin/busybox",

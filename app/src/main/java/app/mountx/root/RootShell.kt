@@ -22,12 +22,50 @@ object RootShell {
     val rootExecutionMutex = Mutex()
 
     /**
+     * Common su binary locations across all Android root solutions, including
+     * TempRoot exploits (mtk-su, CVEs) located at /dev/su or /data/local/tmp/su.
+     */
+    val SU_CANDIDATES = listOf(
+        "su",
+        "/dev/su",
+        "/data/local/tmp/su",
+        "/sbin/su",
+        "/system/xbin/su",
+        "/system/bin/su"
+    )
+
+    @Volatile
+    private var resolvedSuPath: String? = null
+
+    /**
+     * Resolves the active 'su' binary candidate on the device.
+     * Essential for TempRoot where 'su' is placed in non-standard paths like /dev/su or /data/local/tmp/su.
+     */
+    fun resolveSuBinary(forceRefresh: Boolean = false): String {
+        if (!forceRefresh) {
+            resolvedSuPath?.let { return it }
+        }
+        for (candidate in SU_CANDIDATES) {
+            try {
+                val p = Runtime.getRuntime().exec(arrayOf(candidate, "-c", "id"))
+                val out = p.inputStream.bufferedReader().use { it.readText() }
+                if (p.waitFor() == 0 && out.contains("uid=0")) {
+                    resolvedSuPath = candidate
+                    return candidate
+                }
+            } catch (_: Exception) {}
+        }
+        return "su"
+    }
+
+    /**
      * Directly tests if 'su' binary responds and grants root to this app UID.
      * Bypasses any libsu caching bugs or stale non-root state.
      */
     fun checkSuDirect(): Boolean {
         return try {
-            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val suBin = resolveSuBinary(forceRefresh = true)
+            val process = Runtime.getRuntime().exec(arrayOf(suBin, "-c", "id"))
             val stdout = process.inputStream.bufferedReader().use { it.readText() }
             val exitCode = process.waitFor()
             exitCode == 0 && stdout.contains("uid=0")
@@ -169,11 +207,12 @@ object RootShell {
             var process: Process? = null
 
             try {
+                val suBin = resolveSuBinary()
                 val fullCmd = "$ENV_SETUP$cmd"
                 val suCmds = listOf(
-                    arrayOf("su", "-M", "-c", fullCmd),
-                    arrayOf("su", "-mm", "-c", fullCmd),
-                    arrayOf("su", "-c", fullCmd)
+                    arrayOf(suBin, "-M", "-c", fullCmd),
+                    arrayOf(suBin, "-mm", "-c", fullCmd),
+                    arrayOf(suBin, "-c", fullCmd)
                 )
 
                 for (suCmd in suCmds) {

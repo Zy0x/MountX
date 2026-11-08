@@ -9,6 +9,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import app.mountx.data.model.RootSolution
+import app.mountx.root.RootDetector
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -68,7 +70,16 @@ class AppPreferences @Inject constructor(
     }
 
     val sdBasePath: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[KEY_SD_BASE_PATH] ?: "/data/sdext2"
+        val custom = prefs[KEY_SD_BASE_PATH]
+        if (custom != null) {
+            custom
+        } else {
+            if (RootDetector.cachedInfo?.rootSolution == RootSolution.TEMPROOT) {
+                "/dev/mountx/sdext2"
+            } else {
+                "/data/sdext2"
+            }
+        }
     }
 
     val sdBlockDevice: Flow<String> = context.dataStore.data.map { prefs ->

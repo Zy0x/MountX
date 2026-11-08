@@ -17,7 +17,7 @@ data class RootModuleInfo(
 object RootDetector {
 
     @Volatile
-    private var cachedInfo: RootModuleInfo? = null
+    var cachedInfo: RootModuleInfo? = null
 
     /**
      * Batch-detect root solution, module installation, and version in a single shell call.
@@ -39,8 +39,8 @@ object RootDetector {
         }
 
         val batchScript = """
-            # ── Root solution detection (Magisk / KernelSU / APatch / variants) ──
-            if magisk -v >/dev/null 2>&1; then
+            # ── Root solution detection (Magisk / KernelSU / APatch / TempRoot) ──
+            if command -v magisk >/dev/null 2>&1 || magisk -v >/dev/null 2>&1; then
                 echo "ROOT:MAGISK"
             elif [ -e /data/adb/ksud ] || [ -e /data/adb/ksu/ksud ] || ksud -V >/dev/null 2>&1; then
                 echo "ROOT:KERNELSU"
@@ -49,7 +49,7 @@ object RootDetector {
             elif su --version 2>/dev/null | grep -qi "supersu"; then
                 echo "ROOT:MAGISK"
             else
-                echo "ROOT:NONE"
+                echo "ROOT:TEMPROOT"
             fi
 
             # ── Module directory discovery (all known root manager paths) ──
@@ -94,11 +94,17 @@ object RootDetector {
                     trimmed == "ROOT:MAGISK" -> rootSol = RootSolution.MAGISK
                     trimmed == "ROOT:KERNELSU" -> rootSol = RootSolution.KERNELSU
                     trimmed == "ROOT:APATCH" -> rootSol = RootSolution.APATCH
+                    trimmed == "ROOT:TEMPROOT" -> rootSol = RootSolution.TEMPROOT
                     trimmed == "MODULE:1" -> modInstalled = true
                     trimmed == "MODULE:0" -> modInstalled = false
                     trimmed.startsWith("version=") -> modVer = trimmed.removePrefix("version=").trim()
                 }
             }
+        }
+
+        // Fallback: If su is working but no persistent root manager is identified, it is TempRoot
+        if (rootSol == RootSolution.NONE && RootShell.isRootAvailable()) {
+            rootSol = RootSolution.TEMPROOT
         }
 
         val info = RootModuleInfo(rootSol, modInstalled, modVer)

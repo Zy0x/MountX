@@ -48,6 +48,7 @@ class MountNotificationManager @Inject constructor(
         const val EMERGENCY_NOTIF_ID = 9999
         const val HOTPLUG_NOTIF_ID = 9998
         const val DISK_ERROR_NOTIF_ID = 9997
+        const val UNMOUNTED_ALERT_NOTIF_ID = 9996
         const val UPDATE_NOTIF_ID = 2002
     }
 
@@ -115,6 +116,7 @@ class MountNotificationManager @Inject constructor(
                     notificationManager.cancel(ACTIVE_NOTIF_ID)
                     return@launch
                 }
+                dismissUnmountedGameWarningNotification()
 
                 // Dynamic Multi-Disk Resolution
                 val gameDisks = resolveMountedGamesDisks(mountedGames)
@@ -578,5 +580,62 @@ class MountNotificationManager @Inject constructor(
      */
     fun cancelOperationProgressNotification() {
         notificationManager.cancel(OPERATIONS_NOTIF_ID)
+    }
+
+    /**
+     * Posts a high-priority warning notification if game data folders are unmounted after reboot,
+     * protecting users from accidental data redownloads before TempRoot or Mount All is executed.
+     */
+    fun showUnmountedGameWarningNotification(unmountedCount: Int) {
+        scope.launch {
+            try {
+                createNotificationChannels()
+                val openIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context, UNMOUNTED_ALERT_NOTIF_ID, openIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val mountAllIntent = Intent(context, MountActionReceiver::class.java).apply {
+                    action = MountActionReceiver.ACTION_MOUNT_ALL
+                }
+                val mountAllPendingIntent = PendingIntent.getBroadcast(
+                    context, 10, mountAllIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val builder = NotificationCompat.Builder(context, CHANNEL_EMERGENCY_ALERTS)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setColor(0xFFFF9100.toInt())
+                    .setContentTitle(context.getString(R.string.notif_unmounted_warning_title))
+                    .setContentText(context.getString(R.string.notif_unmounted_warning_desc, unmountedCount))
+                    .setStyle(
+                        NotificationCompat.BigTextStyle()
+                            .bigText(context.getString(R.string.notif_unmounted_warning_big_desc, unmountedCount))
+                    )
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent)
+                    .addAction(
+                        0,
+                        context.getString(R.string.dashboard_temproot_btn_mount_all),
+                        mountAllPendingIntent
+                    )
+
+                notificationManager.notify(UNMOUNTED_ALERT_NOTIF_ID, builder.build())
+                AppLogger.warn("Notification", "Posted unmounted game warning notification ($unmountedCount games).")
+            } catch (e: Exception) {
+                AppLogger.error("Notification", "Failed to post unmounted warning notification: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Dismisses the post-reboot unmounted warning notification.
+     */
+    fun dismissUnmountedGameWarningNotification() {
+        notificationManager.cancel(UNMOUNTED_ALERT_NOTIF_ID)
     }
 }

@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.ErrorOutline
 import app.mountx.ui.components.ModuleInstallDialog
@@ -329,7 +330,8 @@ fun DashboardContent(
                             onInstallModuleClick = { showModuleInstallDialog = true },
                             onEmergencyUnmountClick = onEmergencyUnmountClick,
                             onDiagnoseClick = onNavigateToStorage,
-                            onCheckRootClick = onRefresh
+                            onCheckRootClick = onRefresh,
+                            onQuickMountAllClick = onMountAll
                         )
                     }
                     item {
@@ -402,7 +404,8 @@ fun DashboardContent(
                         onInstallModuleClick = { showModuleInstallDialog = true },
                         onEmergencyUnmountClick = onEmergencyUnmountClick,
                         onDiagnoseClick = onNavigateToStorage,
-                        onCheckRootClick = onRefresh
+                        onCheckRootClick = onRefresh,
+                        onQuickMountAllClick = onMountAll
                     )
                 }
                 item {
@@ -602,6 +605,7 @@ private fun SleekCompactHeader(
                     RootSolution.MAGISK -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_magisk))
                     RootSolution.KERNELSU -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_kernelsu))
                     RootSolution.APATCH -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_apatch))
+                    RootSolution.TEMPROOT -> Triple(activeEmerald, activeEmeraldGlow, stringResource(R.string.root_temproot))
                     RootSolution.NONE -> Triple(noneCrimson, noneCrimsonGlow, stringResource(R.string.root_none))
                 }
 
@@ -651,7 +655,8 @@ private fun ContextualAlertBanner(
     onInstallModuleClick: () -> Unit = {},
     onEmergencyUnmountClick: () -> Unit = {},
     onDiagnoseClick: () -> Unit = {},
-    onCheckRootClick: () -> Unit = {}
+    onCheckRootClick: () -> Unit = {},
+    onQuickMountAllClick: () -> Unit = {}
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val errColor = if (isDark) NeonCrimson else TerracottaRedLight
@@ -882,7 +887,83 @@ private fun ContextualAlertBanner(
             }
         }
 
-        !status.isModuleInstalled -> {
+        status.rootSolution == RootSolution.TEMPROOT -> {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isDark) Color(0xFF0D251E) else Color(0xFFE8F5E9)
+                ),
+                border = BorderStroke(1.dp, if (isDark) Color(0xFF00E676).copy(alpha = 0.35f) else Color(0xFF2E7D32).copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = (if (isDark) Color(0xFF00E676) else Color(0xFF2E7D32)).copy(alpha = 0.18f),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = if (isDark) Color(0xFF00E676) else Color(0xFF2E7D32),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.dashboard_temproot_banner_title),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = if (isDark) Color(0xFF00E676) else Color(0xFF2E7D32)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = stringResource(R.string.dashboard_temproot_banner_desc),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                            onClick = onQuickMountAllClick,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDark) Color(0xFF00E676) else Color(0xFF2E7D32)
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = stringResource(R.string.dashboard_temproot_btn_mount_all),
+                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        !status.isModuleInstalled && status.rootSolution != RootSolution.TEMPROOT -> {
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(

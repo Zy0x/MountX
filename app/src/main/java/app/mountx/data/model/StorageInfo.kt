@@ -4,11 +4,12 @@ import app.mountx.MountXApp
 import app.mountx.R
 
 /** Root solutions supported by MountX */
-enum class RootSolution {
-    MAGISK,
-    KERNELSU,
-    APATCH,
-    NONE
+enum class RootSolution(val displayName: String, val isPersistent: Boolean) {
+    MAGISK("Magisk", true),
+    KERNELSU("KernelSU / KSU Next", true),
+    APATCH("APatch", true),
+    TEMPROOT("TempRoot (RAM Mode)", false),
+    NONE("No Root", false)
 }
 
 /** Filesystem types for formatting MicroSD partitions */
@@ -171,7 +172,7 @@ data class SdCardDiskInfo(
         get() = primaryPartition?.uuid ?: partitions.firstOrNull { !it.uuid.isNullOrBlank() }?.uuid
 
     val mountPath: String
-        get() = primaryPartition?.mountPoint ?: partitions.firstOrNull { !it.mountPoint.isNullOrBlank() }?.mountPoint ?: "/data/sdext2"
+        get() = primaryPartition?.mountPoint ?: partitions.firstOrNull { !it.mountPoint.isNullOrBlank() }?.mountPoint ?: (if (app.mountx.root.RootDetector.cachedInfo?.rootSolution == RootSolution.TEMPROOT) "/dev/mountx/sdext2" else "/data/sdext2")
 
     val isMounted: Boolean
         get() = partitions.any { it.isMounted }

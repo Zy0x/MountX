@@ -1551,6 +1551,14 @@
     <string name="cleaning_all_cache">Cleaning cache across all apps…</string>
     <string name="toast_clean_all_cache_success">Cleaned cache for %1$d apps (%2$s freed).</string>
     <string name="toast_clean_all_cache_none">No temporary cache found to clean.</string>
+    <!-- TempRoot (RAM Mode) & Post-Reboot Protection -->
+    <string name="root_temproot">TempRoot (RAM Mode)</string>
+    <string name="dashboard_temproot_banner_title">TempRoot Active (RAM Safe Mode)</string>
+    <string name="dashboard_temproot_banner_desc">Zero risk of bootloop or banking detection. Toolchain and storage mounts run purely in volatile RAM without modifying system partitions.</string>
+    <string name="dashboard_temproot_btn_mount_all">⚡ Quick-Mount All</string>
+    <string name="notif_unmounted_warning_title">⚠️ MountX: Game Data Disconnected!</string>
+    <string name="notif_unmounted_warning_desc">%1$d game(s) unmounted. Run TempRoot &amp; tap Mount All before playing!</string>
+    <string name="notif_unmounted_warning_big_desc">%1$d game data folders are disconnected after reboot. To prevent games from re-downloading data or overwriting files, run TempRoot and tap Mount All before launching any games.</string>
 </resources>
 
 

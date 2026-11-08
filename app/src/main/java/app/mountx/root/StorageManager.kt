@@ -1443,13 +1443,28 @@ class StorageManager(
         fsType: FilesystemType = FilesystemType.F2FS
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            val isTempRoot = RootDetector.cachedInfo?.rootSolution == app.mountx.data.model.RootSolution.TEMPROOT
+            val effectiveMountPoint = if (isTempRoot && mountPoint == "/data/sdext2") {
+                "/dev/mountx/sdext2"
+            } else {
+                mountPoint
+            }
+
+            if (isTempRoot) {
+                // Best-effort permissive SELinux for TempRoot & clean lingering /data/sdext2 to protect from banking detection
+                RootShell.exec("setenforce 0 2>/dev/null")
+                if (!RootShell.isMountpoint("/data/sdext2")) {
+                    RootShell.exec("rmdir /data/sdext2 2>/dev/null")
+                }
+            }
+
             // 1. If already mounted cleanly at target mount point, ensure private propagation and return immediately
-            if (RootShell.isMountpoint(mountPoint)) {
-                RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
+            if (RootShell.isMountpoint(effectiveMountPoint)) {
+                RootShell.exec("mount --make-rprivate \"$effectiveMountPoint\" 2>/dev/null")
                 return@runCatching Unit
             }
 
-            RootShell.exec("mkdir -p \"$mountPoint\" 2>/dev/null")
+            RootShell.exec("mkdir -p \"$effectiveMountPoint\" 2>/dev/null")
 
             // 2. Resolve block device dynamically if path shifted on reboot or was unassigned
             var targetDev = blockDevice.trim()
@@ -1475,7 +1490,7 @@ class StorageManager(
             }
 
             if (targetDev.isBlank() || !RootShell.exists(targetDev)) {
-                val partitions = detectPartitions(mountPoint)
+                val partitions = detectPartitions(effectiveMountPoint)
                 // 2. Look for unmounted F2FS partition on external storage
                 val unmountedF2fs = partitions.firstOrNull { p ->
                     p.mountPoint.isNullOrBlank() && p.fsType.equals("f2fs", ignoreCase = true) && RootShell.exists(p.path)
@@ -1532,8 +1547,8 @@ class StorageManager(
                 res = RootShell.exec(fallbackCmd)
             }
 
-            if (!RootShell.isMountpoint(mountPoint)) {
-                error("Failed to mount $targetDev to $mountPoint: ${res.stderr.joinToString("\n")}")
+            if (!RootShell.isMountpoint(effectiveMountPoint)) {
+                error("Failed to mount $targetDev to $effectiveMountPoint: ${res.stderr.joinToString("\n")}")
             }
             RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
             ToolchainManager.optimizeBlockDeviceQueue(targetDev)

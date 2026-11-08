@@ -3,16 +3,16 @@ package app.mountx.service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import app.mountx.data.db.GameDao
+import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-import app.mountx.root.RootShell
-import kotlinx.coroutines.delay
 
 @AndroidEntryPoint
 class BootReceiver : BroadcastReceiver() {
@@ -22,6 +22,9 @@ class BootReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var mountNotificationManager: MountNotificationManager
+
+    @Inject
+    lateinit var gameDao: GameDao
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
@@ -37,12 +40,15 @@ class BootReceiver : BroadcastReceiver() {
                 try {
                     mountNotificationManager.createNotificationChannels()
                     val autoMount = appPreferences.autoMountOnBoot.first()
-                    if (autoMount) {
+                    val rootAvailable = RootShell.isRootAvailable()
+
+                    if (autoMount && rootAvailable) {
                         // Cold-boot settling grace period: wait for storage daemon & vold to become ready
                         var attempts = 0
                         while (attempts < 10) {
                             if (RootShell.exists("/storage/emulated/0") ||
-                                RootShell.isMountpoint("/data/sdext2")
+                                RootShell.isMountpoint("/data/sdext2") ||
+                                RootShell.isMountpoint("/dev/mountx/sdext2")
                             ) {
                                 break
                             }
@@ -51,6 +57,15 @@ class BootReceiver : BroadcastReceiver() {
                         }
                         MountService.startMountAll(context)
                     }
+
+                    // Post-reboot unmounted game launch protection:
+                    // If root is not available (typical of TempRoot after reboot) or auto-mount is off,
+                    // warn the user so they do not open games before executing TempRoot & Mount All.
+                    val registeredGames = gameDao.getAllGamesSync().filter { it.isEnabled }
+                    if (registeredGames.isNotEmpty() && (!rootAvailable || !autoMount)) {
+                        mountNotificationManager.showUnmountedGameWarningNotification(registeredGames.size)
+                    }
+
                     mountNotificationManager.syncActiveMountNotification()
                 } finally {
                     pendingResult.finish()

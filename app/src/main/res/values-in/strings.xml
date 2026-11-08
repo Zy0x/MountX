@@ -1535,6 +1535,14 @@
     <string name="cleaning_all_cache">Membersihkan cache seluruh aplikasi…</string>
     <string name="toast_clean_all_cache_success">Berhasil membersihkan cache untuk %1$d aplikasi (%2$s dibebaskan).</string>
     <string name="toast_clean_all_cache_none">Tidak ada cache sementara yang perlu dibersihkan.</string>
+    <!-- TempRoot (Mode RAM) & Proteksi Pasca-Reboot -->
+    <string name="root_temproot">TempRoot (Mode RAM)</string>
+    <string name="dashboard_temproot_banner_title">TempRoot Aktif (Mode Aman RAM)</string>
+    <string name="dashboard_temproot_banner_desc">Bebas risiko bootloop dan deteksi m-banking. Seluruh toolchain dan mount berjalan murni di memori RAM tanpa mengubah partisi sistem.</string>
+    <string name="dashboard_temproot_btn_mount_all">⚡ Hubungkan Semua (Mount)</string>
+    <string name="notif_unmounted_warning_title">⚠️ MountX: Data Game Belum Terhubung!</string>
+    <string name="notif_unmounted_warning_desc">%1$d game belum terhubung. Jalankan TempRoot &amp; ketuk Mount All sebelum bermain!</string>
+    <string name="notif_unmounted_warning_big_desc">%1$d folder data game belum terhubung pasca-reboot. Agar game tidak mengunduh ulang data puluhan GB atau menimpa file, aktifkan TempRoot lalu ketuk Mount All sebelum membuka game.</string>
 </resources>
 
 

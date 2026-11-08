@@ -53,6 +53,19 @@ object ToolchainManager {
                     chmod 755 "$BIN_DIR/parted" 2>/dev/null
                 fi
 
+                # 3b. Symlink active su binary for TempRoot (e.g. /dev/su or /data/local/tmp/su)
+                if [ ! -e "$BIN_DIR/su" ]; then
+                    for su_cand in /dev/su /data/local/tmp/su /sbin/su /system/xbin/su /system/bin/su; do
+                        if [ -x "${'$'}su_cand" ]; then
+                            ln -sf "${'$'}su_cand" "$BIN_DIR/su"
+                            break
+                        fi
+                    done
+                fi
+
+                # 3c. Prepare volatile RAM mount directory (Zero /data permanent footprint)
+                mkdir -p /dev/mountx/sdext2 2>/dev/null
+
                 # 4. Fallback: Symlink from Magisk/KSU/APatch module bin directory if present
                 for m_bin in /data/adb/modules/MountX/bin /data/adb/modules/mountx/bin /data/adb/ap/modules/MountX/bin /data/adb/ksu/modules/MountX/bin; do
                     if [ -d "${'$'}m_bin" ]; then
