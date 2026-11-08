@@ -185,6 +185,19 @@ data class StorageHierarchyResult(
 )
 
 /** Specification for creating a partition in the Partition Wizard */
+/** Partition table layout type */
+enum class PartitionTableType(val label: String) {
+    GPT("GPT"),
+    MBR("MBR")
+}
+
+/** One-click partition scheme presets */
+enum class PartitionPreset {
+    GAMER_HYBRID,
+    PURE_GAME,
+    UNIVERSAL_MEDIA
+}
+
 data class PartitionSchemeConfig(
     val partitionIndex: Int = 1,
     val sizeKb: Long = 0L,

@@ -13,7 +13,9 @@ import app.mountx.data.model.InternalStorageInfo
 import app.mountx.data.model.IoPreset
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.PartitionInfo
+import app.mountx.data.model.PartitionPreset
 import app.mountx.data.model.PartitionSchemeConfig
+import app.mountx.data.model.PartitionTableType
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.FsckReport
@@ -238,6 +240,9 @@ class StorageViewModel @Inject constructor(
     private val _isWizardOpen = MutableStateFlow(false)
     val isWizardOpen: StateFlow<Boolean> = _isWizardOpen.asStateFlow()
 
+    private val _wizardTableType = MutableStateFlow(PartitionTableType.GPT)
+    val wizardTableType: StateFlow<PartitionTableType> = _wizardTableType.asStateFlow()
+
     private val _wizardPartitions = MutableStateFlow<List<PartitionSchemeConfig>>(emptyList())
     val wizardPartitions: StateFlow<List<PartitionSchemeConfig>> = _wizardPartitions.asStateFlow()
 
@@ -373,6 +378,7 @@ class StorageViewModel @Inject constructor(
         )
 
         _wizardPartitions.value = listOf(p1, p2)
+        _wizardTableType.value = PartitionTableType.GPT
         _repartitionError.value = null
         _isWizardOpen.value = true
     }
@@ -380,6 +386,70 @@ class StorageViewModel @Inject constructor(
     fun closePartitionWizard() {
         _isWizardOpen.value = false
         _repartitionError.value = null
+    }
+
+    fun setWizardTableType(type: PartitionTableType) {
+        _wizardTableType.value = type
+    }
+
+    fun applyPartitionPreset(preset: PartitionPreset) {
+        val disk = _selectedDiskForDetail.value ?: _diskInfo.value
+        val totalBytes = if (disk != null && disk.totalSizeBytes > 0) {
+            disk.totalSizeBytes
+        } else {
+            32L * 1024L * 1024L * 1024L
+        }
+        val totalKb = totalBytes / 1024L
+
+        when (preset) {
+            PartitionPreset.GAMER_HYBRID -> {
+                val halfKb = ((totalKb / 2) / 2048) * 2048L
+                val p1 = PartitionSchemeConfig(
+                    partitionIndex = 1,
+                    sizeKb = halfKb,
+                    fsType = FilesystemType.EXFAT,
+                    label = "PORTABLE",
+                    isPrimary = true
+                )
+                val p2 = PartitionSchemeConfig(
+                    partitionIndex = 2,
+                    sizeKb = (totalKb - halfKb).coerceAtLeast(512L * 1024L),
+                    fsType = FilesystemType.F2FS,
+                    label = "MOUNTX",
+                    isPrimary = true
+                )
+                _wizardPartitions.value = listOf(p1, p2)
+            }
+            PartitionPreset.PURE_GAME -> {
+                val p1 = PartitionSchemeConfig(
+                    partitionIndex = 1,
+                    sizeKb = totalKb,
+                    fsType = FilesystemType.F2FS,
+                    label = "MOUNTX",
+                    isPrimary = true
+                )
+                _wizardPartitions.value = listOf(p1)
+            }
+            PartitionPreset.UNIVERSAL_MEDIA -> {
+                val p1 = PartitionSchemeConfig(
+                    partitionIndex = 1,
+                    sizeKb = totalKb,
+                    fsType = FilesystemType.EXFAT,
+                    label = "PORTABLE",
+                    isPrimary = true
+                )
+                _wizardPartitions.value = listOf(p1)
+            }
+        }
+    }
+
+    fun sanitizePartitionLabel(raw: String, fsType: FilesystemType): String {
+        val filtered = raw.filter { it.isLetterOrDigit() || it == '_' || it == '-' }
+        val maxLen = when (fsType) {
+            FilesystemType.FAT32, FilesystemType.EXFAT -> 11
+            else -> 16
+        }
+        return filtered.take(maxLen)
     }
 
     fun updatePartitionSizeKb(index: Int, sizeKb: Long) {
@@ -425,7 +495,8 @@ class StorageViewModel @Inject constructor(
     fun updatePartitionLabel(index: Int, label: String) {
         val current = _wizardPartitions.value.toMutableList()
         if (index in current.indices) {
-            current[index] = current[index].copy(label = label)
+            val sanitized = sanitizePartitionLabel(label, current[index].fsType)
+            current[index] = current[index].copy(label = sanitized)
             _wizardPartitions.value = current
         }
     }
@@ -540,7 +611,7 @@ class StorageViewModel @Inject constructor(
             _repartitionError.value = null
             val targetDisk = _selectedDiskForDetail.value ?: _diskInfo.value
             val diskPath = targetDisk?.devicePath ?: "/dev/block/mmcblk0"
-            val result = storageRepository.repartitionDisk(diskPath, _wizardPartitions.value)
+            val result = storageRepository.repartitionDisk(diskPath, _wizardPartitions.value, _wizardTableType.value)
             _isRepartitioning.value = false
             if (result.isSuccess) {
                 _statusMessage.value = "REPARTITION_OK"

@@ -14,6 +14,7 @@ import app.mountx.data.model.MigrationTarget
 import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.PartitionSchemeConfig
+import app.mountx.data.model.PartitionTableType
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.StorageHierarchyResult
@@ -1956,8 +1957,8 @@ class StorageManager(
             delay(250)
 
             val cmd = when (fsType) {
-                FilesystemType.F2FS -> "(make_f2fs -l \"$label\" -f \"$blockDevice\" 2>&1 || mkfs.f2fs -l \"$label\" -f \"$blockDevice\" 2>&1)"
-                FilesystemType.EXT4 -> "mke2fs -t ext4 -b 4096 -L \"$label\" -F \"$blockDevice\" 2>&1 || mkfs.ext4 -L \"$label\" -F \"$blockDevice\" 2>&1"
+                FilesystemType.F2FS -> "(make_f2fs -O extra_attr,compression -l \"$label\" -f \"$blockDevice\" 2>&1 || make_f2fs -l \"$label\" -f \"$blockDevice\" 2>&1 || mkfs.f2fs -l \"$label\" -f \"$blockDevice\" 2>&1)"
+                FilesystemType.EXT4 -> "mke2fs -t ext4 -b 4096 -m 0 -L \"$label\" -F \"$blockDevice\" 2>&1 || mkfs.ext4 -m 0 -L \"$label\" -F \"$blockDevice\" 2>&1"
                 FilesystemType.FAT32 -> "newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1 || mkfs.vfat -F 32 -n \"$label\" \"$blockDevice\" 2>&1"
                 FilesystemType.EXFAT -> "mkfs.exfat -n \"$label\" \"$blockDevice\" 2>&1 || newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1"
                 FilesystemType.NTFS -> "mkfs.ntfs -f -L \"$label\" \"$blockDevice\" 2>&1"
@@ -1976,7 +1977,8 @@ class StorageManager(
      */
     suspend fun repartitionDisk(
         diskPath: String,
-        partitions: List<PartitionSchemeConfig>
+        partitions: List<PartitionSchemeConfig>,
+        tableType: PartitionTableType = PartitionTableType.GPT
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             if (partitions.isEmpty()) error(getAppContext().getString(R.string.storage_err_no_partitions_in_scheme))
@@ -1993,37 +1995,40 @@ class StorageManager(
             // 2. Wipe existing partition table signatures
             RootShell.exec("sgdisk -Z \"$diskPath\" 2>/dev/null || wipefs -a \"$diskPath\" 2>/dev/null || dd if=/dev/zero of=\"$diskPath\" bs=1M count=8 conv=notrunc 2>/dev/null")
 
-            // 3. Create fresh partition table using sgdisk (or seamless busybox fdisk fallback)
-            val sgdiskCheck = RootShell.exec("which sgdisk 2>/dev/null").output.trim()
-            var sgdiskSuccess = false
+            // 3. Create fresh partition table using sgdisk (GPT) or fdisk (MBR)
+            var tableSuccess = false
 
-            if (sgdiskCheck.isNotBlank()) {
-                val zapRes = RootShell.exec("sgdisk -o \"$diskPath\" 2>/dev/null")
-                if (zapRes.isSuccess) {
-                    var allCreated = true
-                    partitions.forEachIndexed { index, cfg ->
-                        val partNum = index + 1
-                        val isLast = index == partitions.size - 1
+            if (tableType == PartitionTableType.GPT) {
+                val sgdiskCheck = RootShell.exec("which sgdisk 2>/dev/null").output.trim()
+                if (sgdiskCheck.isNotBlank()) {
+                    val zapRes = RootShell.exec("sgdisk -a 2048 -o \"$diskPath\" 2>/dev/null")
+                    if (zapRes.isSuccess) {
+                        var allCreated = true
+                        partitions.forEachIndexed { index, cfg ->
+                            val partNum = index + 1
+                            val isLast = index == partitions.size - 1
 
-                        val typeCode = when (cfg.fsType) {
-                            FilesystemType.FAT32, FilesystemType.EXFAT -> "0700"
-                            else -> "8300"
+                            val typeCode = when (cfg.fsType) {
+                                FilesystemType.FAT32, FilesystemType.EXFAT -> "0700"
+                                else -> "8300"
+                            }
+
+                            val sizeParam = if (isLast) "0" else "+${cfg.sizeKb}K"
+                            val cleanLabel = cfg.label.filter { it.isLetterOrDigit() || it == '_' || it == '-' }
+                            val createCmd = "sgdisk -a 2048 -n $partNum:0:$sizeParam -t $partNum:$typeCode -c $partNum:\"$cleanLabel\" \"$diskPath\""
+                            val res = RootShell.exec(createCmd)
+                            if (!res.isSuccess || res.output.contains("invalid option") || res.output.contains("Error")) {
+                                allCreated = false
+                            }
                         }
-
-                        val sizeParam = if (isLast) "0" else "+${cfg.sizeKb}K"
-                        val createCmd = "sgdisk -n $partNum:0:$sizeParam -t $partNum:$typeCode -c $partNum:\"${cfg.label}\" \"$diskPath\""
-                        val res = RootShell.exec(createCmd)
-                        if (!res.isSuccess || res.output.contains("invalid option") || res.output.contains("Error")) {
-                            allCreated = false
-                        }
+                        tableSuccess = allCreated
                     }
-                    sgdiskSuccess = allCreated
                 }
             }
 
-            if (!sgdiskSuccess) {
-                AppLogger.warn("StorageManager", "sgdisk unavailable or unsupported on custom ROM. Falling back to busybox fdisk script...")
-                // Fallback via fdisk script
+            if (!tableSuccess) {
+                AppLogger.warn("StorageManager", "Applying MBR or falling back to busybox fdisk script on $diskPath...")
+                // Fallback / MBR via fdisk script
                 val fdiskScript = StringBuilder("o\\n") // create new empty DOS partition table
                 var currentPart = 1
                 partitions.forEachIndexed { index, cfg ->

@@ -11,6 +11,7 @@ import app.mountx.data.model.MoveDirection
 import app.mountx.data.model.FsckReport
 import app.mountx.data.model.PartitionInfo
 import app.mountx.data.model.PartitionSchemeConfig
+import app.mountx.data.model.PartitionTableType
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.StorageHierarchyResult
@@ -294,10 +295,11 @@ class StorageRepository @Inject constructor(
 
     suspend fun repartitionDisk(
         diskPath: String,
-        partitions: List<PartitionSchemeConfig>
+        partitions: List<PartitionSchemeConfig>,
+        tableType: PartitionTableType = PartitionTableType.GPT
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        AppLogger.info("Repartition", "Starting repartition on $diskPath with ${partitions.size} partitions")
-        val res = storageManager.repartitionDisk(diskPath, partitions)
+        AppLogger.info("Repartition", "Starting repartition on $diskPath with ${partitions.size} partitions (table=$tableType)")
+        val res = storageManager.repartitionDisk(diskPath, partitions, tableType)
         if (res.isSuccess) {
             invalidateCache()
             AppLogger.success("Repartition", "Disk $diskPath repartitioned and formatted successfully")

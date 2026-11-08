@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -37,11 +38,13 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Eject
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.SdStorage
 import androidx.compose.material.icons.filled.Security
@@ -91,7 +94,9 @@ import app.mountx.data.model.FsckStatus
 import app.mountx.data.model.InternalStorageInfo
 import app.mountx.data.model.MountStatus
 import app.mountx.data.model.PartitionInfo
+import app.mountx.data.model.PartitionPreset
 import app.mountx.data.model.PartitionSchemeConfig
+import app.mountx.data.model.PartitionTableType
 import app.mountx.data.model.SdCardDiskInfo
 import app.mountx.data.model.StorageInfo
 import app.mountx.data.model.SupportedFilesystemInfo
@@ -180,6 +185,7 @@ fun StorageScreen(
 
     // Wizard states
     val isWizardOpen by viewModel.isWizardOpen.collectAsState()
+    val wizardTableType by viewModel.wizardTableType.collectAsState()
     val wizardPartitions by viewModel.wizardPartitions.collectAsState()
     val isRepartitioning by viewModel.isRepartitioning.collectAsState()
     val repartitionError by viewModel.repartitionError.collectAsState()
@@ -270,10 +276,13 @@ fun StorageScreen(
         PartitionWizardDialog(
             diskInfo = activeWizardDisk,
             partitions = wizardPartitions,
+            tableType = wizardTableType,
             isRepartitioning = isRepartitioning,
             repartitionError = repartitionError,
             supportedFilesystems = supportedFilesystems,
             onClose = { viewModel.closePartitionWizard() },
+            onSelectTableType = { viewModel.setWizardTableType(it) },
+            onApplyPreset = { viewModel.applyPartitionPreset(it) },
             onUpdateSizeKb = { idx, sizeKb -> viewModel.updatePartitionSizeKb(idx, sizeKb) },
             onUpdateFs = { idx, fs -> viewModel.updatePartitionFsType(idx, fs) },
             onUpdateLabel = { idx, label -> viewModel.updatePartitionLabel(idx, label) },
@@ -2186,10 +2195,13 @@ private fun PartitionDividerHandle(
 private fun PartitionWizardDialog(
     diskInfo: SdCardDiskInfo?,
     partitions: List<PartitionSchemeConfig>,
+    tableType: PartitionTableType = PartitionTableType.GPT,
     isRepartitioning: Boolean,
     repartitionError: String?,
     supportedFilesystems: List<SupportedFilesystemInfo> = emptyList(),
     onClose: () -> Unit,
+    onSelectTableType: (PartitionTableType) -> Unit,
+    onApplyPreset: (PartitionPreset) -> Unit,
     onUpdateSizeKb: (Int, Long) -> Unit,
     onUpdateFs: (Int, FilesystemType) -> Unit,
     onUpdateLabel: (Int, String) -> Unit,
@@ -2283,11 +2295,153 @@ private fun PartitionWizardDialog(
                             .weight(1f)
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(vertical = 12.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp)
                     ) {
+                        // 0. Partition Table Type (GPT/MBR) & Scheme Presets Row
+                        item {
+                            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                            val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+                            val emeraldBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Top mini bar: Table Type & 1MB Aligned badge
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.storage_wizard_table_type),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                                            modifier = Modifier.height(26.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(2.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                listOf(PartitionTableType.GPT, PartitionTableType.MBR).forEach { type ->
+                                                    val isSelected = tableType == type
+                                                    Surface(
+                                                        onClick = { onSelectTableType(type) },
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                        modifier = Modifier.height(22.dp)
+                                                    ) {
+                                                        Box(
+                                                            contentAlignment = Alignment.Center,
+                                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = type.label,
+                                                                fontSize = 10.sp,
+                                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // 1MB Aligned badge
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = emeraldBg,
+                                        border = BorderStroke(1.dp, emeraldColor.copy(alpha = 0.4f)),
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 6.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = emeraldColor,
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = stringResource(R.string.storage_wizard_badge_aligned),
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = emeraldColor
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Preset Chips Row: [⚡ Gamer Hybrid] [🚀 Pure Game] [🌐 Media]
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val presets = listOf(
+                                        Triple(PartitionPreset.GAMER_HYBRID, stringResource(R.string.storage_preset_gamer_hybrid), Icons.Default.Bolt),
+                                        Triple(PartitionPreset.PURE_GAME, stringResource(R.string.storage_preset_pure_game), Icons.Default.RocketLaunch),
+                                        Triple(PartitionPreset.UNIVERSAL_MEDIA, stringResource(R.string.storage_preset_universal_media), Icons.Default.FolderShared)
+                                    )
+
+                                    presets.forEach { (preset, label, icon) ->
+                                        Surface(
+                                            onClick = { onApplyPreset(preset) },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(30.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    icon,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(11.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text(
+                                                    text = label,
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    ),
+                                                    maxLines = 1,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // 1. Capacity & Interactive Slider Bar (AOMEI Style)
                         item {
+                            val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                            val emeraldColor = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
+                            val emeraldBg = if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
@@ -2304,13 +2458,12 @@ private fun PartitionWizardDialog(
                                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
-                                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                                         Text(
                                             text = stringResource(R.string.storage_wizard_unallocated, FormatUtils.formatBytes(unallocatedKb * 1024L)),
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 fontSize = 10.5.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (unallocatedKb > 1024L * 1024L) (if (isDark) BadgeMountedTextDark else BadgeMountedTextLight) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (unallocatedKb > 1024L * 1024L) emeraldColor else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         )
                                     }
@@ -2324,6 +2477,46 @@ private fun PartitionWizardDialog(
                                         unallocatedKb = unallocatedKb,
                                         onAdjustAdjacent = onAdjustAdjacent
                                     )
+
+                                    // Smart Hint: Subtle, Compact & Clean (Single-line style, 9.5sp)
+                                    val isPart1VoldFriendly = partitions.firstOrNull()?.let {
+                                        it.fsType == FilesystemType.EXFAT || it.fsType == FilesystemType.FAT32
+                                    } ?: false
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(
+                                                if (isPart1VoldFriendly) emeraldBg.copy(alpha = 0.5f)
+                                                else AmberWarn.copy(alpha = if (isDark) 0.12f else 0.08f)
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPart1VoldFriendly) Icons.Default.CheckCircle else Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = if (isPart1VoldFriendly) emeraldColor else (if (isDark) Color(0xFFFBBF24) else Color(0xFFD97706)),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isPart1VoldFriendly) {
+                                                stringResource(R.string.storage_wizard_hint_vold_optimal)
+                                            } else {
+                                                stringResource(R.string.storage_wizard_hint_vold_warning)
+                                            },
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 9.5.sp,
+                                                lineHeight = 13.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = if (isPart1VoldFriendly) emeraldColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2820,8 +3013,13 @@ private fun WizardPartitionCard(
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                val chipText = when {
+                                    isSelected && fs == FilesystemType.F2FS -> "${fs.label} ⚡"
+                                    isSelected && fs == FilesystemType.EXT4 -> "${fs.label} (0%)"
+                                    else -> fs.label
+                                }
                                 Text(
-                                    text = fs.label,
+                                    text = chipText,
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontSize = 10.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
