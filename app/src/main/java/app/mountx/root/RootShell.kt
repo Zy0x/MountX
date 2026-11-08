@@ -115,7 +115,7 @@ object RootShell {
     val isAvailable: Boolean
         get() = isRootAvailable(forceRefresh = false)
 
-    private const val ENV_SETUP = "case \":\$PATH:\" in *\":/data/adb/modules/MountX/bin:\"*) ;; *) export PATH=\"/data/adb/modules/MountX/bin:/data/adb/modules/mountx/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac; "
+    private const val ENV_SETUP = "case \":\$PATH:\" in *\":/dev/mountx_bin:\"*) ;; *) export PATH=\"/dev/mountx_bin:/data/adb/modules/MountX/bin:/data/adb/modules/mountx/bin:/data/adb/ap/modules/MountX/bin:/data/adb/ksu/modules/MountX/bin:/data/adb/ap/bin:/data/adb/magisk:\$PATH\" ;; esac; "
 
     /**
      * Execute a shell command with root and return the result.

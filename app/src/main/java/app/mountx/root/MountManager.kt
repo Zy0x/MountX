@@ -196,10 +196,35 @@ class MountManager(
             if (existing.isNotBlank() && (existing.startsWith("/dev/block/loop") || existing.startsWith("/dev/loop"))) {
                 return existing
             }
-            // 3. Find free loop and associate (try --direct-io=on first for zero double-page-cache overhead)
+            // 3. Find free loop or dynamically allocate one against APEX exhaustion
             val freeLoop = RootShell.execForOutput("$losetupBin -f 2>/dev/null || losetup -f 2>/dev/null").lines().firstOrNull()?.trim().orEmpty()
-            if (freeLoop.isNotBlank() && (freeLoop.startsWith("/dev/block/loop") || freeLoop.startsWith("/dev/loop"))) {
-                RootShell.exec("$losetupBin --direct-io=on \"$freeLoop\" \"$containerPath\" 2>/dev/null || $losetupBin \"$freeLoop\" \"$containerPath\" 2>/dev/null || losetup \"$freeLoop\" \"$containerPath\" 2>/dev/null")
+            var targetLoop = freeLoop
+            if (targetLoop.isBlank() || (!targetLoop.startsWith("/dev/block/loop") && !targetLoop.startsWith("/dev/loop"))) {
+                // Dynamic Loop Allocator: Query loop-control or create new node if APEX exhausted loop0-loop45
+                val allocScript = """
+                    dev=""
+                    if [ -c /dev/loop-control ]; then
+                        num=$(busybox losetup -f 2>/dev/null)
+                        [ -n "${'$'}num" ] && dev="${'$'}num"
+                    fi
+                    if [ -z "${'$'}dev" ]; then
+                        for i in $(busybox seq 60 120 2>/dev/null || seq 60 120); do
+                            node="/dev/block/loop${'$'}i"
+                            if [ ! -b "${'$'}node" ]; then
+                                mknod -m 660 "${'$'}node" b 7 "${'$'}i" 2>/dev/null
+                                chcon u:object_r:loop_device:s0 "${'$'}node" 2>/dev/null
+                                dev="${'$'}node"
+                                break
+                            fi
+                        done
+                    fi
+                    echo "${'$'}dev"
+                """.trimIndent()
+                targetLoop = RootShell.execForOutput(allocScript).trim()
+            }
+
+            if (targetLoop.isNotBlank() && (targetLoop.startsWith("/dev/block/loop") || targetLoop.startsWith("/dev/loop"))) {
+                RootShell.exec("$losetupBin --direct-io=on \"$targetLoop\" \"$containerPath\" 2>/dev/null || $losetupBin \"$targetLoop\" \"$containerPath\" 2>/dev/null || losetup \"$targetLoop\" \"$containerPath\" 2>/dev/null")
                 val verifySysfs = RootShell.execForOutput(
                     "grep -s -l \"$containerPath\" /sys/block/loop*/loop/backing_file 2>/dev/null | head -n 1"
                 ).trim()
@@ -207,7 +232,7 @@ class MountManager(
                     val loopName = verifySysfs.substringBefore("/loop/").substringAfterLast("/")
                     if (loopName.startsWith("loop")) return "/dev/block/$loopName"
                 }
-                return freeLoop
+                return targetLoop
             }
             return ""
         }

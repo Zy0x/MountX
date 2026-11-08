@@ -1505,20 +1505,30 @@ class StorageManager(
                 error(getAppContext().getString(R.string.storage_err_no_accessible_block_device, mountPoint, blockDevice))
             }
             
-            // Try primary fsType with optimized game streaming flags
+            // Probe kernel filesystem capabilities and SELinux environment
+            val procFs = RootShell.execForOutput("cat /proc/filesystems 2>/dev/null")
+            val hasSdcardfs = procFs.contains("sdcardfs")
+            val mountContext = if (hasSdcardfs) "context=u:object_r:sdcardfs:s0" else "context=u:object_r:fuse:s0"
+            val hasNtfs3 = procFs.contains("ntfs3")
+
+            // Try primary fsType with optimized streaming flags and application-friendly SELinux context
             val primaryCmd = when (fsType) {
-                FilesystemType.F2FS -> "mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry,flush_merge,mode=adaptive \"$targetDev\" \"$mountPoint\""
-                FilesystemType.EXT4 -> "mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc,data=writeback \"$targetDev\" \"$mountPoint\""
+                FilesystemType.F2FS -> "mount -t f2fs -o rw,noatime,nodiratime,$mountContext,inline_data,inline_dentry,flush_merge,mode=adaptive \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry,flush_merge,mode=adaptive \"$targetDev\" \"$mountPoint\""
+                FilesystemType.EXT4 -> "mount -t ext4 -o rw,noatime,nodiratime,$mountContext,commit=60,delalloc,data=writeback \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc,data=writeback \"$targetDev\" \"$mountPoint\""
                 FilesystemType.EXFAT -> "mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime \"$targetDev\" \"$mountPoint\""
                 FilesystemType.FAT32 -> "mount -t vfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,nodiratime \"$targetDev\" \"$mountPoint\""
-                FilesystemType.NTFS -> "mount.ntfs -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\""
+                FilesystemType.NTFS -> if (hasNtfs3) {
+                    "mount -t ntfs3 -o iocharset=utf8,noatime,prealloc \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount.ntfs -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\""
+                } else {
+                    "mount.ntfs -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\""
+                }
                 else -> "mount -t ${fsType.command} -o noatime,nodiratime,rw \"$targetDev\" \"$mountPoint\""
             }
             var res = RootShell.exec(primaryCmd)
             
             // If failed, try comprehensive multi-filesystem fallback chain
             if (!res.isSuccess) {
-                val fallbackCmd = "mount -t ext4 -o noatime,nodiratime,rw \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount.ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount \"$targetDev\" \"$mountPoint\""
+                val fallbackCmd = "mount -t ext4 -o noatime,nodiratime,rw,$mountContext \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ext4 -o noatime,nodiratime,rw \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw,$mountContext \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs3 -o iocharset=utf8,noatime,prealloc \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount.ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount \"$targetDev\" \"$mountPoint\""
                 res = RootShell.exec(fallbackCmd)
             }
 
@@ -1526,6 +1536,7 @@ class StorageManager(
                 error("Failed to mount $targetDev to $mountPoint: ${res.stderr.joinToString("\n")}")
             }
             RootShell.exec("mount --make-rprivate \"$mountPoint\" 2>/dev/null")
+            ToolchainManager.optimizeBlockDeviceQueue(targetDev)
             Unit
         }
     }
@@ -1958,8 +1969,8 @@ class StorageManager(
 
             val cmd = when (fsType) {
                 FilesystemType.F2FS -> "(make_f2fs -O extra_attr,compression -l \"$label\" -f \"$blockDevice\" 2>&1 || make_f2fs -l \"$label\" -f \"$blockDevice\" 2>&1 || mkfs.f2fs -l \"$label\" -f \"$blockDevice\" 2>&1)"
-                FilesystemType.EXT4 -> "mke2fs -t ext4 -b 4096 -m 0 -L \"$label\" -F \"$blockDevice\" 2>&1 || mkfs.ext4 -m 0 -L \"$label\" -F \"$blockDevice\" 2>&1"
-                FilesystemType.FAT32 -> "newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1 || mkfs.vfat -F 32 -n \"$label\" \"$blockDevice\" 2>&1"
+                FilesystemType.EXT4 -> "mke2fs -t ext4 -b 4096 -m 0 -L \"$label\" -F \"$blockDevice\" 2>&1 || mkfs.ext4 -m 0 -L \"$label\" -F \"$blockDevice\" 2>&1 || busybox mke2fs -m 0 -L \"$label\" -F \"$blockDevice\" 2>&1"
+                FilesystemType.FAT32 -> "newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1 || mkfs.vfat -F 32 -n \"$label\" \"$blockDevice\" 2>&1 || busybox mkfs.vfat -F 32 -n \"$label\" \"$blockDevice\" 2>&1"
                 FilesystemType.EXFAT -> "mkfs.exfat -n \"$label\" \"$blockDevice\" 2>&1 || newfs_msdos -F 32 -L \"$label\" \"$blockDevice\" 2>&1"
                 FilesystemType.NTFS -> "mkfs.ntfs -f -L \"$label\" \"$blockDevice\" 2>&1"
             }

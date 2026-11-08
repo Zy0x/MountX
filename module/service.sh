@@ -32,6 +32,7 @@ done
 # ── Standalone Binary & Environment Setup ─────────────────────────────────────
 # Prepend MountX standalone binaries and all known root binary paths to PATH
 for _bin_candidate in \
+    "/dev/mountx_bin" \
     "${MODULE_DIR}/bin" \
     "/data/adb/modules/MountX/bin" \
     "/data/adb/ap/bin" \
@@ -275,11 +276,17 @@ if [ ! -b "${SD_BLOCK}" ]; then
                 fi
             fi
 
+            # Determine application-friendly SELinux mount context (bypasses 'unlabeled' denial)
+            local sd_ctx="context=u:object_r:sdcardfs:s0"
+            if ! grep -q sdcardfs /proc/filesystems 2>/dev/null; then
+                sd_ctx="context=u:object_r:fuse:s0"
+            fi
+
             # Build optimized mount options per filesystem
             local mnt_opts="rw,noatime,nodiratime"
             case "${detected_fs}" in
-                f2fs)  mnt_opts="${mnt_opts},inline_data,inline_dentry,flush_merge,mode=adaptive" ;;
-                ext4)  mnt_opts="${mnt_opts},commit=60,delalloc,data=writeback" ;;
+                f2fs)  mnt_opts="${mnt_opts},${sd_ctx},inline_data,inline_dentry,flush_merge,mode=adaptive" ;;
+                ext4)  mnt_opts="${mnt_opts},${sd_ctx},commit=60,delalloc,data=writeback" ;;
                 ntfs)  mnt_opts="rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000" ;;
                 exfat) mnt_opts="rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8" ;;
                 vfat|fat32) mnt_opts="rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000" ;;
@@ -288,8 +295,10 @@ if [ ! -b "${SD_BLOCK}" ]; then
             # Primary mount attempt (filesystem-specific)
             local mounted=0
             if [ "${detected_fs}" = "ntfs" ]; then
-                # NTFS: try mount.ntfs → ntfs-3g → kernel ntfs in order
-                if mount.ntfs -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                # NTFS: High-speed in-kernel Paragon driver (GKI 5.15+ / 6.1+) → mount.ntfs → ntfs-3g → kernel ntfs
+                if grep -q "ntfs3" /proc/filesystems 2>/dev/null && mount -t ntfs3 -o iocharset=utf8,noatime,prealloc "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                    mounted=1; log_info "SD mounted via in-kernel ntfs3: ${SD_BLOCK} → ${SD_BASE}"
+                elif mount.ntfs -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
                     mounted=1; log_info "SD mounted via mount.ntfs: ${SD_BLOCK} → ${SD_BASE}"
                 elif mount -t ntfs-3g -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
                     mounted=1; log_info "SD mounted via ntfs-3g: ${SD_BLOCK} → ${SD_BASE}"

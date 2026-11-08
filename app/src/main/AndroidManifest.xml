@@ -39,6 +39,7 @@
     <application
         android:name=".MountXApp"
         android:allowBackup="false"
+        android:extractNativeLibs="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
         android:hardwareAccelerated="true"
