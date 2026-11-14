@@ -153,7 +153,7 @@ is_emulated_storage_ready() {
 wait_for_boot() {
     log_info "Waiting for sys.boot_completed…"
     local count=0
-    while [ "$(getprop sys.boot_completed | tr -d '')" != "1" ]; do
+    while [ "$(getprop sys.boot_completed | tr -d '\r\n')" != "1" ]; do
         sleep 2
         count=$((count + 2))
         [ ${count} -ge 60 ] && break
@@ -184,13 +184,26 @@ mount_sd() {
         fi
 
 if [ ! -b "${SD_BLOCK}" ]; then
-            # Dynamic fallback: check if mmcblk0p3 exists, or find f2fs partition on mmcblk
-            if [ -b "/dev/block/mmcblk0p3" ]; then
-                SD_BLOCK=""
-            else
-                local f2fs_dev
-                f2fs_dev=$(blkid /dev/block/mmcblk* 2>/dev/null | grep 'TYPE="f2fs"' | head -n 1 | cut -d: -f1)
-                [ -n "${f2fs_dev}" ] && SD_BLOCK="${f2fs_dev}"
+            # Dynamic fallback: check by UUID from mountpoints.conf if available
+            if [ -f "${MOUNTPOINTS_FILE}" ]; then
+                local conf_uuid
+                conf_uuid=$(grep -E '^[a-zA-Z0-9._]+' "${MOUNTPOINTS_FILE}" | cut -d'|' -f6 | grep -v '^$' | head -n 1)
+                if [ -n "${conf_uuid}" ]; then
+                    local dev_by_uuid
+                    dev_by_uuid=$(blkid 2>/dev/null | grep "UUID=\"${conf_uuid}\"" | head -n 1 | cut -d: -f1)
+                    [ -b "${dev_by_uuid}" ] && SD_BLOCK="${dev_by_uuid}"
+                fi
+            fi
+
+            # Fallback to mmcblk0p3 or any external f2fs/ext4 partition
+            if [ ! -b "${SD_BLOCK}" ]; then
+                if [ -b "/dev/block/mmcblk0p3" ]; then
+                    SD_BLOCK="/dev/block/mmcblk0p3"
+                else
+                    local f2fs_dev
+                    f2fs_dev=$(blkid /dev/block/mmcblk* 2>/dev/null | grep 'TYPE="f2fs"' | head -n 1 | cut -d: -f1)
+                    [ -n "${f2fs_dev}" ] && SD_BLOCK="${f2fs_dev}"
+                fi
             fi
         fi
 
@@ -353,7 +366,7 @@ cleanup_stale_mounts() {
     [ ! -f "${MOUNTPOINTS_FILE}" ] && return 0
 
     while IFS='|' read -r pkg cat src dst preserve_media disk_uuid user_id || [ -n "${pkg}" ]; do
-        pkg=$(echo "${pkg}" | tr -d '')
+        pkg=$(echo "${pkg}" | tr -d '\r\n')
         case "${pkg}" in ''|\#*) continue ;; esac
         [ -z "${pkg}" ] && continue
 
