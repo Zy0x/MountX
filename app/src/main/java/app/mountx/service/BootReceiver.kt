@@ -26,6 +26,11 @@ class BootReceiver : BroadcastReceiver() {
     @Inject
     lateinit var gameDao: GameDao
 
+    companion object {
+        @Volatile
+        private var hasHandledBoot = false
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
         if (action == Intent.ACTION_BOOT_COMPLETED ||
@@ -35,6 +40,14 @@ class BootReceiver : BroadcastReceiver() {
             action == "com.htc.intent.action.QUICKBOOT_POWERON" ||
             action == Intent.ACTION_MY_PACKAGE_REPLACED
         ) {
+            // Deduplicate: prevent running mount cascade multiple times across LOCKED_BOOT, USER_UNLOCKED, and BOOT_COMPLETED
+            if (action != Intent.ACTION_MY_PACKAGE_REPLACED && hasHandledBoot) {
+                return
+            }
+            if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_USER_UNLOCKED) {
+                hasHandledBoot = true
+            }
+
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
@@ -42,7 +55,10 @@ class BootReceiver : BroadcastReceiver() {
                     val autoMount = appPreferences.autoMountOnBoot.first()
                     val rootAvailable = RootShell.isRootAvailable()
 
-                    if (autoMount && rootAvailable) {
+                    // Check if Magisk / KernelSU / APatch module already handled boot mounts to prevent race conditions
+                    val isModuleHandled = RootShell.exists("/dev/.mountx_booted")
+
+                    if (autoMount && rootAvailable && !isModuleHandled) {
                         // Cold-boot settling grace period: wait for storage daemon & vold to become ready
                         var attempts = 0
                         while (attempts < 10) {

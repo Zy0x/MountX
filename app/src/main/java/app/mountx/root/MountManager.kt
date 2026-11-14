@@ -770,7 +770,9 @@ class MountManager(
                         RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
                     }
                     RootShell.exec("touch \"$dataSrcPath/.mountx_canary\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data/media/$appUserId/$dataRelPath\" 2>/dev/null")
+                    if (RootShell.isMountpoint("/data/media/$appUserId/$dataRelPath")) {
+                        RootShell.exec("umount -f -l \"/data/media/$appUserId/$dataRelPath\" 2>/dev/null")
+                    }
 
                     for (namespace in namespaces) {
                         val targetPath = "$namespace/$dataRelPath"
@@ -779,14 +781,12 @@ class MountManager(
                                 RootShell.exec("mkdir -p \"$targetPath\" 2>/dev/null")
                                 val mountRes = RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
                                 if (!mountRes.isSuccess && !RootShell.isMountpoint(targetPath)) {
-                                    RootShell.exec("restorecon -R \"$dataSrcPath\" 2>/dev/null")
-                                    RootShell.exec("restorecon -R \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("chmod 775 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("chown $uid:$gid \"$targetPath\" 2>/dev/null")
                                     if (!isNonPosix) {
                                         RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
                                     }
-                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
                                 }
                                 RootShell.exec("mount --make-rprivate \"$targetPath\" 2>/dev/null")
@@ -804,7 +804,9 @@ class MountManager(
                         RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
                     }
                     RootShell.exec("touch \"$obbSrcPath/.mountx_canary\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data/media/$appUserId/$obbRelPath\" 2>/dev/null")
+                    if (RootShell.isMountpoint("/data/media/$appUserId/$obbRelPath")) {
+                        RootShell.exec("umount -f -l \"/data/media/$appUserId/$obbRelPath\" 2>/dev/null")
+                    }
 
                     for (namespace in namespaces) {
                         val targetPath = "$namespace/$obbRelPath"
@@ -813,12 +815,10 @@ class MountManager(
                                 RootShell.exec("mkdir -p \"$namespace/Android/obb\" \"$targetPath\" 2>/dev/null")
                                 val mountRes = RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
                                 if (!mountRes.isSuccess && !RootShell.isMountpoint(targetPath)) {
-                                    RootShell.exec("restorecon -R \"$obbSrcPath\" 2>/dev/null")
-                                    RootShell.exec("restorecon -R \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("chmod 775 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("chown $uid:$gid \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
-                                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
+                                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
+                                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
                                     RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
                                 }
                                 RootShell.exec("mount --make-rprivate \"$targetPath\" 2>/dev/null")
@@ -924,7 +924,9 @@ class MountManager(
         // Clear any preexisting /data/media mount point to prevent sdcardfs EXDEV (Cross-device link) error
         // When /data/media has an active mount on another filesystem, sdcardfs on /storage/emulated
         // throws EXDEV on any pathname lookup for that child directory.
-        RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
+        if (RootShell.isMountpoint("/data/media/$targetUserId/$relPath")) {
+            RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
+        }
 
         // Pre-resolve source block device and active mounts snapshot once to eliminate 20+ redundant shell calls across 11 namespaces
         val reqDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").lines()
@@ -963,12 +965,10 @@ class MountManager(
                 // SELinux and Permission Self-Healing Fallback
                 if (!mountRes.isSuccess && !RootShell.isMountpoint(nsTarget)) {
                     AppLogger.warn("MountManager", "Bind mount initially failed on $nsTarget. Executing SELinux and permission self-healing...")
-                    RootShell.exec("restorecon -R \"${mp.sourcePath}\" 2>/dev/null")
-                    RootShell.exec("restorecon -R \"$nsTarget\" 2>/dev/null")
                     RootShell.exec("chmod 775 \"$nsTarget\" 2>/dev/null")
                     RootShell.exec("chown $uid:$gid \"$nsTarget\" 2>/dev/null")
-                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
-                    RootShell.exec("chcon -R u:object_r:media_rw_data_file:s0 \"$nsTarget\" 2>/dev/null")
+                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$nsTarget\" 2>/dev/null")
 
                     mountRes = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
                     if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
@@ -1047,11 +1047,9 @@ class MountManager(
 
         val mountSucceeded = if (useDirectFolderEngine) {
             RootShell.exec("mkdir -p \"$nativeFolderPath\" 2>/dev/null")
-            RootShell.exec("chown -R $uid:$gid \"$nativeFolderPath\" 2>/dev/null")
-            RootShell.exec("chmod 700 \"$nativeFolderPath\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$nativeFolderPath\" 2>/dev/null")
-            RootShell.exec("find \"$nativeFolderPath\" -type d -exec chmod 700 {} + 2>/dev/null")
-            RootShell.exec("find \"$nativeFolderPath\" -type f -exec chmod 600 {} + 2>/dev/null")
-            RootShell.exec("chcon -R \"$effectiveContext\" \"$nativeFolderPath\" 2>/dev/null")
+            RootShell.exec("chown $uid:$gid \"$nativeFolderPath\" 2>/dev/null")
+            RootShell.exec("chmod 700 \"$nativeFolderPath\" 2>/dev/null")
+            RootShell.exec("chcon \"$effectiveContext\" \"$nativeFolderPath\" 2>/dev/null")
 
             val mountRes = RootShell.exec("mount -o bind \"$nativeFolderPath\" \"$target\" 2>/dev/null")
             val ok = mountRes.isSuccess || RootShell.isMountpoint(target)
@@ -1104,16 +1102,14 @@ class MountManager(
             if (RootShell.exists(dataCeTarget) && !RootShell.isMountpoint(dataCeTarget)) {
                 RootShell.exec("mount -o bind \"$target\" \"$dataCeTarget\" 2>/dev/null")
             }
-            RootShell.exec("chown -R $uid:$gid \"$target\" 2>/dev/null")
-            RootShell.exec("chmod 700 \"$target\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$target\" 2>/dev/null")
-            RootShell.exec("find \"$target\" -type d -exec chmod 700 {} + 2>/dev/null")
-            RootShell.exec("find \"$target\" -type f -exec chmod 600 {} + 2>/dev/null")
-            RootShell.exec("chcon -R \"$effectiveContext\" \"$target\" 2>/dev/null")
+            RootShell.exec("chown $uid:$gid \"$target\" 2>/dev/null")
+            RootShell.exec("chmod 700 \"$target\" 2>/dev/null")
+            RootShell.exec("chcon \"$effectiveContext\" \"$target\" 2>/dev/null")
             if (RootShell.exists(dataDataTarget)) {
-                RootShell.exec("chcon -R \"$effectiveContext\" \"$dataDataTarget\" 2>/dev/null")
+                RootShell.exec("chcon \"$effectiveContext\" \"$dataDataTarget\" 2>/dev/null")
             }
             if (RootShell.exists(dataCeTarget)) {
-                RootShell.exec("chcon -R \"$effectiveContext\" \"$dataCeTarget\" 2>/dev/null")
+                RootShell.exec("chcon \"$effectiveContext\" \"$dataCeTarget\" 2>/dev/null")
             }
             if (heldInternalCache) {
                 RootShell.exec("mkdir -p \"$target/cache\" 2>/dev/null && mount -o bind \"$cacheHoldDir\" \"$target/cache\" 2>/dev/null")
@@ -1439,7 +1435,9 @@ class MountManager(
                             for (ns in userNamespaces) {
                                 RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
                             }
-                            RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
+                            if (RootShell.isMountpoint("/data/media/$targetUserId/$relPath")) {
+                                RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
+                            }
                         }
                     }
                     RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
@@ -1503,27 +1501,44 @@ class MountManager(
                 """.trimIndent()
                 RootShell.execScript(containersScript)
 
-                // Unmount bind mounts cleanly with multi-pass sweep across all external partitions
+                // Unmount bind mounts cleanly with multi-pass sweep across registered packages and external partitions
                 val script = """
                     SD_BLOCK=${'$'}(mount | grep " $sdBase " | cut -d' ' -f1 | head -n 1)
+                    PACKAGES=""
+                    if [ -f /data/adb/modules/MountX/mountpoints.conf ]; then
+                      PACKAGES=${'$'}(grep -E "^(ENABLE|MOUNT)" /data/adb/modules/MountX/mountpoints.conf | cut -d'|' -f2 | sort -u)
+                    fi
                     for i in 1 2 3; do
                       has_mount=0
                       while read -r dev mnt rest; do
                         case "${'$'}mnt" in
+                          */Android/data|*/Android/data/|*/Android/obb|*/Android/obb/|*/Android/media|*/Android/media/|/storage/emulated*|/mnt/runtime/*|/mnt/user/*)
+                            # ABSOLUTE SAFETY GUARD: Never unmount parent scoped storage directories!
+                            if [ "${'$'}mnt" = "/storage/emulated/0/Android/data" ] || [ "${'$'}mnt" = "/storage/emulated/0/Android/obb" ]; then
+                              continue
+                            fi
+                            ;;
+                        esac
+                        case "${'$'}mnt" in
                           *Android/data/*|*Android/obb/*|*Android/media/*)
                             if [ "${'$'}mnt" != "$sdBase" ]; then
+                              # Only unmount if device explicitly matches SD_BLOCK or matches a registered package
+                              is_target=0
                               if [ -n "${'$'}SD_BLOCK" ] && [ "${'$'}dev" = "${'$'}SD_BLOCK" ]; then
+                                is_target=1
+                              else
+                                for pkg in ${'$'}PACKAGES; do
+                                  case "${'$'}mnt" in
+                                    */${'$'}pkg|*/${'$'}pkg/*)
+                                      is_target=1
+                                      break
+                                      ;;
+                                  esac
+                                done
+                              fi
+                              if [ ${'$'}is_target -eq 1 ]; then
                                 umount -f -l "${'$'}mnt" 2>/dev/null
                                 has_mount=1
-                              else
-                                case "${'$'}dev" in
-                                  /dev/block/mmcblk*|/dev/block/sd*|/dev/block/nvme*)
-                                    if [ "${'$'}mnt" != "/data" ] && [ "${'$'}mnt" != "$sdBase" ]; then
-                                      umount -f -l "${'$'}mnt" 2>/dev/null
-                                      has_mount=1
-                                    fi
-                                    ;;
-                                esac
                               fi
                             fi
                             ;;

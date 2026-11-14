@@ -139,104 +139,38 @@ load_config() {
 
 # ── Authoritative Emulated Primary Storage Health Probe ───────────────────────
 is_emulated_storage_ready() {
-    # 1. Framework/Vold volume check
-    if ! sm list-volumes 2>/dev/null | grep -q 'emulated;0 mounted'; then
-        if ! dumpsys mount 2>/dev/null | grep -q "VolumeInfo{emulated;0}:.*state=MOUNTED"; then
-            return 1
-        fi
-    fi
-    # 2. Live read access probe (confirms FUSE/sdcardfs is healthy and responsive)
-    if ! ls /storage/emulated/0 >/dev/null 2>&1; then
-        return 1
-    fi
-    return 0
-}
-
-# ── Emulated Primary Storage Self-Healing & Vold Mount Recovery ───────────────
-repair_emulated_storage() {
-    log_warn "[Repair] Initiating emulated internal storage self-healing..."
-
-    # 1. Sweep away all child bind-mounts on emulated/runtime storage
-    while read -r _dev _mnt _rest; do
-        case "${_mnt}" in
-            /data/media/*/Android/data/*|/data/media/*/Android/obb/*|\
-            /data/media/*/Android/media/*|\
-            /storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*|\
-            /storage/emulated/*/Android/media/*|\
-            /mnt/runtime/*/emulated/*/Android/data/*|/mnt/runtime/*/emulated/*/Android/obb/*|\
-            /mnt/runtime/*/emulated/*/Android/media/*|\
-            /mnt/user/*/emulated/*/Android/data/*|/mnt/user/*/emulated/*/Android/obb/*|\
-            /mnt/user/*/emulated/*/Android/media/*|\
-            /mnt/pass_through/*/emulated/*/Android/data/*|/mnt/pass_through/*/emulated/*/Android/obb/*|\
-            /mnt/pass_through/*/emulated/*/Android/media/*|\
-            /mnt/androidwritable/*/emulated/*/Android/data/*|/mnt/androidwritable/*/emulated/*/Android/obb/*|\
-            /mnt/androidwritable/*/emulated/*/Android/media/*|\
-            /mnt/installer/*/emulated/*/Android/data/*|/mnt/installer/*/emulated/*/Android/obb/*|\
-            /mnt/installer/*/emulated/*/Android/media/*)
-                umount -f -l "${_mnt}" 2>/dev/null
-                ;;
-        esac
-    done < /proc/mounts
-
-    # 2. Unmount base sdcardfs/fuse mounts if stuck/unmounted
-    umount -l /mnt/runtime/default/emulated 2>/dev/null
-    umount -l /mnt/runtime/read/emulated 2>/dev/null
-    umount -l /mnt/runtime/write/emulated 2>/dev/null
-    umount -l /mnt/runtime/full/emulated 2>/dev/null
-    umount -l /mnt/pass_through/0/emulated 2>/dev/null
-    umount -l /storage/emulated 2>/dev/null
-    umount -l /mnt/user/0/emulated 2>/dev/null
-    umount -l /mnt/installer/0/emulated 2>/dev/null
-    umount -l /mnt/androidwritable/0/emulated 2>/dev/null
-
-    # 3. Clean up any dummy directories created on tmpfs /storage/emulated/0
-    if [ "$(stat -f -c %T /storage/emulated 2>/dev/null)" = "tmpfs" ]; then
-        rm -rf /storage/emulated/0 2>/dev/null
-    fi
-
-    # 4. Trigger Vold / StorageManager to mount emulated;0
-    sm mount 'emulated;0' 2>/dev/null || sm mount 'emulated:0' 2>/dev/null
-    sleep 2
-
-    if is_emulated_storage_ready; then
-        log_info "[Repair] Emulated storage successfully recovered and mounted."
+    # Non-blocking live read access probe (confirms FUSE/sdcardfs is healthy and responsive)
+    if [ -d "/storage/emulated/0" ] && ls /storage/emulated/0 >/dev/null 2>&1; then
         return 0
-    else
-        log_warn "[Repair] Emulated storage recovery still pending..."
-        return 1
     fi
+    if [ -d "/data/media/0" ]; then
+        return 0
+    fi
+    return 1
 }
 
 # ── Wait until Android and Primary Storage have finished booting ──────────────
 wait_for_boot() {
     log_info "Waiting for sys.boot_completed…"
-    while [ "$(getprop sys.boot_completed | tr -d '\r')" != "1" ]; do
+    local count=0
+    while [ "$(getprop sys.boot_completed | tr -d '')" != "1" ]; do
         sleep 2
+        count=$((count + 2))
+        [ ${count} -ge 60 ] && break
     done
 
-    log_info "Boot completed detected. Waiting for primary emulated storage and Vold readiness…"
+    log_info "Boot completed detected. Waiting for primary storage readiness…"
     local retries=0
-    while true; do
+    while [ ${retries} -lt 15 ]; do
         if is_emulated_storage_ready; then
             break
         fi
         sleep 2
         retries=$((retries + 1))
-        # Self-healing: if emulated storage is stuck or unmountable during boot, auto-repair
-        if [ ${retries} -ge 5 ] && [ $((retries % 5)) -eq 0 ]; then
-            if sm list-volumes all 2>/dev/null | grep -qE "emulated;[0-9]+ (unmountable|ejecting)|emulated:[0-9]+ (unmountable|ejecting)" || \
-               ! mountpoint -q "/storage/emulated" 2>/dev/null; then
-                log_warn "Primary emulated storage is unmountable or unmounted. Triggering automated repair..."
-                repair_emulated_storage
-            fi
-        fi
-        if [ $((retries % 15)) -eq 0 ]; then
-            log_info "Waiting for primary storage readiness (${retries}s)..."
-        fi
     done
 
-    # Give Vold, sdcard daemon, and runtime namespaces extra time to settle before applying bind mounts
-    sleep 5
+    # Brief pause to let Vold, MediaProvider, and runtime namespaces settle
+    sleep 3
     log_info "Primary storage and runtime namespaces readiness confirmed."
 }
 
@@ -415,37 +349,28 @@ umount_stale() {
 }
 
 cleanup_stale_mounts() {
-    log_info "Cleaning up any stale bind-mounts pointing to ${SD_BASE}…"
-    su -mm -c '
-    SD_BASE="'"${SD_BASE}"'"
-    SD_BLOCK="'"${SD_BLOCK}"'"
-    [ -z "${SD_BLOCK}" ] && SD_BLOCK=$(mount | grep " ${SD_BASE} " | cut -d' ' -f1 | head -n 1)
-    for i in 1 2 3; do
-        has_stale=0
-        while read -r dev mnt rest; do
+    log_info "Cleaning up any stale bind-mounts for registered MountX targets…"
+    [ ! -f "${MOUNTPOINTS_FILE}" ] && return 0
+
+    while IFS='|' read -r pkg cat src dst preserve_media disk_uuid user_id || [ -n "${pkg}" ]; do
+        pkg=$(echo "${pkg}" | tr -d '')
+        case "${pkg}" in ''|\#*) continue ;; esac
+        [ -z "${pkg}" ] && continue
+
+        # Only clean mounts specifically belonging to this registered game package
+        # NEVER unmount root system mounts (/storage/emulated/0/Android/data or /mnt/...)
+        for mnt in $(grep -E "/(data|obb|media)/${pkg}" /proc/mounts 2>/dev/null | awk '{print $2}' | sort -u); do
             case "${mnt}" in
-                *Android/data/*|*Android/obb/*|*Android/media/*)
-                    if [ "${mnt}" != "${SD_BASE}" ]; then
-                        if [ -n "${SD_BLOCK}" ] && [ "${dev}" = "${SD_BLOCK}" ]; then
-                            umount -f -l "${mnt}" 2>/dev/null
-                            has_stale=1
-                        else
-                            case "${dev}" in
-                                /dev/block/mmcblk*|/dev/block/sd*|/dev/block/nvme*)
-                                    if [ "${mnt}" != "/data" ] && [ "${mnt}" != "${SD_BASE}" ]; then
-                                        umount -f -l "${mnt}" 2>/dev/null
-                                        has_stale=1
-                                    fi
-                                    ;;
-                            esac
-                        fi
+                */Android/data/${pkg}|*/Android/obb/${pkg}|*/Android/media/${pkg})
+                    # If backing source does not exist or SD partition is unmounted, clean up
+                    if [ ! -d "${src}" ] || ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+                        log_info "  Unmounting stale mount: ${mnt}"
+                        umount -f -l "${mnt}" 2>/dev/null
                     fi
                     ;;
             esac
-        done < /proc/mounts
-        [ ${has_stale} -eq 0 ] && break
-    done
-    '
+        done
+    done < "${MOUNTPOINTS_FILE}"
 }
 
 # ── Dynamic UID/GID, Sandbox & SELinux Context Application ────────────────────
@@ -519,15 +444,14 @@ bind_mount_to_runtime_namespaces() {
             ;;
         *)
             # Non-emulated system destination (e.g. /data/app, /data/user): mount directly to dst only!
-            su -mm -c "
-                mkdir -p \"${dst}\" 2>/dev/null
-                mount -o bind \"${src}\" \"${dst}\" 2>/dev/null
-                mount --make-rprivate \"${dst}\" 2>/dev/null
-            "
+            mkdir -p "${dst}" 2>/dev/null
+            mount -o bind "${src}" "${dst}" 2>/dev/null
+            mount --make-rprivate "${dst}" 2>/dev/null
             return 0
             ;;
     esac
 
+    # Fast non-blocking UID lookup
     local app_uid=""
     if [ -n "${pkg}" ]; then
         if [ -d "/data/data/${pkg}" ]; then
@@ -535,16 +459,10 @@ bind_mount_to_runtime_namespaces() {
         elif [ -d "/data/user/${user_id}/${pkg}" ]; then
             app_uid=$(stat -c %u "/data/user/${user_id}/${pkg}" 2>/dev/null)
         fi
-        if [ -z "${app_uid}" ] || [ "${app_uid}" -lt 10000 ] 2>/dev/null; then
-            app_uid=$(dumpsys package "${pkg}" 2>/dev/null | grep -F "userId=" | head -n 1 | sed -n 's/.*userId=\([0-9]*\).*/\1/p')
-            if [ -z "${app_uid}" ]; then
-                app_uid=$(pm list packages -U --user "${user_id}" 2>/dev/null | grep -F "package:${pkg}" | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
-            fi
-        fi
     fi
     [ -z "${app_uid}" ] && app_uid=10000
 
-    # Extract relative path from dst across any user profile (ONLY for external storage!)
+    # Extract relative path from dst across any user profile
     local rel=""
     case "${dst}" in
         */Android/data/*|*/Android/obb/*|*/Android/media/*)
@@ -558,92 +476,58 @@ bind_mount_to_runtime_namespaces() {
             ;;
     esac
 
-    # Perform bind mounts inside mount master (su -mm) across all runtime namespaces
-    su -mm -c '
-        SRC="'"${src}"'"
-        DST="'"${dst}"'"
-        REL="'"${rel}"'"
-        USER_ID="'"${user_id}"'"
-        PKG="'"${pkg}"'"
-        APP_UID="'"${app_uid}"'"
+    local is_non_posix=0
+    local fs_t
+    fs_t=$(stat -f -c %T "${src}" 2>/dev/null)
+    case "${fs_t}" in
+        exfat|vfat|msdos|ntfs) is_non_posix=1 ;;
+    esac
+    case "${src}" in
+        /mnt/media_rw/*) is_non_posix=1 ;;
+    esac
 
-        is_non_posix=0
-        fs_t=$(stat -f -c %T "${SRC}" 2>/dev/null)
-        case "${fs_t}" in
-            exfat|vfat|msdos|ntfs) is_non_posix=1 ;;
-        esac
-        case "${SRC}" in
-            /mnt/media_rw/*) is_non_posix=1 ;;
-        esac
-
-        do_mount() {
-            local _s="$1"
-            local _t="$2"
-            if [ "${is_non_posix}" -eq 1 ]; then
-                toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid="${APP_UID}",mask=0 "${_s}" "${_t}" 2>/dev/null || mount -o bind "${_s}" "${_t}" 2>/dev/null
-            else
-                mount -o bind "${_s}" "${_t}" 2>/dev/null
-            fi
-            mount --make-rprivate "${_t}" 2>/dev/null
-        }
-
-        if [ -n "${REL}" ]; then
-            # Clean up any preexisting /data/media mount point to prevent sdcardfs EXDEV (Cross-device link) error
-            # When /data/media has an active mount on another filesystem, sdcardfs on /storage/emulated
-            # throws EXDEV on any pathname lookup for that child directory.
-            umount -f -l "/data/media/${USER_ID}/${REL}" 2>/dev/null
-
-            for R in \
-                "/mnt/runtime/default/emulated/${USER_ID}" \
-                "/mnt/runtime/read/emulated/${USER_ID}" \
-                "/mnt/runtime/write/emulated/${USER_ID}" \
-                "/mnt/runtime/full/emulated/${USER_ID}" \
-                "/mnt/installer/${USER_ID}/emulated/${USER_ID}" \
-                "/mnt/androidwritable/${USER_ID}/emulated/${USER_ID}" \
-                "/mnt/pass_through/${USER_ID}/emulated/${USER_ID}" \
-                "/mnt/user/${USER_ID}/primary" \
-                "/mnt/user/${USER_ID}/emulated/${USER_ID}" \
-                "/storage/emulated/${USER_ID}"
-            do
-                if [ -d "${R}" ]; then
-                    case "${R}" in
-                        /storage/emulated/*)
-                            # NEVER touch or mount inside /storage/emulated unless it is a verified FUSE mountpoint (NOT raw tmpfs)
-                            if ! mountpoint -q "/storage/emulated" 2>/dev/null || ! grep -q " /storage/emulated " /proc/mounts 2>/dev/null; then
-                                continue
-                            fi
-                            if ! is_emulated_storage_ready; then
-                                continue
-                            fi
-                            ;;
-                    esac
-                    TARGET="${R}/${REL}"
-                    if ! mountpoint -q "${TARGET}" 2>/dev/null && ! grep -qF " ${TARGET} " /proc/mounts 2>/dev/null; then
-                        mkdir -p "${TARGET}" 2>/dev/null
-                        do_mount "${SRC}" "${TARGET}"
-                    fi
-                fi
-            done
+    do_mount() {
+        local _s="$1"
+        local _t="$2"
+        if [ "${is_non_posix}" -eq 1 ]; then
+            toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid="${app_uid}",mask=0 "${_s}" "${_t}" 2>/dev/null || mount -o bind "${_s}" "${_t}" 2>/dev/null
         else
-            if ! mountpoint -q "${DST}" 2>/dev/null; then
-                mkdir -p "${DST}" 2>/dev/null
-                do_mount "${SRC}" "${DST}"
+            mount -o bind "${_s}" "${_t}" 2>/dev/null
+        fi
+        mount --make-rprivate "${_t}" 2>/dev/null
+    }
+
+    if [ -n "${rel}" ]; then
+        # Clean preexisting /data/media mount point only if active
+        if mountpoint -q "/data/media/${user_id}/${rel}" 2>/dev/null; then
+            umount -f -l "/data/media/${user_id}/${rel}" 2>/dev/null
+        fi
+
+        for R in \
+            "/mnt/runtime/default/emulated/${user_id}" \
+            "/mnt/runtime/read/emulated/${user_id}" \
+            "/mnt/runtime/write/emulated/${user_id}" \
+            "/mnt/runtime/full/emulated/${user_id}" \
+            "/mnt/installer/${user_id}/emulated/${user_id}" \
+            "/mnt/androidwritable/${user_id}/emulated/${user_id}" \
+            "/mnt/pass_through/${user_id}/emulated/${user_id}" \
+            "/mnt/user/${user_id}/primary" \
+            "/mnt/user/${user_id}/emulated/${user_id}" \
+            "/storage/emulated/${user_id}"
+        do
+            if [ -d "${R}" ]; then
+                TARGET="${R}/${rel}"
+                if ! mountpoint -q "${TARGET}" 2>/dev/null && ! grep -qF " ${TARGET} " /proc/mounts 2>/dev/null; then
+                    mkdir -p "${TARGET}" 2>/dev/null
+                    do_mount "${src}" "${TARGET}"
+                fi
             fi
+        done
+    else
+        if ! mountpoint -q "${dst}" 2>/dev/null; then
+            mkdir -p "${dst}" 2>/dev/null
+            do_mount "${src}" "${dst}"
         fi
-
-        # Pre-emptively stop active app process and auto-grant storage permissions
-        if [ -n "${PKG}" ]; then
-            am force-stop "${PKG}" 2>/dev/null
-            pkill -9 -f "${PKG}" 2>/dev/null || true
-            appops set "${PKG}" MANAGE_EXTERNAL_STORAGE allow 2>/dev/null
-            appops set "${PKG}" LEGACY_STORAGE allow 2>/dev/null
-            pm grant "${PKG}" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null
-            pm grant "${PKG}" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null
-        fi
-    '
-
-    if [ -n "${pkg}" ]; then
-        am force-stop "${pkg}" 2>/dev/null
     fi
 
     local count=0
@@ -652,14 +536,7 @@ bind_mount_to_runtime_namespaces() {
     else
         count=$(grep -c " ${dst}" /proc/mounts 2>/dev/null || echo 0)
     fi
-    local app_pids
-    app_pids=$(pgrep -f "^${pkg}" 2>/dev/null || true)
-    if [ -n "${app_pids}" ]; then
-        log_info "  [${pkg}] App active (PID=${app_pids}): hot-injected into namespaces. Storage AppOps deferred to protect active session."
-    else
-        log_info "  [${pkg}] App idle: verified storage permissions (MANAGE_EXTERNAL_STORAGE, LEGACY, READ/WRITE)."
-    fi
-    log_info "  [${pkg}] Bind-mounted to ${count} targets in /proc/mounts: ${src} → ${dst}"
+    log_info "  [${pkg}] Bind-mounted to ${count} targets: ${src} → ${dst}"
 }
 
 # ── Smart Multi-Disk Mounter (resolves block device by UUID and mounts it) ────
@@ -1435,13 +1312,7 @@ mount_watchdog() {
 
         # Check 1c: Primary Internal Storage Emulated Mount Integrity Probe
         if ! is_emulated_storage_ready; then
-            log_warn "[Watchdog] Primary emulated storage lost or unmountable! Triggering automated repair..."
-            repair_emulated_storage
-            if is_emulated_storage_ready; then
-                cleanup_stale_mounts
-                apply_all_mounts
-                am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
-            fi
+            log_warn "[Watchdog] Primary emulated storage not yet ready. Waiting for storage daemon..."
         fi
 
         # Check 1b: Kernel Read-Only Remount Protection Probe
@@ -1470,44 +1341,10 @@ mount_watchdog() {
         fi
 
         if [ ${soft_restart} -eq 1 ]; then
-            log_warn "[Watchdog] Soft restart recovery: pre-emptively stopping mounted app processes..."
-            if [ -f "${MOUNTPOINTS_FILE}" ]; then
-                while IFS='|' read -r _p _rest || [ -n "${_p}" ]; do
-                    case "${_p}" in
-                        ""|\#*) continue ;;
-                        *) am force-stop "${_p}" 2>/dev/null ;;
-                    esac
-                done < "${MOUNTPOINTS_FILE}"
-            fi
-            # IMMEDIATELY sweep away stale mounts BEFORE waiting for framework/Vold
-            log_warn "[Watchdog] Soft restart recovery: clearing stale bind mounts immediately..."
-            repair_emulated_storage
-
-            log_warn "[Watchdog] Soft restart recovery: waiting for framework (AMS/PMS) and storage readiness..."
+            log_warn "[Watchdog] Soft restart detected! Re-applying registered bind mounts..."
             wait_for_framework
+            sleep 2
 
-            # Wait for storage readiness with active self-healing
-            local s_tries=0
-            while [ ${s_tries} -lt 15 ]; do
-                if is_emulated_storage_ready; then
-                    break
-                fi
-                if [ $((s_tries % 5)) -eq 0 ]; then
-                    repair_emulated_storage
-                fi
-                sleep 2
-                s_tries=$((s_tries + 1))
-            done
-            sleep 3
-
-            # Guard: NEVER call apply_all_mounts if emulated storage is not fully ready!
-            if ! is_emulated_storage_ready; then
-                log_error "[Watchdog] /storage/emulated is NOT healthy after soft restart! Aborting apply_all_mounts to prevent corruption."
-                repair_emulated_storage
-                return 1
-            fi
-
-            # Ensure SD_BASE is mounted
             if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
                 mount_sd
             fi
@@ -1516,9 +1353,8 @@ mount_watchdog() {
             apply_io_tweaks
             apply_all_mounts
 
-            # Notify the app to re-sync its mount status and trigger background recovery
+            # Notify the app to re-sync its mount status
             am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
-            am broadcast -a app.mountx.ACTION_MOUNT_ALL -p app.mountx >/dev/null 2>&1
             log_info "[Watchdog] Soft restart recovery complete. All mounts re-applied."
             CONSECUTIVE_OK=0
             CHECK_INTERVAL=60
@@ -1648,7 +1484,7 @@ main() {
     log_info "Sent ACTION_SYNC_NOTIFICATION broadcast to app.mountx"
 
     # Run asynchronous fstrim in background to ensure peak flash controller wear-leveling & speed
-    fstrim "${SD_BASE}" 2>/dev/null &
+    (sleep 300 && fstrim "${SD_BASE}" 2>/dev/null) &
 
     # Whitelist MountX in system Doze/battery optimization so background transfers never get killed
     dumpsys deviceidle whitelist +app.mountx 2>/dev/null
