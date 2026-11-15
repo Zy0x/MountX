@@ -70,6 +70,7 @@ class MountManager(
     suspend fun getTargetNamespaces(specificUserId: Int? = null): List<String> = withContext(Dispatchers.IO) {
         val list = mutableListOf<String>()
         val userIds = if (specificUserId != null) listOf(specificUserId) else getActiveUserIds()
+        val hasSdcardfs = RootShell.execForOutput("grep -w sdcardfs /proc/filesystems 2>/dev/null").isNotBlank()
         for (uid in userIds) {
             list.add("/mnt/runtime/default/emulated/$uid")
             list.add("/mnt/runtime/read/emulated/$uid")
@@ -85,8 +86,11 @@ class MountManager(
             if (RootShell.isMountpoint("/storage/emulated")) {
                 list.add("/storage/emulated/$uid")
             }
-            // CRITICAL: /data/media/$uid MUST be mounted LAST after user-facing views to prevent sdcardfs EXDEV dead-lock
-            list.add("/data/media/$uid")
+            // CRITICAL: /data/media/$uid MUST NOT be mounted if sdcardfs is present!
+            // When sdcardfs is present, mounting to /data/media triggers kernel sdcardfs EXDEV deadlocks.
+            if (!hasSdcardfs) {
+                list.add("/data/media/$uid")
+            }
         }
         list.filter { RootShell.exists(it) }.distinct()
     }
@@ -984,6 +988,18 @@ class MountManager(
                 }
             }
         }
+
+        // Also inject into Zygote namespaces so newly forked apps inherit the mount immediately
+        val zygotePids = RootShell.execForOutput("pidof zygote64 zygote 2>/dev/null").split(Regex("\\s+")).filter { it.isNotBlank() }
+        for (zpid in zygotePids) {
+            for (rt in listOf("default", "read", "write", "full")) {
+                val zTarget = "/mnt/runtime/$rt/emulated/$targetUserId/$relPath"
+                RootShell.exec("nsenter --mount=/proc/$zpid/ns/mnt -- sh -c 'if [ -d \"/mnt/runtime/$rt/emulated/$targetUserId\" ] && ! mountpoint -q \"$zTarget\" 2>/dev/null; then mkdir -p \"$zTarget\" 2>/dev/null && mount -o bind \"${mp.sourcePath}\" \"$zTarget\" 2>/dev/null && mount --make-rprivate \"$zTarget\" 2>/dev/null; fi' 2>/dev/null")
+            }
+        }
+
+        // Clean stale verify.fail or partial block files from unmounted internal storage
+        RootShell.exec("rm -f \"/data/media/$targetUserId/$relPath/files/verify.fail\" \"/data/media/$targetUserId/$relPath/files/Asb/Android/\"*_tmp.block 2>/dev/null")
         return anyMounted
     }
 
@@ -1684,23 +1700,30 @@ class MountManager(
         if (games.isEmpty()) return@withContext emptyMap()
         val pathsByGame = mutableMapOf<String, List<String>>()
         val allPaths = mutableSetOf<String>()
+        val hasSdcardfs = RootShell.execForOutput("grep -w sdcardfs /proc/filesystems 2>/dev/null").isNotBlank()
 
         for (game in games) {
             val pkg = game.packageName
             val checkPaths = mutableListOf(
                 "/storage/emulated/0/Android/data/$pkg/.mountx_canary",
-                "/data/media/0/Android/data/$pkg/.mountx_canary",
-                "/storage/emulated/0/Android/obb/$pkg/.mountx_canary",
-                "/data/media/0/Android/obb/$pkg/.mountx_canary"
+                "/storage/emulated/0/Android/obb/$pkg/.mountx_canary"
             )
+            if (!hasSdcardfs) {
+                checkPaths.add("/data/media/0/Android/data/$pkg/.mountx_canary")
+                checkPaths.add("/data/media/0/Android/obb/$pkg/.mountx_canary")
+            }
             for (mp in game.mountPoints) {
                 if (mp.targetPath.isNotBlank()) {
-                    checkPaths.add("${mp.targetPath}/.mountx_canary")
                     if (mp.isExternalStorageCategory()) {
                         val rel = extractRelativePath(mp.targetPath)
                         if (rel.isNotBlank()) {
-                            checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                            checkPaths.add("/storage/emulated/0/$rel/.mountx_canary")
+                            if (!hasSdcardfs) {
+                                checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                            }
                         }
+                    } else {
+                        checkPaths.add("${mp.targetPath}/.mountx_canary")
                     }
                 }
             }
@@ -1719,19 +1742,26 @@ class MountManager(
     suspend fun verifyCanary(packageName: String, appEntry: GameEntry? = null): Boolean = withContext(Dispatchers.IO) {
         val checkPaths = mutableListOf(
             "/storage/emulated/0/Android/data/$packageName/.mountx_canary",
-            "/data/media/0/Android/data/$packageName/.mountx_canary",
-            "/storage/emulated/0/Android/obb/$packageName/.mountx_canary",
-            "/data/media/0/Android/obb/$packageName/.mountx_canary"
+            "/storage/emulated/0/Android/obb/$packageName/.mountx_canary"
         )
+        val hasSdcardfs = RootShell.execForOutput("grep -w sdcardfs /proc/filesystems 2>/dev/null").isNotBlank()
+        if (!hasSdcardfs) {
+            checkPaths.add("/data/media/0/Android/data/$packageName/.mountx_canary")
+            checkPaths.add("/data/media/0/Android/obb/$packageName/.mountx_canary")
+        }
         if (appEntry != null && appEntry.mountPoints.isNotEmpty()) {
             for (mp in appEntry.mountPoints) {
                 if (mp.targetPath.isNotBlank()) {
-                    checkPaths.add("${mp.targetPath}/.mountx_canary")
                     if (mp.isExternalStorageCategory()) {
                         val rel = extractRelativePath(mp.targetPath)
                         if (rel.isNotBlank()) {
-                            checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                            checkPaths.add("/storage/emulated/0/$rel/.mountx_canary")
+                            if (!hasSdcardfs) {
+                                checkPaths.add("/data/media/0/$rel/.mountx_canary")
+                            }
                         }
+                    } else {
+                        checkPaths.add("${mp.targetPath}/.mountx_canary")
                     }
                 }
             }

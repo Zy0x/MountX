@@ -179,6 +179,7 @@ mount_sd() {
     local attempts=0
     while [ "${attempts}" -lt 5 ]; do
         if mountpoint -q "${SD_BASE}"; then
+            mount --make-rprivate "${SD_BASE}" 2>/dev/null
             log_info "SD already mounted at ${SD_BASE}."
             return 0
         fi
@@ -530,12 +531,38 @@ bind_mount_to_runtime_namespaces() {
         do
             if [ -d "${R}" ]; then
                 TARGET="${R}/${rel}"
-                if ! mountpoint -q "${TARGET}" 2>/dev/null && ! grep -qF " ${TARGET} " /proc/mounts 2>/dev/null; then
+                if ! mountpoint -q "${TARGET}" 2>/dev/null; then
                     mkdir -p "${TARGET}" 2>/dev/null
                     do_mount "${src}" "${TARGET}"
                 fi
             fi
         done
+
+        # If Zygote is alive, also inject into Zygote namespaces so newly forked apps inherit the mount immediately
+        for _zpid in $(pidof zygote64 zygote 2>/dev/null); do
+            for _zr in \
+                "/mnt/runtime/default/emulated/${user_id}" \
+                "/mnt/runtime/read/emulated/${user_id}" \
+                "/mnt/runtime/write/emulated/${user_id}" \
+                "/mnt/runtime/full/emulated/${user_id}"
+            do
+                nsenter --mount=/proc/${_zpid}/ns/mnt -- sh -c "
+                    if [ -d '${_zr}' ] && ! mountpoint -q '${_zr}/${rel}' 2>/dev/null; then
+                        mkdir -p '${_zr}/${rel}' 2>/dev/null
+                        mount -o bind '${src}' '${_zr}/${rel}' 2>/dev/null
+                        mount --make-rprivate '${_zr}/${rel}' 2>/dev/null
+                    fi
+                " 2>/dev/null
+            done
+        done
+
+        # Auto-heal: delete stale verify.fail or partial block download markers from unmounted internal storage
+        if [ -f "/data/media/${user_id}/${rel}/files/verify.fail" ]; then
+            rm -f "/data/media/${user_id}/${rel}/files/verify.fail" 2>/dev/null
+        fi
+        if ls "/data/media/${user_id}/${rel}/files/Asb/Android/"*_tmp.block >/dev/null 2>&1; then
+            rm -f "/data/media/${user_id}/${rel}/files/Asb/Android/"*_tmp.block 2>/dev/null
+        fi
     else
         if ! mountpoint -q "${dst}" 2>/dev/null; then
             mkdir -p "${dst}" 2>/dev/null
@@ -565,6 +592,7 @@ mount_disk_by_uuid() {
 
     # Already mounted at that point?
     if mountpoint -q "${mnt_point}" 2>/dev/null; then
+        mount --make-rprivate "${mnt_point}" 2>/dev/null
         log_info "  [UUID:${uuid}] Disk already mounted at ${mnt_point}."
         return 0
     fi
@@ -591,6 +619,11 @@ mount_disk_by_uuid() {
     log_info "  [UUID:${uuid}] Auto-mounting ${blk_dev} (fs=${fs_type:-unknown}) → ${mnt_point}"
     mkdir -p "${mnt_point}"
 
+    local sd_ctx="context=u:object_r:sdcardfs:s0"
+    if ! grep -q sdcardfs /proc/filesystems 2>/dev/null; then
+        sd_ctx="context=u:object_r:fuse:s0"
+    fi
+
     local mounted=0
     case "${fs_type}" in
         ntfs)
@@ -599,10 +632,10 @@ mount_disk_by_uuid() {
             [ ${mounted} -eq 0 ] && mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         f2fs)
-            mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            mount -t f2fs -o rw,noatime,nodiratime,${sd_ctx},inline_data,inline_dentry "${blk_dev}" "${mnt_point}" 2>/dev/null || mount -t f2fs -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         ext4)
-            mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            mount -t ext4 -o rw,noatime,nodiratime,${sd_ctx},commit=60,delalloc "${blk_dev}" "${mnt_point}" 2>/dev/null || mount -t ext4 -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         exfat)
             mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
@@ -755,10 +788,28 @@ load_mountpoints() {
                 ;;
         esac
 
+        # Determine effective user-facing check target
+        local check_target="${dst}"
+        if [ -n "${rel}" ]; then
+            if [ -d "/storage/emulated/${user_id}" ]; then
+                check_target="/storage/emulated/${user_id}/${rel}"
+            else
+                check_target="/mnt/runtime/default/emulated/${user_id}/${rel}"
+            fi
+
+            # Clean any accidental /data/media mount on sdcardfs to prevent EXDEV
+            if grep -qw "sdcardfs" /proc/filesystems 2>/dev/null; then
+                if grep -qF " /data/media/${user_id}/${rel} " /proc/mounts 2>/dev/null; then
+                    log_warn "  [${pkg}] Detected stale /data/media mount on active sdcardfs kernel. Unmounting to prevent EXDEV..."
+                    umount -f -l "/data/media/${user_id}/${rel}" 2>/dev/null
+                fi
+            fi
+        fi
+
         # ── Multi-Disk Collision & Anti-Stacking Check ─────────────────────────
-        if grep -qF " ${dst} " /proc/mounts 2>/dev/null; then
+        if mountpoint -q "${check_target}" 2>/dev/null; then
             local cur_dev
-            cur_dev=$(grep -F " ${dst} " /proc/mounts 2>/dev/null | cut -d' ' -f1 | head -n 1)
+            cur_dev=$(grep -F " ${check_target} " /proc/mounts 2>/dev/null | cut -d' ' -f1 | head -n 1)
             if [ -n "${disk_uuid}" ]; then
                 local exp_dev
                 exp_dev=$(blkid 2>/dev/null | grep -i "UUID=\"${disk_uuid}\"" | cut -d: -f1 | head -n 1)
@@ -777,25 +828,31 @@ load_mountpoints() {
                 esac
 
                 if [ "${is_loop_match}" = "0" ] && [ -n "${exp_dev}" ] && [ -n "${cur_dev}" ] && [ "${cur_dev}" != "${exp_dev}" ]; then
-                    log_warn "  [${pkg}] Target ${dst} mounted from ${cur_dev}, but configured UUID=${disk_uuid} expects ${exp_dev}. Unmounting stale device mount..."
-                    umount -f -l "${dst}" 2>/dev/null
-                elif [ -n "${rel}" ] && ! grep -qF " /storage/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null && ! grep -qF " /mnt/runtime/default/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null; then
-                    log_warn "  [${pkg}] Target ${dst} mounted in /proc/mounts, but runtime namespaces are missing (soft-restart detected). Unmounting base mount to clear sdcardfs EXDEV dead-lock..."
-                    umount -f -l "${dst}" 2>/dev/null
+                    log_warn "  [${pkg}] Target ${check_target} mounted from ${cur_dev}, but configured UUID=${disk_uuid} expects ${exp_dev}. Unmounting stale device mount..."
+                    umount -f -l "${check_target}" 2>/dev/null
+                    [ -n "${rel}" ] && umount -f -l "/mnt/runtime/default/emulated/${user_id}/${rel}" 2>/dev/null
                 else
-                    log_info "  [${pkg}] Target ${dst} is already mounted correctly from ${cur_dev}. Skipping duplicate bind."
+                    # Ensure write runtime namespace is also active
+                    local rt_write="/mnt/runtime/write/emulated/${user_id}/${rel}"
+                    if [ -d "/mnt/runtime/write/emulated/${user_id}" ] && ! mountpoint -q "${rt_write}" 2>/dev/null; then
+                        log_info "  [${pkg}] Active mountpoint exists on ${check_target}, but missing in runtime write namespace. Mounting missing runtime targets..."
+                        bind_mount_to_runtime_namespaces "${src}" "${dst}" "${pkg}" "${user_id}"
+                    else
+                        log_info "  [${pkg}] Target ${check_target} is already actively mounted correctly from ${cur_dev}. Skipping duplicate bind."
+                    fi
                     entries=$((entries + 1))
                     continue
                 fi
             else
-                if [ -n "${rel}" ] && ! grep -qF " /storage/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null && ! grep -qF " /mnt/runtime/default/emulated/${user_id}/${rel} " /proc/mounts 2>/dev/null; then
-                    log_warn "  [${pkg}] Target ${dst} mounted in /proc/mounts, but runtime namespaces are missing (soft-restart detected). Unmounting base mount to clear sdcardfs EXDEV dead-lock..."
-                    umount -f -l "${dst}" 2>/dev/null
+                local rt_write="/mnt/runtime/write/emulated/${user_id}/${rel}"
+                if [ -d "/mnt/runtime/write/emulated/${user_id}" ] && ! mountpoint -q "${rt_write}" 2>/dev/null; then
+                    log_info "  [${pkg}] Active mountpoint exists on ${check_target}, but missing in runtime write namespace. Mounting missing runtime targets..."
+                    bind_mount_to_runtime_namespaces "${src}" "${dst}" "${pkg}" "${user_id}"
                 else
-                    log_info "  [${pkg}] Target ${dst} is already mounted. Skipping duplicate bind."
-                    entries=$((entries + 1))
-                    continue
+                    log_info "  [${pkg}] Target ${check_target} is already actively mounted. Skipping duplicate bind."
                 fi
+                entries=$((entries + 1))
+                continue
             fi
         fi
 
@@ -1473,6 +1530,8 @@ main() {
         load_config
         if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
             mount_sd
+        else
+            mount --make-rprivate "${SD_BASE}" 2>/dev/null
         fi
         apply_io_tweaks
     fi
