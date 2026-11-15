@@ -812,6 +812,43 @@ private fun resolveSdPath(sdBase: String, relativeMountXPath: String): String {
     }
 }
 
+/**
+ * Resolves the external disk and partition holding [samplePaths] via longest mount-point prefix
+ * matching so multi-partition TO_INTERNAL transfers always identify their true source partition.
+ */
+private fun resolveSourceDiskAndPartition(
+    samplePaths: List<String>,
+    disks: List<SdCardDiskInfo>,
+    fallbackBase: String
+): Pair<SdCardDiskInfo?, PartitionInfo?> {
+    fun matchPath(rawPath: String): Pair<SdCardDiskInfo?, PartitionInfo?>? {
+        val clean = rawPath.trimEnd('/')
+        if (clean.isBlank()) return null
+        val partMatch = disks.flatMap { disk ->
+            disk.partitions.mapNotNull { part ->
+                val mp = part.mountPoint?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                if (clean == mp || clean.startsWith("$mp/")) Triple(disk, part, mp.length) else null
+            }
+        }.maxByOrNull { it.third }
+        if (partMatch != null) return Pair(partMatch.first, partMatch.second)
+        val diskMatch = disks.firstOrNull { disk ->
+            val mp = disk.mountPath.trimEnd('/')
+            mp.isNotBlank() && (clean == mp || clean.startsWith("$mp/"))
+        }
+        return diskMatch?.let { d ->
+            val p = d.partitions.firstOrNull { it.mountPoint?.trimEnd('/') == d.mountPath.trimEnd('/') } ?: d.primaryPartition
+            Pair(d, p)
+        }
+    }
+
+    for (path in samplePaths) {
+        matchPath(path)?.let { return it }
+    }
+    matchPath(fallbackBase)?.let { return it }
+    val fallbackDisk = disks.firstOrNull()
+    return Pair(fallbackDisk, fallbackDisk?.primaryPartition)
+}
+
 private fun isPosixStorageTarget(
     sdBase: String,
     availableDisks: List<SdCardDiskInfo> = emptyList(),
@@ -899,6 +936,7 @@ private fun buildTargetMountPoints(
 
         if (existing != null) {
             val updatedSource = when {
+                direction == MoveDirection.TO_INTERNAL && existing.sourcePath.isNotBlank() -> existing.sourcePath
                 isContainer -> containerPath!!
                 isLibCat -> "$sdBase/MountX/lib/$pkg"
                 isApkCat -> "$sdBase/MountX/app/$pkg"
@@ -945,7 +983,11 @@ private fun buildTargetMountPoints(
                     targetPath = updatedTarget,
                     enabled = true,
                     isVirtualContainer = isContainer,
-                    containerImgPath = containerPath,
+                    containerImgPath = if (direction == MoveDirection.TO_INTERNAL && !existing.containerImgPath.isNullOrBlank()) {
+                        existing.containerImgPath
+                    } else {
+                        containerPath
+                    },
                     migrationMethod = method
                 )
             )
@@ -1243,14 +1285,10 @@ private fun StorageTabContent(
                     val size = if (externalBytes > 0L) externalBytes else internalBytes
                     Triple(size, defaultDesc, true)
                 }
-                isKernelMounted -> {
-                    // Kernel mount still alive
-                    val size = if (externalBytes > 0L) externalBytes else internalBytes
-                    Triple(size, defaultDesc, true)
-                }
                 else -> {
-                    // Unmounted and not configured for external: strictly on Internal Storage
-                    val desc = if (externalBytes > 4096L) {
+                    // Unmounted and not configured for external: strictly on Internal Storage.
+                    // Require > 64KB before annotating external residue so empty filesystem metadata/skeleton dirs are ignored.
+                    val desc = if (externalBytes > 65536L) {
                         context.getString(R.string.category_item_on_storage, defaultDesc, FormatUtils.formatExactBytes(externalBytes), targetStorageName)
                     } else {
                         defaultDesc
@@ -2401,16 +2439,19 @@ private fun StorageTabContent(
 
                     // Right: Alternating Mount / Unmount / Migrate button
                     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-                    val hasInternalData = safeBreakdown.ext1Bytes > 0L || game.dataSizeBytes > 0L
-                    val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION
+                    val hasAnyActiveExternalPoint = mountPoints.any { it.enabled } || safeBreakdown.ext2Bytes > 65536L
+                    val isNeedMigration = game.mountStatus == MountStatus.NEED_MIGRATION && hasAnyActiveExternalPoint
 
                     if (!isMounted && !isNeedMigration) {
                         Button(
                             onClick = onMount,
+                            enabled = hasAnyActiveExternalPoint,
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5),
-                                contentColor = Color.White
+                                contentColor = Color.White,
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                             ),
                             modifier = Modifier
                                 .weight(1f)
@@ -2420,7 +2461,7 @@ private fun StorageTabContent(
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = if (hasAnyActiveExternalPoint) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -2430,7 +2471,7 @@ private fun StorageTabContent(
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = Color.White,
+                                color = if (hasAnyActiveExternalPoint) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -4563,6 +4604,14 @@ private fun SmartStoragePartitionBottomSheet(
         mutableStateOf(validPart)
     }
 
+    val (sourceDiskForInternal, sourcePartitionForInternal) = remember(selectedItems, externalDisks, currentSdBase) {
+        resolveSourceDiskAndPartition(
+            samplePaths = selectedItems.mapNotNull { it.sdPath.takeIf(String::isNotBlank) },
+            disks = externalDisks,
+            fallbackBase = currentSdBase
+        )
+    }
+
     val targetFsType = (selectedPartition?.fsType
         ?: selectedDisk?.partitions?.firstOrNull { part ->
             part.mountPoint != null && (selectedPartition?.mountPoint ?: "").startsWith(part.mountPoint)
@@ -5165,8 +5214,10 @@ private fun SmartStoragePartitionBottomSheet(
                         }
                         destIsInternal = false
                     } else if (isTargetInternal) {
-                        sourceTitle = selectedDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
-                        sourceSubtitle = selectedPartition?.let {
+                        val effectiveSourceDisk = sourceDiskForInternal ?: selectedDisk
+                        val effectiveSourcePartition = sourcePartitionForInternal ?: selectedPartition
+                        sourceTitle = effectiveSourceDisk?.hardwareTitle ?: stringResource(R.string.manage_location_badge_microsd)
+                        sourceSubtitle = effectiveSourcePartition?.let {
                             "${stringResource(R.string.storage_wizard_partition_n, it.partitionNumber)} • ${it.fsType.ifBlank { "EXT4" }.uppercase()}"
                         }
                         sourceIsInternal = false
@@ -5649,8 +5700,8 @@ private fun SmartStoragePartitionBottomSheet(
                                     }
                                     onConfirmMove(
                                         if (isTargetInternal) MoveDirection.TO_INTERNAL else MoveDirection.TO_SD,
-                                        selectedDisk,
-                                        selectedPartition,
+                                        if (isTargetInternal) (sourceDiskForInternal ?: selectedDisk) else selectedDisk,
+                                        if (isTargetInternal) (sourcePartitionForInternal ?: selectedPartition) else selectedPartition,
                                         effectiveMethods
                                     )
                                 },

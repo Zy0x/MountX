@@ -12,8 +12,12 @@ export PATH="${MODDIR}/bin:/dev/mountx_bin:/data/adb/ap/bin:/data/adb/ksu/bin:/d
 SE_TOOL=""
 if command -v magiskpolicy >/dev/null 2>&1; then
     SE_TOOL="magiskpolicy --live"
+elif command -v ksud >/dev/null 2>&1; then
+    SE_TOOL="ksud sepolicy patch"
 elif [ -f /data/adb/ksud ]; then
     SE_TOOL="/data/adb/ksud sepolicy patch"
+elif command -v apd >/dev/null 2>&1; then
+    SE_TOOL="apd sepolicy patch"
 elif [ -f /data/adb/apd ]; then
     SE_TOOL="/data/adb/apd sepolicy patch"
 fi
@@ -50,25 +54,54 @@ if [ -f "${CONFIG_FILE}" ]; then
     done < "${CONFIG_FILE}"
 fi
 
-# Dual-MMC Security Filter: Reject internal eMMC (mmcblk0) when MicroSD (mmcblk1) exists
-if [ -d "/sys/block/mmcblk1" ]; then
-    case "${SD_BLOCK}" in
-        /dev/block/mmcblk0*|mmcblk0*)
-            SD_BLOCK=""
-            ;;
+_pfs_is_internal_disk() {
+    local _dev="$1"
+    [ -z "${_dev}" ] && return 0
+    local _bn _dk _dm _mp
+    _bn=$(basename "${_dev}")
+    case "${_bn}" in
+        loop*|ram*|zram*|dm-*|*boot[0-9]|*rpmb) return 0 ;;
+        mmcblk*p[0-9]*|nvme*n*p[0-9]*) _dk="${_bn%p[0-9]*}" ;;
+        *) _dk=$(echo "${_bn}" | sed 's/[0-9]*$//') ;;
     esac
+    [ -z "${_dk}" ] && return 0
+    for _mp in $(awk '$2 ~ "^/(data|system|vendor|product|odm|system_ext|metadata|cache|mnt/vendor|apex|persist)$" {print $1}' /proc/mounts 2>/dev/null); do
+        case "${_mp}" in
+            /dev/block/${_dk}|/dev/block/${_dk}p[0-9]*|/dev/block/${_dk}[0-9]*) return 0 ;;
+        esac
+    done
+    for _dm in /sys/block/dm-*/slaves/${_dk}*; do
+        [ -e "${_dm}" ] && return 0
+    done
+    [ -r "/sys/block/${_dk}/device/type" ] && [ "$(cat "/sys/block/${_dk}/device/type" 2>/dev/null | tr -d '\r\n')" = "MMC" ] && return 0
+    return 1
+}
+
+if [ -n "${SD_BLOCK}" ] && _pfs_is_internal_disk "${SD_BLOCK}"; then
+    SD_BLOCK=""
 fi
 
-# Fast candidate check (strictly non-blocking, zero sleep)
+# Dynamic UUID resolution first, then safe non-internal external discovery (strictly non-blocking, zero sleep)
 if [ -z "${SD_BLOCK}" ] || [ ! -b "${SD_BLOCK}" ]; then
-    for candidate in /dev/block/mmcblk1p2 /dev/block/mmcblk1p1 /dev/block/mmcblk0p2 /dev/block/sda2; do
-        if [ -b "${candidate}" ]; then
-            if [ -d "/sys/block/mmcblk1" ] && echo "${candidate}" | grep -q "mmcblk0"; then
-                continue
-            fi
-            SD_BLOCK="${candidate}"
-            break
+    _conf_uuid=$(grep -E '^[a-zA-Z0-9._]+' "${MOUNTPOINTS_FILE}" 2>/dev/null | cut -d'|' -f6 | grep -v '^$' | head -n 1)
+    if [ -n "${_conf_uuid}" ]; then
+        _by_uuid=$(blkid 2>/dev/null | grep -i "UUID=\"${_conf_uuid}\"" | head -n 1 | cut -d: -f1)
+        if [ -n "${_by_uuid}" ] && [ -b "${_by_uuid}" ] && ! _pfs_is_internal_disk "${_by_uuid}"; then
+            SD_BLOCK="${_by_uuid}"
         fi
+    fi
+fi
+
+if [ -z "${SD_BLOCK}" ] || [ ! -b "${SD_BLOCK}" ]; then
+    for candidate in /dev/block/mmcblk*p* /dev/block/sd[a-z][0-9]* /dev/block/nvme*p*; do
+        [ ! -b "${candidate}" ] && continue
+        _pfs_is_internal_disk "${candidate}" && continue
+        case "$(blkid "${candidate}" 2>/dev/null | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')" in
+            f2fs|ext4)
+                SD_BLOCK="${candidate}"
+                break
+                ;;
+        esac
     done
 fi
 

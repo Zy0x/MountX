@@ -533,6 +533,10 @@ class AppsViewModel @Inject constructor(
                 loadAvailableDisks(force = true)
                 gameRepository.refreshMountStatuses()
                 gameRepository.calculateDataSizesBatch(games.value, sdBase)
+                val activePkg = _activePackageName.value ?: _selectedGameForDetail.value?.packageName
+                if (!activePkg.isNullOrBlank()) {
+                    refreshActiveAppUiState(activePkg, sdBase, refreshStatusFirst = false)
+                }
                 scanDiscoveredGames()
             } finally {
                 _isRefreshing.value = false
@@ -544,12 +548,66 @@ class AppsViewModel @Inject constructor(
         return appRepository.isGameRunning(packageName)
     }
 
+    private suspend fun verifyAndMountAfterMigration(game: GameEntry, sdBase: String): Boolean {
+        val mountRes = gameRepository.mountGame(game, sdBase) { prog ->
+            _operationProgress.value = prog
+            mountNotificationManager.postOperationProgressNotification(prog)
+        }
+        if (mountRes.isSuccess) {
+            gameRepository.syncModuleGamelist()
+            refreshActiveAppUiState(game.packageName, sdBase)
+            _moveMessage.value = "SUCCESS"
+            return true
+        }
+        val errMsg = mountRes.exceptionOrNull()?.message ?: context.getString(R.string.op_err_mount_failed)
+        refreshActiveAppUiState(game.packageName, sdBase)
+        _moveMessage.value = errMsg
+        val failedProg = OperationProgress(
+            type = OperationType.MOUNT,
+            title = context.getString(R.string.op_err_mount_failed),
+            subtitle = game.packageName,
+            isFinished = true,
+            isSuccess = false,
+            errorMessage = errMsg
+        )
+        _operationProgress.value = failedProg
+        mountNotificationManager.postOperationProgressNotification(failedProg)
+        return false
+    }
+
+    private suspend fun refreshActiveAppUiState(
+        packageName: String,
+        sdBase: String,
+        refreshStatusFirst: Boolean = true
+    ) {
+        if (refreshStatusFirst) {
+            gameRepository.refreshMountStatuses()
+        }
+        gameRepository.calculateDataSize(packageName, sdBase)
+        val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
+        _storageBreakdownMap.update { it + (packageName to breakdown) }
+        if (_activePackageName.value == packageName || _selectedGameForDetail.value?.packageName == packageName) {
+            _detailedStorage.value = breakdown
+            _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+            gameRepository.getGame(packageName)?.let { refreshed ->
+                _selectedGameForDetail.value = refreshed
+            }
+            _appHealth.value = diagnosticManager.getAppHealth(packageName)
+        }
+    }
+
+    private suspend fun refreshAppStateAfterOp(packageName: String, sdBase: String) {
+        refreshActiveAppUiState(packageName, sdBase)
+        gameRepository.syncDiskCatalog(sdBase)
+    }
+
     fun moveMountPoints(
         packageName: String,
         mountPoints: List<app.mountx.data.model.MountPointConfig>,
         direction: MoveDirection,
         targetDiskBase: String? = null,
-        conflictStrategy: ConflictStrategy? = null
+        conflictStrategy: ConflictStrategy? = null,
+        initialEntry: GameEntry? = null
     ) {
         if (_pendingOperations.value.contains(packageName)) return
         _pendingOperations.update { it + packageName }
@@ -560,7 +618,17 @@ class AppsViewModel @Inject constructor(
                 val defaultSdBase = appPreferences.sdBasePath.first()
                 val sdBase = targetDiskBase ?: defaultSdBase
                 val effectiveConflictStrategy = conflictStrategy ?: appPreferences.conflictStrategy.first()
-                val game = games.value.firstOrNull { it.packageName == packageName }
+                var game = gameRepository.getGame(packageName) ?: games.value.firstOrNull { it.packageName == packageName }
+                if (game == null && initialEntry != null) {
+                    gameRepository.addGame(
+                        packageName = initialEntry.packageName,
+                        displayName = initialEntry.displayName,
+                        mode = MountMode.PKG,
+                        mountPoints = initialEntry.mountPoints,
+                        initialSizeBytes = initialEntry.dataSizeBytes
+                    )
+                    game = gameRepository.getGame(packageName) ?: initialEntry
+                }
                 val rawPoints = if (mountPoints.isNotEmpty()) mountPoints else {
                     game?.let { gameRepository.synthesizeLegacyMountPoints(it, sdBase) } ?: emptyList()
                 }
@@ -592,6 +660,10 @@ class AppsViewModel @Inject constructor(
                     }
                 }
 
+                // Determine upfront whether VFS mounting must run after copy so we don't flash "Done" prematurely
+                val needsPostMigrationMount = direction == MoveDirection.TO_SD ||
+                    (game?.mountPoints?.any { pt -> pt.enabled && effectivePoints.none { it.isSameTargetAs(pt) } } == true)
+
                 // Flag migration in progress to prevent background watchdog auto-recovery from interfering
                 RootShell.exec("touch /dev/.mountx_migrating")
 
@@ -604,7 +676,12 @@ class AppsViewModel @Inject constructor(
                 // to avoid circular reading/writing across bind mounts
                 if (game != null) {
                     gameRepository.unmountGame(game) { prog ->
-                        _operationProgress.value = prog
+                        val heldProg = if (prog.isFinished && prog.isSuccess) {
+                            prog.copy(isFinished = false, progressPercent = 0.01f)
+                        } else {
+                            prog
+                        }
+                        _operationProgress.value = heldProg
                     }
                 }
 
@@ -615,18 +692,42 @@ class AppsViewModel @Inject constructor(
                     sdBase = sdBase,
                     conflictStrategy = effectiveConflictStrategy,
                     onProgress = { prog ->
-                        _operationProgress.value = prog
-                        mountNotificationManager.postOperationProgressNotification(prog)
+                        val adjustedProg = if (needsPostMigrationMount && prog.isFinished && prog.isSuccess) {
+                            prog.copy(isFinished = false, progressPercent = 0.96f)
+                        } else {
+                            prog
+                        }
+                        _operationProgress.value = adjustedProg
+                        mountNotificationManager.postOperationProgressNotification(adjustedProg)
                     }
                 )
                 _isMovingData.value = false
                 if (result.isSuccess) {
-                    _moveMessage.value = "SUCCESS"
+                    var latestGame = gameRepository.getGame(packageName) ?: game ?: games.value.firstOrNull { it.packageName == packageName }
+                    if (latestGame == null && direction == MoveDirection.TO_SD) {
+                        val seededPoints = effectivePoints.map { it.copy(enabled = true) }
+                        val fallbackDisplay = initialEntry?.displayName ?: packageName
+                        gameRepository.addGame(
+                            packageName = packageName,
+                            displayName = fallbackDisplay,
+                            mode = MountMode.PKG,
+                            mountPoints = seededPoints,
+                            initialSizeBytes = initialEntry?.dataSizeBytes ?: 0L
+                        )
+                        latestGame = gameRepository.getGame(packageName) ?: GameEntry(
+                            packageName = packageName,
+                            displayName = fallbackDisplay,
+                            mode = MountMode.PKG,
+                            mountStatus = MountStatus.UNMOUNTED,
+                            isEnabled = true,
+                            mountPoints = seededPoints
+                        )
+                    }
 
-                    if (game != null) {
+                    if (latestGame != null) {
                         if (direction == MoveDirection.TO_INTERNAL) {
-                            // Mark moved points as disabled, update game status to UNMOUNTED
-                            val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
+                            // Mark moved points as disabled, keep remaining enabled points mounted if any
+                            val currentPoints = if (latestGame.mountPoints.isNotEmpty()) latestGame.mountPoints else effectivePoints
                             val updatedPoints = currentPoints.map { pt ->
                                 val moved = effectivePoints.firstOrNull { it.isSameTargetAs(pt) }
                                 if (moved != null) {
@@ -636,16 +737,38 @@ class AppsViewModel @Inject constructor(
                                 }
                             }
                             val allDisabled = updatedPoints.none { it.enabled }
-                            val updated = game.copy(
+                            val updated = latestGame.copy(
                                 mountPoints = updatedPoints,
-                                mountStatus = if (allDisabled) MountStatus.UNMOUNTED else MountStatus.MOUNTED,
-                                isEnabled = if (allDisabled) false else game.isEnabled
+                                mountStatus = MountStatus.UNMOUNTED,
+                                isEnabled = if (allDisabled) false else latestGame.isEnabled
                             )
                             gameRepository.updateGame(updated)
-                            MountManager.sweepUnmountPackage(packageName)
+
+                            // Unmount ONLY the moved points across all namespaces
+                            for (moved in effectivePoints) {
+                                MountManager.sweepUnmountTarget(moved.targetPath)
+                                val rel = MountManager.extractRelativePath(moved.targetPath)
+                                if (rel.isNotBlank()) {
+                                    for (uid in MountManager.getActiveUserIds()) {
+                                        for (ns in MountManager.getTargetNamespaces(uid)) {
+                                            RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                                        }
+                                    }
+                                }
+                            }
+
+                            // If there are still remaining enabled points, verify & keep them actively mounted
+                            if (!allDisabled) {
+                                verifyAndMountAfterMigration(updated, sdBase)
+                            } else {
+                                MountManager.sweepUnmountPackage(packageName)
+                                gameRepository.syncModuleGamelist()
+                                refreshActiveAppUiState(packageName, sdBase)
+                                _moveMessage.value = "SUCCESS"
+                            }
                         } else {
-                            // TO_SD
-                            val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
+                            // TO_SD: persist mountPoints first, then ONLY mark MOUNTED/SUCCESS if mountGame succeeds
+                            val currentPoints = if (latestGame.mountPoints.isNotEmpty()) latestGame.mountPoints else effectivePoints
                             val existingUpdated = currentPoints.map { pt ->
                                 val moved = effectivePoints.firstOrNull { it.isSameTargetAs(pt) }
                                 if (moved != null) moved.copy(enabled = true) else pt
@@ -654,27 +777,21 @@ class AppsViewModel @Inject constructor(
                                 existingUpdated.none { it.isSameTargetAs(ep) }
                             }.map { it.copy(enabled = true) }
                             val finalPoints = existingUpdated + missingPoints
-                            val updated = game.copy(
+                            val updated = latestGame.copy(
                                 mountPoints = if (finalPoints.isNotEmpty()) finalPoints else effectivePoints.map { it.copy(enabled = true) },
-                                mountStatus = MountStatus.MOUNTED,
+                                mountStatus = MountStatus.UNMOUNTED,
                                 isEnabled = true
                             )
                             gameRepository.updateGame(updated)
-                            gameRepository.mountGame(updated, sdBase) { prog ->
-                                _operationProgress.value = prog
-                                mountNotificationManager.postOperationProgressNotification(prog)
-                            }
+                            verifyAndMountAfterMigration(updated, sdBase)
                         }
+                    } else {
+                        gameRepository.syncModuleGamelist()
+                        refreshActiveAppUiState(packageName, sdBase)
+                        _moveMessage.value = "SUCCESS"
                     }
 
-                    gameRepository.calculateDataSize(packageName, sdBase)
                     gameRepository.syncDiskCatalog(sdBase)
-                    val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
-                    _storageBreakdownMap.update { it + (packageName to breakdown) }
-                    if (_activePackageName.value == packageName || _selectedGameForDetail.value?.packageName == packageName) {
-                        _detailedStorage.value = breakdown
-                        _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
-                    }
                 } else {
                     _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_move_failed)
                 }
@@ -691,13 +808,28 @@ class AppsViewModel @Inject constructor(
     fun directMount(
         packageName: String,
         points: List<app.mountx.data.model.MountPointConfig>,
-        targetBase: String
+        targetBase: String,
+        initialEntry: GameEntry? = null
     ) {
         if (_pendingOperations.value.contains(packageName)) return
         _pendingOperations.update { it + packageName }
         viewModelScope.launch {
             try {
-                val game = games.value.firstOrNull { it.packageName == packageName } ?: return@launch
+                var game = gameRepository.getGame(packageName) ?: games.value.firstOrNull { it.packageName == packageName }
+                if (game == null && initialEntry != null) {
+                    gameRepository.addGame(
+                        packageName = initialEntry.packageName,
+                        displayName = initialEntry.displayName,
+                        mode = MountMode.PKG,
+                        mountPoints = initialEntry.mountPoints,
+                        initialSizeBytes = initialEntry.dataSizeBytes
+                    )
+                    game = gameRepository.getGame(packageName) ?: initialEntry
+                }
+                if (game == null) {
+                    _moveMessage.value = context.getString(R.string.op_err_direct_mount_failed)
+                    return@launch
+                }
                 _isMovingData.value = true
                 val initialProgress = OperationProgress(
                     type = OperationType.MOUNT,
@@ -715,16 +847,24 @@ class AppsViewModel @Inject constructor(
 
                 _isMovingData.value = false
                 if (result.isSuccess) {
+                    gameRepository.syncModuleGamelist()
+                    refreshActiveAppUiState(packageName, targetBase)
                     _moveMessage.value = "SUCCESS"
+                    gameRepository.syncDiskCatalog(targetBase)
                 } else {
-                    _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_direct_mount_failed)
-                }
-
-                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, targetBase)
-                _storageBreakdownMap.update { it + (packageName to breakdown) }
-                if (_activePackageName.value == packageName) {
-                    _detailedStorage.value = breakdown
-                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
+                    val errMsg = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_direct_mount_failed)
+                    _moveMessage.value = errMsg
+                    val failedProg = OperationProgress(
+                        type = OperationType.MOUNT,
+                        title = context.getString(R.string.op_err_direct_mount_failed),
+                        subtitle = packageName,
+                        isFinished = true,
+                        isSuccess = false,
+                        errorMessage = errMsg
+                    )
+                    _operationProgress.value = failedProg
+                    mountNotificationManager.postOperationProgressNotification(failedProg)
+                    refreshAppStateAfterOp(packageName, targetBase)
                 }
             } finally {
                 _isMovingData.value = false
@@ -760,12 +900,7 @@ class AppsViewModel @Inject constructor(
                 }
 
                 val defaultSdBase = appPreferences.sdBasePath.first()
-                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, defaultSdBase)
-                _storageBreakdownMap.update { it + (packageName to breakdown) }
-                if (_activePackageName.value == packageName) {
-                    _detailedStorage.value = breakdown
-                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
-                }
+                refreshActiveAppUiState(packageName, defaultSdBase)
             } finally {
                 _pendingOperations.update { it - packageName }
             }
@@ -816,12 +951,17 @@ class AppsViewModel @Inject constructor(
             )
             _isMovingData.value = false
             if (result.isSuccess) {
-                _moveMessage.value = "SUCCESS"
-
                 if (game != null) {
                     if (direction == MoveDirection.TO_INTERNAL) {
-                        val updated = game.copy(mountStatus = MountStatus.UNMOUNTED, isEnabled = false)
+                        val disabledPoints = game.mountPoints.map { it.copy(enabled = false) }
+                        val updated = game.copy(
+                            mountPoints = disabledPoints,
+                            mountStatus = MountStatus.UNMOUNTED,
+                            isEnabled = false
+                        )
                         gameRepository.updateGame(updated)
+                        gameRepository.syncModuleConfig()
+                        MountManager.sweepUnmountPackage(packageName)
                     } else {
                         val updated = game.copy(mountStatus = MountStatus.MOUNTED, isEnabled = true)
                         gameRepository.updateGame(updated)
@@ -831,14 +971,9 @@ class AppsViewModel @Inject constructor(
                     }
                 }
 
-                gameRepository.calculateDataSize(packageName, sdBase)
+                refreshActiveAppUiState(packageName, sdBase)
+                _moveMessage.value = "SUCCESS"
                 gameRepository.syncDiskCatalog(sdBase)
-                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
-                _storageBreakdownMap.update { it + (packageName to breakdown) }
-                if (_activePackageName.value == packageName) {
-                    _detailedStorage.value = breakdown
-                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
-                }
             } else {
                 _moveMessage.value = result.exceptionOrNull()?.message ?: context.getString(R.string.op_err_move_failed)
             }
@@ -1004,12 +1139,7 @@ class AppsViewModel @Inject constructor(
             val sdBase = appPreferences.sdBasePath.first()
             val res = gameRepository.deleteCategoryData(context, packageName, categoryId, location, sdBase)
             if (res.isSuccess) {
-                val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
-                _storageBreakdownMap.update { it + (packageName to breakdown) }
-                if (_activePackageName.value == packageName) {
-                    _detailedStorage.value = breakdown
-                    _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
-                }
+                refreshActiveAppUiState(packageName, sdBase)
                 refresh()
                 onResult(true, null)
             } else {
@@ -1031,6 +1161,7 @@ class AppsViewModel @Inject constructor(
                 val sdBase = appPreferences.sdBasePath.first()
                 val result = gameRepository.reconcileApp(game, sdBase)
                 if (result.isSuccess) {
+                    refreshActiveAppUiState(game.packageName, sdBase)
                     onComplete(true, null)
                 } else {
                     onComplete(false, result.exceptionOrNull()?.message)

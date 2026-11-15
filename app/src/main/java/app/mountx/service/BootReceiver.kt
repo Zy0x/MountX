@@ -40,11 +40,12 @@ class BootReceiver : BroadcastReceiver() {
             action == "com.htc.intent.action.QUICKBOOT_POWERON" ||
             action == Intent.ACTION_MY_PACKAGE_REPLACED
         ) {
-            // Deduplicate: prevent running mount cascade multiple times across LOCKED_BOOT, USER_UNLOCKED, and BOOT_COMPLETED
-            if (action != Intent.ACTION_MY_PACKAGE_REPLACED && hasHandledBoot) {
+            val isUnlock = action == Intent.ACTION_USER_UNLOCKED
+            // Allow ACTION_USER_UNLOCKED to execute even if boot completed was already recorded
+            if (action != Intent.ACTION_MY_PACKAGE_REPLACED && !isUnlock && hasHandledBoot) {
                 return
             }
-            if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_USER_UNLOCKED) {
+            if (action == Intent.ACTION_BOOT_COMPLETED || isUnlock) {
                 hasHandledBoot = true
             }
 
@@ -55,23 +56,26 @@ class BootReceiver : BroadcastReceiver() {
                     val autoMount = appPreferences.autoMountOnBoot.first()
                     val rootAvailable = RootShell.isRootAvailable()
 
-                    // Check if Magisk / KernelSU / APatch module already handled boot mounts to prevent race conditions
-                    val isModuleHandled = RootShell.exists("/dev/.mountx_booted")
-
-                    if (autoMount && rootAvailable && !isModuleHandled) {
-                        // Cold-boot settling grace period: wait for storage daemon & vold to become ready
-                        var attempts = 0
-                        while (attempts < 10) {
-                            if (RootShell.exists("/storage/emulated/0") ||
-                                RootShell.isMountpoint("/data/sdext2") ||
-                                RootShell.isMountpoint("/dev/mountx/sdext2")
-                            ) {
-                                break
+                    // Coordinate cleanly with service.sh so boot/unlock mounts never race or double-bind
+                    if (autoMount && rootAvailable) {
+                        RootShell.awaitServiceMountCycleIfActive(waitForWatchdogUnlockGrace = isUnlock)
+                        val isModuleHandled = RootShell.exists("/dev/.mountx_booted")
+                        val isInitialMounted = RootShell.exists("/dev/.mountx_initial_mounted")
+                        if (!isModuleHandled || (isUnlock && !isInitialMounted)) {
+                            // Settling grace period: wait for storage daemon & vold when app is handling mounts
+                            var attempts = 0
+                            while (attempts < 10) {
+                                if (RootShell.exists("/storage/emulated/0") ||
+                                    RootShell.isMountpoint("/data/sdext2") ||
+                                    RootShell.isMountpoint("/dev/mountx/sdext2")
+                                ) {
+                                    break
+                                }
+                                delay(500)
+                                attempts++
                             }
-                            delay(500)
-                            attempts++
+                            MountService.startMountAll(context)
                         }
-                        MountService.startMountAll(context)
                     }
 
                     // Post-reboot unmounted game launch protection:

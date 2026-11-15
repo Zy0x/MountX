@@ -610,7 +610,14 @@ class StorageViewModel @Inject constructor(
             _isRepartitioning.value = true
             _repartitionError.value = null
             val targetDisk = _selectedDiskForDetail.value ?: _diskInfo.value
-            val diskPath = targetDisk?.devicePath ?: "/dev/block/mmcblk0"
+            val diskPath = targetDisk?.devicePath?.takeIf { it.isNotBlank() }
+            if (diskPath == null) {
+                _isRepartitioning.value = false
+                val err = context.getString(R.string.op_err_repartition_failed)
+                _repartitionError.value = err
+                _statusMessage.value = err
+                return@launch
+            }
             val result = storageRepository.repartitionDisk(diskPath, _wizardPartitions.value, _wizardTableType.value)
             _isRepartitioning.value = false
             if (result.isSuccess) {

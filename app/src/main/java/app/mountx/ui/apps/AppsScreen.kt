@@ -222,16 +222,17 @@ fun AppsScreen(
                     }
                 }
                 val newEntry = draftGame.copy(mountPoints = mergedPoints)
-                viewModel.addGameWithMountPoints(
-                    packageName = draftGame.packageName,
-                    displayName = draftGame.displayName,
-                    mountPoints = mergedPoints,
-                    initialSizeBytes = draftGame.dataSizeBytes
-                )
-                viewModel.moveMountPoints(draftGame.packageName, pts, dir, basePath, conflictStrategy)
                 configuringApp = null
                 selectedGameForDetail = newEntry
                 viewModel.selectGameForDetail(newEntry)
+                viewModel.moveMountPoints(
+                    packageName = draftGame.packageName,
+                    mountPoints = pts,
+                    direction = dir,
+                    targetDiskBase = basePath,
+                    conflictStrategy = conflictStrategy,
+                    initialEntry = newEntry
+                )
             },
             onDirectMountMountPoints = { pts, basePath ->
                 val currentPoints = draftGame.mountPoints
@@ -245,16 +246,15 @@ fun AppsScreen(
                     }
                 }
                 val newEntry = draftGame.copy(mountPoints = mergedPoints)
-                viewModel.addGameWithMountPoints(
-                    packageName = draftGame.packageName,
-                    displayName = draftGame.displayName,
-                    mountPoints = mergedPoints,
-                    initialSizeBytes = draftGame.dataSizeBytes
-                )
-                viewModel.directMount(draftGame.packageName, mergedPoints, basePath)
                 configuringApp = null
                 selectedGameForDetail = newEntry
                 viewModel.selectGameForDetail(newEntry)
+                viewModel.directMount(
+                    packageName = draftGame.packageName,
+                    points = mergedPoints,
+                    targetBase = basePath,
+                    initialEntry = newEntry
+                )
             },
             onUnmountMountPoints = { pts ->
                 viewModel.unmountMountPoints(draftGame.packageName, pts)

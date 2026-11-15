@@ -298,7 +298,7 @@ fun StorageScreen(
 
     // Multi-Step Repartition Final Confirmation Dialog
     if (showRepartitionFinalConfirm) {
-        val targetDiskPath = activeWizardDisk?.devicePath ?: "/dev/block/mmcblk0"
+        val targetDiskPath = activeWizardDisk?.devicePath?.takeIf { it.isNotBlank() } ?: "—"
         val summaryLines = wizardPartitions.mapIndexed { idx, p ->
             "• ${stringResource(R.string.storage_wizard_partition_n, idx + 1)}: ${String.format(java.util.Locale.US, "%.1f GB", p.sizeGb)} (${p.fsType.label}, \"${p.label}\")"
         }.joinToString("\n")

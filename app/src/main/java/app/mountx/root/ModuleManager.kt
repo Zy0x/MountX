@@ -218,7 +218,7 @@ object ModuleManager {
 
             // Check if service.sh file size differs from bundled asset (e.g. script update without versionCode bump)
             val bundledServiceSize = runCatching {
-                context.assets.open("module/service.sh").use { it.available().toLong() }
+                context.assets.open("module/service.sh").use { it.readBytes().size.toLong() }
             }.getOrDefault(0L)
 
             val installedServiceSize = RootShell.execForOutput("stat -c%s \"$MODULE_DIR/service.sh\" 2>/dev/null")
@@ -233,6 +233,7 @@ object ModuleManager {
             val isOutdated = installedVersionCode < currentVersionCode || !binExists || isScriptModified
 
             if (isOutdated) {
+                RootShell.awaitServiceMountCycleIfActive(waitForWatchdogUnlockGrace = false)
                 AppLogger.info(TAG, "Syncing outdated or modified module: installed=$installedVersionCode, current=$currentVersionCode, scriptModified=$isScriptModified, binExists=$binExists")
                 installModuleDirectly(context)
                 true

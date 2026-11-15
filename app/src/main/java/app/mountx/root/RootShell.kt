@@ -4,6 +4,7 @@ import app.mountx.data.model.ShellResult
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
@@ -336,10 +337,46 @@ object RootShell {
     }
 
     /**
-     * Check if a path is a mounted mountpoint.
+     * Builds a portable shell snippet that converts [path] (and subtree) to rprivate propagation.
+     * Android's toybox `mount` lacks `--make-rprivate` (prints "bad /etc/fstab"), so prefer bundled BusyBox.
+     */
+    fun makeRprivateCmd(path: String): String {
+        val escaped = path.replace("\"", "\\\"")
+        return "(busybox mount --make-rprivate \"$escaped\" 2>/dev/null || mount --make-rprivate \"$escaped\" 2>/dev/null)"
+    }
+
+    /**
+     * Builds a portable POSIX shell expression that evaluates true iff [doubleQuotedTarget] is
+     * currently an active mountpoint in [mountInfoPath] (falling back to /proc/self/mountinfo and
+     * `mountpoint -q`). Immune to same-backing-device `st_dev` collisions on nested bind mounts.
+     */
+    fun shellIsMountedExpr(doubleQuotedTarget: String, mountInfoPath: String = "/proc/1/mountinfo"): String {
+        return "(T=\"$doubleQuotedTarget\"; _mi=\"$mountInfoPath\"; [ -r \"\$_mi\" ] || _mi=/proc/self/mountinfo; if [ -r \"\$_mi\" ]; then T=\"\$T\" awk '{m=\$5;gsub(/\\\\040/,\" \",m);if(m==ENVIRON[\"T\"]){f=1;exit}} END{exit !f}' \"\$_mi\" 2>/dev/null; else mountpoint -q \"\$T\" 2>/dev/null; fi)"
+    }
+
+    /**
+     * Check if a path is an active mountpoint by inspecting /proc/1/mountinfo (falling back to
+     * /proc/self/mountinfo and `mountpoint -q`). Parsing mountinfo avoids Toybox/BusyBox `mountpoint`
+     * false negatives when a bind submount resides on the same backing block device (identical st_dev)
+     * as its parent mount (e.g. PRIVATE_INTERNAL + CACHE_SHADERS or APP_PACKAGE + LIB on MicroSD).
      */
     suspend fun isMountpoint(path: String): Boolean {
-        return exec("mountpoint -q \"$path\" && echo 1 || echo 0").output.trim() == "1"
+        val clean = path.trim().trimEnd('/').ifEmpty { "/" }
+        val escaped = clean.replace("'", "'\\''")
+        val cmd = """
+            _p='$escaped'
+            _rp=$(readlink -f "${'$'}_p" 2>/dev/null)
+            _rp=${'$'}{_rp%/}
+            [ -z "${'$'}_rp" ] && _rp="${'$'}_p"
+            _mi=/proc/1/mountinfo
+            [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+            if [ -r "${'$'}_mi" ]; then
+                T1="${'$'}_p" T2="${'$'}_rp" awk '{ m=$5; gsub(/\\040/, " ", m); if (m == ENVIRON["T1"] || m == ENVIRON["T2"]) { f=1; exit } } END { exit !f }' "${'$'}_mi" 2>/dev/null && echo 1 || echo 0
+            else
+                mountpoint -q "${'$'}_p" && echo 1 || echo 0
+            fi
+        """.trimIndent()
+        return exec(cmd).output.trim() == "1"
     }
 
     /**
@@ -350,5 +387,52 @@ object RootShell {
         val b64 = android.util.Base64.encodeToString(content.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
         val res = exec("echo '$b64' | base64 -d > \"$path\" && sync")
         res.isSuccess
+    }
+
+    /**
+     * Waits until any active service.sh boot or unlock mount cycle releases its lock files
+     * (/dev/.mountx_boot_active or /dev/.mountx_apply.lock) with a live PID check.
+     */
+    suspend fun awaitServiceMountCycleIfActive(
+        waitForWatchdogUnlockGrace: Boolean = false,
+        timeoutMillis: Long = 45_000L
+    ): Unit = withContext(Dispatchers.IO) {
+        val probeCmd = """
+            _active=0
+            for _lf in /dev/.mountx_boot_active /dev/.mountx_apply.lock; do
+                if [ -f "${'$'}_lf" ]; then
+                    _lpid=$(cat "${'$'}_lf" 2>/dev/null | tr -d ' \r\t\n')
+                    if [ -n "${'$'}_lpid" ] && [ -d "/proc/${'$'}_lpid" ]; then
+                        _active=1
+                    else
+                        rm -f "${'$'}_lf" 2>/dev/null || true
+                    fi
+                fi
+            done
+            _init=0
+            [ -f /dev/.mountx_initial_mounted ] && _init=1
+            _wd=0
+            if pgrep -f 'service.sh' >/dev/null 2>&1; then _wd=1; fi
+            echo "${'$'}_active|${'$'}_init|${'$'}_wd"
+        """.trimIndent()
+
+        val start = System.currentTimeMillis()
+        val graceEnd = if (waitForWatchdogUnlockGrace) start + 8_000L else start
+        while (System.currentTimeMillis() - start < timeoutMillis) {
+            val parts = execForOutput(probeCmd).trim().split('|')
+            val isActive = parts.getOrNull(0) == "1"
+            val isInitialMounted = parts.getOrNull(1) == "1"
+            val isServiceAlive = parts.getOrNull(2) == "1"
+
+            if (isActive) {
+                delay(500L)
+                continue
+            }
+            if (waitForWatchdogUnlockGrace && !isInitialMounted && isServiceAlive && System.currentTimeMillis() < graceEnd) {
+                delay(500L)
+                continue
+            }
+            break
+        }
     }
 }

@@ -126,8 +126,8 @@ data class PartitionInfo(
 /** Physical MicroSD / USB OTG disk hardware metadata */
 @androidx.compose.runtime.Immutable
 data class SdCardDiskInfo(
-    val devicePath: String = "/dev/block/mmcblk0",
-    val diskName: String = "mmcblk0",
+    val devicePath: String = "",
+    val diskName: String = "",
     val vendorName: String = "MicroSD Card",
     val modelName: String = "",
     val totalSizeBytes: Long = 0L,

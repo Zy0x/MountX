@@ -213,8 +213,9 @@ class MountWatchdogDaemon @Inject constructor(
                             RootShell.isMountpoint(dataTarget) ||
                             RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${game.packageName}")
 
-                    val obbSrc = "$sdBase/Android/obb/${game.packageName}"
-                    val hasObbOnSd = RootShell.exists(obbSrc)
+                    val obbSrc = "$sdBase/MountX/Android/obb/${game.packageName}"
+                    val legacyObbSrc = "$sdBase/Android/obb/${game.packageName}"
+                    val hasObbOnSd = RootShell.exists(obbSrc) || RootShell.exists(legacyObbSrc)
                     if (hasObbOnSd) {
                         val obbTarget = "/storage/emulated/0/Android/obb/${game.packageName}"
                         val isObbMounted = activeMounts.contains(obbTarget) ||

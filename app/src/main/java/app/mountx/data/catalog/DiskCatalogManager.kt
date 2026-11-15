@@ -509,7 +509,7 @@ class DiskCatalogManager @Inject constructor(
                     }
                     allDiscovered[game.packageName] = game.copy(
                         mountPoints = customPoints,
-                        originalPath = game.originalPath ?: basePath
+                        originalPath = game.originalPath
                     )
                 }
             }
@@ -575,18 +575,20 @@ class DiskCatalogManager @Inject constructor(
 
             if (origData != null && origData != targetDataDir) {
                 onProgress(0.35f, context.getString(R.string.catalog_step_moving_data))
-                val mvRes = RootShell.exec("mv -f \"$origData\" \"$targetDataDir\" 2>/dev/null")
+                RootShell.exec("mkdir -p \"$targetDataDir\" 2>/dev/null")
+                val mvRes = RootShell.exec("cp -an \"$origData/.\" \"$targetDataDir/\" && rm -rf \"$origData\" 2>/dev/null")
                 if (!mvRes.isSuccess) {
-                    RootShell.exec("cp -a \"$origData\" \"$targetDataDir\" && rm -rf \"$origData\" 2>/dev/null")
+                    RootShell.exec("find \"$origData\" -mindepth 1 -maxdepth 1 -exec mv -f {} \"$targetDataDir/\" \\; && rmdir \"$origData\" 2>/dev/null")
                 }
             }
 
             val origObb = "$sdBase/Android/obb/$pkg"
             if (RootShell.exists(origObb) && origObb != targetObbDir) {
                 onProgress(0.65f, context.getString(R.string.catalog_step_moving_obb))
-                val mvObbRes = RootShell.exec("mv -f \"$origObb\" \"$targetObbDir\" 2>/dev/null")
+                RootShell.exec("mkdir -p \"$targetObbDir\" 2>/dev/null")
+                val mvObbRes = RootShell.exec("cp -an \"$origObb/.\" \"$targetObbDir/\" && rm -rf \"$origObb\" 2>/dev/null")
                 if (!mvObbRes.isSuccess) {
-                    RootShell.exec("cp -a \"$origObb\" \"$targetObbDir\" && rm -rf \"$origObb\" 2>/dev/null")
+                    RootShell.exec("find \"$origObb\" -mindepth 1 -maxdepth 1 -exec mv -f {} \"$targetObbDir/\" \\; && rmdir \"$origObb\" 2>/dev/null")
                 }
             }
 
@@ -609,6 +611,50 @@ class DiskCatalogManager @Inject constructor(
             onProgress(1.0f, context.getString(R.string.catalog_step_complete))
             AppLogger.success("DiskCatalog", "Successfully restructured $pkg to standard MountX layout.")
         }
+    }
+
+    /**
+     * Automatically sanitizes misplaced legacy subdirectories (e.g. spurious Android/ or nested duplicate package folders)
+     * inside $sdBase/MountX/Android/data and $sdBase/MountX/Android/obb.
+     */
+    suspend fun sanitizeMisplacedFolders(sdBase: String): Unit = withContext(Dispatchers.IO) {
+        if (sdBase.isBlank() || !RootShell.exists(sdBase)) return@withContext
+        val mountXAndroid = "$sdBase/MountX/Android"
+        if (!RootShell.exists(mountXAndroid)) return@withContext
+
+        val cleanupCmd = """
+            for cat in data obb; do
+                cat_dir="$mountXAndroid/${'$'}cat"
+                [ ! -d "${'$'}cat_dir" ] && continue
+                for pkg_dir in "${'$'}cat_dir"/*; do
+                    [ ! -d "${'$'}pkg_dir" ] && continue
+                    pkg_name="${'$'}(basename "${'$'}pkg_dir")"
+                    [ "${'$'}pkg_name" = "*" ] && continue
+                    
+                    # 1. Remove rogue Android/ subfolder
+                    rm -rf "${'$'}pkg_dir/Android" 2>/dev/null
+                    
+                    # 2. Remove nested duplicate package folder (${'$'}pkg/${'$'}pkg)
+                    if [ -d "${'$'}pkg_dir/${'$'}pkg_name" ]; then
+                        rm -rf "${'$'}pkg_dir/${'$'}pkg_name" 2>/dev/null
+                    fi
+                    
+                    # 3. Remove rogue foreign package folders mistakenly nested inside
+                    for sub in "${'$'}pkg_dir"/*; do
+                        [ ! -d "${'$'}sub" ] && continue
+                        sub_name="${'$'}(basename "${'$'}sub")"
+                        case "${'$'}sub_name" in
+                            files|cache|code_cache|shared_prefs|databases|no_backup)
+                                ;;
+                            com.*|org.*|net.*|io.*|xyz.*|idm.*|jp.*|kr.*)
+                                rm -rf "${'$'}sub" 2>/dev/null
+                                ;;
+                        esac
+                    done
+                done
+            done
+        """.trimIndent()
+        RootShell.exec(cleanupCmd)
     }
 
     /**
