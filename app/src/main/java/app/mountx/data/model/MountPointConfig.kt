@@ -127,10 +127,32 @@ data class MountPointConfig(
                     "$cleanBase/MountX/app/$packageName"
                 }
             }
-            MountPointCategory.EXTERNAL_DATA -> "$cleanBase/Android/data/$packageName"
-            MountPointCategory.OBB_STORAGE -> "$cleanBase/Android/obb/$packageName"
-            MountPointCategory.MEDIA_DOWNLOADS -> "$cleanBase/Android/media/$packageName"
-            else -> sourcePath
+            MountPointCategory.EXTERNAL_DATA -> {
+                val sub = if (targetPath.endsWith("/files") || sourcePath.endsWith("/files")) "/files" else ""
+                "$cleanBase/MountX/Android/data/$packageName$sub"
+            }
+            MountPointCategory.OBB_STORAGE -> "$cleanBase/MountX/Android/obb/$packageName"
+            MountPointCategory.MEDIA_DOWNLOADS -> "$cleanBase/MountX/Android/media/$packageName"
+            else -> {
+                if (sourcePath.isNotBlank()) {
+                    val cleanSource = sourcePath.trim().trimEnd('/')
+                    val rel = when {
+                        cleanSource.startsWith("/data/sdext2/") -> cleanSource.removePrefix("/data/sdext2/")
+                        cleanSource.startsWith("/data/sdext_otg/") -> cleanSource.removePrefix("/data/sdext_otg/")
+                        cleanSource.startsWith("/mnt/media_rw/") -> {
+                            val afterMnt = cleanSource.removePrefix("/mnt/media_rw/")
+                            afterMnt.substringAfter('/', "")
+                        }
+                        else -> cleanSource.trimStart('/')
+                    }
+                    if (rel.isNotBlank()) {
+                        val prefix = if (rel.startsWith("MountX/")) "" else "MountX/"
+                        "$cleanBase/$prefix$rel"
+                    } else sourcePath
+                } else {
+                    "$cleanBase/MountX/Android/data/$packageName"
+                }
+            }
         }
     }
 

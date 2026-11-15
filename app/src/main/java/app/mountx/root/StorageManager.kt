@@ -2173,9 +2173,13 @@ class StorageManager(
             }
         }
 
-        // Lock 2: Canary check
-        if (RootShell.exists("$sourcePathToClean/.mountx_canary") && !RootShell.exists("$destPathPreserved/.mountx_canary")) {
-            AppLogger.error("StorageManager", "ANTI-DELETION LOCK: $sourcePathToClean contains .mountx_canary while destination does not! Refusing delete.")
+        // Lock 2: Dynamic canary collision check (detect if source and destination are cross-mounted)
+        val canaryToken = ".mountx_probe_${System.currentTimeMillis()}"
+        RootShell.exec("touch \"$destPathPreserved/$canaryToken\" 2>/dev/null")
+        val isMirrorMounted = RootShell.exists("$sourcePathToClean/$canaryToken")
+        RootShell.exec("rm -f \"$destPathPreserved/$canaryToken\" 2>/dev/null")
+        if (isMirrorMounted) {
+            AppLogger.error("StorageManager", "ANTI-DELETION LOCK: $sourcePathToClean mirrors $destPathPreserved via active mount! Refusing delete to protect real data.")
             return false
         }
 
@@ -2712,8 +2716,10 @@ class StorageManager(
             !point.id.startsWith("lib")
         val isPrivateRoot = isPrivateCategory
 
+        val hasSeparateLibPoint = activePoints.any { it.isLibTarget() || it.id == "lib" || it.id.startsWith("lib_") }
+
         val exclusions = when {
-            isApkRoot -> listOf("lib")
+            isApkRoot && hasSeparateLibPoint -> listOf("lib")
             isPrivateRoot -> listOf("cache", "code_cache")
             else -> emptyList()
         }
@@ -2805,7 +2811,11 @@ class StorageManager(
 
                     if (isApkRoot) {
                         if (!RootShell.isMountpoint(targetPath)) {
-                            RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
+                            if (hasSeparateLibPoint) {
+                                RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
+                            } else {
+                                safeCleanSourceDirectory(targetPath, tempMount, packageName)
+                            }
                         }
                     } else if (isPrivateRoot) {
                         if (!RootShell.isMountpoint(targetPath)) {
@@ -2941,15 +2951,20 @@ class StorageManager(
 
                 if (isApkRoot) {
                     if (!RootShell.isMountpoint(targetPath)) {
-                        RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
+                        if (hasSeparateLibPoint) {
+                            RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
+                        } else {
+                            safeCleanSourceDirectory(targetPath, effectiveSourcePath, packageName)
+                        }
                     }
                 } else if (isPrivateRoot) {
                     if (!RootShell.isMountpoint(targetPath)) {
-                        RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec rm -rf {} + 2>/dev/null")
+                        RootShell.exec("find \"$targetPath\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
                         val altData = "/data/data/$packageName"
                         if (altData != targetPath && RootShell.exists(altData) && !RootShell.isMountpoint(altData) && !RootShell.exec("test -L \"$altData\"").isSuccess) {
-                            RootShell.exec("find \"$altData\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' -exec rm -rf {} + 2>/dev/null")
+                            RootShell.exec("find \"$altData\" -mindepth 1 -maxdepth 1 ! -name 'cache' ! -name 'code_cache' ! -name 'lib' -exec rm -rf {} + 2>/dev/null")
                         }
+                        ensureAppLibSymlink(packageName)
                     }
                 } else {
                     safeCleanSourceDirectory(targetPath, effectiveSourcePath, packageName)
@@ -2958,6 +2973,40 @@ class StorageManager(
         }
 
         return accumulatedBytes
+    }
+
+    /**
+     * Ensures an application's /data/data/<pkg>/lib symlink exists and points to its valid native libraries.
+     */
+    suspend fun ensureAppLibSymlink(packageName: String) {
+        try {
+            val pmPath = RootShell.execForOutput("pm path $packageName 2>/dev/null").lines().firstOrNull { it.contains("base.apk") }
+            if (pmPath.isNullOrBlank()) return
+            val apkDir = pmPath.substringAfter("package:").substringBeforeLast('/')
+            val libDir = "$apkDir/lib/arm64"
+            val altLibDir = "$apkDir/lib/armeabi-v7a"
+            val targetLibDir = if (RootShell.exists(libDir)) libDir else if (RootShell.exists(altLibDir)) altLibDir else return
+
+            val dataDirs = listOf("/data/data/$packageName", "/data/user/0/$packageName").distinct()
+            val uid = RootShell.exec(
+                "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
+            ).output.trim().toIntOrNull() ?: 10000
+            val gid = uid
+            for (dd in dataDirs) {
+                if (RootShell.exists(dd)) {
+                    val libPath = "$dd/lib"
+                    val isSymlink = RootShell.exec("test -L \"$libPath\"").isSuccess
+                    if (!isSymlink || !RootShell.exists(libPath)) {
+                        RootShell.exec("rm -rf \"$libPath\" 2>/dev/null")
+                        RootShell.exec("ln -s \"$targetLibDir\" \"$libPath\" 2>/dev/null")
+                        RootShell.exec("chown -h $uid:$gid \"$libPath\" 2>/dev/null")
+                        RootShell.exec("restorecon \"$libPath\" 2>/dev/null")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.warn("StorageManager", "ensureAppLibSymlink failed for $packageName: ${e.message}")
+        }
     }
 
     private suspend fun migratePointToInternal(
@@ -3005,6 +3054,10 @@ class StorageManager(
             AppLogger.info("StorageManager", "Data is already present on Internal ($currentDestSize bytes) and MicroSD is empty ($actualSdBytes bytes). Skipping redundant copy TO_INTERNAL.")
             accumulatedBytes = (accumulatedBytes + plannedPointSize).coerceAtMost(totalMigrationBytes)
             RootShell.exec("rm -rf \"$effectiveSourcePath\"")
+            val relPath = MountManager.extractRelativePath(targetPath)
+            if (relPath.isNotBlank()) {
+                RootShell.exec("rm -rf \"$sdBase/MountX/$relPath\" \"$sdBase/$relPath\" 2>/dev/null")
+            }
             RootShell.exec("rm -f \"$targetPath/.mountx_canary\" 2>/dev/null")
             return accumulatedBytes
         }
@@ -3121,6 +3174,7 @@ class StorageManager(
                     RootShell.exec("find \"$targetPath\" -type d -exec chmod 700 {} + 2>/dev/null")
                     RootShell.exec("find \"$targetPath\" -type f -exec chmod 600 {} + 2>/dev/null")
                     RootShell.exec("restorecon -FR \"$targetPath\" 2>/dev/null")
+                    ensureAppLibSymlink(packageName)
                 } else if (point.category == MountPointCategory.APP_PACKAGE || targetPath.startsWith("/data/app/")) {
                     RootShell.exec("chown -R 1000:1000 \"$targetPath\" 2>/dev/null")
                     RootShell.exec("chmod -R 755 \"$targetPath\" 2>/dev/null")
@@ -3157,7 +3211,15 @@ class StorageManager(
                 val destVerifiedSize = getDirSizeBytes(targetPath)
                 if (destVerifiedSize > 0L && effectiveSourcePath.trimEnd('/') != targetPath.trimEnd('/')) {
                     safeCleanSourceDirectory(effectiveSourcePath, targetPath, packageName)
-                    RootShell.exec("rmdir \"$effectiveSourcePath\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$effectiveSourcePath\" 2>/dev/null")
+                    val relPath = MountManager.extractRelativePath(targetPath)
+                    if (relPath.isNotBlank()) {
+                        RootShell.exec("rm -rf \"$sdBase/MountX/$relPath\" \"$sdBase/$relPath\" 2>/dev/null")
+                    }
+                    val parentSd = java.io.File(effectiveSourcePath).parent
+                    if (parentSd != null && parentSd.startsWith(sdBase) && (parentSd.endsWith("/$packageName") || parentSd.endsWith("/com.spotify.music"))) {
+                        RootShell.exec("rmdir \"$parentSd\" 2>/dev/null")
+                    }
                 }
             }
         }
@@ -3402,9 +3464,13 @@ class StorageManager(
                             AppLogger.warn("StorageManager", "Target $targetPath is still mounted before TO_INTERNAL! Attempting forced lazy unmount (attempt $retryCount)...")
                             RootShell.exec("sync")
                             RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+                            MountManager.sweepUnmountTarget(targetPath)
                             if (point.isExternalStorageCategory() && relPath.isNotBlank()) {
-                                for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                                    RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
+                                MountManager.sweepUnmountTarget("$targetPath/files")
+                                val userNamespaces = MountManager.getTargetNamespaces(pointUserId)
+                                for (ns in userNamespaces) {
+                                    RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                                    RootShell.exec("umount -f -l \"$ns/$relPath/files\" 2>/dev/null")
                                 }
                             }
                             delay(200)
@@ -3480,6 +3546,23 @@ class StorageManager(
             }
             RootShell.exec("restorecon -FR \"/data/media/$appUserId/Android/data/$packageName\" 2>/dev/null")
             RootShell.exec("restorecon -FR \"/data/media/$appUserId/Android/obb/$packageName\" 2>/dev/null")
+
+            if (!isToSd) {
+                // Post-restore cleanup sweep on target storage: remove empty app trees and orphaned stubs
+                for (pt in activePoints) {
+                    val candNative = pt.resolveNativeFolderPath(sdBase, packageName)
+                    val candImg = pt.resolveContainerImgPath(sdBase, packageName)
+                    RootShell.exec("rm -rf \"$candNative\" \"$candImg\" 2>/dev/null")
+                    val rel = MountManager.extractRelativePath(pt.targetPath)
+                    if (rel.isNotBlank()) {
+                        RootShell.exec("rm -rf \"$sdBase/MountX/$rel\" \"$sdBase/$rel\" 2>/dev/null")
+                    }
+                }
+                RootShell.exec("rm -rf \"$sdBase/MountX/Android/data/$packageName\" \"$sdBase/MountX/Android/obb/$packageName\" \"$sdBase/MountX/Android/media/$packageName\" 2>/dev/null")
+                RootShell.exec("rm -rf \"$sdBase/Android/data/$packageName\" \"$sdBase/Android/obb/$packageName\" \"$sdBase/Android/media/$packageName\" 2>/dev/null")
+                RootShell.exec("rm -rf \"$sdBase/MountX/data/$packageName\" \"$sdBase/MountX/cache/$packageName\" \"$sdBase/MountX/app/$packageName\" \"$sdBase/MountX/lib/$packageName\" 2>/dev/null")
+                RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_data.img\" \"$sdBase/.mountx/containers/${packageName}_cache.img\" \"$sdBase/.mountx/containers/${packageName}_apk.img\" \"$sdBase/.mountx/containers/${packageName}_lib.img\" 2>/dev/null")
+            }
 
             // Finished!
             onProgress?.invoke(
@@ -3564,9 +3647,9 @@ class StorageManager(
             val moveObb = (target == MigrationTarget.ALL || target == MigrationTarget.OBB_ONLY)
 
             val internalData = "/data/media/0/Android/data/$packageName"
-            val sdData = "$sdBase/Android/data/$packageName"
+            val sdData = if (RootShell.exists("$sdBase/MountX/Android/data/$packageName")) "$sdBase/MountX/Android/data/$packageName" else if (RootShell.exists("$sdBase/Android/data/$packageName")) "$sdBase/Android/data/$packageName" else "$sdBase/MountX/Android/data/$packageName"
             val internalObb = "/data/media/0/Android/obb/$packageName"
-            val sdObb = "$sdBase/Android/obb/$packageName"
+            val sdObb = if (RootShell.exists("$sdBase/MountX/Android/obb/$packageName")) "$sdBase/MountX/Android/obb/$packageName" else if (RootShell.exists("$sdBase/Android/obb/$packageName")) "$sdBase/Android/obb/$packageName" else "$sdBase/MountX/Android/obb/$packageName"
 
             // Pre-Flight FAT32 Check
             if (isToSd) {
@@ -3694,7 +3777,7 @@ class StorageManager(
                         // 1. Move Data if requested
                         if (moveData) {
                             if (RootShell.exists(internalData)) {
-                                RootShell.exec("mkdir -p \"$sdBase/Android/data\"")
+                                RootShell.exec("mkdir -p \"${java.io.File(sdData).parent ?: "$sdBase/MountX/Android/data"}\"")
                                 copyWithRealtimeProgress(
                                     sourceDir = internalData,
                                     destDir = sdData,

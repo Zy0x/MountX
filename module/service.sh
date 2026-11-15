@@ -1055,6 +1055,19 @@ load_mountpoints() {
                     # Two-Stage Promotion: Ensure target has RW & exec permissions after boot completion
                     mount -o remount,bind,rw,exec "${dst}" 2>/dev/null || mount -o remount,rw,exec "${dst}" 2>/dev/null
                     mount --make-rprivate "${dst}" 2>/dev/null
+                    if ! echo "${dst}" | grep -q "/lib"; then
+                        if [ ! -d "${dst}/lib" ] || [ -z "$(find "${dst}/lib" -name '*.so' 2>/dev/null | head -n 1)" ]; then
+                            if [ -d "${SD_BASE}/MountX/lib/${pkg}" ] && [ -n "$(find "${SD_BASE}/MountX/lib/${pkg}" -name '*.so' 2>/dev/null | head -n 1)" ]; then
+                                log_info "  [${pkg}] Auto-healing missing native libs on active mount: ${SD_BASE}/MountX/lib/${pkg} -> ${dst}/lib/arm64..."
+                                mkdir -p "${dst}/lib/arm64" 2>/dev/null
+                                mount -o bind "${SD_BASE}/MountX/lib/${pkg}" "${dst}/lib/arm64" 2>/dev/null
+                                mount -o remount,bind,rw,exec "${dst}/lib/arm64" 2>/dev/null || mount -o remount,rw,exec "${dst}/lib/arm64" 2>/dev/null
+                                mount --make-rprivate "${dst}/lib/arm64" 2>/dev/null
+                                chown -R 1000:1000 "${dst}/lib/arm64" 2>/dev/null
+                                chmod -R 755 "${dst}/lib/arm64" 2>/dev/null
+                            fi
+                        fi
+                    fi
                     pm unsuspend "${pkg}" >/dev/null 2>&1
                     log_info "  [${pkg}] App package target ${dst} already mounted, promoted to RW/exec."
                     entries=$((entries + 1))
@@ -1066,6 +1079,19 @@ load_mountpoints() {
                 mount --make-rprivate "${dst}" 2>/dev/null
                 chown -R 1000:1000 "${dst}" 2>/dev/null
                 chmod -R 755 "${dst}" 2>/dev/null
+                if ! echo "${dst}" | grep -q "/lib"; then
+                    if [ ! -d "${dst}/lib" ] || [ -z "$(find "${dst}/lib" -name '*.so' 2>/dev/null | head -n 1)" ]; then
+                        if [ -d "${SD_BASE}/MountX/lib/${pkg}" ] && [ -n "$(find "${SD_BASE}/MountX/lib/${pkg}" -name '*.so' 2>/dev/null | head -n 1)" ]; then
+                            log_info "  [${pkg}] Auto-healing missing native libs: ${SD_BASE}/MountX/lib/${pkg} -> ${dst}/lib/arm64..."
+                            mkdir -p "${dst}/lib/arm64" 2>/dev/null
+                            mount -o bind "${SD_BASE}/MountX/lib/${pkg}" "${dst}/lib/arm64" 2>/dev/null
+                            mount -o remount,bind,rw,exec "${dst}/lib/arm64" 2>/dev/null || mount -o remount,rw,exec "${dst}/lib/arm64" 2>/dev/null
+                            mount --make-rprivate "${dst}/lib/arm64" 2>/dev/null
+                            chown -R 1000:1000 "${dst}/lib/arm64" 2>/dev/null
+                            chmod -R 755 "${dst}/lib/arm64" 2>/dev/null
+                        fi
+                    fi
+                fi
                 pm unsuspend "${pkg}" >/dev/null 2>&1
                 log_info "  [${pkg}] App package bind-mounted directly: ${src} -> ${dst}"
                 entries=$((entries + 1))

@@ -20,6 +20,7 @@ import app.mountx.data.model.OperationProgress
 import app.mountx.data.model.OperationType
 import app.mountx.data.repository.AppRepository
 import app.mountx.data.repository.StorageRepository
+import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -153,6 +154,9 @@ class AppsViewModel @Inject constructor(
     private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
     val installedApps: StateFlow<List<InstalledAppInfo>> = _installedApps.asStateFlow()
 
+    private val _isRefreshingInstalledApps = MutableStateFlow(false)
+    val isRefreshingInstalledApps: StateFlow<Boolean> = _isRefreshingInstalledApps.asStateFlow()
+
     private val _isMovingData = MutableStateFlow(false)
     val isMovingData: StateFlow<Boolean> = _isMovingData.asStateFlow()
 
@@ -206,17 +210,38 @@ class AppsViewModel @Inject constructor(
     fun loadInstalledApps(force: Boolean = false) {
         if (!force && _installedApps.value.isNotEmpty()) return
         viewModelScope.launch {
-            val apps = gameRepository.getInstalledApps(context)
+            if (force) {
+                appRepository.invalidateInstalledAppsCache()
+            }
+            val apps = gameRepository.getInstalledApps(context, force = force)
             _installedApps.value = apps
             // Background pre-warming of all app icons into memory cache
             app.mountx.ui.components.AppIconManager.prewarmIcons(context, apps.map { it.packageName })
         }
     }
 
+    fun refreshInstalledApps() {
+        viewModelScope.launch {
+            app.mountx.util.AppLogger.info("AppsViewModel", "Refreshing installed apps...")
+            _isRefreshingInstalledApps.value = true
+            try {
+                appRepository.invalidateInstalledAppsCache()
+                val apps = gameRepository.getInstalledApps(context, force = true)
+                _installedApps.value = apps
+                app.mountx.ui.components.AppIconManager.prewarmIcons(context, apps.map { it.packageName })
+                app.mountx.util.AppLogger.info("AppsViewModel", "Installed apps refreshed: ${apps.size} apps found")
+            } catch (e: Exception) {
+                app.mountx.util.AppLogger.error("AppsViewModel", "Failed to refresh installed apps: ${e.message}")
+            } finally {
+                _isRefreshingInstalledApps.value = false
+            }
+        }
+    }
+
     fun loadStorageBreakdown(packageName: String, force: Boolean = false) {
         _activePackageName.value = packageName
         val cached = _storageBreakdownMap.value[packageName]
-        if (cached != null && !force) {
+        if (cached != null && cached.totalBytes > 0L && !force) {
             _detailedStorage.value = cached
             _storageBreakdown.value = Pair(cached.ext1Bytes, cached.ext2Bytes)
             viewModelScope.launch {
@@ -577,7 +602,7 @@ class AppsViewModel @Inject constructor(
 
                 // Always unmount from runtime namespaces first before moving data in either direction
                 // to avoid circular reading/writing across bind mounts
-                if (game != null && game.mountStatus == MountStatus.MOUNTED) {
+                if (game != null) {
                     gameRepository.unmountGame(game) { prog ->
                         _operationProgress.value = prog
                     }
@@ -617,6 +642,7 @@ class AppsViewModel @Inject constructor(
                                 isEnabled = if (allDisabled) false else game.isEnabled
                             )
                             gameRepository.updateGame(updated)
+                            MountManager.sweepUnmountPackage(packageName)
                         } else {
                             // TO_SD
                             val currentPoints = if (game.mountPoints.isNotEmpty()) game.mountPoints else effectivePoints
@@ -645,7 +671,7 @@ class AppsViewModel @Inject constructor(
                     gameRepository.syncDiskCatalog(sdBase)
                     val breakdown = gameRepository.getDetailedStorageBreakdown(context, packageName, sdBase)
                     _storageBreakdownMap.update { it + (packageName to breakdown) }
-                    if (_activePackageName.value == packageName) {
+                    if (_activePackageName.value == packageName || _selectedGameForDetail.value?.packageName == packageName) {
                         _detailedStorage.value = breakdown
                         _storageBreakdown.value = Pair(breakdown.ext1Bytes, breakdown.ext2Bytes)
                     }

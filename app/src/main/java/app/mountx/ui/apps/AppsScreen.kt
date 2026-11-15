@@ -128,6 +128,7 @@ fun AppsScreen(
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val isCleaningCache by viewModel.isCleaningCache.collectAsState()
+    val isRefreshingInstalledApps by viewModel.isRefreshingInstalledApps.collectAsState()
     var showCleanAllCacheDialog by remember { mutableStateOf(false) }
     val installedPackageSet = remember(installedApps) { installedApps.map { it.packageName }.toSet() }
 
@@ -291,6 +292,8 @@ fun AppsScreen(
                 showAddSheet = false
                 configuringApp = appInfo
             },
+            isRefreshing = isRefreshingInstalledApps,
+            onRefresh = { viewModel.refreshInstalledApps() },
             modifier = modifier
         )
     } else if (selectedGameForDetail != null) {

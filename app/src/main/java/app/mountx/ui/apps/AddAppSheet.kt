@@ -32,11 +32,15 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -86,6 +90,8 @@ fun AddAppPicker(
     onDismiss: () -> Unit,
     onAdd: (packageName: String, displayName: String, mode: MountMode) -> Unit,
     onConfigureApp: ((InstalledAppInfo) -> Unit)? = null,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isManualMode by remember { mutableStateOf(false) }
@@ -208,6 +214,33 @@ fun AddAppPicker(
                             Row(
                                 modifier = Modifier
                                     .clickable {
+                                        menuExpanded = false
+                                        onRefresh()
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.add_app_menu_refresh),
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
+                                thickness = 0.5.dp
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .clickable {
                                         showSystemApps = !showSystemApps
                                         menuExpanded = false
                                     }
@@ -283,7 +316,9 @@ fun AddAppPicker(
                                     selectedApp = app
                                 }
                             }
-                        }
+                        },
+                        isRefreshing = isRefreshing,
+                        onRefresh = onRefresh
                     )
 
                     // Floating Action Button for Manual/Custom Game Input
@@ -515,6 +550,8 @@ fun AddGameSheet(
     onDismiss: () -> Unit,
     onAdd: (packageName: String, displayName: String, mode: MountMode) -> Unit,
     onConfigureApp: ((InstalledAppInfo) -> Unit)? = null,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     AddAppPicker(
@@ -522,159 +559,179 @@ fun AddGameSheet(
         onDismiss = onDismiss,
         onAdd = onAdd,
         onConfigureApp = onConfigureApp,
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
         modifier = modifier
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BrowseAppListView(
     installedApps: List<InstalledAppInfo>,
     filteredApps: List<InstalledAppInfo>,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    onAppSelected: (InstalledAppInfo) -> Unit
+    onAppSelected: (InstalledAppInfo) -> Unit,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {}
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val pullRefreshState = rememberPullToRefreshState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 14.dp)
-    ) {
-        // Vertical spacing between TopAppBar and Search Bar
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Standard Compact Search Bar (height 38dp)
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = if (isDark) Color(0xFF1C1917) else Color(0xFFFAF8F5),
-            border = BorderStroke(1.dp, if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                    modifier = Modifier.size(15.dp)
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    if (searchQuery.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.add_app_search_hint),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-                            ),
-                            maxLines = 1
-                        )
-                    }
-
-                    BasicTextField(
-                        value = searchQuery,
-                        onValueChange = onSearchQueryChange,
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(
-                        onClick = { onSearchQueryChange("") },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = stringResource(R.string.common_cancel),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
-            }
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        state = pullRefreshState,
+        modifier = Modifier.fillMaxSize(),
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                state = pullRefreshState,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp)
+        ) {
+            // Vertical spacing between TopAppBar and Search Bar
+            Spacer(modifier = Modifier.height(10.dp))
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Application List Content (starts immediately under search bar)
-        if (installedApps.isEmpty()) {
-            Box(
+            // Standard Compact Search Bar (height 38dp)
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (isDark) Color(0xFF1C1917) else Color(0xFFFAF8F5),
+                border = BorderStroke(1.dp, if (isDark) Color(0xFF44403C) else Color(0xFFD6D3CD)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
+                    .height(38.dp)
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(32.dp),
-                    strokeWidth = 2.5.dp
-                )
-            }
-        } else if (filteredApps.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.size(28.dp)
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                        modifier = Modifier.size(15.dp)
                     )
-                    Text(
-                        text = stringResource(R.string.add_game_no_apps_found),
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.add_app_search_hint),
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                                ),
+                                maxLines = 1
+                            )
+                        }
+
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = onSearchQueryChange,
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onSearchQueryChange("") },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = stringResource(R.string.common_cancel),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
                 }
             }
-        } else {
-            val onSelectCallback = remember<(InstalledAppInfo) -> Unit> {
-                { app -> onAppSelected(app) }
-            }
 
-            val listState = rememberLazyListState()
+            Spacer(modifier = Modifier.height(10.dp))
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-                contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 2.dp, bottom = 48.dp)
-            ) {
-                items(
-                    items = filteredApps,
-                    key = { it.packageName },
-                    contentType = { "app_card" }
-                ) { app ->
-                    AppPickerItemCard(
-                        app = app,
-                        onSelect = onSelectCallback
+            // Application List Content (starts immediately under search bar)
+            if (installedApps.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        strokeWidth = 2.5.dp
                     )
+                }
+            } else if (filteredApps.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.add_game_no_apps_found),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            } else {
+                val onSelectCallback = remember<(InstalledAppInfo) -> Unit> {
+                    { app -> onAppSelected(app) }
+                }
+
+                val listState = rememberLazyListState()
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                    contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 2.dp, bottom = 48.dp)
+                ) {
+                    items(
+                        items = filteredApps,
+                        key = { it.packageName },
+                        contentType = { "app_card" }
+                    ) { app ->
+                        AppPickerItemCard(
+                            app = app,
+                            onSelect = onSelectCallback
+                        )
+                    }
                 }
             }
         }

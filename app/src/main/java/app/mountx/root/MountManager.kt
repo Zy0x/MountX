@@ -45,57 +45,114 @@ class MountManager(
     private fun getAppContext(): Context = context ?: app.mountx.MountXApp.instance
 
     /** Resolves all active Android user IDs (User 0, Dual Apps 999, Work Profile 10+, etc.) */
-    suspend fun getActiveUserIds(): List<Int> = withContext(Dispatchers.IO) {
-        val userIds = mutableListOf(0)
-        val pmUsers = RootShell.exec("pm list users 2>/dev/null").stdout
-        for (line in pmUsers) {
-            val match = Regex("UserInfo\\{(\\d+):").find(line)
-            val id = match?.groupValues?.get(1)?.toIntOrNull()
-            if (id != null && !userIds.contains(id)) {
-                userIds.add(id)
-            }
-        }
-        val mediaDirs = RootShell.exec("ls -1d /data/media/* 2>/dev/null").stdout
-        for (dir in mediaDirs) {
-            val name = dir.trim().substringAfterLast('/')
-            val id = name.toIntOrNull()
-            if (id != null && !userIds.contains(id)) {
-                userIds.add(id)
-            }
-        }
-        userIds.distinct()
-    }
+    suspend fun getActiveUserIds(): List<Int> = MountManager.getActiveUserIds()
 
     /** Dynamically detects all target runtime namespaces across active users/profiles or an isolated user */
-    suspend fun getTargetNamespaces(specificUserId: Int? = null): List<String> = withContext(Dispatchers.IO) {
-        val list = mutableListOf<String>()
-        val userIds = if (specificUserId != null) listOf(specificUserId) else getActiveUserIds()
-        val hasSdcardfs = RootShell.execForOutput("grep -w sdcardfs /proc/filesystems 2>/dev/null").isNotBlank()
-        for (uid in userIds) {
-            list.add("/mnt/runtime/default/emulated/$uid")
-            list.add("/mnt/runtime/read/emulated/$uid")
-            list.add("/mnt/runtime/write/emulated/$uid")
-            list.add("/mnt/runtime/full/emulated/$uid")
-            list.add("/mnt/user/$uid/primary")
-            list.add("/mnt/user/$uid/emulated/$uid")
-            // Android 11+ storage runtime views
-            list.add("/mnt/installer/$uid/emulated/$uid")
-            list.add("/mnt/androidwritable/$uid/emulated/$uid")
-            list.add("/mnt/pass_through/$uid/emulated/$uid")
-            // Only target /storage/emulated/$uid if /storage/emulated is confirmed a real mounted filesystem to prevent tmpfs collisions
-            if (RootShell.isMountpoint("/storage/emulated")) {
-                list.add("/storage/emulated/$uid")
-            }
-            // CRITICAL: /data/media/$uid MUST NOT be mounted if sdcardfs is present!
-            // When sdcardfs is present, mounting to /data/media triggers kernel sdcardfs EXDEV deadlocks.
-            if (!hasSdcardfs) {
-                list.add("/data/media/$uid")
-            }
-        }
-        list.filter { RootShell.exists(it) }.distinct()
-    }
+    suspend fun getTargetNamespaces(specificUserId: Int? = null): List<String> = MountManager.getTargetNamespaces(specificUserId)
+
+    /** Purges all active, nested, or stacked mounts matching a target path across all namespaces. */
+    suspend fun sweepUnmountTarget(targetPath: String): Boolean = MountManager.sweepUnmountTarget(targetPath)
+
+    /** Universal sweeping unmount: purge any remaining or stacked mounts for a package across all namespaces. */
+    suspend fun sweepUnmountPackage(packageName: String): Boolean = MountManager.sweepUnmountPackage(packageName)
 
     companion object {
+        /** Resolves all active Android user IDs (User 0, Dual Apps 999, Work Profile 10+, etc.) */
+        suspend fun getActiveUserIds(): List<Int> = withContext(Dispatchers.IO) {
+            val userIds = mutableListOf(0)
+            val pmUsers = RootShell.exec("pm list users 2>/dev/null").stdout
+            for (line in pmUsers) {
+                val match = Regex("UserInfo\\{(\\d+):").find(line)
+                val id = match?.groupValues?.get(1)?.toIntOrNull()
+                if (id != null && !userIds.contains(id)) {
+                    userIds.add(id)
+                }
+            }
+            val mediaDirs = RootShell.exec("ls -1d /data/media/* 2>/dev/null").stdout
+            for (dir in mediaDirs) {
+                val name = dir.trim().substringAfterLast('/')
+                val id = name.toIntOrNull()
+                if (id != null && !userIds.contains(id)) {
+                    userIds.add(id)
+                }
+            }
+            userIds.distinct()
+        }
+
+        /** Dynamically detects all target runtime namespaces across active users/profiles or an isolated user */
+        suspend fun getTargetNamespaces(specificUserId: Int? = null): List<String> = withContext(Dispatchers.IO) {
+            val list = mutableListOf<String>()
+            val userIds = if (specificUserId != null) listOf(specificUserId) else getActiveUserIds()
+            val hasSdcardfs = RootShell.execForOutput("grep -w sdcardfs /proc/filesystems 2>/dev/null").isNotBlank()
+            for (uid in userIds) {
+                list.add("/mnt/runtime/default/emulated/$uid")
+                list.add("/mnt/runtime/read/emulated/$uid")
+                list.add("/mnt/runtime/write/emulated/$uid")
+                list.add("/mnt/runtime/full/emulated/$uid")
+                list.add("/mnt/user/$uid/primary")
+                list.add("/mnt/user/$uid/emulated/$uid")
+                // Android 11+ storage runtime views
+                list.add("/mnt/installer/$uid/emulated/$uid")
+                list.add("/mnt/androidwritable/$uid/emulated/$uid")
+                list.add("/mnt/pass_through/$uid/emulated/$uid")
+                // Only target /storage/emulated/$uid if /storage/emulated is confirmed a real mounted filesystem to prevent tmpfs collisions
+                if (RootShell.isMountpoint("/storage/emulated")) {
+                    list.add("/storage/emulated/$uid")
+                }
+                // CRITICAL: /data/media/$uid MUST NOT be mounted if sdcardfs is present!
+                // When sdcardfs is present, mounting to /data/media triggers kernel sdcardfs EXDEV deadlocks.
+                if (!hasSdcardfs) {
+                    list.add("/data/media/$uid")
+                }
+            }
+            list.filter { RootShell.exists(it) }.distinct()
+        }
+
+        /**
+         * Purges all active, nested, or stacked mounts matching a target path across all namespaces.
+         */
+        suspend fun sweepUnmountTarget(targetPath: String): Boolean = withContext(Dispatchers.IO) {
+            if (targetPath.isBlank() || targetPath == "/" || targetPath == ".") return@withContext false
+            val cleanTarget = targetPath.trimEnd('/')
+            val rel = extractRelativePath(cleanTarget)
+            val sweepScript = """
+                for i in 1 2; do
+                  has_mount=0
+                  while read dev mnt rest; do
+                    case "${'$'}mnt" in
+                      *"$cleanTarget"*${if (rel.isNotBlank()) " | *\"$rel\"*" else ""})
+                        umount -f -l "${'$'}mnt" 2>/dev/null
+                        has_mount=1
+                        ;;
+                    esac
+                  done < /proc/mounts
+                  if [ ${'$'}has_mount -eq 0 ]; then break; fi
+                done
+            """.trimIndent()
+            RootShell.execScript(sweepScript).isSuccess
+        }
+
+        /**
+         * Universal sweeping unmount: purge any remaining or stacked mounts for a package across all namespaces.
+         */
+        suspend fun sweepUnmountPackage(packageName: String): Boolean = withContext(Dispatchers.IO) {
+            if (packageName.isBlank()) return@withContext false
+            val sweepScript = """
+                for i in 1 2 3; do
+                  has_mount=0
+                  while read dev mnt rest; do
+                    case "${'$'}mnt" in
+                      *$packageName*)
+                        umount -f -l "${'$'}mnt" 2>/dev/null
+                        has_mount=1
+                        ;;
+                    esac
+                  done < /proc/mounts
+                  if [ ${'$'}has_mount -eq 0 ]; then break; fi
+                done
+            """.trimIndent()
+            RootShell.execScript(sweepScript).isSuccess
+        }
         /**
          * Resolves the Android user ID from an absolute storage path.
          * Defaults to 0 (primary user) if not identifiable.
@@ -724,6 +781,11 @@ class MountManager(
                                 if (heldInternalLib) {
                                     RootShell.exec("mkdir -p \"$finalTarget/lib\" 2>/dev/null && mount -o bind \"$libHoldDir\" \"$finalTarget/lib\" 2>/dev/null")
                                     RootShell.exec("umount -l \"$libHoldDir\" 2>/dev/null && rmdir \"$libHoldDir\" 2>/dev/null")
+                                } else if (!isLib && !hasSeparateLibMount) {
+                                    val sdSeparateLib = "$sdBase/MountX/lib/${game.packageName}"
+                                    if (RootShell.exists(sdSeparateLib) && RootShell.execForOutput("find \"$sdSeparateLib\" -name '*.so' 2>/dev/null | head -n 1").trim().isNotBlank()) {
+                                        RootShell.exec("mkdir -p \"$finalTarget/lib/arm64\" 2>/dev/null && mount -o bind \"$sdSeparateLib\" \"$finalTarget/lib/arm64\" 2>/dev/null && mount -o remount,bind,exec \"$finalTarget/lib/arm64\" 2>/dev/null && mount --make-rprivate \"$finalTarget/lib/arm64\" 2>/dev/null && chown -R 1000:1000 \"$finalTarget/lib/arm64\" 2>/dev/null && chmod -R 755 \"$finalTarget/lib/arm64\" 2>/dev/null")
+                                    }
                                 }
                                 true
                             } else {
@@ -1287,21 +1349,7 @@ class MountManager(
                 }
 
                 // Universal sweeping unmount: purge any remaining or stacked mounts across all namespaces
-                val sweepScript = """
-                    for i in 1 2 3; do
-                      has_mount=0
-                      while read dev mnt rest; do
-                        case "${'$'}mnt" in
-                          *${game.packageName}*)
-                            umount -f -l "${'$'}mnt" 2>/dev/null
-                            has_mount=1
-                            ;;
-                        esac
-                      done < /proc/mounts
-                      if [ ${'$'}has_mount -eq 0 ]; then break; fi
-                    done
-                """.trimIndent()
-                RootShell.execScript(sweepScript)
+                sweepUnmountPackage(game.packageName)
 
                 // Step 2: Restore SELinux context across active users
                 onProgress?.invoke(
@@ -1462,6 +1510,16 @@ class MountManager(
                         triggerMediaScan(mp.targetPath)
                     }
                 }
+                sweepUnmountTarget(mp.targetPath)
+                if (mp.isExternalStorageCategory()) {
+                    sweepUnmountTarget("${mp.targetPath}/files")
+                }
+            }
+
+            // If all game points are unmounted, sweep all mounts for the package
+            val remainingActivePoints = game.mountPoints.filter { pt -> points.none { it.isSameTargetAs(pt) } && pt.enabled }
+            if (remainingActivePoints.isEmpty()) {
+                sweepUnmountPackage(game.packageName)
             }
 
             onProgress?.invoke(
@@ -1492,6 +1550,7 @@ class MountManager(
             )
         }
     }
+
 
     /**
      * Unmount all bind-mounted paths and loop devices from the given sdBase.
