@@ -306,12 +306,20 @@ _get_mediaprovider_pid() {
 _probe_sd_io_healthy() {
     local _blk="$1"
     local _base="$2"
+    local _max_attempts="${3:-3}"
     local _attempt=0
-    while [ ${_attempt} -lt 2 ]; do
+    local _mnt_src
+    _mnt_src=$(grep -F " ${_base} " /proc/mounts 2>/dev/null | head -n 1 | awk '{print $1}')
+    while [ ${_attempt} -lt "${_max_attempts}" ]; do
         local _ok=1
         if [ -n "${_blk}" ] && [ ! -b "${_blk}" ]; then
             _ok=0
         fi
+        case "${_mnt_src}" in
+            /dev/block/*)
+                [ ! -b "${_mnt_src}" ] && _ok=0
+                ;;
+        esac
         if [ ${_ok} -eq 1 ] && [ -n "${_blk}" ]; then
             if ! dd if="${_blk}" of=/dev/null bs=4096 count=1 2>/dev/null; then
                 _ok=0
@@ -320,14 +328,16 @@ _probe_sd_io_healthy() {
         if [ ${_ok} -eq 1 ] && [ -n "${_base}" ]; then
             if ! ls "${_base}" >/dev/null 2>&1; then
                 _ok=0
+            elif [ -d "${_base}/MountX" ] && ! ls "${_base}/MountX" >/dev/null 2>&1; then
+                _ok=0
             fi
         fi
         if [ ${_ok} -eq 1 ]; then
             return 0
         fi
         _attempt=$((_attempt + 1))
-        # Brief settle grace for SDHCI/MSDC controller resuming from deep sleep / runtime PM
-        [ ${_attempt} -lt 2 ] && sleep 1
+        # Settle grace for SDHCI/MSDC controller resuming from deep sleep / runtime PM
+        [ ${_attempt} -lt "${_max_attempts}" ] && sleep 1
     done
     return 1
 }
@@ -672,8 +682,22 @@ _is_internal_system_disk() {
     return 1
 }
 
+_resolve_sd_base_dev_by_uuid() {
+    [ ! -f "${MOUNTPOINTS_FILE}" ] && return 1
+    local _base="${SD_BASE%/}" _conf_uuid _by_uuid
+    _conf_uuid=$(awk -F'|' -v b="${_base}" '!/^#/ && NF>=6 && ($3 == b || index($3, b "/") == 1) && $6 != "" {print $6; exit}' "${MOUNTPOINTS_FILE}" 2>/dev/null)
+    [ -z "${_conf_uuid}" ] && return 1
+    _by_uuid=$(blkid 2>/dev/null | grep -i "UUID=\"${_conf_uuid}\"" | head -n 1 | cut -d: -f1)
+    [ -z "${_by_uuid}" ] && _by_uuid=$(toybox blkid 2>/dev/null | grep -i "UUID=\"${_conf_uuid}\"" | head -n 1 | cut -d: -f1)
+    if [ -n "${_by_uuid}" ] && [ -b "${_by_uuid}" ] && ! _is_internal_system_disk "${_by_uuid}"; then
+        echo "${_by_uuid}"
+        return 0
+    fi
+    return 1
+}
+
 _resolve_monitored_blk_dev() {
-    if [ -n "${SD_BLOCK}" ] && ! _is_internal_system_disk "${SD_BLOCK}"; then
+    if [ -n "${SD_BLOCK}" ] && [ -b "${SD_BLOCK}" ] && ! _is_internal_system_disk "${SD_BLOCK}"; then
         echo "${SD_BLOCK}"
         return 0
     fi
@@ -681,17 +705,27 @@ _resolve_monitored_blk_dev() {
     _active=$(grep -F " ${SD_BASE} " /proc/mounts 2>/dev/null | head -n 1 | awk '{print $1}')
     case "${_active}" in
         /dev/block/*)
+            if [ -b "${_active}" ] && ! _is_internal_system_disk "${_active}"; then
+                echo "${_active}"
+                return 0
+            fi
+            ;;
+    esac
+    local _by_uuid
+    _by_uuid=$(_resolve_sd_base_dev_by_uuid)
+    if [ -n "${_by_uuid}" ]; then
+        echo "${_by_uuid}"
+        return 0
+    fi
+    case "${_active}" in
+        /dev/block/*)
             echo "${_active}"
             return 0
             ;;
     esac
-    if [ -f "${MOUNTPOINTS_FILE}" ]; then
-        local _conf_uuid _by_uuid
-        _conf_uuid=$(grep -E '^[a-zA-Z0-9._]+' "${MOUNTPOINTS_FILE}" 2>/dev/null | cut -d'|' -f6 | grep -v '^$' | head -n 1)
-        if [ -n "${_conf_uuid}" ]; then
-            _by_uuid=$(blkid 2>/dev/null | grep -i "UUID=\"${_conf_uuid}\"" | head -n 1 | cut -d: -f1)
-            [ -n "${_by_uuid}" ] && { echo "${_by_uuid}"; return 0; }
-        fi
+    if [ -n "${SD_BLOCK}" ] && ! _is_internal_system_disk "${SD_BLOCK}"; then
+        echo "${SD_BLOCK}"
+        return 0
     fi
     echo ""
 }
@@ -765,17 +799,11 @@ mount_sd() {
         fi
 
         if [ -z "${SD_BLOCK}" ] || [ ! -b "${SD_BLOCK}" ] || _is_internal_system_disk "${SD_BLOCK}"; then
-            # 1. Dynamic resolution by UUID from mountpoints.conf
-            if [ -f "${MOUNTPOINTS_FILE}" ]; then
-                local conf_uuid
-                conf_uuid=$(grep -E '^[a-zA-Z0-9._]+' "${MOUNTPOINTS_FILE}" | cut -d'|' -f6 | grep -v '^$' | head -n 1)
-                if [ -n "${conf_uuid}" ]; then
-                    local dev_by_uuid
-                    dev_by_uuid=$(blkid 2>/dev/null | grep -i "UUID=\"${conf_uuid}\"" | head -n 1 | cut -d: -f1)
-                    if [ -n "${dev_by_uuid}" ] && [ -b "${dev_by_uuid}" ] && ! _is_internal_system_disk "${dev_by_uuid}"; then
-                        SD_BLOCK="${dev_by_uuid}"
-                    fi
-                fi
+            # 1. Dynamic resolution by UUID from mountpoints.conf (scoped strictly to SD_BASE)
+            local dev_by_uuid
+            dev_by_uuid=$(_resolve_sd_base_dev_by_uuid)
+            if [ -n "${dev_by_uuid}" ]; then
+                SD_BLOCK="${dev_by_uuid}"
             fi
 
             # 2. Safe universal external block discovery (never touches internal eMMC/UFS/dm-slaves)
@@ -2289,6 +2317,8 @@ mount_watchdog() {
     local CONSECUTIVE_OK=0
     local CHECK_INTERVAL=120
     local MAX_INTERVAL=120
+    local RECOVERY_STREAK=0
+    local RO_RECOVERY_ATTEMPTED=0
     local WATCHDOG_LOG="${MODULE_DIR}/mountx_watchdog.log"
 
     # ── Capture Zygote PID at start for soft-restart detection ───────────────
@@ -2333,10 +2363,50 @@ mount_watchdog() {
     local LAST_CE_AVAILABLE="false"
     [ -f "/dev/.mountx_initial_mounted" ] && LAST_CE_AVAILABLE="true"
     local LAST_DISK_ATTACHED=0
+    local LAST_DISK_NODES_SIG
+    LAST_DISK_NODES_SIG=$(echo /dev/block/mmcblk*p* /dev/block/sd[a-z][0-9]* 2>/dev/null)
     local blk_dev
     blk_dev=$(_resolve_monitored_blk_dev)
     [ -n "${blk_dev}" ] && [ -b "${blk_dev}" ] && LAST_DISK_ATTACHED=1
     log_info "[Watchdog] Starting. PID=${WATCHDOG_SELF_PID}, Zygote64=${ZYGOTE_PID_LAST:-N/A}, MediaProvider=${LAST_MP_PID:-N/A}, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
+
+    _mx_unmount_game_binds() {
+        local _bnd
+        for _bnd in $(grep -E "(/data/media/0/Android|/storage/emulated/0/Android|/mnt/user/0/emulated/0/Android|/mnt/runtime/(default|read|write|full)/emulated/0/Android)" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
+            case "${_bnd}" in
+                */Android/data|*/Android/obb|*/Android/media) continue ;;
+            esac
+            umount -l "${_bnd}" 2>/dev/null
+        done
+    }
+
+    _mx_reapply_mounts_after_recovery() {
+        rm -f "/dev/.mountx_disk_error" 2>/dev/null
+        echo "${WATCHDOG_SELF_PID}" > "${APPLY_LOCK_FILE}" 2>/dev/null
+        cleanup_stale_mounts
+        apply_io_tweaks
+        apply_all_mounts
+        LAST_EMULATED_GEN=$(_emulated_root_generation)
+        LAST_MP_PID=$(_get_mediaprovider_pid)
+        rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
+        am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+        am broadcast -a app.mountx.ACTION_MOUNT_ALL -p app.mountx >/dev/null 2>&1
+        RECOVERY_STREAK=0
+        RO_RECOVERY_ATTEMPTED=0
+        CONSECUTIVE_OK=0
+        CHECK_INTERVAL=60
+    }
+
+    _mx_advance_recovery_backoff() {
+        RECOVERY_STREAK=$((RECOVERY_STREAK + 1))
+        if [ ${RECOVERY_STREAK} -le 4 ]; then
+            CHECK_INTERVAL=5
+        elif [ ${RECOVERY_STREAK} -le 6 ]; then
+            CHECK_INTERVAL=15
+        else
+            CHECK_INTERVAL=60
+        fi
+    }
 
     # ── Helper: perform authoritative mount integrity check ───────────────────
     check_mounts() {
@@ -2352,28 +2422,26 @@ mount_watchdog() {
         local current_disk_attached=0
         [ -n "${blk_dev}" ] && [ -b "${blk_dev}" ] && current_disk_attached=1
 
-        if [ ${current_disk_attached} -eq 1 ] && [ ${LAST_DISK_ATTACHED} -eq 0 ]; then
+        if [ ${current_disk_attached} -eq 1 ] && [ ${LAST_DISK_ATTACHED} -eq 0 ] && [ ! -f "/dev/.mountx_migrating" ]; then
             log_info "[Watchdog] MicroSD/External hotplug insertion detected (${blk_dev})! Card just plugged in."
             rm -f "/dev/.mountx_unmounted" "/dev/.mountx_disk_error"
             LAST_DISK_ATTACHED=1
+            RECOVERY_STREAK=0
+            RO_RECOVERY_ATTEMPTED=0
             sleep 3
 
             log_info "[Watchdog] Auto-mounting ${blk_dev} to ${SD_BASE} after hotplug..."
             mount_sd
             blk_dev=$(_resolve_monitored_blk_dev)
             if mx_is_mounted "${SD_BASE}"; then
-                log_info "[Watchdog] SD_BASE mounted after hotplug. Applying bind mounts..."
-                echo "${WATCHDOG_SELF_PID}" > "${APPLY_LOCK_FILE}" 2>/dev/null
-                cleanup_stale_mounts
-                apply_io_tweaks
-                apply_all_mounts
-                LAST_EMULATED_GEN=$(_emulated_root_generation)
-                LAST_MP_PID=$(_get_mediaprovider_pid)
-                rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
-                am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
-                am broadcast -a app.mountx.ACTION_MOUNT_ALL -p app.mountx >/dev/null 2>&1
-                CONSECUTIVE_OK=0
-                CHECK_INTERVAL=60
+                if is_user_unlocked; then
+                    log_info "[Watchdog] SD_BASE mounted after hotplug. Applying bind mounts..."
+                    _mx_reapply_mounts_after_recovery
+                else
+                    log_info "[Watchdog] SD_BASE mounted after hotplug while BFU locked; deferring bind mounts until unlock."
+                    CONSECUTIVE_OK=0
+                    CHECK_INTERVAL=60
+                fi
                 return 0
             else
                 log_error "[Watchdog] Failed to mount ${blk_dev} to ${SD_BASE} after hotplug."
@@ -2394,67 +2462,90 @@ mount_watchdog() {
         blk_dev=$(_resolve_monitored_blk_dev)
 
         if [ -n "${blk_dev}" ] && mx_is_mounted "${SD_BASE}"; then
-            if ! _probe_sd_io_healthy "${blk_dev}" "${SD_BASE}"; then
-                log_error "[Watchdog] CRITICAL: Live block/filesystem I/O probe failed twice on ${blk_dev} (${SD_BASE})!"
+            if ! _probe_sd_io_healthy "${blk_dev}" "${SD_BASE}" 3; then
+                log_error "[Watchdog] CRITICAL: Live block/filesystem I/O probe failed on ${blk_dev} (${SD_BASE})!"
                 io_error=1
             fi
         fi
 
         if [ ${io_error} -eq 1 ]; then
+            log_warn "[Watchdog] Unmounting unresponsive binds & ${SD_BASE} to test deep-sleep/bus recovery..."
+            _mx_unmount_game_binds
+            umount -l "${SD_BASE}" 2>/dev/null
+            sleep 1
+            blk_dev=$(_resolve_monitored_blk_dev)
+            if [ -n "${blk_dev}" ] && [ -b "${blk_dev}" ] && dd if="${blk_dev}" of=/dev/null bs=4096 count=1 2>/dev/null; then
+                log_info "[Watchdog] Block device ${blk_dev} recovered after deep-sleep/bus drop! Remounting ${SD_BASE} cleanly..."
+                mount_sd
+                if mx_is_mounted "${SD_BASE}" && _probe_sd_io_healthy "${blk_dev}" "${SD_BASE}" 2; then
+                    log_info "[Watchdog] SD_BASE superblock recovered cleanly on ${blk_dev}. Re-applying bind mounts..."
+                    _mx_reapply_mounts_after_recovery
+                    return 0
+                fi
+                umount -l "${SD_BASE}" 2>/dev/null
+            fi
             log_error "[Watchdog] CRITICAL: MicroSD hardware I/O error or physical detachment confirmed!"
             echo "io_error" > "/dev/.mountx_disk_error"
-            # Emergency unmount of bound directories to prevent games from freezing on black screens
-            for _bnd in $(grep -E "(/data/media/0/Android|/storage/emulated/0/Android|/mnt/user/0/emulated/0/Android|/mnt/runtime/(default|read|write|full)/emulated/0/Android)" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
-                case "${_bnd}" in
-                    */Android/data|*/Android/obb|*/Android/media) continue ;;
-                esac
-                umount -l "${_bnd}" 2>/dev/null
-            done
-            umount -l "${SD_BASE}" 2>/dev/null
-            # Broadcast error event to MountX app
             am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
-            CHECK_INTERVAL=60
+            LAST_DISK_ATTACHED=0
+            [ -n "${blk_dev}" ] && [ -b "${blk_dev}" ] && LAST_DISK_ATTACHED=1
+            _mx_advance_recovery_backoff
             return 1
-        else
-            rm -f "/dev/.mountx_disk_error" 2>/dev/null
         fi
 
         # Check 1: Is SD_BASE still mounted?
-        if [ -n "${blk_dev}" ] && ! mx_is_mounted "${SD_BASE}"; then
-            if [ ! -b "${blk_dev}" ]; then
-                log_warn "[Watchdog] SD_BASE ${SD_BASE} unmounted and block device ${blk_dev} not found. Disk detached."
-                echo "io_error" > "/dev/.mountx_disk_error"
-                am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
-                return 1
-            fi
-            log_warn "[Watchdog] SD_BASE ${SD_BASE} lost! Re-mounting..."
-            mount_sd
-            if mx_is_mounted "${SD_BASE}"; then
-                log_info "[Watchdog] SD_BASE re-mounted. Re-applying bind mounts..."
-                echo "${WATCHDOG_SELF_PID}" > "${APPLY_LOCK_FILE}" 2>/dev/null
-                cleanup_stale_mounts
-                apply_io_tweaks
-                apply_all_mounts
-                LAST_EMULATED_GEN=$(_emulated_root_generation)
-                LAST_MP_PID=$(_get_mediaprovider_pid)
-                rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
-                am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
-                am broadcast -a app.mountx.ACTION_MOUNT_ALL -p app.mountx >/dev/null 2>&1
-                CONSECUTIVE_OK=0
-                CHECK_INTERVAL=60
-                return 0
+        if ! mx_is_mounted "${SD_BASE}"; then
+            if [ -z "${blk_dev}" ] || [ ! -b "${blk_dev}" ]; then
+                if [ -n "${blk_dev}" ] || grep -q "|APP_PACKAGE|" "${MOUNTPOINTS_FILE}" 2>/dev/null; then
+                    log_warn "[Watchdog] SD_BASE ${SD_BASE} unmounted and block device ${blk_dev:-unknown} not found. Disk detached."
+                    echo "io_error" > "/dev/.mountx_disk_error"
+                    am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
+                    LAST_DISK_ATTACHED=0
+                    _mx_advance_recovery_backoff
+                    return 1
+                fi
             else
-                log_error "[Watchdog] SD_BASE re-mount failed."
-                return 1
+                log_warn "[Watchdog] SD_BASE ${SD_BASE} lost! Re-mounting ${blk_dev}..."
+                mount_sd
+                if mx_is_mounted "${SD_BASE}"; then
+                    log_info "[Watchdog] SD_BASE re-mounted. Re-applying bind mounts..."
+                    _mx_reapply_mounts_after_recovery
+                    return 0
+                else
+                    log_error "[Watchdog] SD_BASE re-mount failed."
+                    _mx_advance_recovery_backoff
+                    return 1
+                fi
             fi
         fi
 
-        # Check 1b: Kernel Read-Only Remount Protection Probe
+        # Check 1b: Kernel Read-Only Remount Protection Probe (attempt single safe RW recovery unless hw write-protected)
         if mx_is_mounted "${SD_BASE}"; then
             if grep -F " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -qE "(^|,)ro(,| )"; then
+                local _ro_hw=""
+                if [ -n "${blk_dev}" ]; then
+                    _ro_hw=$(cat "/sys/block/$(_parent_disk_name "${blk_dev}")/ro" 2>/dev/null | tr -d '\r\n')
+                fi
+                if [ "${_ro_hw}" != "1" ] && [ "${RO_RECOVERY_ATTEMPTED}" -eq 0 ]; then
+                    RO_RECOVERY_ATTEMPTED=1
+                    log_warn "[Storage] ${SD_BASE} remounted READ-ONLY; attempting clean unmount + RW remount..."
+                    _mx_unmount_game_binds
+                    umount -l "${SD_BASE}" 2>/dev/null
+                    sleep 1
+                    mount_sd
+                    if mx_is_mounted "${SD_BASE}" && ! grep -F " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -qE "(^|,)ro(,| )"; then
+                        log_info "[Storage] ${SD_BASE} recovered back to READ-WRITE cleanly!"
+                        _mx_reapply_mounts_after_recovery
+                        return 0
+                    fi
+                fi
                 log_error "[Storage] CRITICAL: MicroSD ${SD_BASE} has been remounted READ-ONLY by kernel! Writes will fail with EROFS."
                 echo "ro_error" > "/dev/.mountx_disk_error"
                 am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "ro_error" -p app.mountx >/dev/null 2>&1
+            else
+                rm -f "/dev/.mountx_disk_error" 2>/dev/null
+                RECOVERY_STREAK=0
+                RO_RECOVERY_ATTEMPTED=0
             fi
         fi
 
@@ -2715,7 +2806,13 @@ mount_watchdog() {
             [ -z "${LAST_MP_PID}" ] && [ -n "${_fast_mp}" ] && LAST_MP_PID="${_fast_mp}"
         fi
 
-        # Check 2: Rapid physical disk attachment detection (hotplug)
+        # Check 2: Rapid physical disk attachment detection (hotplug & post-sleep node re-enumeration)
+        local _curr_nodes
+        _curr_nodes=$(echo /dev/block/mmcblk*p* /dev/block/sd[a-z][0-9]* 2>/dev/null)
+        if [ "${_curr_nodes}" != "${LAST_DISK_NODES_SIG}" ]; then
+            LAST_DISK_NODES_SIG="${_curr_nodes}"
+            blk_dev=$(_resolve_monitored_blk_dev)
+        fi
         local fast_disk=0
         [ -n "${blk_dev}" ] && [ -b "${blk_dev}" ] && fast_disk=1
         if [ -n "${blk_dev}" ] && [ ${fast_disk} -ne ${LAST_DISK_ATTACHED} ]; then
