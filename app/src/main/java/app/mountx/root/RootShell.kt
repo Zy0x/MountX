@@ -75,16 +75,23 @@ object RootShell {
         }
     }
 
+    private val resetShellLock = Any()
+
     /**
      * Resets libsu's internal cached main shell and static confirmation state.
      * When libsu boots before root permission is granted, it permanently caches
      * a non-root 'sh' instance and locks Utils.currentRootState = 0 (false).
      * This method resets those internals via reflection so libsu is forced to spawn a true root shell.
+     * Thread-safe: prevents concurrent callers from closing an already-valid root shell mid-command.
      */
-    fun resetLibsuShell(): Boolean {
+    fun resetLibsuShell(): Boolean = synchronized(resetShellLock) {
         return try {
+            val existing = Shell.getCachedShell()
+            if (existing != null && existing.isRoot && existing.isAlive) {
+                return true
+            }
             try {
-                Shell.getCachedShell()?.close()
+                existing?.close()
             } catch (_: Exception) {}
 
             // 1. Clear MainShell.mainShell[0]
@@ -127,11 +134,9 @@ object RootShell {
      * directly verifies 'su' at OS level and re-elevates libsu's main shell.
      */
     fun isRootAvailable(forceRefresh: Boolean = false): Boolean {
-        if (!forceRefresh) {
-            val cached = Shell.getCachedShell()
-            if (cached != null && cached.isRoot && Shell.isAppGrantedRoot() == true) {
-                return true
-            }
+        val cached = Shell.getCachedShell()
+        if (cached != null && cached.isRoot && cached.isAlive) {
+            return true
         }
 
         // Direct OS-level su verification
@@ -142,7 +147,7 @@ object RootShell {
 
         // su is granted! Ensure libsu's main shell is elevated
         val currentCached = Shell.getCachedShell()
-        if (currentCached == null || !currentCached.isRoot) {
+        if (currentCached == null || !currentCached.isRoot || !currentCached.isAlive) {
             resetLibsuShell()
         }
 
@@ -390,8 +395,113 @@ object RootShell {
     }
 
     /**
+     * Checks whether any configured or registered external storage block device is physically
+     * present in the kernel — universally across Android 10-17 without hardcoding mmcblk0/mmcblk1.
+     */
+    suspend fun isAnyExternalBackingDiskAlive(
+        sdBase: String,
+        configuredBlock: String = "",
+        diskUuids: Collection<String> = emptyList()
+    ): Boolean = withContext(Dispatchers.IO) {
+        val safeBase = sdBase.trim().trimEnd('/').replace("'", "'\\''")
+        val safeCfg = configuredBlock.trim().replace("'", "'\\''")
+        val uuidLines = diskUuids.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            .joinToString("\n") { it.replace("'", "'\\''") }
+        val script = """
+            _base='$safeBase'
+            _cfg='$safeCfg'
+            if [ -n "${'$'}_cfg" ]; then
+                [ -b "${'$'}_cfg" ] && { echo 1; exit 0; }
+                _bn=$(basename "${'$'}_cfg")
+                case "${'$'}_bn" in
+                    mmcblk*p[0-9]*|nvme*n*p[0-9]*) _pd="${'$'}{_bn%p[0-9]*}" ;;
+                    *) _pd=$(echo "${'$'}_bn" | sed 's/[0-9]*$//') ;;
+                esac
+                if [ -n "${'$'}_pd" ] && { [ -b "/dev/block/${'$'}_pd" ] || [ -d "/sys/block/${'$'}_pd" ]; }; then
+                    echo 1; exit 0
+                fi
+            fi
+            if [ -n "${'$'}_base" ]; then
+                _active=$(awk -v t="${'$'}_base" '{m=${'$'}2; if(m==t){print ${'$'}1; exit}}' /proc/mounts 2>/dev/null)
+                if [ -n "${'$'}_active" ] && [ -b "${'$'}_active" ]; then
+                    echo 1; exit 0
+                fi
+            fi
+            _blkid=$(blkid 2>/dev/null)
+            for _u in $uuidLines; do
+                [ -z "${'$'}_u" ] && continue
+                if echo "${'$'}_blkid" | grep -qi "UUID=\"${'$'}_u\""; then
+                    echo 1; exit 0
+                fi
+            done
+            for _sb in /sys/block/*; do
+                [ ! -d "${'$'}_sb" ] && continue
+                _dn=$(basename "${'$'}_sb")
+                case "${'$'}_dn" in loop*|ram*|zram*|dm-*) continue ;; esac
+                if [ -r "${'$'}_sb/device/type" ] && [ "$(cat "${'$'}_sb/device/type" 2>/dev/null | tr -d '\r\n')" = "SD" ]; then
+                    echo 1; exit 0
+                fi
+                if [ -r "${'$'}_sb/removable" ] && [ "$(cat "${'$'}_sb/removable" 2>/dev/null | tr -d '\r\n')" = "1" ]; then
+                    echo 1; exit 0
+                fi
+            done
+            echo 0
+        """.trimIndent()
+        exec(script).output.trim() == "1"
+    }
+
+    /**
+     * Authoritative 2-stage live functional I/O probe for the active backing storage at [sdBase].
+     * Retries once after 1000ms to tolerate transient SDHCI/MSDC controller resume from deep sleep.
+     * Returns "OK", "RO", "MISSING", or "IO_ERROR".
+     */
+    suspend fun probeStorageIoHealth(sdBase: String, configuredBlock: String = ""): String = withContext(Dispatchers.IO) {
+        val safeBase = sdBase.trim().trimEnd('/').replace("'", "'\\''")
+        val safeCfg = configuredBlock.trim().replace("'", "'\\''")
+        val probeCmd = """
+            _base='$safeBase'
+            _cfg='$safeCfg'
+            _mnt_line=$(awk -v t="${'$'}_base" '${'$'}2 == t {print ${'$'}1 "|" ${'$'}4; exit}' /proc/mounts 2>/dev/null)
+            if [ -z "${'$'}_mnt_line" ]; then
+                echo "UNMOUNTED"
+                exit 0
+            fi
+            _blk="${'$'}{_mnt_line%%|*}"
+            _opts="${'$'}{_mnt_line#*|}"
+            [ -z "${'$'}_blk" ] && _blk="${'$'}_cfg"
+            if echo "${'$'}_opts" | grep -qE '(^|,)ro(,|$)'; then
+                echo "RO"
+                exit 0
+            fi
+            if [ -n "${'$'}_blk" ] && [ ! -b "${'$'}_blk" ]; then
+                echo "MISSING"
+                exit 0
+            fi
+            if [ -n "${'$'}_blk" ]; then
+                if ! dd if="${'$'}_blk" of=/dev/null bs=4096 count=1 2>/dev/null; then
+                    echo "IO_ERROR"
+                    exit 0
+                fi
+            fi
+            if ! ls "${'$'}_base" >/dev/null 2>&1; then
+                echo "IO_ERROR"
+                exit 0
+            fi
+            echo "OK"
+        """.trimIndent()
+
+        var status = exec(probeCmd).output.trim()
+        if (status == "IO_ERROR" || status.isBlank()) {
+            delay(1_000L)
+            status = exec(probeCmd).output.trim()
+        }
+        status.ifBlank { "OK" }
+    }
+
+    /**
      * Waits until any active service.sh boot or unlock mount cycle releases its lock files
      * (/dev/.mountx_boot_active or /dev/.mountx_apply.lock) with a live PID check.
+     * Resilient against transient empty output while libsu shell is initializing on cold boot.
      */
     suspend fun awaitServiceMountCycleIfActive(
         waitForWatchdogUnlockGrace: Boolean = false,
@@ -418,11 +528,22 @@ object RootShell {
 
         val start = System.currentTimeMillis()
         val graceEnd = if (waitForWatchdogUnlockGrace) start + 8_000L else start
+        var emptyRetries = 0
         while (System.currentTimeMillis() - start < timeoutMillis) {
-            val parts = execForOutput(probeCmd).trim().split('|')
-            val isActive = parts.getOrNull(0) == "1"
-            val isInitialMounted = parts.getOrNull(1) == "1"
-            val isServiceAlive = parts.getOrNull(2) == "1"
+            val raw = execForOutput(probeCmd).trim()
+            val parts = raw.split('|')
+            if (parts.size < 3) {
+                emptyRetries++
+                if (emptyRetries <= 4) {
+                    delay(500L)
+                    continue
+                }
+                break
+            }
+            emptyRetries = 0
+            val isActive = parts[0] == "1"
+            val isInitialMounted = parts[1] == "1"
+            val isServiceAlive = parts[2] == "1"
 
             if (isActive) {
                 delay(500L)

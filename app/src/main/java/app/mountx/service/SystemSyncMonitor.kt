@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,9 +50,9 @@ sealed class SystemSyncEvent {
  * Executes emergency safeguards (process kill + lazy unmount + package suspend) upon sudden MicroSD ejection,
  * and Self-Healing Package Reconciler upon MicroSD reconnection.
  */
-@Singleton
 private var lastCanaryRecoveryTime = 0L
 
+@Singleton
 class SystemSyncMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gameDao: GameDao,
@@ -72,7 +74,12 @@ class SystemSyncMonitor @Inject constructor(
         }
     }
 
+    @Volatile
     private var isRegistered = false
+    private val receiverLock = Any()
+    private val storageMountedMutex = Mutex()
+    @Volatile
+    private var lastMediaMountedMs = 0L
     private var healthMonitorJob: kotlinx.coroutines.Job? = null
 
     companion object {
@@ -98,6 +105,9 @@ class SystemSyncMonitor @Inject constructor(
                     }
                 }
                 Intent.ACTION_MEDIA_MOUNTED -> {
+                    val now = System.currentTimeMillis()
+                    if (now - lastMediaMountedMs < 4_000L) return
+                    lastMediaMountedMs = now
                     scope.launch {
                         handleStorageMounted(ctx ?: context)
                     }
@@ -143,130 +153,114 @@ class SystemSyncMonitor @Inject constructor(
      * Start the real-time event listener.
      */
     fun startMonitoring() {
-        if (isRegistered) return
+        synchronized(receiverLock) {
+            if (isRegistered) return
 
-        mountNotificationManager.createNotificationChannels()
+            mountNotificationManager.createNotificationChannels()
 
-        val mediaFilter = IntentFilter().apply {
-            addAction(Intent.ACTION_MEDIA_MOUNTED)
-            addAction(Intent.ACTION_MEDIA_UNMOUNTED)
-            addAction(Intent.ACTION_MEDIA_EJECT)
-            addAction(Intent.ACTION_MEDIA_REMOVED)
-            addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
-            addDataScheme("file")
-        }
-        val mediaFilterNoScheme = IntentFilter().apply {
-            addAction(Intent.ACTION_MEDIA_MOUNTED)
-            addAction(Intent.ACTION_MEDIA_UNMOUNTED)
-            addAction(Intent.ACTION_MEDIA_EJECT)
-            addAction(Intent.ACTION_MEDIA_REMOVED)
-            addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
-        }
-        val diskErrorFilter = IntentFilter(ACTION_DISK_ERROR)
-        val pkgFilter = IntentFilter().apply {
-            addAction(Intent.ACTION_PACKAGE_ADDED)
-            addAction(Intent.ACTION_PACKAGE_REMOVED)
-            addAction(Intent.ACTION_PACKAGE_REPLACED)
-            addDataScheme("package")
-        }
+            val mediaFilter = IntentFilter().apply {
+                addAction(Intent.ACTION_MEDIA_MOUNTED)
+                addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+                addAction(Intent.ACTION_MEDIA_EJECT)
+                addAction(Intent.ACTION_MEDIA_REMOVED)
+                addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
+                addDataScheme("file")
+            }
+            val mediaFilterNoScheme = IntentFilter().apply {
+                addAction(Intent.ACTION_MEDIA_MOUNTED)
+                addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+                addAction(Intent.ACTION_MEDIA_EJECT)
+                addAction(Intent.ACTION_MEDIA_REMOVED)
+                addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
+            }
+            val diskErrorFilter = IntentFilter(ACTION_DISK_ERROR)
+            val pkgFilter = IntentFilter().apply {
+                addAction(Intent.ACTION_PACKAGE_ADDED)
+                addAction(Intent.ACTION_PACKAGE_REMOVED)
+                addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addDataScheme("package")
+            }
 
-        try {
-            ContextCompat.registerReceiver(
-                context,
-                systemReceiver,
-                mediaFilter,
-                ContextCompat.RECEIVER_EXPORTED
-            )
-            ContextCompat.registerReceiver(
-                context,
-                systemReceiver,
-                mediaFilterNoScheme,
-                ContextCompat.RECEIVER_EXPORTED
-            )
-            ContextCompat.registerReceiver(
-                context,
-                systemReceiver,
-                diskErrorFilter,
-                ContextCompat.RECEIVER_NOT_EXPORTED
-            )
-            ContextCompat.registerReceiver(
-                context,
-                systemReceiver,
-                pkgFilter,
-                ContextCompat.RECEIVER_EXPORTED
-            )
-            isRegistered = true
-            AppLogger.info("SystemSyncMonitor", "System broadcast listeners registered.")
-        } catch (e: Exception) {
-            AppLogger.error("SystemSyncMonitor", "Failed to register receivers: ${e.message}")
-        }
+            try {
+                ContextCompat.registerReceiver(
+                    context,
+                    systemReceiver,
+                    mediaFilter,
+                    ContextCompat.RECEIVER_EXPORTED
+                )
+                ContextCompat.registerReceiver(
+                    context,
+                    systemReceiver,
+                    mediaFilterNoScheme,
+                    ContextCompat.RECEIVER_EXPORTED
+                )
+                ContextCompat.registerReceiver(
+                    context,
+                    systemReceiver,
+                    diskErrorFilter,
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+                )
+                ContextCompat.registerReceiver(
+                    context,
+                    systemReceiver,
+                    pkgFilter,
+                    ContextCompat.RECEIVER_EXPORTED
+                )
+                isRegistered = true
+                AppLogger.info("SystemSyncMonitor", "System broadcast listeners registered.")
+            } catch (e: Exception) {
+                AppLogger.error("SystemSyncMonitor", "Failed to register receivers: ${e.message}")
+            }
 
-        // Active background disk health sentinel (probes every 30s when apps are mounted)
-        healthMonitorJob?.cancel()
-        healthMonitorJob = scope.launch {
+            // Active background disk health sentinel (probes every 30s when apps are mounted)
+            healthMonitorJob?.cancel()
+            healthMonitorJob = scope.launch {
             var previousErrorState = false
             while (true) {
                 delay(30_000L)
                 try {
                     val games = gameDao.getAllGamesSync()
-                    val hasMountedGames = games.any { it.mountStatus == MountStatus.MOUNTED }
+                    val mountedGames = games.filter { it.mountStatus == MountStatus.MOUNTED && it.isEnabled }
+                    val hasMountedGames = mountedGames.isNotEmpty()
                     val hasDetachedGames = games.any { it.mountStatus == MountStatus.DISK_DETACHED }
+                    val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+                    val configuredBlock = runCatching { appPreferences.sdBlockDevice.first() }.getOrDefault("")
 
                     if (hasDetachedGames && !hasMountedGames) {
-                        // Check if physical MicroSD has been re-inserted
-                        val hasMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
-                        val hasCustomDiskAlive = games.filter { it.mountStatus == MountStatus.DISK_DETACHED }
+                        val detachedUuids = games.filter { it.mountStatus == MountStatus.DISK_DETACHED }
                             .flatMap { it.mountPoints }
-                            .any { mp -> mp.diskUuid != null && RootShell.execForOutput("blkid | grep -i \"${mp.diskUuid}\"").isNotBlank() }
-                        if (hasMmc || hasCustomDiskAlive) {
+                            .mapNotNull { it.diskUuid }
+                        if (RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, detachedUuids)) {
                             AppLogger.info("SystemSyncMonitor", "Health loop detected storage reconnection! Initiating recovery...")
                             handleStorageMounted(context)
                         }
                     } else if (hasMountedGames) {
-                        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
                         val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+                        val mountedUuids = mountedGames.flatMap { it.mountPoints }.mapNotNull { it.diskUuid }
 
-                        // Passive Subsystem / Zygote Soft-Restart Integrity Check:
-                        // If DB thinks games are MOUNTED, but either SD base or sample app namespace was dropped,
-                        // trigger silent background remount!
+                        // Passive Subsystem / Zygote / Deep-Sleep Integrity Check:
+                        // Verify EVERY mounted game across /proc/1/mountinfo, /mnt/user, POSIX dev:ino parity / canary, and Zygote namespace.
                         if (RootShell.exists("/dev/.mountx_unmounted") || RootShell.exists("/dev/.mountx_migrating")) {
                             // Intentional user unmount or active migration in progress: skip auto-recovery
                         } else if (!isSdBaseMounted) {
-                            val hasMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
-                            if (hasMmc) {
+                            if (RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, mountedUuids)) {
                                 AppLogger.warn("SystemSyncMonitor", "SD_BASE unmounted unexpectedly while games are active. Initiating auto-recovery...")
                                 MountService.startMountAll(context)
                             }
                         } else {
-                            val sampleGame = games.firstOrNull { it.mountStatus == MountStatus.MOUNTED && it.isEnabled }
-                            if (sampleGame != null) {
-                                val isSampleMounted = if (sampleGame.mountPoints.isNotEmpty()) {
-                                    val enabledPoints = sampleGame.mountPoints.filter { it.enabled }
-                                    enabledPoints.isEmpty() || enabledPoints.any { pt ->
-                                        val cleanTarget = pt.targetPath.trimEnd('/')
-                                        val rel = MountManager.extractRelativePath(pt.targetPath).trimEnd('/')
-                                        val isInternal = pt.isInternalSandboxOrPackageCategory()
-                                        RootShell.isMountpoint(cleanTarget) ||
-                                                (!isInternal && rel.isNotBlank() && (
-                                                    RootShell.isMountpoint("/storage/emulated/0/$rel") ||
-                                                    RootShell.isMountpoint("/mnt/runtime/default/emulated/0/$rel") ||
-                                                    RootShell.isMountpoint("/data/media/0/$rel")
-                                                ))
-                                    }
-                                } else {
-                                    val sampleTarget = when (sampleGame.mode) {
-                                        app.mountx.data.model.MountMode.FILES -> "/storage/emulated/0/Android/data/${sampleGame.packageName}/files"
-                                        app.mountx.data.model.MountMode.PKG -> "/storage/emulated/0/Android/data/${sampleGame.packageName}"
-                                    }
-                                    RootShell.isMountpoint(sampleTarget) ||
-                                            RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${sampleGame.packageName}") ||
-                                            RootShell.isMountpoint("/data/media/0/Android/data/${sampleGame.packageName}")
-                                }
-                                if (!isSampleMounted) {
+                            val verifiedMap = mountManager.verifyCanariesBatch(mountedGames)
+                            val unverifiedGames = mountedGames.filter { verifiedMap[it.packageName] != true }
+                            if (unverifiedGames.isNotEmpty()) {
+                                // Wait for service.sh watchdog cycle if it is already recovering right now
+                                RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 15_000L, waitForWatchdogUnlockGrace = false)
+                                val reVerifiedMap = mountManager.verifyCanariesBatch(unverifiedGames)
+                                val stillMissing = unverifiedGames.filter { reVerifiedMap[it.packageName] != true }
+                                if (stillMissing.isNotEmpty()) {
                                     val now = System.currentTimeMillis()
-                                    if (now - lastCanaryRecoveryTime > 60_000L) {
+                                    if (now - lastCanaryRecoveryTime > 20_000L) {
                                         lastCanaryRecoveryTime = now
-                                        AppLogger.warn("SystemSyncMonitor", "Canary mount missing for ${sampleGame.displayName} (soft restart detected). Initiating auto-recovery...")
+                                        val missingNames = stillMissing.joinToString(", ") { it.displayName }
+                                        AppLogger.warn("SystemSyncMonitor", "Live mount verification failed for [$missingNames] (deep-sleep/soft-restart/shadowing detected). Initiating auto-recovery...")
                                         MountService.startMountAll(context)
                                     }
                                 }
@@ -274,40 +268,30 @@ class SystemSyncMonitor @Inject constructor(
                         }
 
                         val hasFlag = RootShell.exists("/dev/.mountx_disk_error")
-                        val isDmesgError = if (!hasFlag) {
-                            val dmesgRes = RootShell.exec("dmesg 2>/dev/null | tail -n 25 | grep -iE 'Buffer I/O error|DATCRCERR|CMDCRCERR|autok fail|autok error'")
-                            dmesgRes.isSuccess && dmesgRes.output.isNotBlank()
-                        } else false
+                        val ioHealth = if (!hasFlag) {
+                            RootShell.probeStorageIoHealth(sdBase, configuredBlock)
+                        } else "IO_ERROR"
 
                         // Check physical device presence: verify backing block device actually exists
-                        val isDiskPhysicallyMissing = if (!hasFlag && !isDmesgError) {
-                            val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
-                            val isSdBaseMounted = RootShell.isMountpoint(sdBase)
-                            if (isSdBaseMounted) {
-                                val backingBlock = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
-                                    .firstOrNull { it.contains(" $sdBase ") }
-                                    ?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
-                                if (backingBlock.startsWith("/dev/block/")) {
-                                    !RootShell.exists(backingBlock) && !RootShell.exists("/sys/class/block/${backingBlock.substringAfterLast('/')}")
-                                } else false
-                            } else {
-                                val hasAnyMmc = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
-                                val hasCustomDiskAlive = games.filter { it.mountStatus == MountStatus.MOUNTED }
-                                    .flatMap { it.mountPoints }
-                                    .any { mp -> mp.diskUuid != null && RootShell.execForOutput("blkid | grep -i \"${mp.diskUuid}\"").isNotBlank() }
-                                !hasAnyMmc && !hasCustomDiskAlive
-                            }
+                        val isDiskPhysicallyMissing = if (!hasFlag) {
+                            if (ioHealth == "MISSING") {
+                                true
+                            } else if (!isSdBaseMounted) {
+                                !RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, mountedUuids)
+                            } else false
                         } else false
+
+                        val isConfirmedDiskError = hasFlag || ioHealth == "IO_ERROR" || ioHealth == "RO"
 
                         if (isDiskPhysicallyMissing) {
                             if (!previousErrorState) {
                                 previousErrorState = true
                                 handleEmergencyMediaEject()
                             }
-                        } else if (hasFlag || isDmesgError) {
+                        } else if (isConfirmedDiskError) {
                             if (!previousErrorState) {
                                 previousErrorState = true
-                                handleDiskError("MicroSD", "Hardware I/O error or controller power cutoff")
+                                handleDiskError("MicroSD", "Hardware I/O error or read-only filesystem lock ($ioHealth)")
                             }
                         } else {
                             if (previousErrorState) {
@@ -324,16 +308,19 @@ class SystemSyncMonitor @Inject constructor(
                 }
             }
         }
+        }
     }
 
     fun stopMonitoring() {
-        if (!isRegistered) return
-        try {
-            healthMonitorJob?.cancel()
-            healthMonitorJob = null
-            context.unregisterReceiver(systemReceiver)
-            isRegistered = false
-        } catch (_: Exception) {}
+        synchronized(receiverLock) {
+            if (!isRegistered) return
+            try {
+                healthMonitorJob?.cancel()
+                healthMonitorJob = null
+                context.unregisterReceiver(systemReceiver)
+                isRegistered = false
+            } catch (_: Exception) {}
+        }
     }
 
     /**
@@ -354,11 +341,12 @@ class SystemSyncMonitor @Inject constructor(
         AppLogger.info("SystemSyncMonitor", "Storage unmount/eject broadcast received for path: '$ejectedPath'")
 
         val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+        val configuredBlock = runCatching { appPreferences.sdBlockDevice.first() }.getOrDefault("")
         val isSdBaseMounted = RootShell.isMountpoint(sdBase)
-        val isMmcStillAlive = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0")
+        val isPrimaryDiskAlive = RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock)
 
-        // 1. If primary MicroSD is actually physically detached or unmounted, trigger emergency protocol
-        if (!isSdBaseMounted && !isMmcStillAlive) {
+        // 1. If primary external storage is actually physically detached or unmounted, trigger emergency protocol
+        if (!isSdBaseMounted && !isPrimaryDiskAlive) {
             AppLogger.warn("SystemSyncMonitor", "Primary MicroSD ($sdBase) is missing. Executing emergency eject.")
             handleEmergencyMediaEject()
             return
@@ -429,30 +417,27 @@ class SystemSyncMonitor @Inject constructor(
             AppLogger.error("SystemSyncMonitor", "Failed to check/kill processes: ${e.message}")
         }
 
-        // 2. Instant lazy unmount across all namespaces dynamically
+        // 2. Instant lazy unmount across all namespaces dynamically (no -f to protect surviving F2FS superblocks)
         try {
-            mountManager.unmountAll(sdBase)
-            // Emergency eject is NOT a user-intentional unmount!
-            // unmountAll() touches /dev/.mountx_unmounted to prevent auto-remount during explicit user unmount.
-            // On physical ejection, we MUST remove this flag so that when the card is re-inserted,
-            // auto-remount can proceed!
+            mountManager.unmountAll(sdBase, isUserIntentional = false)
             RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
-            RootShell.exec("umount -f -l \"$sdBase\" 2>/dev/null")
+            RootShell.exec("umount \"$sdBase\" 2>/dev/null || umount -l \"$sdBase\" 2>/dev/null")
             if (sdBase != "/data/sdext2") {
-                mountManager.unmountAll("/data/sdext2")
-                RootShell.exec("umount -f -l /data/sdext2 2>/dev/null")
+                mountManager.unmountAll("/data/sdext2", isUserIntentional = false)
+                RootShell.exec("umount /data/sdext2 2>/dev/null || umount -l /data/sdext2 2>/dev/null")
             }
-            // Dynamic cleanup for any remaining mountpoints matching game paths from /proc/mounts
-            val mountsOutput = RootShell.execForOutput("cat /proc/mounts 2>/dev/null")
-            mountsOutput.lines().forEach { line ->
-                val parts = line.trim().split(Regex("\\s+"))
-                if (parts.size >= 2) {
-                    val target = parts[1]
-                    if (target.contains("/Android/data/") || target.contains("/Android/obb/") || target.contains("/MountX/")) {
-                        RootShell.exec("umount -f -l \"$target\" 2>/dev/null")
-                    }
-                }
-            }
+            RootShell.execScript(
+                """
+                if [ -r /proc/1/mountinfo ]; then
+                  awk '{p=${'$'}5; gsub(/\\040/," ",p); if (p ~ /\/Android\/data\/|\/Android\/obb\/|\/MountX\//) print length(p), p}' /proc/1/mountinfo 2>/dev/null
+                else
+                  awk '{p=${'$'}2; gsub(/\\040/," ",p); if (p ~ /\/Android\/data\/|\/Android\/obb\/|\/MountX\//) print length(p), p}' /proc/mounts 2>/dev/null
+                fi | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[${'$'}0]++' | while IFS= read -r tgt; do
+                    [ -n "${'$'}tgt" ] || continue
+                    umount "${'$'}tgt" 2>/dev/null || umount -l "${'$'}tgt" 2>/dev/null
+                done
+                """.trimIndent()
+            )
         } catch (e: Exception) {
             AppLogger.error("SystemSyncMonitor", "Failed lazy unmount: ${e.message}")
         }
@@ -466,15 +451,25 @@ class SystemSyncMonitor @Inject constructor(
 
     /**
      * Emergency Protocol when MicroSD suffers hardware I/O errors or kernel power cutoff.
-     * 1. Force-stop active game processes to prevent crash loops / freezing on blank screens.
-     * 2. Lazy unmount broken bind mounts.
-     * 3. Show Heads-Up Emergency Notification & update ongoing notification.
-     * 4. Notify all ViewModels of DiskError event.
+     * 1. Verify live block/filesystem I/O actually failed (prevents false-positive dmesg/autok unmounts on deep-sleep wakeup).
+     * 2. Force-stop active game processes to prevent crash loops / freezing on blank screens.
+     * 3. Lazy unmount broken bind mounts WITHOUT setting /dev/.mountx_unmounted.
+     * 4. Show Heads-Up Emergency Notification & update ongoing notification.
+     * 5. Notify all ViewModels of DiskError event.
      */
     private suspend fun handleDiskError(diskName: String, details: String) {
-        AppLogger.error("SystemSyncMonitor", "CRITICAL DISK ERROR: $diskName - $details")
-
         val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
+        val configuredBlock = runCatching { appPreferences.sdBlockDevice.first() }.getOrDefault("")
+        val hasFlag = RootShell.exists("/dev/.mountx_disk_error")
+        if (!hasFlag) {
+            val liveProbe = RootShell.probeStorageIoHealth(sdBase, configuredBlock)
+            if (liveProbe == "OK") {
+                AppLogger.info("SystemSyncMonitor", "Ignored transient dmesg/autok warning on $diskName: live storage I/O probe is OK.")
+                return
+            }
+        }
+
+        AppLogger.error("SystemSyncMonitor", "CRITICAL DISK ERROR: $diskName - $details")
 
         // 1. Force-stop active game processes to prevent crash loops / freezing
         try {
@@ -494,19 +489,22 @@ class SystemSyncMonitor @Inject constructor(
             AppLogger.error("SystemSyncMonitor", "Failed to check/kill processes on disk error: ${e.message}")
         }
 
-        // 2. Instant lazy unmount of bind points across namespaces to unblock Android system
+        // 2. Instant lazy unmount of bind points across namespaces to unblock Android system (no -f to prevent F2FS EIO shutdown)
         try {
-            mountManager.unmountAll(sdBase)
-            val mountsOutput = RootShell.execForOutput("cat /proc/mounts 2>/dev/null")
-            mountsOutput.lines().forEach { line ->
-                val parts = line.trim().split(Regex("\\s+"))
-                if (parts.size >= 2) {
-                    val target = parts[1]
-                    if (target.contains("/Android/data/") || target.contains("/Android/obb/") || target.contains("/MountX/")) {
-                        RootShell.exec("umount -f -l \"$target\" 2>/dev/null")
-                    }
-                }
-            }
+            mountManager.unmountAll(sdBase, isUserIntentional = false)
+            RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
+            RootShell.execScript(
+                """
+                if [ -r /proc/1/mountinfo ]; then
+                  awk '{p=${'$'}5; gsub(/\\040/," ",p); if (p ~ /\/Android\/data\/|\/Android\/obb\/|\/MountX\//) print length(p), p}' /proc/1/mountinfo 2>/dev/null
+                else
+                  awk '{p=${'$'}2; gsub(/\\040/," ",p); if (p ~ /\/Android\/data\/|\/Android\/obb\/|\/MountX\//) print length(p), p}' /proc/mounts 2>/dev/null
+                fi | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[${'$'}0]++' | while IFS= read -r tgt; do
+                    [ -n "${'$'}tgt" ] || continue
+                    umount "${'$'}tgt" 2>/dev/null || umount -l "${'$'}tgt" 2>/dev/null
+                done
+                """.trimIndent()
+            )
         } catch (e: Exception) {
             AppLogger.error("SystemSyncMonitor", "Failed lazy unmount on disk error: ${e.message}")
         }
@@ -526,7 +524,7 @@ class SystemSyncMonitor @Inject constructor(
      * 4. Re-bind all games/apps that are in DISK_DETACHED state and unsuspend Launcher icons.
      * 5. Post a success notification in the status bar and notify ViewModels.
      */
-    private suspend fun handleStorageMounted(ctx: Context) {
+    private suspend fun handleStorageMounted(ctx: Context) = storageMountedMutex.withLock {
         AppLogger.info("SystemSyncMonitor", "Storage connected. Waiting ${REMOUNT_SETTLE_MS}ms for volume to settle...")
         delay(REMOUNT_SETTLE_MS)
 

@@ -102,9 +102,12 @@ object RootDetector {
             }
         }
 
-        // Fallback: If su is working but no persistent root manager is identified, it is TempRoot
-        if (rootSol == RootSolution.NONE && RootShell.isRootAvailable()) {
+        // Fallback: Only classify as TempRoot if the batch script actually succeeded without identifying a persistent root manager AND no module is installed.
+        // Never cache TEMPROOT when the batch script transiently failed/returned empty output.
+        if (res.isSuccess && rootSol == RootSolution.NONE && !modInstalled && RootShell.isRootAvailable()) {
             rootSol = RootSolution.TEMPROOT
+        } else if (rootSol == RootSolution.NONE && modInstalled) {
+            rootSol = RootSolution.KERNELSU
         }
 
         val info = RootModuleInfo(rootSol, modInstalled, modVer)

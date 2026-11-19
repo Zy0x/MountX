@@ -7,10 +7,13 @@ import android.os.Build
 import app.mountx.R
 import app.mountx.data.db.AppDao
 import app.mountx.data.model.MountStatus
+import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppLogger
+import app.mountx.util.AppPreferences
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -66,7 +69,9 @@ data class SystemSelfTestResult(
 @Singleton
 class DiagnosticManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val appDao: AppDao
+    private val appDao: AppDao,
+    private val mountManager: MountManager,
+    private val appPreferences: AppPreferences
 ) {
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
@@ -152,9 +157,14 @@ class DiagnosticManager @Inject constructor(
         val app = appDao.getAppByPackage(packageName)
         val isMounted = app?.mountStatus == MountStatus.MOUNTED
 
-        // Check active /proc/mounts targets for this package
-        val mountsCountRes = RootShell.exec("grep -E \"(Android/(data|obb|media)/${packageName}|/data/app/.*${packageName}|/data/user/0/${packageName})\" /proc/mounts 2>/dev/null | wc -l")
+        // Check active /proc/1/mountinfo targets for this package
+        val mountsCountRes = RootShell.exec("grep -E \"(Android/(data|obb|media)/${packageName}|/data/app/.*${packageName}|/data/user/[0-9]+/${packageName})\" /proc/1/mountinfo 2>/dev/null | wc -l")
         val activeMounts = mountsCountRes.output.trim().toIntOrNull() ?: 0
+
+        // Authoritative verification across /proc/1/mountinfo, /mnt/user, POSIX dev:ino / canary, and Zygote namespace
+        val isLiveVerified = if (app != null && isMounted) {
+            mountManager.verifyCanariesBatch(listOf(app))[packageName] == true
+        } else false
 
         // Check storage permissions accurately without false positives
         val permissionsGranted = checkStoragePermissions(packageName)
@@ -162,14 +172,14 @@ class DiagnosticManager @Inject constructor(
         val exitReport = getRecentExitReport(packageName)
 
         val isHealthy = when {
-            isMounted && activeMounts == 0 -> false
+            isMounted && (!isLiveVerified || activeMounts == 0) -> false
             exitReport?.isAbnormal == true -> false
             !permissionsGranted -> false
             else -> true
         }
 
         val summary = when {
-            isMounted && activeMounts == 0 -> context.getString(R.string.health_summary_missing_targets)
+            isMounted && (!isLiveVerified || activeMounts == 0) -> context.getString(R.string.health_summary_missing_targets)
             exitReport != null && exitReport.isAbnormal -> {
                 val detail = if (exitReport.description.isNotBlank()) ": ${exitReport.description}" else ""
                 "Terminated: ${exitReport.reasonName} (${exitReport.subreasonName}$detail)"
@@ -265,7 +275,7 @@ class DiagnosticManager @Inject constructor(
         val selinuxMode = RootShell.execForOutput("getenforce 2>/dev/null").trim().ifBlank { "Unknown" }
 
         // 3. MicroSD RW and Space
-        val sdBase = "/data/sdext2"
+        val sdBase = runCatching { appPreferences.sdBasePath.first() }.getOrDefault("/data/sdext2")
         val dfRes = RootShell.exec("df -m \"$sdBase\" 2>/dev/null | tail -n 1")
         val freeMb = dfRes.output.trim().split(Regex("\\s+")).getOrNull(3)?.toLongOrNull() ?: 0L
 

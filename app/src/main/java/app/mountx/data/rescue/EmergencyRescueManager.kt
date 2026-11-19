@@ -39,12 +39,20 @@ class EmergencyRescueManager @Inject constructor(
                 # ==============================================================================
                 echo "[*] MountX Emergency Restore Initiated..."
                 
-                # 1. Unmount all bind mounts
+                # 1. Unmount all bind mounts deepest-first without -f (protect F2FS superblocks)
                 echo "[*] Unmounting all bind mounts from $sdBase..."
-                for m in ${'$'}(grep "$sdBase" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                awk -v b="$sdBase" '{p=${'$'}5; gsub(/\\040/," ",p); if (p != b && index(p, b "/") == 1) print length(p), p}' "${'$'}_mi" 2>/dev/null \
+                  | sort -rn -k1,1 | cut -d' ' -f2- | while IFS= read -r m; do
+                    [ -n "${'$'}m" ] || continue
+                    echo "    Unmounting ${'$'}m"
+                    umount "${'$'}m" 2>/dev/null || umount -l "${'$'}m" 2>/dev/null
+                done
+                for m in ${'$'}(grep -F "$sdBase" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
                     if [ "${'$'}m" != "$sdBase" ]; then
                         echo "    Unmounting ${'$'}m"
-                        umount -f -l "${'$'}m" 2>/dev/null
+                        umount "${'$'}m" 2>/dev/null || umount -l "${'$'}m" 2>/dev/null
                     fi
                 done
                 

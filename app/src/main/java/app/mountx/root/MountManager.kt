@@ -12,6 +12,8 @@ import app.mountx.data.model.OperationType
 import app.mountx.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -57,6 +59,8 @@ class MountManager(
     suspend fun sweepUnmountPackage(packageName: String): Boolean = MountManager.sweepUnmountPackage(packageName)
 
     companion object {
+        private val mountOperationMutex = Mutex()
+
         /** Resolves all active Android user IDs (User 0, Dual Apps 999, Work Profile 10+, etc.) */
         suspend fun getActiveUserIds(): List<Int> = withContext(Dispatchers.IO) {
             val userIds = mutableListOf(0)
@@ -80,78 +84,532 @@ class MountManager(
         }
 
         /** Dynamically detects all target runtime namespaces across active users/profiles or an isolated user */
-        suspend fun getTargetNamespaces(specificUserId: Int? = null): List<String> = withContext(Dispatchers.IO) {
-            val list = mutableListOf<String>()
-            val userIds = if (specificUserId != null) listOf(specificUserId) else getActiveUserIds()
-            val hasSdcardfs = RootShell.execForOutput("grep -w sdcardfs /proc/filesystems 2>/dev/null").isNotBlank()
-            for (uid in userIds) {
-                list.add("/mnt/runtime/default/emulated/$uid")
-                list.add("/mnt/runtime/read/emulated/$uid")
-                list.add("/mnt/runtime/write/emulated/$uid")
-                list.add("/mnt/runtime/full/emulated/$uid")
-                list.add("/mnt/user/$uid/primary")
-                list.add("/mnt/user/$uid/emulated/$uid")
-                // Android 11+ storage runtime views
-                list.add("/mnt/installer/$uid/emulated/$uid")
-                list.add("/mnt/androidwritable/$uid/emulated/$uid")
-                list.add("/mnt/pass_through/$uid/emulated/$uid")
-                // Only target /storage/emulated/$uid if /storage/emulated is confirmed a real mounted filesystem to prevent tmpfs collisions
-                if (RootShell.isMountpoint("/storage/emulated")) {
-                    list.add("/storage/emulated/$uid")
-                }
-                // CRITICAL: /data/media/$uid MUST NOT be mounted if sdcardfs is present!
-                // When sdcardfs is present, mounting to /data/media triggers kernel sdcardfs EXDEV deadlocks.
-                if (!hasSdcardfs) {
-                    list.add("/data/media/$uid")
-                }
-            }
-            list.filter { RootShell.exists(it) }.distinct()
+        private val UNSAFE_BIND_REL_PATHS = setOf("android", "android/data", "android/obb", "android/media")
+
+        private fun isUnsafeBindRelativePath(relPath: String): Boolean {
+            val clean = relPath.trim().trim('/').lowercase()
+            return clean.isBlank() || clean in UNSAFE_BIND_REL_PATHS
         }
 
         /**
-         * Purges all active, nested, or stacked mounts matching a target path across all namespaces.
+         * Safely cleans any corrupted parent occlusion mounts (`.../Android/(data|obb|media)` backed by MountX)
+         * and peels stacked/dead FUSE `ENOTCONN` layers across PID 1 and active Zygote namespaces.
+         * Never uses `umount -f` (`MNT_FORCE`) so F2FS superblocks never suffer checkpoint shutdowns (`EIO`).
+         */
+        suspend fun repairDeadFuseAndCorruptedParents() = withContext(Dispatchers.IO) {
+            val script = """
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                [ -r "${'$'}_mi" ] || exit 0
+                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+                umount_all_ns() {
+                  _t="${'$'}1"
+                  [ -n "${'$'}_t" ] || return 0
+                  umount "${'$'}_t" 2>/dev/null || umount -l "${'$'}_t" 2>/dev/null
+                  for _zp in ${'$'}_zpids; do
+                    [ -d "/proc/${'$'}_zp/ns" ] || continue
+                    nsenter --mount="/proc/${'$'}_zp/ns/mnt" -- sh -c 'umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null' _ "${'$'}_t" 2>/dev/null
+                  done
+                }
+
+                # 1. Peel any corrupted parent occlusion mounts directly on .../Android/(data|obb|media|)$
+                _occl=${'$'}(awk -F ' - ' '{
+                  split(${'$'}1, L, " ");
+                  root = L[4]; mp = L[5]; gsub(/\\040/, " ", mp);
+                  if (mp ~ /(\/Android\/(data|obb|media)|\/Android|\/emulated\/[0-9]+)${'$'}/ && root ~ /(^|\/)MountX(\/|${'$'})/) print mp
+                }' "${'$'}_mi" 2>/dev/null | awk '!seen[${'$'}0]++')
+                for _op in ${'$'}_occl; do
+                  _kids=${'$'}(T="${'$'}_op/" awk '{p=${'$'}5; gsub(/\\040/," ",p); if (index(p, ENVIRON["T"])==1) print length(p), p}' "${'$'}_mi" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[${'$'}0]++')
+                  echo "${'$'}_kids" | while IFS= read -r _k; do
+                    [ -n "${'$'}_k" ] && umount_all_ns "${'$'}_k"
+                  done
+                  umount_all_ns "${'$'}_op"
+                done
+
+                # 2. Detect stacked duplicate FUSE mounts or dead ENOTCONN FUSE endpoints on emulated roots
+                _roots=${'$'}(awk -F ' - ' '{
+                  split(${'$'}1, L, " "); split(${'$'}2, R, " ");
+                  dev = L[3]; mp = L[5]; gsub(/\\040/, " ", mp); fst = R[1];
+                  if (mp ~ /^(\/storage\/emulated|\/mnt\/(user|installer|androidwritable|pass_through)\/[0-9]+\/emulated|\/mnt\/runtime\/(default|read|write|full)\/emulated)${'$'}/) {
+                    cnt[mp]++; devs[mp] = (devs[mp] ? devs[mp] "|" dev : dev); fsts[mp] = fst
+                  }
+                } END {
+                  for (m in cnt) {
+                    if (fsts[m] ~ /fuse/ || cnt[m] > 1) print cnt[m] "|" m
+                  }
+                }' "${'$'}_mi" 2>/dev/null | sort -r)
+
+                echo "${'$'}_roots" | while IFS='|' read -r _cnt _rmp; do
+                  [ -n "${'$'}_rmp" ] || continue
+                  _enotconn=0
+                  _st=${'$'}(LC_ALL=C stat -t "${'$'}_rmp" 2>&1)
+                  case "${'$'}_st" in *"Transport endpoint"*) _enotconn=1 ;; esac
+                  if [ "${'$'}_enotconn" -eq 0 ] && [ -e "${'$'}_rmp/0" ]; then
+                    _st0=${'$'}(LC_ALL=C stat -t "${'$'}_rmp/0" 2>&1)
+                    case "${'$'}_st0" in *"Transport endpoint"*) _enotconn=1 ;; esac
+                  fi
+                  if [ "${'$'}_enotconn" -eq 1 ] || [ "${'$'}_cnt" -gt 1 ]; then
+                    _fkids=${'$'}(T="${'$'}_rmp/" awk '{p=${'$'}5; gsub(/\\040/," ",p); if (index(p, ENVIRON["T"])==1) print length(p), p}' "${'$'}_mi" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[${'$'}0]++')
+                    echo "${'$'}_fkids" | while IFS= read -r _fk; do
+                      [ -n "${'$'}_fk" ] && umount_all_ns "${'$'}_fk"
+                    done
+                    umount_all_ns "${'$'}_rmp"
+                  fi
+                done
+            """.trimIndent()
+            RootShell.execScript(script)
+        }
+
+        /**
+         * Injects (source -> target) bind mounts into active Zygote mount namespaces using clean `sh -s` heredoc
+         * invocations (one `nsenter` per Zygote PID) so shell quoting errors can never kill `libsu`.
+         */
+        suspend fun syncBindTargetsToZygotes(
+            pairs: List<Pair<String, String>>,
+            isNonPosix: Boolean = false,
+            preserveExec: Boolean = false
+        ) = withContext(Dispatchers.IO) {
+            if (pairs.isEmpty()) return@withContext
+            val cleanPairs = pairs.map { it.first.trimEnd('/') to it.second.trimEnd('/') }
+                .filter { it.first.isNotBlank() && it.second.isNotBlank() }
+                .distinct()
+            if (cleanPairs.isEmpty()) return@withContext
+
+            val pairLines = cleanPairs.joinToString("\n") { "${it.first}|${it.second}" }
+            val nonPosixFlag = if (isNonPosix) "1" else "0"
+            val execFlag = if (preserveExec) "1" else "0"
+            val script = """
+                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+                [ -n "${'$'}_zpids" ] || exit 0
+                for _zp in ${'$'}_zpids; do
+                  [ -d "/proc/${'$'}_zp/ns" ] || continue
+                  nsenter --mount="/proc/${'$'}_zp/ns/mnt" -- sh -s "$nonPosixFlag" "$execFlag" <<'__MX_Z_BIND__' 2>/dev/null
+                _non_posix="${'$'}1"
+                _want_exec="${'$'}2"
+                _mi=/proc/self/mountinfo
+                is_mp() {
+                  if [ -r "${'$'}_mi" ]; then
+                    T="${'$'}1" awk '{m=${'$'}5;gsub(/\\040/," ",m);if(m==ENVIRON["T"]){f=1;exit}} END{exit !f}' "${'$'}_mi" 2>/dev/null
+                  else
+                    mountpoint -q "${'$'}1" 2>/dev/null
+                  fi
+                }
+                root_alive() {
+                  _p="${'$'}1"
+                  case "${'$'}_p" in
+                    /storage/emulated/*) _root="/storage/emulated" ;;
+                    /mnt/user/[0-9]*/emulated/*) _u="${'$'}{_p#/mnt/user/}"; _root="/mnt/user/${'$'}{_u%%/*}/emulated" ;;
+                    /mnt/installer/[0-9]*/emulated/*) _u="${'$'}{_p#/mnt/installer/}"; _root="/mnt/installer/${'$'}{_u%%/*}/emulated" ;;
+                    /mnt/androidwritable/[0-9]*/emulated/*) _u="${'$'}{_p#/mnt/androidwritable/}"; _root="/mnt/androidwritable/${'$'}{_u%%/*}/emulated" ;;
+                    /mnt/pass_through/[0-9]*/emulated/*) _u="${'$'}{_p#/mnt/pass_through/}"; _root="/mnt/pass_through/${'$'}{_u%%/*}/emulated" ;;
+                    /mnt/runtime/*/emulated/*) _r="${'$'}{_p#/mnt/runtime/}"; _root="/mnt/runtime/${'$'}{_r%%/*}/emulated" ;;
+                    *) return 0 ;;
+                  esac
+                  [ -r "${'$'}_mi" ] || return 0
+                  _fst=${'$'}(T="${'$'}_root" awk -F ' - ' '{split(${'$'}1,L," ");split(${'$'}2,R," ");m=L[5];gsub(/\\040/," ",m);if(m==ENVIRON["T"])f=R[1]} END{print f}' "${'$'}_mi" 2>/dev/null)
+                  case "${'$'}_fst" in ""|tmpfs) return 1 ;; esac
+                  return 0
+                }
+                while IFS='|' read -r _src _tgt; do
+                  [ -n "${'$'}_src" ] && [ -n "${'$'}_tgt" ] || continue
+                  [ -d "${'$'}_src" ] || continue
+                  root_alive "${'$'}_tgt" || continue
+                  _parent=${'$'}{_tgt%/*}
+                  if [ -n "${'$'}_parent" ] && [ -d "${'$'}_parent" ]; then
+                    _pst=${'$'}(LC_ALL=C stat -t "${'$'}_parent" 2>&1)
+                    case "${'$'}_pst" in *"Transport endpoint"*) continue ;; esac
+                  fi
+                  _need=0
+                  if ! is_mp "${'$'}_tgt"; then
+                    _need=1
+                  else
+                    if [ "${'$'}_non_posix" -eq 0 ]; then
+                      _si=${'$'}(stat -c '%d:%i' "${'$'}_src" 2>/dev/null)
+                      _ti=${'$'}(stat -c '%d:%i' "${'$'}_tgt" 2>/dev/null)
+                      if [ -n "${'$'}_si" ] && [ "${'$'}_si" != "${'$'}_ti" ]; then _need=1; fi
+                    fi
+                    if [ -e "${'$'}_src/.mountx_canary" ] && [ ! -e "${'$'}_tgt/.mountx_canary" ]; then
+                      _need=1
+                    fi
+                    if [ "${'$'}_need" -eq 1 ]; then
+                      _c=0
+                      while [ ${'$'}_c -lt 16 ] && is_mp "${'$'}_tgt"; do
+                        umount "${'$'}_tgt" 2>/dev/null || umount -l "${'$'}_tgt" 2>/dev/null || break
+                        _c=${'$'}((_c+1))
+                      done
+                    fi
+                  fi
+                  if [ "${'$'}_need" -eq 1 ]; then
+                    mkdir -p "${'$'}_tgt" 2>/dev/null || continue
+                    if mount -o bind "${'$'}_src" "${'$'}_tgt" 2>/dev/null; then
+                      if [ "${'$'}_want_exec" -eq 1 ]; then
+                        mount -o remount,bind,exec "${'$'}_tgt" 2>/dev/null || mount -o remount,exec "${'$'}_tgt" 2>/dev/null
+                      fi
+                      busybox mount --make-rprivate "${'$'}_tgt" 2>/dev/null || mount --make-rprivate "${'$'}_tgt" 2>/dev/null
+                    fi
+                  else
+                    busybox mount --make-rprivate "${'$'}_tgt" 2>/dev/null || mount --make-rprivate "${'$'}_tgt" 2>/dev/null
+                  fi
+                done <<'__MX_PAIRS__'
+$pairLines
+__MX_PAIRS__
+__MX_Z_BIND__
+                done
+            """.trimIndent()
+            RootShell.execScript(script)
+        }
+
+        /**
+         * Resolves active emulated/runtime VFS namespaces backed by a live non-tmpfs storage filesystem
+         * (FUSE / sdcardfs / esdfs / lower `/data/media` when sdcardfs is absent) across Android 10–17.
+         */
+        suspend fun getTargetNamespaces(specificUserId: Int? = null): List<String> = withContext(Dispatchers.IO) {
+            repairDeadFuseAndCorruptedParents()
+            val userIds = if (specificUserId != null) listOf(specificUserId) else getActiveUserIds()
+            val uidArgs = userIds.joinToString(" ")
+            val script = """
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                _has_sdcardfs=0
+                grep -qw sdcardfs /proc/filesystems 2>/dev/null && _has_sdcardfs=1
+                _is_live_dir() {
+                  _cand="${'$'}1"
+                  _root="${'$'}2"
+                  [ -d "${'$'}_cand" ] && [ ! -L "${'$'}_cand" ] || return 1
+                  _st=${'$'}(LC_ALL=C stat -t "${'$'}_cand" 2>&1)
+                  case "${'$'}_st" in *"Transport endpoint"*) return 1 ;; esac
+                  [ -r "${'$'}_mi" ] || return 0
+                  _fst=${'$'}(C="${'$'}_cand" R="${'$'}_root" awk -F ' - ' '{
+                    split(${'$'}1, L, " "); split(${'$'}2, RT, " ");
+                    m = L[5]; gsub(/\\040/, " ", m);
+                    if (m == ENVIRON["C"] || m == ENVIRON["R"]) f = RT[1]
+                  } END { print f }' "${'$'}_mi" 2>/dev/null)
+                  case "${'$'}_fst" in
+                    ""|tmpfs) return 1 ;;
+                    *) return 0 ;;
+                  esac
+                }
+                for _u in $uidArgs; do
+                  for _r in \
+                    "/mnt/runtime/default/emulated" \
+                    "/mnt/runtime/read/emulated" \
+                    "/mnt/runtime/write/emulated" \
+                    "/mnt/runtime/full/emulated" \
+                    "/mnt/user/${'$'}_u/emulated" \
+                    "/mnt/installer/${'$'}_u/emulated" \
+                    "/mnt/androidwritable/${'$'}_u/emulated" \
+                    "/mnt/pass_through/${'$'}_u/emulated" \
+                    "/storage/emulated"; do
+                    _c="${'$'}_r/${'$'}_u"
+                    if _is_live_dir "${'$'}_c" "${'$'}_r"; then
+                      echo "${'$'}_c"
+                    fi
+                  done
+                  if [ "${'$'}_has_sdcardfs" -eq 0 ] && [ -d "/data/media/${'$'}_u" ] && [ ! -L "/data/media/${'$'}_u" ]; then
+                    echo "/data/media/${'$'}_u"
+                  fi
+                done | awk '!seen[${'$'}0]++'
+            """.trimIndent()
+            RootShell.execScript(script).output
+                .lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .toList()
+        }
+
+        /**
+         * Purges all active, nested, or stacked mounts matching a target path across PID 1 and Zygotes.
          */
         suspend fun sweepUnmountTarget(targetPath: String): Boolean = withContext(Dispatchers.IO) {
             if (targetPath.isBlank() || targetPath == "/" || targetPath == ".") return@withContext false
             val cleanTarget = targetPath.trimEnd('/')
             val rel = extractRelativePath(cleanTarget)
             val sweepScript = """
-                for i in 1 2; do
-                  has_mount=0
-                  while read dev mnt rest; do
-                    case "${'$'}mnt" in
-                      *"$cleanTarget"*${if (rel.isNotBlank()) " | *\"$rel\"*" else ""})
-                        umount -f -l "${'$'}mnt" 2>/dev/null
-                        has_mount=1
-                        ;;
-                    esac
-                  done < /proc/mounts
-                  if [ ${'$'}has_mount -eq 0 ]; then break; fi
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+                umount_all_ns() {
+                  umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null
+                  for _zp in ${'$'}_zpids; do
+                    [ -d "/proc/${'$'}_zp/ns" ] || continue
+                    nsenter --mount="/proc/${'$'}_zp/ns/mnt" -- sh -c 'umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null' _ "${'$'}1" 2>/dev/null
+                  done
+                }
+                for _i in 1 2; do
+                  _list=${'$'}(T="$cleanTarget" R="$rel" awk '{
+                    m=${'$'}5; gsub(/\\040/," ",m);
+                    if (m ~ /^(\/|\/data|\/storage|\/storage\/emulated|\/storage\/emulated\/[0-9]+|.*\/Android|.*\/Android\/(data|obb|media))${'$'}/) next;
+                    t=ENVIRON["T"]; r=ENVIRON["R"];
+                    if ((t != "" && index(m, t) > 0) || (r != "" && index(m, r) > 0)) print length(m), m
+                  }' "${'$'}_mi" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[${'$'}0]++')
+                  [ -z "${'$'}_list" ] && break
+                  echo "${'$'}_list" | while IFS= read -r _mnt; do
+                    [ -n "${'$'}_mnt" ] && umount_all_ns "${'$'}_mnt"
+                  done
                 done
             """.trimIndent()
             RootShell.execScript(sweepScript).isSuccess
         }
 
         /**
-         * Universal sweeping unmount: purge any remaining or stacked mounts for a package across all namespaces.
+         * Universal sweeping unmount: purge any remaining or stacked mounts for a package across PID 1 and Zygotes.
          */
         suspend fun sweepUnmountPackage(packageName: String): Boolean = withContext(Dispatchers.IO) {
             if (packageName.isBlank()) return@withContext false
             val sweepScript = """
-                for i in 1 2 3; do
-                  has_mount=0
-                  while read dev mnt rest; do
-                    case "${'$'}mnt" in
-                      *$packageName*)
-                        umount -f -l "${'$'}mnt" 2>/dev/null
-                        has_mount=1
-                        ;;
-                    esac
-                  done < /proc/mounts
-                  if [ ${'$'}has_mount -eq 0 ]; then break; fi
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+                umount_all_ns() {
+                  umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null
+                  for _zp in ${'$'}_zpids; do
+                    [ -d "/proc/${'$'}_zp/ns" ] || continue
+                    nsenter --mount="/proc/${'$'}_zp/ns/mnt" -- sh -c 'umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null' _ "${'$'}1" 2>/dev/null
+                  done
+                }
+                for _i in 1 2 3; do
+                  _list=${'$'}(P="$packageName" awk '{
+                    m=${'$'}5; gsub(/\\040/," ",m);
+                    if (index(m, ENVIRON["P"]) > 0) print length(m), m
+                  }' "${'$'}_mi" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[${'$'}0]++')
+                  [ -z "${'$'}_list" ] && break
+                  echo "${'$'}_list" | while IFS= read -r _mnt; do
+                    [ -n "${'$'}_mnt" ] && umount_all_ns "${'$'}_mnt"
+                  done
                 done
             """.trimIndent()
             RootShell.execScript(sweepScript).isSuccess
+        }
+
+        /**
+         * Safely unmounts one or more paths across PID 1 and Zygote namespaces using regular/lazy umount
+         * (`umount || umount -l`, NEVER `-f`), preventing F2FS `f2fs_umount_begin` `EIO` shutdowns.
+         */
+        suspend fun unmountSafeAcrossNamespaces(paths: List<String>) = withContext(Dispatchers.IO) {
+            val cleanPaths = paths.map { it.trimEnd('/') }.filter { it.isNotBlank() && it != "/" }.distinct()
+                .sortedByDescending { it.length }
+            if (cleanPaths.isEmpty()) return@withContext
+            val pathLines = cleanPaths.joinToString("\n")
+            val script = """
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+                while IFS= read -r _p; do
+                  [ -n "${'$'}_p" ] || continue
+                  _c=0
+                  while [ ${'$'}_c -lt 16 ] && T="${'$'}_p" awk '{m=${'$'}5;gsub(/\\040/," ",m);if(m==ENVIRON["T"]){f=1;exit}} END{exit !f}' "${'$'}_mi" 2>/dev/null; do
+                    umount "${'$'}_p" 2>/dev/null || umount -l "${'$'}_p" 2>/dev/null || break
+                    _c=${'$'}((_c+1))
+                  done
+                  for _zp in ${'$'}_zpids; do
+                    [ -d "/proc/${'$'}_zp/ns" ] || continue
+                    nsenter --mount="/proc/${'$'}_zp/ns/mnt" -- sh -s "${'$'}_p" <<'__MX_ZU__' 2>/dev/null
+                _t="${'$'}1"
+                _c=0
+                while [ "${'$'}_c" -lt 16 ] && T="${'$'}_t" awk '{m=${'$'}5;gsub(/\\040/," ",m);if(m==ENVIRON["T"]){f=1;exit}} END{exit !f}' /proc/self/mountinfo 2>/dev/null; do
+                  umount "${'$'}_t" 2>/dev/null || umount -l "${'$'}_t" 2>/dev/null || break
+                  _c=${'$'}((_c+1))
+                done
+__MX_ZU__
+                  done
+                done <<'__MX_UM__'
+$pathLines
+__MX_UM__
+            """.trimIndent()
+            RootShell.execScript(script)
+        }
+
+        /**
+         * Verifies all deduplicated real peer targets (e.g., `/data/user/<uid>/...`, `/data/data/...`,
+         * `/data_mirror/data_ce/null/<uid>/...`) are mounted cleanly once (`cnt == 1`) with matching
+         * source inode/device. If any peer is unmounted, stacked (`cnt > 1`), or mismatched, purges
+         * all layers across PID 1 and Zygote without `-f` and returns `false`.
+         */
+        suspend fun ensurePrivatePeerMountsReady(
+            peerTargets: List<String>,
+            expectedSource: String,
+            expectedDevice: String = "",
+            isContainer: Boolean = false,
+            isNonPosix: Boolean = false
+        ): Boolean = withContext(Dispatchers.IO) {
+            val cleanPeers = peerTargets.map { it.trimEnd('/') }.filter { it.isNotBlank() }.distinct()
+            if (cleanPeers.isEmpty()) return@withContext false
+            val peerLines = cleanPeers.joinToString("\n")
+            val isContFlag = if (isContainer) "1" else "0"
+            val isNonPosixFlag = if (isNonPosix) "1" else "0"
+            val checkScript = """
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                _src="$expectedSource"
+                _exp_dev="$expectedDevice"
+                _is_cont="$isContFlag"
+                _non_posix="$isNonPosixFlag"
+                _seen_canon=""
+                _ready=1
+                _src_ino=""
+                if [ "${'$'}_is_cont" -eq 0 ] && [ "${'$'}_non_posix" -eq 0 ] && [ -e "${'$'}_src" ]; then
+                  _src_ino=${'$'}(stat -c '%d:%i' "${'$'}_src" 2>/dev/null)
+                fi
+                while IFS= read -r _p; do
+                  [ -n "${'$'}_p" ] && [ -d "${'$'}_p" ] && [ ! -L "${'$'}_p" ] || continue
+                  _par=${'$'}{_p%/*}
+                  _cpar=${'$'}(readlink -f "${'$'}_par" 2>/dev/null || echo "${'$'}_par")
+                  _canon="${'$'}_cpar/${'$'}{_p##*/}"
+                  case "${'$'}_seen_canon" in *"|${'$'}_canon|"*) continue ;; esac
+                  _seen_canon="${'$'}_seen_canon|${'$'}_canon|"
+                  _info=${'$'}(T="${'$'}_p" awk -F ' - ' '{
+                    split(${'$'}1, L, " "); split(${'$'}2, R, " ");
+                    m = L[5]; gsub(/\\040/, " ", m);
+                    if (m == ENVIRON["T"]) { c++; src = R[2] }
+                  } END { print c+0 "|" src }' "${'$'}_mi" 2>/dev/null)
+                  _cnt=${'$'}{_info%%|*}
+                  _mdev=${'$'}{_info#*|}
+                  if [ "${'$'}_cnt" -ne 1 ]; then
+                    _ready=0; break
+                  fi
+                  if [ "${'$'}_is_cont" -eq 1 ]; then
+                    if [ -z "${'$'}_exp_dev" ] || [ "${'$'}_mdev" != "${'$'}_exp_dev" ]; then
+                      _ready=0; break
+                    fi
+                  elif [ -n "${'$'}_src_ino" ]; then
+                    _t_ino=${'$'}(stat -c '%d:%i' "${'$'}_p" 2>/dev/null)
+                    if [ "${'$'}_t_ino" != "${'$'}_src_ino" ]; then
+                      _ready=0; break
+                    fi
+                  fi
+                done <<'__MX_PEERS__'
+$peerLines
+__MX_PEERS__
+                if [ "${'$'}_ready" -eq 1 ]; then
+                  while IFS= read -r _p; do
+                    [ -n "${'$'}_p" ] && [ -d "${'$'}_p" ] && [ ! -L "${'$'}_p" ] || continue
+                    busybox mount --make-rprivate "${'$'}_p" 2>/dev/null || mount --make-rprivate "${'$'}_p" 2>/dev/null
+                  done <<'__MX_PEERS_RP__'
+$peerLines
+__MX_PEERS_RP__
+                  echo "READY"
+                else
+                  echo "PURGE"
+                fi
+            """.trimIndent()
+            val verdict = RootShell.execScript(checkScript).output.trim()
+            if (verdict == "READY") {
+                true
+            } else {
+                unmountSafeAcrossNamespaces(cleanPeers)
+                false
+            }
+        }
+
+        /**
+         * Atomically binds secondary peer directories (checking `/proc/1/mountinfo` right before each bind
+         * and skipping symlinked parents such as `/data/data -> /data/user/0`) so shared-peer groups
+         * never produce 2x/4x duplicate stacked mounts, and returns non-symlink `(bindSrc -> target)` pairs
+         * for Zygote namespace synchronization.
+         */
+        suspend fun bindSecondaryPrivatePeersAtomic(
+            primaryTarget: String,
+            secondaryTargets: List<String>,
+            bindSource: String,
+            seContext: String,
+            recursiveChcon: Boolean = false
+        ): List<Pair<String, String>> = withContext(Dispatchers.IO) {
+            val cleanSecondary = secondaryTargets.map { it.trimEnd('/') }.filter { it.isNotBlank() && it != primaryTarget.trimEnd('/') }.distinct()
+            val tgtLines = cleanSecondary.joinToString("\n")
+            val chconFlag = if (recursiveChcon) "-R" else ""
+            val script = """
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                _prim="${primaryTarget.trimEnd('/')}"
+                _bsrc="${bindSource.trimEnd('/')}"
+                _ctx="$seContext"
+                _prim_cpar=${'$'}(readlink -f "${'$'}{_prim%/*}" 2>/dev/null || echo "${'$'}{_prim%/*}")
+                _seen_canon="|${'$'}_prim_cpar/${'$'}{_prim##*/}|"
+                if [ "${'$'}_bsrc" != "${'$'}_prim" ]; then
+                  echo "${'$'}_bsrc|${'$'}_prim"
+                fi
+                while IFS= read -r _p; do
+                  [ -n "${'$'}_p" ] && [ -d "${'$'}_p" ] && [ ! -L "${'$'}_p" ] || continue
+                  _par=${'$'}{_p%/*}
+                  [ ! -L "${'$'}_par" ] || continue
+                  _cpar=${'$'}(readlink -f "${'$'}_par" 2>/dev/null || echo "${'$'}_par")
+                  _canon="${'$'}_cpar/${'$'}{_p##*/}"
+                  case "${'$'}_seen_canon" in *"|${'$'}_canon|"*) continue ;; esac
+                  _seen_canon="${'$'}_seen_canon|${'$'}_canon|"
+                  _cnt=${'$'}(T="${'$'}_p" awk '{m=${'$'}5;gsub(/\\040/," ",m);if(m==ENVIRON["T"])c++} END{print c+0}' "${'$'}_mi" 2>/dev/null)
+                  if [ "${'$'}_cnt" -eq 0 ]; then
+                    mount -o bind "${'$'}_bsrc" "${'$'}_p" 2>/dev/null
+                  fi
+                  busybox mount --make-rprivate "${'$'}_p" 2>/dev/null || mount --make-rprivate "${'$'}_p" 2>/dev/null
+                  if [ -n "${'$'}_ctx" ]; then
+                    chcon $chconFlag "${'$'}_ctx" "${'$'}_p" 2>/dev/null
+                  fi
+                  echo "${'$'}_bsrc|${'$'}_p"
+                done <<'__MX_SEC__'
+$tgtLines
+__MX_SEC__
+            """.trimIndent()
+            RootShell.execScript(script).output.lineSequence()
+                .mapNotNull { line ->
+                    val parts = line.split("|", limit = 2)
+                    if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) parts[0] to parts[1] else null
+                }
+                .toList()
+        }
+
+        /**
+         * Ensures a mounted virtual ext4 loop container (`loopDev`) and any secondary peer bind targets
+         * are present inside active Zygote namespaces.
+         */
+        suspend fun syncContainerTargetsToZygotes(
+            loopDev: String,
+            primaryTarget: String,
+            secondaryTargets: List<String> = emptyList(),
+            preserveExec: Boolean = false
+        ) = withContext(Dispatchers.IO) {
+            if (loopDev.isBlank() || primaryTarget.isBlank()) return@withContext
+            val cleanPrim = primaryTarget.trimEnd('/')
+            val secLines = secondaryTargets.map { it.trimEnd('/') }.filter { it.isNotBlank() && it != cleanPrim }.distinct().joinToString("\n")
+            val execFlag = if (preserveExec) "1" else "0"
+            val script = """
+                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+                [ -n "${'$'}_zpids" ] || exit 0
+                for _zp in ${'$'}_zpids; do
+                  [ -d "/proc/${'$'}_zp/ns" ] || continue
+                  nsenter --mount="/proc/${'$'}_zp/ns/mnt" -- sh -s "$loopDev" "$cleanPrim" "$execFlag" <<'__MX_ZC__' 2>/dev/null
+                _ldev="${'$'}1"
+                _prim="${'$'}2"
+                _want_exec="${'$'}3"
+                _mi=/proc/self/mountinfo
+                cur_src() {
+                  T="${'$'}1" awk -F ' - ' '{split(${'$'}1,L," ");split(${'$'}2,R," ");m=L[5];gsub(/\\040/," ",m);if(m==ENVIRON["T"])s=R[2]} END{print s}' "${'$'}_mi" 2>/dev/null
+                }
+                _pcur=${'$'}(cur_src "${'$'}_prim")
+                if [ "${'$'}_pcur" != "${'$'}_ldev" ]; then
+                  if [ -n "${'$'}_pcur" ]; then umount "${'$'}_prim" 2>/dev/null || umount -l "${'$'}_prim" 2>/dev/null; fi
+                  mkdir -p "${'$'}_prim" 2>/dev/null
+                  if [ "${'$'}_want_exec" -eq 1 ]; then
+                    mount -t ext4 -o rw,noatime "${'$'}_ldev" "${'$'}_prim" 2>/dev/null || mount -t ext4 -o ro "${'$'}_ldev" "${'$'}_prim" 2>/dev/null
+                    mount -o remount,exec "${'$'}_prim" 2>/dev/null
+                  else
+                    mount -t ext4 -o rw,nosuid,nodev,noatime "${'$'}_ldev" "${'$'}_prim" 2>/dev/null || mount -t ext4 -o ro "${'$'}_ldev" "${'$'}_prim" 2>/dev/null
+                  fi
+                  busybox mount --make-rprivate "${'$'}_prim" 2>/dev/null || mount --make-rprivate "${'$'}_prim" 2>/dev/null
+                fi
+                while IFS= read -r _sp; do
+                  [ -n "${'$'}_sp" ] && [ -d "${'$'}_sp" ] && [ ! -L "${'$'}_sp" ] || continue
+                  _scur=${'$'}(cur_src "${'$'}_sp")
+                  if [ -z "${'$'}_scur" ]; then
+                    mount -o bind "${'$'}_prim" "${'$'}_sp" 2>/dev/null
+                  fi
+                  busybox mount --make-rprivate "${'$'}_sp" 2>/dev/null || mount --make-rprivate "${'$'}_sp" 2>/dev/null
+                done <<'__MX_ZC_SEC__'
+$secLines
+__MX_ZC_SEC__
+__MX_ZC__
+                done
+            """.trimIndent()
+            RootShell.execScript(script)
         }
         /**
          * Resolves the Android user ID from an absolute storage path.
@@ -372,7 +830,14 @@ class MountManager(
         }
 
         fun extractRelativePath(path: String): String {
-            return path
+            val clean = path.trim()
+            val androidIdx = clean.indexOf("/Android/")
+            if (androidIdx >= 0) {
+                return clean.substring(androidIdx + 1)
+            }
+            return clean
+                .replace(Regex("^/mnt/user/\\d+/emulated/\\d+/?"), "")
+                .replace(Regex("^/mnt/(?:runtime/(?:default|read|write|full)|pass_through/\\d+|installer/\\d+|androidwritable/\\d+)/emulated/\\d+/?"), "")
                 .replace(Regex("^/(?:storage/emulated|data/media|mnt/user)(?:/\\d+)?(?:/primary)?/?"), "")
                 .removePrefix("/sdcard/")
                 .removePrefix("/")
@@ -429,6 +894,8 @@ class MountManager(
         onProgress: ((OperationProgress) -> Unit)? = null,
         autoCreateSource: Boolean = false
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        mountOperationMutex.withLock {
+        RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 15_000L, waitForWatchdogUnlockGrace = false)
         runCatching {
             val ctx = getAppContext()
             val steps = listOf(
@@ -638,7 +1105,10 @@ class MountManager(
                 if (mp.category == MountPointCategory.EXTERNAL_DATA || mp.category == MountPointCategory.OBB_STORAGE || mp.category == MountPointCategory.GAME_ASSETS || mp.category == MountPointCategory.CUSTOM) {
                     val srcExists = RootShell.exists(mp.sourcePath)
                     val targetExists = RootShell.exists(mp.targetPath)
-                    val targetMounted = RootShell.isMountpoint(mp.targetPath)
+                    val relCheck = extractRelativePath(mp.targetPath)
+                    val uidCheck = resolveUserId(mp.targetPath)
+                    val targetMounted = RootShell.isMountpoint(mp.targetPath) ||
+                        (relCheck.isNotBlank() && RootShell.isMountpoint("/storage/emulated/$uidCheck/$relCheck"))
 
                     // Fast Path: Check unmigrated internal target size first.
                     // If target doesn't exist, is already mounted, or is merely a skeleton (<= 512KB),
@@ -656,11 +1126,32 @@ class MountManager(
                         continue
                     }
 
-                    // Only when internal target contains substantive unmigrated data (> 512KB), inspect source on MicroSD:
-                    val srcSizeKb = if (srcExists) {
-                        val duRes = RootShell.exec("du -sk \"${mp.sourcePath}\" 2>/dev/null")
-                        duRes.output.trim().split(Regex("\\s+")).getOrNull(0)?.toLongOrNull() ?: 0L
-                    } else 0L
+                    // Fast bounded probe on SD source (<10ms even on 50GB+ games):
+                    // Prevents slow `du -sk` timeouts during boot I/O from falsely reporting 0KB on populated SD dirs.
+                    val srcHasSubstantiveFiles = if (srcExists) {
+                        val fastProbe = RootShell.exec(
+                            "if [ -n \"\$(find \"${mp.sourcePath}\" -maxdepth 4 -type f -size +128k 2>/dev/null | head -n 1)\" ]; then echo 1; " +
+                                "elif [ \"\$(find \"${mp.sourcePath}\" -maxdepth 4 -type f 2>/dev/null | head -n 6 | wc -l)\" -ge 6 ]; then echo 1; " +
+                                "else echo 0; fi"
+                        )
+                        fastProbe.output.trim() == "1"
+                    } else false
+
+                    if (srcHasSubstantiveFiles) {
+                        // SD source is proven populated with substantive files; skip slow full-tree du scan
+                        continue
+                    }
+
+                    // Only when SD source did not pass the fast substantive check, measure exact size:
+                    val srcDuRes = if (srcExists) {
+                        RootShell.exec("du -sk \"${mp.sourcePath}\" 2>/dev/null", timeoutMillis = 30_000L)
+                    } else null
+                    if (srcDuRes != null && srcDuRes.code == 124) {
+                        // `du` timed out scanning a huge directory tree -> definitely not empty
+                        AppLogger.warn("MountManager", "Occlusion guard du timed out on ${mp.sourcePath}; assuming populated directory.")
+                        continue
+                    }
+                    val srcSizeKb = srcDuRes?.output?.trim()?.split(Regex("\\s+"))?.getOrNull(0)?.toLongOrNull() ?: 0L
 
                     val isSourceMissingOrEmpty = !srcExists || srcSizeKb <= 128L
                     val isTargetSubstantiallyLarger = targetSizeKb > 512L && (targetSizeKb > srcSizeKb * 2L)
@@ -693,17 +1184,18 @@ class MountManager(
 
                     if (requestedDev.isNotBlank() && activeDev != requestedDev && activeUuid != null && requestedUuid != null && activeUuid != requestedUuid) {
                         AppLogger.warn("MountManager", "SWITCHING DISK MOUNT: ${game.packageName} target ${mp.targetPath} is mounted from $activeDev ($activeUuid), switching to $requestedDev ($requestedUuid). Unmounting previous device mount cleanly...")
+                        val pathsToClean = mutableListOf(mp.targetPath)
                         if (mp.isExternalStorageCategory()) {
                             val relPath = extractRelativePath(mp.targetPath)
                             if (relPath.isNotBlank()) {
                                 val targetUserId = resolveUserId(mp.targetPath)
                                 val userNamespaces = getTargetNamespaces(targetUserId)
                                 for (ns in userNamespaces) {
-                                    RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                                    pathsToClean.add("$ns/$relPath")
                                 }
                             }
                         }
-                        RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                        unmountSafeAcrossNamespaces(pathsToClean)
                     }
                 }
             }
@@ -758,7 +1250,21 @@ class MountManager(
                         }
                         MountPointCategory.CACHE_SHADERS -> {
                             if (mp.targetPath.startsWith("/data/user/") || mp.targetPath.startsWith("/data/data/")) {
-                                val parentContext = RootShell.execForOutput("stat -c %C \"/data/user/0/${game.packageName}\" 2>/dev/null").trim()
+                                val pkgUserPrefix = "/data/user/$targetUserId/${game.packageName}/"
+                                val pkgDataPrefix = "/data/data/${game.packageName}/"
+                                val cacheRelSuffix = mp.targetPath.trimEnd('/')
+                                    .removePrefix(pkgUserPrefix)
+                                    .removePrefix(pkgDataPrefix)
+                                    .trimStart('/')
+                                    .ifBlank { "cache" }
+                                val primaryCacheTarget = "/data/user/$targetUserId/${game.packageName}/$cacheRelSuffix"
+                                val secondaryCacheTargets = listOfNotNull(
+                                    if (targetUserId == 0) "/data/data/${game.packageName}/$cacheRelSuffix" else null,
+                                    "/data_mirror/data_ce/null/$targetUserId/${game.packageName}/$cacheRelSuffix"
+                                )
+                                val allCachePeers = (listOf(mp.targetPath.trimEnd('/'), primaryCacheTarget) + secondaryCacheTargets).distinct()
+
+                                val parentContext = RootShell.execForOutput("stat -c %C \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null").trim()
                                 val cacheContext = if (parentContext.isNotBlank() && parentContext.contains("app_data_file")) {
                                     parentContext
                                 } else {
@@ -780,9 +1286,9 @@ class MountManager(
                                     ensureSparseContainerCapacity(candImg, sdBase, isFat32 = false)
                                     val loopDev = attachLoopDevice(candImg)
                                     if (loopDev.isNotEmpty()) {
-                                        RootShell.exec("mkdir -p \"${mp.targetPath}\" 2>/dev/null")
-                                        val alreadyReady = ensureMountSlotReady(
-                                            target = mp.targetPath,
+                                        RootShell.exec("mkdir -p \"$primaryCacheTarget\" 2>/dev/null")
+                                        val alreadyReady = ensurePrivatePeerMountsReady(
+                                            peerTargets = allCachePeers,
                                             expectedSource = candImg,
                                             expectedDevice = loopDev,
                                             isContainer = true
@@ -790,30 +1296,29 @@ class MountManager(
                                         val mountedOk = if (alreadyReady) {
                                             true
                                         } else {
-                                            val res = RootShell.exec("mount -t ext4 -o rw,nosuid,nodev,noatime,discard \"$loopDev\" \"${mp.targetPath}\" 2>/dev/null || mount -t ext4 \"$loopDev\" \"${mp.targetPath}\" 2>/dev/null")
-                                            res.isSuccess || RootShell.isMountpoint(mp.targetPath)
+                                            val res = RootShell.exec("mount -t ext4 -o rw,nosuid,nodev,noatime,discard \"$loopDev\" \"$primaryCacheTarget\" 2>/dev/null || mount -t ext4 \"$loopDev\" \"$primaryCacheTarget\" 2>/dev/null")
+                                            res.isSuccess || RootShell.isMountpoint(primaryCacheTarget)
                                         }
                                         if (mountedOk) {
                                             if (!alreadyReady) {
-                                                RootShell.exec(RootShell.makeRprivateCmd(mp.targetPath))
-                                                RootShell.exec("chown -R $uid:$gid \"${mp.targetPath}\" 2>/dev/null")
-                                                RootShell.exec("chmod 700 \"${mp.targetPath}\" 2>/dev/null && chmod -R u+rwX,go-rwx \"${mp.targetPath}\" 2>/dev/null")
-                                                RootShell.exec("chcon -R \"$cacheContext\" \"${mp.targetPath}\" 2>/dev/null")
+                                                RootShell.exec(RootShell.makeRprivateCmd(primaryCacheTarget))
+                                                RootShell.exec("chown -R $uid:$gid \"$primaryCacheTarget\" 2>/dev/null")
+                                                RootShell.exec("chmod 700 \"$primaryCacheTarget\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$primaryCacheTarget\" 2>/dev/null")
+                                                RootShell.exec("chcon -R \"$cacheContext\" \"$primaryCacheTarget\" 2>/dev/null")
                                             }
-                                            val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
-                                                mp.targetPath.replace("/data/user/0/", "/data/data/")
-                                            } else if (mp.targetPath.startsWith("/data/data/")) {
-                                                mp.targetPath.replace("/data/data/", "/data/user/0/")
-                                            } else null
-                                            if (altTarget != null && RootShell.exists(altTarget) && !RootShell.isMountpoint(altTarget)) {
-                                                RootShell.exec("mount -o bind \"${mp.targetPath}\" \"$altTarget\" 2>/dev/null && ${RootShell.makeRprivateCmd(altTarget)}")
-                                                RootShell.exec("chcon -R \"$cacheContext\" \"$altTarget\" 2>/dev/null")
-                                            }
-                                            val ceCacheTarget = "/data_mirror/data_ce/null/0/${game.packageName}/cache"
-                                            if (RootShell.exists(ceCacheTarget) && !RootShell.isMountpoint(ceCacheTarget)) {
-                                                RootShell.exec("mount -o bind \"${mp.targetPath}\" \"$ceCacheTarget\" 2>/dev/null && ${RootShell.makeRprivateCmd(ceCacheTarget)}")
-                                                RootShell.exec("chcon -R \"$cacheContext\" \"$ceCacheTarget\" 2>/dev/null")
-                                            }
+                                            bindSecondaryPrivatePeersAtomic(
+                                                primaryTarget = primaryCacheTarget,
+                                                secondaryTargets = secondaryCacheTargets,
+                                                bindSource = primaryCacheTarget,
+                                                seContext = cacheContext,
+                                                recursiveChcon = !alreadyReady
+                                            )
+                                            syncContainerTargetsToZygotes(
+                                                loopDev = loopDev,
+                                                primaryTarget = primaryCacheTarget,
+                                                secondaryTargets = secondaryCacheTargets,
+                                                preserveExec = false
+                                            )
                                             true
                                         } else {
                                             detachLoopDevice(candImg)
@@ -822,12 +1327,11 @@ class MountManager(
                                     } else false
                                 } else {
                                     val finalSrc = if (RootShell.exists(candNative)) candNative else mp.sourcePath
-                                    RootShell.exec("mkdir -p \"$finalSrc\" 2>/dev/null")
-                                    RootShell.exec("mkdir -p \"${mp.targetPath}\" 2>/dev/null")
+                                    RootShell.exec("mkdir -p \"$finalSrc\" \"$primaryCacheTarget\" 2>/dev/null")
                                     val fsType = RootShell.execForOutput("stat -f -c %T \"$finalSrc\" 2>/dev/null").trim().lowercase()
                                     val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || finalSrc.startsWith("/mnt/media_rw")
-                                    val alreadyReady = ensureMountSlotReady(
-                                        target = mp.targetPath,
+                                    val alreadyReady = ensurePrivatePeerMountsReady(
+                                        peerTargets = allCachePeers,
                                         expectedSource = finalSrc,
                                         isNonPosix = isNonPosix
                                     )
@@ -839,30 +1343,24 @@ class MountManager(
                                             RootShell.exec("chmod 700 \"$finalSrc\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$finalSrc\" 2>/dev/null")
                                             RootShell.exec("chcon -R \"$cacheContext\" \"$finalSrc\" 2>/dev/null")
                                         }
-                                        val res = RootShell.exec("mount -o bind \"$finalSrc\" \"${mp.targetPath}\"")
-                                        res.isSuccess || RootShell.isMountpoint(mp.targetPath)
+                                        val res = RootShell.exec("mount -o bind \"$finalSrc\" \"$primaryCacheTarget\"")
+                                        res.isSuccess || RootShell.isMountpoint(primaryCacheTarget)
                                     }
                                     if (mountedOk) {
                                         if (!alreadyReady) {
-                                            RootShell.exec(RootShell.makeRprivateCmd(mp.targetPath))
-                                            RootShell.exec("chown -R $uid:$gid \"${mp.targetPath}\" 2>/dev/null")
-                                            RootShell.exec("chmod 700 \"${mp.targetPath}\" 2>/dev/null && chmod -R u+rwX,go-rwx \"${mp.targetPath}\" 2>/dev/null")
-                                            RootShell.exec("chcon -R \"$cacheContext\" \"${mp.targetPath}\" 2>/dev/null")
+                                            RootShell.exec(RootShell.makeRprivateCmd(primaryCacheTarget))
+                                            RootShell.exec("chown -R $uid:$gid \"$primaryCacheTarget\" 2>/dev/null")
+                                            RootShell.exec("chmod 700 \"$primaryCacheTarget\" 2>/dev/null && chmod -R u+rwX,go-rwx \"$primaryCacheTarget\" 2>/dev/null")
+                                            RootShell.exec("chcon -R \"$cacheContext\" \"$primaryCacheTarget\" 2>/dev/null")
                                         }
-                                        val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
-                                            mp.targetPath.replace("/data/user/0/", "/data/data/")
-                                        } else if (mp.targetPath.startsWith("/data/data/")) {
-                                            mp.targetPath.replace("/data/data/", "/data/user/0/")
-                                        } else null
-                                        if (altTarget != null && RootShell.exists(altTarget) && !RootShell.isMountpoint(altTarget)) {
-                                            RootShell.exec("mount -o bind \"$finalSrc\" \"$altTarget\" 2>/dev/null && ${RootShell.makeRprivateCmd(altTarget)}")
-                                            RootShell.exec("chcon -R \"$cacheContext\" \"$altTarget\" 2>/dev/null")
-                                        }
-                                        val ceCacheTarget = "/data_mirror/data_ce/null/0/${game.packageName}/cache"
-                                        if (RootShell.exists(ceCacheTarget) && !RootShell.isMountpoint(ceCacheTarget)) {
-                                            RootShell.exec("mount -o bind \"$finalSrc\" \"$ceCacheTarget\" 2>/dev/null && ${RootShell.makeRprivateCmd(ceCacheTarget)}")
-                                            RootShell.exec("chcon -R \"$cacheContext\" \"$ceCacheTarget\" 2>/dev/null")
-                                        }
+                                        val zPairs = bindSecondaryPrivatePeersAtomic(
+                                            primaryTarget = primaryCacheTarget,
+                                            secondaryTargets = secondaryCacheTargets,
+                                            bindSource = finalSrc,
+                                            seContext = cacheContext,
+                                            recursiveChcon = !alreadyReady
+                                        )
+                                        syncBindTargetsToZygotes(zPairs, isNonPosix = isNonPosix)
                                         true
                                     } else {
                                         false
@@ -986,6 +1484,10 @@ class MountManager(
                                     RootShell.exec("[ -f \"$finalTarget/.mountx_canary\" ] && chmod 644 \"$finalTarget/.mountx_canary\" 2>/dev/null")
                                     RootShell.exec("chcon -R u:object_r:apk_data_file:s0 \"$finalTarget\" 2>/dev/null")
                                 }
+                                val appZygoteBindPairs = mutableListOf<Pair<String, String>>()
+                                if (!isContainer) {
+                                    appZygoteBindPairs.add(finalSource to finalTarget)
+                                }
                                 if (heldInternalLib) {
                                     RootShell.exec("mkdir -p \"$finalTarget/lib\" 2>/dev/null && mount -o bind \"$libHoldDir\" \"$finalTarget/lib\" 2>/dev/null && ${RootShell.makeRprivateCmd("$finalTarget/lib")}")
                                     RootShell.exec("umount -l \"$libHoldDir\" 2>/dev/null && rmdir \"$libHoldDir\" 2>/dev/null")
@@ -999,7 +1501,19 @@ class MountManager(
                                         RootShell.execForOutput("find \"$resolvedSdLib\" -name '*.so' 2>/dev/null | head -n 1").trim().isNotBlank()
                                     ) {
                                         RootShell.exec("touch \"$resolvedSdLib/.mountx_canary\" 2>/dev/null && mkdir -p \"$finalTarget/lib/$libAbi\" 2>/dev/null && mount -o bind \"$resolvedSdLib\" \"$finalTarget/lib/$libAbi\" 2>/dev/null && mount -o remount,bind,exec \"$finalTarget/lib/$libAbi\" 2>/dev/null && ${RootShell.makeRprivateCmd("$finalTarget/lib/$libAbi")} && chown -R 1000:1000 \"$finalTarget/lib/$libAbi\" 2>/dev/null && chmod -R 755 \"$finalTarget/lib/$libAbi\" 2>/dev/null && [ -f \"$finalTarget/lib/$libAbi/.mountx_canary\" ] && chmod 644 \"$finalTarget/lib/$libAbi/.mountx_canary\" 2>/dev/null")
+                                        appZygoteBindPairs.add(resolvedSdLib to "$finalTarget/lib/$libAbi")
+                                    } else if (RootShell.exists(resolvedSdLib) && RootShell.isMountpoint("$finalTarget/lib/$libAbi")) {
+                                        appZygoteBindPairs.add(resolvedSdLib to "$finalTarget/lib/$libAbi")
                                     }
+                                }
+                                if (isContainer) {
+                                    val loopDev = attachLoopDevice(candImg)
+                                    if (loopDev.isNotBlank()) {
+                                        syncContainerTargetsToZygotes(loopDev, finalTarget, preserveExec = true)
+                                    }
+                                }
+                                if (appZygoteBindPairs.isNotEmpty()) {
+                                    syncBindTargetsToZygotes(appZygoteBindPairs, isNonPosix = false, preserveExec = true)
                                 }
                                 true
                             } else {
@@ -1049,69 +1563,27 @@ class MountManager(
                 }
 
                 if (hasData) {
-                    val fsType = RootShell.execForOutput("stat -f -c %T \"$dataSrcPath\" 2>/dev/null").trim().lowercase()
-                    val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || dataSrcPath.startsWith("/mnt/media_rw")
-                    if (!isNonPosix) {
-                        RootShell.exec("chown $uid:1023 \"$dataSrcPath\" 2>/dev/null")
-                        RootShell.exec("chmod 777 \"$dataSrcPath\" 2>/dev/null")
-                        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
-                    }
-                    RootShell.exec("touch \"$dataSrcPath/.mountx_canary\" 2>/dev/null")
-                    if (RootShell.isMountpoint("/data/media/$appUserId/$dataRelPath")) {
-                        RootShell.exec("umount -f -l \"/data/media/$appUserId/$dataRelPath\" 2>/dev/null")
-                    }
-
-                    for (namespace in namespaces) {
-                        val targetPath = "$namespace/$dataRelPath"
-                        if (RootShell.exists("$namespace/Android/data")) {
-                            if (!RootShell.isMountpoint(targetPath)) {
-                                RootShell.exec("mkdir -p \"$targetPath\" 2>/dev/null")
-                                val mountRes = RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
-                                if (!mountRes.isSuccess && !RootShell.isMountpoint(targetPath)) {
-                                    RootShell.exec("chmod 775 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chown $uid:$gid \"$targetPath\" 2>/dev/null")
-                                    if (!isNonPosix) {
-                                        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$dataSrcPath\" 2>/dev/null")
-                                    }
-                                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("mount -o bind \"$dataSrcPath\" \"$targetPath\" 2>/dev/null")
-                                }
-                                RootShell.exec(RootShell.makeRprivateCmd(targetPath))
-                            }
-                        }
-                    }
+                    bindDirectoryToNamespaces(
+                        sourcePath = dataSrcPath,
+                        targetPath = "/storage/emulated/$appUserId/$dataRelPath",
+                        uid = uid,
+                        gid = gid,
+                        namespaces = namespaces,
+                        autoCreateSource = false,
+                        fallbackChmod = "775"
+                    )
                 }
 
                 if (hasObb) {
-                    val fsType = RootShell.execForOutput("stat -f -c %T \"$obbSrcPath\" 2>/dev/null").trim().lowercase()
-                    val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || obbSrcPath.startsWith("/mnt/media_rw")
-                    if (!isNonPosix) {
-                        RootShell.exec("chown $uid:1023 \"$obbSrcPath\" 2>/dev/null")
-                        RootShell.exec("chmod 777 \"$obbSrcPath\" 2>/dev/null")
-                        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
-                    }
-                    RootShell.exec("touch \"$obbSrcPath/.mountx_canary\" 2>/dev/null")
-                    if (RootShell.isMountpoint("/data/media/$appUserId/$obbRelPath")) {
-                        RootShell.exec("umount -f -l \"/data/media/$appUserId/$obbRelPath\" 2>/dev/null")
-                    }
-
-                    for (namespace in namespaces) {
-                        val targetPath = "$namespace/$obbRelPath"
-                        if (RootShell.exists("$namespace/Android")) {
-                            if (!RootShell.isMountpoint(targetPath)) {
-                                RootShell.exec("mkdir -p \"$namespace/Android/obb\" \"$targetPath\" 2>/dev/null")
-                                val mountRes = RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
-                                if (!mountRes.isSuccess && !RootShell.isMountpoint(targetPath)) {
-                                    RootShell.exec("chmod 775 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chown $uid:$gid \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$obbSrcPath\" 2>/dev/null")
-                                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$targetPath\" 2>/dev/null")
-                                    RootShell.exec("mount -o bind \"$obbSrcPath\" \"$targetPath\" 2>/dev/null")
-                                }
-                                RootShell.exec(RootShell.makeRprivateCmd(targetPath))
-                            }
-                        }
-                    }
+                    bindDirectoryToNamespaces(
+                        sourcePath = obbSrcPath,
+                        targetPath = "/storage/emulated/$appUserId/$obbRelPath",
+                        uid = uid,
+                        gid = gid,
+                        namespaces = namespaces,
+                        autoCreateSource = false,
+                        fallbackChmod = "775"
+                    )
                 }
             }
 
@@ -1161,6 +1633,7 @@ class MountManager(
                 )
             )
         }
+        }
     }
 
     /**
@@ -1173,62 +1646,101 @@ class MountManager(
         namespaces: List<String>,
         isMedia: Boolean,
         autoCreateSource: Boolean = true
-    ): Boolean {
-        val fsType = RootShell.execForOutput("stat -f -c %T \"${mp.sourcePath}\" 2>/dev/null").trim().lowercase()
-        val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || mp.sourcePath.startsWith("/mnt/media_rw")
+    ): Boolean = bindDirectoryToNamespaces(
+        sourcePath = mp.sourcePath,
+        targetPath = mp.targetPath,
+        uid = uid,
+        gid = gid,
+        namespaces = namespaces,
+        autoCreateSource = autoCreateSource
+    )
 
-        if (!RootShell.exists(mp.sourcePath)) {
+    private suspend fun bindDirectoryToNamespaces(
+        sourcePath: String,
+        targetPath: String,
+        uid: Int,
+        gid: Int,
+        namespaces: List<String>,
+        autoCreateSource: Boolean = true,
+        fallbackChmod: String = "775"
+    ): Boolean {
+        val fsType = RootShell.execForOutput("stat -f -c %T \"$sourcePath\" 2>/dev/null").trim().lowercase()
+        val isNonPosix = fsType in listOf("exfat", "vfat", "msdos", "ntfs") || sourcePath.startsWith("/mnt/media_rw")
+
+        if (!RootShell.exists(sourcePath)) {
             if (autoCreateSource) {
-                AppLogger.info("MountManager", "Source path ${mp.sourcePath} does not exist on target storage. Creating directory for direct mount.")
-                RootShell.exec("mkdir -p \"${mp.sourcePath}\" 2>/dev/null")
+                AppLogger.info("MountManager", "Source path $sourcePath does not exist on target storage. Creating directory for direct mount.")
+                RootShell.exec("mkdir -p \"$sourcePath\" 2>/dev/null")
                 if (!isNonPosix) {
-                    RootShell.exec("chown $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
-                    RootShell.exec("chmod 777 \"${mp.sourcePath}\" 2>/dev/null")
-                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                    RootShell.exec("chown $uid:1023 \"$sourcePath\" 2>/dev/null")
+                    RootShell.exec("chmod 777 \"$sourcePath\" 2>/dev/null")
+                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$sourcePath\" 2>/dev/null")
                 }
-                RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
+                RootShell.exec("touch \"$sourcePath/.mountx_canary\" 2>/dev/null")
             } else {
-                AppLogger.warn("MountManager", "Source path ${mp.sourcePath} does not exist on SD storage. Skipping mount to prevent hiding internal data.")
+                AppLogger.warn("MountManager", "Source path $sourcePath does not exist on SD storage. Skipping mount to prevent hiding internal data.")
                 return false
             }
         } else {
             if (!isNonPosix) {
-                RootShell.exec("chown $uid:1023 \"${mp.sourcePath}\" 2>/dev/null")
-                RootShell.exec("chmod 777 \"${mp.sourcePath}\" 2>/dev/null")
-                RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                RootShell.exec("chown $uid:1023 \"$sourcePath\" 2>/dev/null")
+                RootShell.exec("chmod 777 \"$sourcePath\" 2>/dev/null")
+                RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$sourcePath\" 2>/dev/null")
             }
-            RootShell.exec("touch \"${mp.sourcePath}/.mountx_canary\" 2>/dev/null")
+            RootShell.exec("touch \"$sourcePath/.mountx_canary\" 2>/dev/null")
         }
 
         // Extract relative path from target path across any user profile
-        val relPath = extractRelativePath(mp.targetPath)
-        val targetUserId = resolveUserId(mp.targetPath)
-        if (relPath.isBlank()) {
-            AppLogger.error("MountManager", "Cannot mount to empty relative path for target: ${mp.targetPath}")
+        val relPath = extractRelativePath(targetPath)
+        val targetUserId = resolveUserId(targetPath)
+        if (isUnsafeBindRelativePath(relPath)) {
+            AppLogger.error("MountManager", "Refusing unsafe/empty relative bind path '$relPath' for target: $targetPath")
             return false
         }
 
-        // Clear any preexisting /data/media mount point to prevent sdcardfs EXDEV (Cross-device link) error
-        // When /data/media has an active mount on another filesystem, sdcardfs on /storage/emulated
-        // throws EXDEV on any pathname lookup for that child directory.
-        if (RootShell.isMountpoint("/data/media/$targetUserId/$relPath")) {
-            RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
+        // Clear any preexisting /data/media mount point ONLY when kernel sdcardfs is active (prevents EXDEV error).
+        val hasSdcardfs = RootShell.execForOutput("grep -w sdcardfs /proc/filesystems 2>/dev/null").isNotBlank()
+        if (hasSdcardfs && RootShell.isMountpoint("/data/media/$targetUserId/$relPath")) {
+            unmountSafeAcrossNamespaces(listOf("/data/media/$targetUserId/$relPath"))
         }
 
         // Pre-resolve source block device once
-        val reqDev = RootShell.execForOutput("df \"${mp.sourcePath}\" 2>/dev/null").lines()
+        val reqDev = RootShell.execForOutput("df \"$sourcePath\" 2>/dev/null").lines()
             .getOrNull(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
 
         var anyMounted = false
         for (namespace in namespaces) {
             val nsTarget = "$namespace/$relPath"
             if (RootShell.exists(namespace)) {
+                // Guard parent directory against dead FUSE ENOTCONN or corrupted MountX parent occlusion
+                val guardScript = """
+                    _ns="$namespace"
+                    _tgt="$nsTarget"
+                    _par=${'$'}{_tgt%/*}
+                    _st=${'$'}(LC_ALL=C stat -t "${'$'}_ns" 2>&1)
+                    case "${'$'}_st" in *"Transport endpoint"*) echo "ENOTCONN"; exit 0 ;; esac
+                    if [ -d "${'$'}_par" ]; then
+                      _pst=${'$'}(LC_ALL=C stat -t "${'$'}_par" 2>&1)
+                      case "${'$'}_pst" in *"Transport endpoint"*) echo "ENOTCONN"; exit 0 ;; esac
+                      _mi=/proc/1/mountinfo; [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                      _bad=${'$'}(P="${'$'}_par" awk -F ' - ' '{split(${'$'}1,L," ");m=L[5];gsub(/\\040/," ",m);if(m==ENVIRON["P"] && L[4]~/(^|\/)MountX(\/|${'$'})/){f=1;exit}} END{print f+0}' "${'$'}_mi" 2>/dev/null)
+                      if [ "${'$'}_bad" -eq 1 ]; then echo "OCCLUDED"; exit 0; fi
+                    fi
+                    echo "OK"
+                """.trimIndent()
+                val guardStatus = RootShell.execScript(guardScript).output.trim()
+                if (guardStatus != "OK") {
+                    AppLogger.warn("MountManager", "Parent guard blocked mkdir/bind on $nsTarget ($guardStatus); running FUSE/parent repair.")
+                    repairDeadFuseAndCorruptedParents()
+                    continue
+                }
+
                 val alreadyReady = ensureMountSlotReady(
                     target = nsTarget,
-                    expectedSource = mp.sourcePath,
+                    expectedSource = sourcePath,
                     expectedDevice = reqDev,
                     isNonPosix = isNonPosix,
-                    canarySourceDir = mp.sourcePath
+                    canarySourceDir = sourcePath
                 )
                 if (alreadyReady) {
                     anyMounted = true
@@ -1236,25 +1748,27 @@ class MountManager(
                 }
                 RootShell.exec("mkdir -p \"$nsTarget\" 2>/dev/null")
                 var mountRes = if (isNonPosix) {
-                    val sdRes = RootShell.exec("toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid=$uid,mask=0 \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                    val sdRes = RootShell.exec("toybox mount -t sdcardfs -o fsuid=1023,fsgid=1023,gid=$uid,mask=0 \"$sourcePath\" \"$nsTarget\" 2>/dev/null")
                     if (sdRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
                         sdRes
                     } else {
-                        RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                        RootShell.exec("mount -o bind \"$sourcePath\" \"$nsTarget\" 2>/dev/null")
                     }
                 } else {
-                    RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                    RootShell.exec("mount -o bind \"$sourcePath\" \"$nsTarget\" 2>/dev/null")
                 }
 
                 // SELinux and Permission Self-Healing Fallback
                 if (!mountRes.isSuccess && !RootShell.isMountpoint(nsTarget)) {
                     AppLogger.warn("MountManager", "Bind mount initially failed on $nsTarget. Executing SELinux and permission self-healing...")
-                    RootShell.exec("chmod 775 \"$nsTarget\" 2>/dev/null")
+                    RootShell.exec("chmod $fallbackChmod \"$nsTarget\" 2>/dev/null")
                     RootShell.exec("chown $uid:$gid \"$nsTarget\" 2>/dev/null")
-                    RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"${mp.sourcePath}\" 2>/dev/null")
+                    if (!isNonPosix) {
+                        RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$sourcePath\" 2>/dev/null")
+                    }
                     RootShell.exec("chcon u:object_r:media_rw_data_file:s0 \"$nsTarget\" 2>/dev/null")
 
-                    mountRes = RootShell.exec("mount -o bind \"${mp.sourcePath}\" \"$nsTarget\" 2>/dev/null")
+                    mountRes = RootShell.exec("mount -o bind \"$sourcePath\" \"$nsTarget\" 2>/dev/null")
                     if (mountRes.isSuccess || RootShell.isMountpoint(nsTarget)) {
                         AppLogger.info("MountManager", "Self-healing succeeded: bind mount established on $nsTarget")
                     } else {
@@ -1269,21 +1783,24 @@ class MountManager(
             }
         }
 
-        // Also inject into Zygote namespaces so newly forked apps inherit the mount immediately
-        val zygotePids = RootShell.execForOutput("pidof zygote64 zygote 2>/dev/null").split(Regex("\\s+")).filter { it.isNotBlank() }
-        for (zpid in zygotePids) {
-            for (rt in listOf("default", "read", "write", "full")) {
-                val zTarget = "/mnt/runtime/$rt/emulated/$targetUserId/$relPath"
-                val zSafeTarget = zTarget.trimEnd('/').replace("'", "'\\''")
-                val zSafeSrc = mp.sourcePath.replace("'", "'\\''")
-                RootShell.exec(
-                    "nsenter --mount=/proc/$zpid/ns/mnt -- sh -c 'if [ -d \"/mnt/runtime/$rt/emulated/$targetUserId\" ]; then need=0; is_mp() { if [ -r /proc/self/mountinfo ]; then T=\"\$1\" awk '\''{m=\$5;gsub(/\\\\040/,\" \",m);if(m==ENVIRON[\"T\"]){f=1;exit}} END{exit !f}'\'' /proc/self/mountinfo 2>/dev/null; else mountpoint -q \"\$1\" 2>/dev/null; fi; }; if ! is_mp \"$zSafeTarget\"; then need=1; elif [ -e \"$zSafeSrc/.mountx_canary\" ] && [ ! -e \"$zSafeTarget/.mountx_canary\" ]; then c=0; while [ \$c -lt 16 ] && is_mp \"$zSafeTarget\"; do umount -f -l \"$zSafeTarget\" 2>/dev/null || break; c=\$((c+1)); done; need=1; fi; if [ \"\$need\" -eq 1 ]; then mkdir -p \"$zSafeTarget\" 2>/dev/null && mount -o bind \"$zSafeSrc\" \"$zSafeTarget\" 2>/dev/null && (busybox mount --make-rprivate \"$zSafeTarget\" 2>/dev/null || mount --make-rprivate \"$zSafeTarget\" 2>/dev/null); else (busybox mount --make-rprivate \"$zSafeTarget\" 2>/dev/null || mount --make-rprivate \"$zSafeTarget\" 2>/dev/null); fi; fi' 2>/dev/null"
-                )
-            }
-        }
+        // Inject into active Zygote namespaces via clean heredoc helper (zero '\'' quoting bugs)
+        val zygoteRoots = (namespaces + listOf(
+            "/storage/emulated/$targetUserId",
+            "/mnt/user/$targetUserId/emulated/$targetUserId",
+            "/mnt/installer/$targetUserId/emulated/$targetUserId",
+            "/mnt/androidwritable/$targetUserId/emulated/$targetUserId",
+            "/mnt/runtime/default/emulated/$targetUserId",
+            "/mnt/runtime/read/emulated/$targetUserId",
+            "/mnt/runtime/write/emulated/$targetUserId",
+            "/mnt/runtime/full/emulated/$targetUserId"
+        )).distinct()
+        syncBindTargetsToZygotes(
+            pairs = zygoteRoots.map { sourcePath to "$it/$relPath" },
+            isNonPosix = isNonPosix
+        )
 
         // Clean stale verify.fail or partial block files from unmounted internal storage AND source
-        RootShell.exec("rm -f \"/data/media/$targetUserId/$relPath/files/verify.fail\" \"${mp.sourcePath}/files/verify.fail\" \"/data/media/$targetUserId/$relPath/files/Asb/Android/\"*_tmp.block \"${mp.sourcePath}/files/Asb/Android/\"*_tmp.block 2>/dev/null")
+        RootShell.exec("rm -f \"/data/media/$targetUserId/$relPath/files/verify.fail\" \"$sourcePath/files/verify.fail\" \"/data/media/$targetUserId/$relPath/files/Asb/Android/\"*_tmp.block \"$sourcePath/files/Asb/Android/\"*_tmp.block 2>/dev/null")
         return anyMounted
     }
 
@@ -1305,8 +1822,14 @@ class MountManager(
 
         val canaryCheck = !canarySourceDir.isNullOrBlank() && RootShell.exists("$canarySourceDir/.mountx_canary")
         val checkScript = buildString {
-            append("curDev=$(T=\"$target\" awk '\$2 == ENVIRON[\"T\"] {print \$1}' /proc/mounts 2>/dev/null | tail -n 1); ")
-            append("ids=$(stat -c '%d:%i' \"$expectedSource\" \"$target\" 2>/dev/null | tr '\\n' '|'); ")
+            append("_mi=/proc/1/mountinfo; [ -r \"\$_mi\" ] || _mi=/proc/self/mountinfo; ")
+            append("_st=\$(LC_ALL=C stat -t \"$target\" 2>&1); case \"\$_st\" in *\"Transport endpoint\"*) echo \"ENOTCONN|0||\"; exit 0 ;; esac; ")
+            append("if [ -r \"\$_mi\" ]; then ")
+            append("curDev=\$(T=\"${target.trimEnd('/')}\" awk -F ' - ' '{split(\$1,L,\" \");split(\$2,R,\" \");m=L[5];gsub(/\\\\040/,\" \",m);if(m==ENVIRON[\"T\"])d=R[2]} END{print d}' \"\$_mi\" 2>/dev/null); ")
+            append("else ")
+            append("curDev=\$(T=\"${target.trimEnd('/')}\" awk '\$2 == ENVIRON[\"T\"] {print \$1}' /proc/mounts 2>/dev/null | tail -n 1); ")
+            append("fi; ")
+            append("ids=\$(stat -c '%d:%i' \"$expectedSource\" \"$target\" 2>/dev/null | tr '\\n' '|'); ")
             if (canaryCheck) {
                 append("if [ -e \"$target/.mountx_canary\" ]; then cok=1; else cok=0; fi; ")
             } else {
@@ -1320,7 +1843,9 @@ class MountManager(
         val srcId = outParts.getOrNull(2)?.trim() ?: ""
         val tgtId = outParts.getOrNull(3)?.trim() ?: ""
 
-        val matchesSource = if (isContainer) {
+        val matchesSource = if (curDev == "ENOTCONN") {
+            false
+        } else if (isContainer) {
             expectedDevice.isNotBlank() && curDev == expectedDevice
         } else if (!isNonPosix && srcId.isNotBlank() && tgtId.isNotBlank()) {
             srcId == tgtId
@@ -1334,8 +1859,7 @@ class MountManager(
         }
 
         AppLogger.info("MountManager", "Unmounting stale/shadowed mount on $target ($curDev != ${expectedDevice.ifBlank { expectedSource }}, canaryOk=$canaryOk)")
-        val mountedExpr = RootShell.shellIsMountedExpr(target.trimEnd('/'))
-        RootShell.exec("c=0; while [ \$c -lt 32 ] && $mountedExpr; do umount -f -l \"$target\" 2>/dev/null || break; c=\$((c+1)); done")
+        unmountSafeAcrossNamespaces(listOf(target))
         return false
     }
 
@@ -1374,9 +1898,12 @@ class MountManager(
         // Choose Engine A (Direct Native Folder) if POSIX and either native folder exists or no legacy container exists
         val useDirectFolderEngine = !isNonPosix && (hasNativeFolder || !hasContainerImg)
 
-        val target = "/data/user/0/$packageName"
-        val dataDataTarget = "/data/data/$packageName"
-        val dataCeTarget = "/data_mirror/data_ce/null/0/$packageName"
+        val targetUserId = resolveUserId(mp.targetPath)
+        val target = "/data/user/$targetUserId/$packageName"
+        val dataDataTarget = if (targetUserId == 0) "/data/data/$packageName" else ""
+        val dataCeTarget = "/data_mirror/data_ce/null/$targetUserId/$packageName"
+        val secondaryPeers = listOfNotNull(dataDataTarget.ifBlank { null }, dataCeTarget)
+        val allPeers = listOf(target) + secondaryPeers
         RootShell.exec("mkdir -p \"$target\" 2>/dev/null")
 
         val cacheHoldDir = "/dev/mountx_cache_hold_$packageName"
@@ -1397,9 +1924,10 @@ class MountManager(
         }
 
         var privateAlreadyReady = false
+        var activeLoopDev = ""
         val mountSucceeded = if (useDirectFolderEngine) {
-            privateAlreadyReady = ensureMountSlotReady(
-                target = target,
+            privateAlreadyReady = ensurePrivatePeerMountsReady(
+                peerTargets = allPeers,
                 expectedSource = nativeFolderPath,
                 isNonPosix = isNonPosix
             )
@@ -1445,9 +1973,10 @@ class MountManager(
                 AppLogger.error("MountManager", "Failed to setup loop device for container: $containerPath")
                 return false
             }
+            activeLoopDev = loopDev
 
-            privateAlreadyReady = ensureMountSlotReady(
-                target = target,
+            privateAlreadyReady = ensurePrivatePeerMountsReady(
+                peerTargets = allPeers,
                 expectedSource = containerPath,
                 expectedDevice = loopDev,
                 isContainer = true
@@ -1469,47 +1998,49 @@ class MountManager(
         if (mountSucceeded) {
             if (!privateAlreadyReady) {
                 RootShell.exec(RootShell.makeRprivateCmd(target))
-            }
-            if (RootShell.exists(dataDataTarget) && !RootShell.isMountpoint(dataDataTarget)) {
-                RootShell.exec("mount -o bind \"$target\" \"$dataDataTarget\" 2>/dev/null && ${RootShell.makeRprivateCmd(dataDataTarget)}")
-            }
-            if (RootShell.exists(dataCeTarget) && !RootShell.isMountpoint(dataCeTarget)) {
-                RootShell.exec("mount -o bind \"$target\" \"$dataCeTarget\" 2>/dev/null && ${RootShell.makeRprivateCmd(dataCeTarget)}")
-            }
-            if (!privateAlreadyReady) {
                 RootShell.exec("chown $uid:$gid \"$target\" 2>/dev/null")
                 RootShell.exec("chmod 700 \"$target\" 2>/dev/null")
                 RootShell.exec("chcon \"$effectiveContext\" \"$target\" 2>/dev/null")
             }
-            if (RootShell.exists(dataDataTarget)) {
-                RootShell.exec("chcon \"$effectiveContext\" \"$dataDataTarget\" 2>/dev/null")
-            }
-            if (RootShell.exists(dataCeTarget)) {
-                RootShell.exec("chcon \"$effectiveContext\" \"$dataCeTarget\" 2>/dev/null")
+            val bindSrcForPeers = if (useDirectFolderEngine) nativeFolderPath else target
+            val peerPairs = bindSecondaryPrivatePeersAtomic(
+                primaryTarget = target,
+                secondaryTargets = secondaryPeers,
+                bindSource = bindSrcForPeers,
+                seContext = effectiveContext,
+                recursiveChcon = false
+            )
+            if (useDirectFolderEngine) {
+                syncBindTargetsToZygotes(peerPairs, isNonPosix = isNonPosix)
+            } else if (activeLoopDev.isNotBlank()) {
+                syncContainerTargetsToZygotes(activeLoopDev, target, secondaryPeers, preserveExec = false)
             }
             if (heldInternalCache) {
-                RootShell.exec("mkdir -p \"$target/cache\" 2>/dev/null && mount -o bind \"$cacheHoldDir\" \"$target/cache\" 2>/dev/null && ${RootShell.makeRprivateCmd("$target/cache")}")
-                if (RootShell.exists(dataDataTarget) && !RootShell.isMountpoint("$dataDataTarget/cache")) {
-                    RootShell.exec("mkdir -p \"$dataDataTarget/cache\" 2>/dev/null && mount -o bind \"$cacheHoldDir\" \"$dataDataTarget/cache\" 2>/dev/null && ${RootShell.makeRprivateCmd("$dataDataTarget/cache")}")
-                }
-                if (RootShell.exists(dataCeTarget) && !RootShell.isMountpoint("$dataCeTarget/cache")) {
-                    RootShell.exec("mkdir -p \"$dataCeTarget/cache\" 2>/dev/null && mount -o bind \"$cacheHoldDir\" \"$dataCeTarget/cache\" 2>/dev/null && ${RootShell.makeRprivateCmd("$dataCeTarget/cache")}")
-                }
+                val cachePeers = secondaryPeers.map { "$it/cache" }
+                val primaryCache = "$target/cache"
+                RootShell.exec("mkdir -p \"$primaryCache\" 2>/dev/null && mount -o bind \"$cacheHoldDir\" \"$primaryCache\" 2>/dev/null && ${RootShell.makeRprivateCmd(primaryCache)}")
+                bindSecondaryPrivatePeersAtomic(
+                    primaryTarget = primaryCache,
+                    secondaryTargets = cachePeers,
+                    bindSource = cacheHoldDir,
+                    seContext = effectiveContext,
+                    recursiveChcon = false
+                )
                 RootShell.exec("umount -l \"$cacheHoldDir\" 2>/dev/null && rmdir \"$cacheHoldDir\" 2>/dev/null")
             }
             // Self-healing: ensure direct boot storage and ART profile directories exist to prevent Zygote Signal 11 crash
             RootShell.exec("""
-                if [ ! -d "/data/user_de/0/$packageName" ]; then
-                    mkdir -p "/data/user_de/0/$packageName/cache" "/data/user_de/0/$packageName/code_cache" 2>/dev/null
-                    chown -R $uid:$gid "/data/user_de/0/$packageName" 2>/dev/null
-                    chmod 700 "/data/user_de/0/$packageName" 2>/dev/null
-                    restorecon -FR "/data/user_de/0/$packageName" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/0/$packageName" 2>/dev/null
+                if [ ! -d "/data/user_de/$targetUserId/$packageName" ]; then
+                    mkdir -p "/data/user_de/$targetUserId/$packageName/cache" "/data/user_de/$targetUserId/$packageName/code_cache" 2>/dev/null
+                    chown -R $uid:$gid "/data/user_de/$targetUserId/$packageName" 2>/dev/null
+                    chmod 700 "/data/user_de/$targetUserId/$packageName" 2>/dev/null
+                    restorecon -FR "/data/user_de/$targetUserId/$packageName" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "/data/user_de/$targetUserId/$packageName" 2>/dev/null
                 fi
-                if [ ! -d "/data/misc/profiles/cur/0/$packageName" ]; then
-                    mkdir -p "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
-                    chown $uid:$gid "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
-                    chmod 700 "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
-                    chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/0/$packageName" 2>/dev/null
+                if [ ! -d "/data/misc/profiles/cur/$targetUserId/$packageName" ]; then
+                    mkdir -p "/data/misc/profiles/cur/$targetUserId/$packageName" 2>/dev/null
+                    chown $uid:$gid "/data/misc/profiles/cur/$targetUserId/$packageName" 2>/dev/null
+                    chmod 700 "/data/misc/profiles/cur/$targetUserId/$packageName" 2>/dev/null
+                    chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/$targetUserId/$packageName" 2>/dev/null
                 fi
             """.trimIndent())
         } else if (heldInternalCache) {
@@ -1527,6 +2058,7 @@ class MountManager(
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> =
         withContext(Dispatchers.IO) {
+            mountOperationMutex.withLock {
             runCatching {
                 val ctx = getAppContext()
                 val steps = listOf(
@@ -1574,12 +2106,15 @@ class MountManager(
                     for (mp in game.mountPoints) {
                         val targetUserId = resolveUserId(mp.targetPath)
                         if (mp.category == MountPointCategory.PRIVATE_INTERNAL || mp.isEffectivelyVirtualContainer()) {
-                            // Unmount private internal data (Direct Folder or Virtual Loop Container)
                             RootShell.exec("sync")
-                            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$targetUserId/${game.packageName}\" 2>/dev/null")
-                            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/${game.packageName}\" 2>/dev/null")
-                            RootShell.exec("umount -f -l \"/data/data/${game.packageName}\" 2>/dev/null")
-                            RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
+                            unmountSafeAcrossNamespaces(
+                                listOf(
+                                    "/data_mirror/data_ce/null/$targetUserId/${game.packageName}",
+                                    "/data_mirror/data_ce/null/0/${game.packageName}",
+                                    "/data/data/${game.packageName}",
+                                    "/data/user/$targetUserId/${game.packageName}"
+                                )
+                            )
                             val imgPath = mp.containerImgPath?.ifBlank { null }
                                 ?: (if (mp.sourcePath.endsWith(".img", ignoreCase = true)) mp.sourcePath else "${game.packageName}_data.img")
                             detachLoopDevice(imgPath)
@@ -1594,39 +2129,38 @@ class MountManager(
                             } else {
                                 if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
                             }
-                            RootShell.exec("umount -f -l \"$effectiveTarget\" 2>/dev/null")
-                            RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                            unmountSafeAcrossNamespaces(listOfNotNull(effectiveTarget, mp.targetPath, if (currentApkDir.isNotBlank()) "$currentApkDir/lib" else null))
                             if (mp.isEffectivelyVirtualContainer() || mp.sourcePath.endsWith(".img", ignoreCase = true)) {
                                 val imgPath = mp.containerImgPath?.ifBlank { null } ?: mp.sourcePath
                                 detachLoopDevice(imgPath)
                             }
                             RootShell.exec("restorecon -FR \"$effectiveTarget\" 2>/dev/null")
                         } else if (mp.category == MountPointCategory.CACHE_SHADERS && (mp.targetPath.startsWith("/data/user/") || mp.targetPath.startsWith("/data/data/"))) {
-                            RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
-                            val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
-                                mp.targetPath.replace("/data/user/0/", "/data/data/")
+                            val altTarget = if (mp.targetPath.startsWith("/data/user/$targetUserId/")) {
+                                mp.targetPath.replace("/data/user/$targetUserId/", "/data/data/")
                             } else if (mp.targetPath.startsWith("/data/data/")) {
-                                mp.targetPath.replace("/data/data/", "/data/user/0/")
+                                mp.targetPath.replace("/data/data/", "/data/user/$targetUserId/")
                             } else null
-                            if (altTarget != null) {
-                                RootShell.exec("umount -f -l \"$altTarget\" 2>/dev/null")
-                            }
+                            val ceTarget = "/data_mirror/data_ce/null/$targetUserId/${game.packageName}/cache"
+                            unmountSafeAcrossNamespaces(listOfNotNull(mp.targetPath, altTarget, ceTarget))
                             if (mp.isEffectivelyVirtualContainer() || mp.sourcePath.endsWith(".img", ignoreCase = true)) {
                                 val imgPath = mp.containerImgPath?.ifBlank { null } ?: mp.sourcePath
                                 detachLoopDevice(imgPath)
                             }
                             RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                         } else {
+                            val toUnmount = mutableListOf(mp.targetPath)
                             if (mp.isExternalStorageCategory()) {
                                 val userNamespaces = getTargetNamespaces(targetUserId)
                                 val relPath = extractRelativePath(mp.targetPath)
                                 if (relPath.isNotBlank()) {
                                     for (ns in userNamespaces) {
-                                        RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                                        toUnmount.add("$ns/$relPath")
                                     }
+                                    toUnmount.add("/data/media/$targetUserId/$relPath")
                                 }
                             }
-                            RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                            unmountSafeAcrossNamespaces(toUnmount)
                         }
                     }
                 }
@@ -1637,14 +2171,16 @@ class MountManager(
                     "Android/data/${game.packageName}",
                     "Android/obb/${game.packageName}"
                 )
+                val legacyPaths = mutableListOf<String>()
                 for (uid in allUserIds) {
                     val userNamespaces = getTargetNamespaces(uid)
                     for (namespace in userNamespaces) {
                         for (rel in legacyRelPaths) {
-                            RootShell.exec("umount -f -l \"$namespace/$rel\" 2>/dev/null")
+                            legacyPaths.add("$namespace/$rel")
                         }
                     }
                 }
+                unmountSafeAcrossNamespaces(legacyPaths)
 
                 // Universal sweeping unmount: purge any remaining or stacked mounts across all namespaces
                 sweepUnmountPackage(game.packageName)
@@ -1696,6 +2232,7 @@ class MountManager(
                     )
                 )
             }
+            }
         }
 
     /**
@@ -1706,6 +2243,7 @@ class MountManager(
         points: List<MountPointConfig>,
         onProgress: ((OperationProgress) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        mountOperationMutex.withLock {
         runCatching {
             val ctx = getAppContext()
             val steps = listOf(
@@ -1751,10 +2289,14 @@ class MountManager(
                 val targetUserId = resolveUserId(mp.targetPath)
                 if (mp.category == MountPointCategory.PRIVATE_INTERNAL || mp.isEffectivelyVirtualContainer()) {
                     RootShell.exec("sync")
-                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$targetUserId/${game.packageName}\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/${game.packageName}\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data/data/${game.packageName}\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"/data/user/$targetUserId/${game.packageName}\" 2>/dev/null")
+                    unmountSafeAcrossNamespaces(
+                        listOf(
+                            "/data_mirror/data_ce/null/$targetUserId/${game.packageName}",
+                            "/data_mirror/data_ce/null/0/${game.packageName}",
+                            "/data/data/${game.packageName}",
+                            "/data/user/$targetUserId/${game.packageName}"
+                        )
+                    )
                     val imgPath = mp.containerImgPath?.ifBlank { null }
                         ?: (if (mp.sourcePath.endsWith(".img", ignoreCase = true)) mp.sourcePath else "${game.packageName}_data.img")
                     detachLoopDevice(imgPath)
@@ -1777,48 +2319,44 @@ class MountManager(
                     } else {
                         if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
                     }
-                    val effMountedExpr = RootShell.shellIsMountedExpr(effectiveTarget.trimEnd('/'))
-                    val rawMountedExpr = RootShell.shellIsMountedExpr(mp.targetPath.trimEnd('/'))
-                    RootShell.exec("c=0; while [ \$c -lt 16 ] && $effMountedExpr; do umount -f -l \"$effectiveTarget\" 2>/dev/null || break; c=\$((c+1)); done")
-                    RootShell.exec("c=0; while [ \$c -lt 16 ] && $rawMountedExpr; do umount -f -l \"${mp.targetPath}\" 2>/dev/null || break; c=\$((c+1)); done")
-                    if (currentApkDir.isNotBlank()) {
-                        val libDirExpr = RootShell.shellIsMountedExpr("$currentApkDir/lib")
-                        RootShell.exec("if $libDirExpr; then umount -f -l \"$currentApkDir/lib\" 2>/dev/null; fi")
-                    }
+                    unmountSafeAcrossNamespaces(
+                        listOfNotNull(
+                            effectiveTarget,
+                            mp.targetPath,
+                            if (currentApkDir.isNotBlank()) "$currentApkDir/lib" else null
+                        )
+                    )
                     if (mp.isEffectivelyVirtualContainer() || mp.sourcePath.endsWith(".img", ignoreCase = true)) {
                         val imgPath = mp.containerImgPath?.ifBlank { null } ?: mp.sourcePath
                         detachLoopDevice(imgPath)
                     }
                     RootShell.exec("restorecon -FR \"$effectiveTarget\" 2>/dev/null")
                 } else if (mp.category == MountPointCategory.CACHE_SHADERS && (mp.targetPath.startsWith("/data/user/") || mp.targetPath.startsWith("/data/data/"))) {
-                    RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
-                    val altTarget = if (mp.targetPath.startsWith("/data/user/0/")) {
-                        mp.targetPath.replace("/data/user/0/", "/data/data/")
+                    val altTarget = if (mp.targetPath.startsWith("/data/user/$targetUserId/")) {
+                        mp.targetPath.replace("/data/user/$targetUserId/", "/data/data/")
                     } else if (mp.targetPath.startsWith("/data/data/")) {
-                        mp.targetPath.replace("/data/data/", "/data/user/0/")
+                        mp.targetPath.replace("/data/data/", "/data/user/$targetUserId/")
                     } else null
-                    if (altTarget != null) {
-                        RootShell.exec("umount -f -l \"$altTarget\" 2>/dev/null")
-                    }
+                    val ceTarget = "/data_mirror/data_ce/null/$targetUserId/${game.packageName}/cache"
+                    unmountSafeAcrossNamespaces(listOfNotNull(mp.targetPath, altTarget, ceTarget))
                     if (mp.isEffectivelyVirtualContainer() || mp.sourcePath.endsWith(".img", ignoreCase = true)) {
                         val imgPath = mp.containerImgPath?.ifBlank { null } ?: mp.sourcePath
                         detachLoopDevice(imgPath)
                     }
                     RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                 } else {
+                    val toUnmount = mutableListOf(mp.targetPath)
                     if (mp.isExternalStorageCategory()) {
                         val userNamespaces = getTargetNamespaces(targetUserId)
                         val relPath = extractRelativePath(mp.targetPath)
                         if (relPath.isNotBlank()) {
                             for (ns in userNamespaces) {
-                                RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                                toUnmount.add("$ns/$relPath")
                             }
-                            if (RootShell.isMountpoint("/data/media/$targetUserId/$relPath")) {
-                                RootShell.exec("umount -f -l \"/data/media/$targetUserId/$relPath\" 2>/dev/null")
-                            }
+                            toUnmount.add("/data/media/$targetUserId/$relPath")
                         }
                     }
-                    RootShell.exec("umount -f -l \"${mp.targetPath}\" 2>/dev/null")
+                    unmountSafeAcrossNamespaces(toUnmount)
                     RootShell.exec("restorecon -FR \"${mp.targetPath}\" 2>/dev/null")
                     if (mp.category == MountPointCategory.MEDIA_DOWNLOADS || mp.category == MountPointCategory.CUSTOM) {
                         triggerMediaScan(mp.targetPath)
@@ -1863,88 +2401,99 @@ class MountManager(
                 )
             )
         }
+        }
     }
 
 
     /**
      * Unmount all bind-mounted paths and loop devices from the given sdBase.
+     * Set [isUserIntentional] to false during emergency disk error / physical ejection so
+     * `/dev/.mountx_unmounted` is NOT left behind to block automatic recovery upon reconnection.
      */
-    suspend fun unmountAll(sdBase: String): Result<Unit> =
+    suspend fun unmountAll(sdBase: String, isUserIntentional: Boolean = true): Result<Unit> =
         withContext(Dispatchers.IO) {
+            mountOperationMutex.withLock {
             runCatching {
-                // Detach all virtual containers first
-                val containersScript = """
-                    while read dev mnt rest; do
-                      case "${'$'}mnt" in
-                        *.mountx/containers*|*/data/user/0/*|*/data/data/*)
-                          sync
-                          umount -f -l "${'$'}mnt" 2>/dev/null
-                          ;;
-                      esac
-                    done < /proc/mounts
-                    for loop_dev in $(losetup -a 2>/dev/null | grep "\.mountx/containers" | cut -d':' -f1); do
-                      if [ -n "${'$'}loop_dev" ]; then
-                        losetup -d "${'$'}loop_dev" 2>/dev/null
-                      fi
-                    done
-                """.trimIndent()
-                RootShell.execScript(containersScript)
-
-                // Unmount bind mounts cleanly with multi-pass sweep across registered packages and external partitions
+                // Multi-pass deepest-first sweep across registered packages and SD backing device
+                // Covers /data_mirror/data_ce/null/*, /data/data/*, /data/user/*, /data/app/*, and all runtime namespaces.
                 val script = """
-                    SD_BLOCK=${'$'}(mount | grep " $sdBase " | cut -d' ' -f1 | head -n 1)
+                    _mi=/proc/1/mountinfo
+                    [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                    SD_BLOCK=${'$'}(B="$sdBase" awk -F ' - ' '{split(${'$'}1,L," ");split(${'$'}2,R," ");m=L[5];gsub(/\\040/," ",m);if(m==ENVIRON["B"])d=R[2]} END{print d}' "${'$'}_mi" 2>/dev/null)
+                    if [ -z "${'$'}SD_BLOCK" ]; then
+                      SD_BLOCK=${'$'}(awk -v b="$sdBase" '${'$'}2 == b {print ${'$'}1; exit}' /proc/mounts 2>/dev/null)
+                    fi
                     PACKAGES=""
                     if [ -f /data/adb/modules/MountX/mountpoints.conf ]; then
-                      PACKAGES=${'$'}(grep -E "^(ENABLE|MOUNT)" /data/adb/modules/MountX/mountpoints.conf | cut -d'|' -f2 | sort -u)
+                      PACKAGES=${'$'}(grep -vE '^(#|[[:space:]]*${'$'})' /data/adb/modules/MountX/mountpoints.conf 2>/dev/null | cut -d'|' -f1 | tr -d '\r' | sort -u)
                     fi
-                    for i in 1 2 3; do
-                      has_mount=0
-                      while read -r dev mnt rest; do
+                    _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+                    for i in 1 2 3 4; do
+                      targets=""
+                      while IFS='|' read -r dev root mnt; do
+                        [ -z "${'$'}mnt" ] && continue
+                        [ "${'$'}mnt" = "$sdBase" ] && continue
                         case "${'$'}mnt" in
-                          */Android/data|*/Android/data/|*/Android/obb|*/Android/obb/|*/Android/media|*/Android/media/|/storage/emulated*|/mnt/runtime/*|/mnt/user/*)
-                            # ABSOLUTE SAFETY GUARD: Never unmount parent scoped storage directories!
-                            if [ "${'$'}mnt" = "/storage/emulated/0/Android/data" ] || [ "${'$'}mnt" = "/storage/emulated/0/Android/obb" ]; then
-                              continue
-                            fi
+                          /|/data|/data/user|/data/user/[0-9]*|/data/data|/data/app|/data_mirror|/data_mirror/data_ce|/data_mirror/data_ce/null|/data_mirror/data_ce/null/[0-9]*|/storage|/storage/emulated|/storage/emulated/[0-9]*|*/Android|*/Android/data|*/Android/obb|*/Android/media)
+                            continue
                             ;;
                         esac
-                        case "${'$'}mnt" in
-                          *Android/data/*|*Android/obb/*|*Android/media/*)
-                            if [ "${'$'}mnt" != "$sdBase" ]; then
-                              # Only unmount if device explicitly matches SD_BLOCK or matches a registered package
-                              is_target=0
-                              if [ -n "${'$'}SD_BLOCK" ] && [ "${'$'}dev" = "${'$'}SD_BLOCK" ]; then
-                                is_target=1
-                              else
+                        is_target=0
+                        if [ -n "${'$'}SD_BLOCK" ] && [ "${'$'}dev" = "${'$'}SD_BLOCK" ]; then
+                          is_target=1
+                        else
+                          case "${'$'}root" in
+                            *MountX*|*.mountx*) is_target=1 ;;
+                          esac
+                          if [ "${'$'}is_target" -eq 0 ]; then
+                            case "${'$'}mnt" in
+                              *.mountx*|*MountX*) is_target=1 ;;
+                              *)
                                 for pkg in ${'$'}PACKAGES; do
                                   case "${'$'}mnt" in
-                                    */${'$'}pkg|*/${'$'}pkg/*)
+                                    */${'$'}pkg|*/${'$'}pkg/*|*/${'$'}pkg-*|*/${'$'}pkg-*/*)
                                       is_target=1
                                       break
                                       ;;
                                   esac
                                 done
-                              fi
-                              if [ ${'$'}is_target -eq 1 ]; then
-                                umount -f -l "${'$'}mnt" 2>/dev/null
-                                has_mount=1
-                              fi
-                            fi
-                            ;;
-                          *.mountx*|*MountX*)
-                            if [ "${'$'}mnt" != "$sdBase" ]; then
-                              umount -f -l "${'$'}mnt" 2>/dev/null
-                              has_mount=1
-                            fi
-                            ;;
-                        esac
-                      done < /proc/mounts
-                      if [ ${'$'}has_mount -eq 0 ]; then break; fi
+                                ;;
+                            esac
+                          fi
+                        fi
+                        if [ ${'$'}is_target -eq 1 ]; then
+                          targets="${'$'}targets
+${'$'}mnt"
+                        fi
+                      done <<EOF_MNTS
+${'$'}(awk -F ' - ' '{split(${'$'}1,L," ");split(${'$'}2,R," ");m=L[5];gsub(/\\040/," ",m);print R[2] "|" L[4] "|" m}' "${'$'}_mi" 2>/dev/null)
+EOF_MNTS
+                      sorted=${'$'}(printf '%s\n' "${'$'}targets" | grep -v '^$' | sort -u | awk '{print length(${'$'}0), ${'$'}0}' | sort -rn | cut -d' ' -f2-)
+                      [ -z "${'$'}sorted" ] && break
+                      sync
+                      printf '%s\n' "${'$'}sorted" | while IFS= read -r _t; do
+                        [ -n "${'$'}_t" ] || continue
+                        umount "${'$'}_t" 2>/dev/null || umount -l "${'$'}_t" 2>/dev/null
+                        for _zp in ${'$'}_zpids; do
+                          [ -d "/proc/${'$'}_zp/ns" ] || continue
+                          nsenter --mount="/proc/${'$'}_zp/ns/mnt" -- sh -c 'umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null' _ "${'$'}_t" 2>/dev/null
+                        done
+                      done
+                    done
+                    for loop_dev in ${'$'}(losetup -a 2>/dev/null | grep "\.mountx/containers" | cut -d':' -f1); do
+                      if [ -n "${'$'}loop_dev" ]; then
+                        losetup -d "${'$'}loop_dev" 2>/dev/null
+                      fi
                     done
                 """.trimIndent()
                 RootShell.execScript(script)
-                RootShell.exec("touch /dev/.mountx_unmounted")
+                if (isUserIntentional) {
+                    RootShell.exec("touch /dev/.mountx_unmounted")
+                } else {
+                    RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
+                }
                 Unit
+            }
             }
         }
 
@@ -1996,6 +2545,58 @@ class MountManager(
             }
         }
         mounts
+    }
+
+    /**
+     * Retrieves all currently mounted target paths inside the active Zygote64/Zygote mount namespace.
+     * Used to detect when PID 1 still holds bind mounts after a Zygote soft restart while newly
+     * spawned apps forked from Zygote would otherwise see an empty unmounted namespace.
+     */
+    suspend fun getZygoteMountpointsSet(): Set<String> = withContext(Dispatchers.IO) {
+        val mounts = HashSet<String>()
+        val res = RootShell.exec(
+            "_zp=\$(pidof zygote64 2>/dev/null | awk '{print \$1}'); " +
+                "[ -z \"\$_zp\" ] && _zp=\$(pidof zygote 2>/dev/null | awk '{print \$1}'); " +
+                "if [ -n \"\$_zp\" ] && [ -r \"/proc/\$_zp/mountinfo\" ]; then cat \"/proc/\$_zp/mountinfo\" 2>/dev/null; fi"
+        )
+        if (res.isSuccess && res.stdout.isNotEmpty()) {
+            for (line in res.stdout) {
+                val parts = line.split(Regex("\\s+"))
+                if (parts.size >= 5) {
+                    val target = parts[4].replace("\\040", " ").trimEnd('/')
+                    if (target.isNotBlank()) {
+                        mounts.add(target)
+                    }
+                }
+            }
+        }
+        mounts
+    }
+
+    /**
+     * Batch queries `dev:ino` identifiers for a collection of paths in a single root shell call.
+     * Comparing `dev:ino` between a bind-mount source and its target mathematically proves
+     * whether the mount is live and unshadowed on POSIX filesystems without relying on canary files.
+     */
+    suspend fun batchStatInodes(paths: Collection<String>): Map<String, String> = withContext(Dispatchers.IO) {
+        val cleanPaths = paths.map { it.trim().trim('\"').trimEnd('/') }.filter { it.isNotBlank() }.distinct()
+        if (cleanPaths.isEmpty()) return@withContext emptyMap()
+        val result = HashMap<String, String>(cleanPaths.size)
+        cleanPaths.chunked(40).forEach { chunk ->
+            val args = chunk.joinToString(" ") { "\"${it.replace("\"", "\\\"")}\"" }
+            val out = RootShell.exec("stat -c '%n|%d:%i' $args 2>/dev/null")
+            for (line in out.stdout) {
+                val idx = line.lastIndexOf('|')
+                if (idx > 0 && idx < line.length - 1) {
+                    val path = line.substring(0, idx).trim().trimEnd('/')
+                    val ino = line.substring(idx + 1).trim()
+                    if (path.isNotBlank() && ino.isNotBlank()) {
+                        result[path] = ino
+                    }
+                }
+            }
+        }
+        result
     }
 
     /**
@@ -2080,103 +2681,217 @@ class MountManager(
     }
 
     /**
-     * High-performance batch canary verification check.
-     * Probes all canary files across all games in a single shell command instead of N*M individual calls.
+     * Authoritative batch mount & anti-shadowing verification across PID 1, user-facing emulated views,
+     * and the active Zygote mount namespace.
+     * Combines `/proc/1/mountinfo`, `/proc/<zygote>/mountinfo`, POSIX `dev:ino` matching, and `.mountx_canary`
+     * fallback so MountX never falsely reports an app as Mounted when unmounted, shadowed, or dropped in Zygote.
      */
     suspend fun verifyCanariesBatch(games: List<GameEntry>): Map<String, Boolean> = withContext(Dispatchers.IO) {
         if (games.isEmpty()) return@withContext emptyMap()
-        val pathsByGame = mutableMapOf<String, List<String>>()
-        val allPaths = mutableSetOf<String>()
-        val hasSdcardfs = RootShell.execForOutput("grep -w sdcardfs /proc/filesystems 2>/dev/null").isNotBlank()
+        val activeMounts = getActiveMountpointsSet()
+        val zygoteMounts = getZygoteMountpointsSet()
+        val hasStorageEmulatedRoot = activeMounts.contains("/storage/emulated")
+
+        val canaryPathsToProbe = mutableSetOf<String>()
+        val inodePathsToProbe = mutableSetOf<String>()
 
         for (game in games) {
             val pkg = game.packageName
-            val checkPaths = mutableListOf(
-                "/storage/emulated/0/Android/data/$pkg/.mountx_canary",
-                "/storage/emulated/0/Android/obb/$pkg/.mountx_canary"
-            )
-            if (!hasSdcardfs) {
-                checkPaths.add("/data/media/0/Android/data/$pkg/.mountx_canary")
-                checkPaths.add("/data/media/0/Android/obb/$pkg/.mountx_canary")
+            if (game.mountPoints.isEmpty()) {
+                val dataView = "/storage/emulated/0/Android/data/$pkg"
+                val obbView = "/storage/emulated/0/Android/obb/$pkg"
+                canaryPathsToProbe.add("$dataView/.mountx_canary")
+                canaryPathsToProbe.add("$obbView/.mountx_canary")
+                inodePathsToProbe.add(dataView)
+                inodePathsToProbe.add(obbView)
+                continue
             }
-            for (mp in game.mountPoints) {
-                if (mp.targetPath.isNotBlank()) {
-                    if (mp.isExternalStorageCategory()) {
-                        val rel = extractRelativePath(mp.targetPath)
-                        if (rel.isNotBlank()) {
-                            checkPaths.add("/storage/emulated/0/$rel/.mountx_canary")
-                            if (!hasSdcardfs) {
-                                checkPaths.add("/data/media/0/$rel/.mountx_canary")
-                            }
-                        }
+            val escapedPkg = Regex.escape(pkg)
+            for (mp in game.mountPoints.filter { it.enabled }) {
+                val cleanSrc = mp.sourcePath.trimEnd('/')
+                val cleanTgt = mp.targetPath.trimEnd('/')
+                val cat = mp.resolveCategory()
+                val isExternalCat = mp.isExternalStorageCategory() ||
+                    (cat == MountPointCategory.CACHE_SHADERS && (cleanTgt.contains("/Android/") || cleanTgt.contains("/data/media/") || cleanTgt.contains("/storage/")))
+
+                if (isExternalCat) {
+                    val rel = extractRelativePath(cleanTgt).trimEnd('/')
+                    val userId = resolveUserId(cleanTgt)
+                    val checkTarget = if (rel.isNotBlank()) "/storage/emulated/$userId/$rel" else cleanTgt
+                    if (cleanSrc.isNotBlank()) {
+                        inodePathsToProbe.add(cleanSrc)
+                        canaryPathsToProbe.add("$cleanSrc/.mountx_canary")
+                    }
+                    inodePathsToProbe.add(checkTarget)
+                    inodePathsToProbe.add(cleanTgt)
+                    canaryPathsToProbe.add("$checkTarget/.mountx_canary")
+                    canaryPathsToProbe.add("$cleanTgt/.mountx_canary")
+                } else if (cat == MountPointCategory.APP_PACKAGE) {
+                    val wantLib = mp.isLibTarget()
+                    val pkgPattern = Regex("(?:^|/)$escapedPkg(?:-|/|\\z)")
+                    val matchedTarget = activeMounts.firstOrNull { m ->
+                        m.startsWith("/data/app/") &&
+                            pkgPattern.containsMatchIn(m) &&
+                            (m.endsWith("/lib") || m.contains("/lib/")) == wantLib
+                    } ?: cleanTgt
+                    val abi = if (wantLib) {
+                        extractAbiFromLibPath(matchedTarget) ?: extractAbiFromLibPath(cleanTgt)
+                    } else null
+                    val effectiveSrc = if (wantLib && !abi.isNullOrBlank() && !cleanSrc.endsWith("/$abi")) {
+                        "$cleanSrc/$abi"
                     } else {
-                        checkPaths.add("${mp.targetPath}/.mountx_canary")
+                        cleanSrc
+                    }
+                    if (effectiveSrc.isNotBlank() && !effectiveSrc.endsWith(".img", ignoreCase = true)) {
+                        inodePathsToProbe.add(effectiveSrc)
+                        inodePathsToProbe.add(cleanSrc)
+                    }
+                    if (matchedTarget.isNotBlank()) {
+                        inodePathsToProbe.add(matchedTarget)
+                    }
+                } else if (cat == MountPointCategory.PRIVATE_INTERNAL || cat == MountPointCategory.CACHE_SHADERS) {
+                    val userId = resolveUserId(cleanTgt)
+                    if (cleanSrc.isNotBlank() && !cleanSrc.endsWith(".img", ignoreCase = true) && !mp.isEffectivelyVirtualContainer()) {
+                        inodePathsToProbe.add(cleanSrc)
+                    }
+                    inodePathsToProbe.add(cleanTgt)
+                    if (cat == MountPointCategory.PRIVATE_INTERNAL) {
+                        inodePathsToProbe.add("/data/user/$userId/$pkg")
+                        inodePathsToProbe.add("/data/data/$pkg")
+                    } else {
+                        inodePathsToProbe.add("/data/user/$userId/$pkg/cache")
+                        inodePathsToProbe.add("/data/data/$pkg/cache")
                     }
                 }
             }
-            pathsByGame[pkg] = checkPaths
-            allPaths.addAll(checkPaths)
         }
 
-        val extraCanaryPaths = games.flatMap { game ->
-            game.mountPoints.filter { it.enabled }.flatMap { mp ->
-                val isExternalCat = mp.isExternalStorageCategory() ||
-                    (mp.category == MountPointCategory.CACHE_SHADERS && (mp.targetPath.contains("/Android/") || mp.targetPath.contains("/data/media/") || mp.targetPath.contains("/storage/")))
-                if (isExternalCat) {
-                    val rel = extractRelativePath(mp.targetPath)
-                    val userId = resolveUserId(mp.targetPath)
-                    listOf("/storage/emulated/$userId/$rel/.mountx_canary", "${mp.targetPath}/.mountx_canary")
-                } else {
-                    emptyList()
-                }
-            }
-        }
-        val existing = RootShell.pathsExistBatch((allPaths + extraCanaryPaths).distinct())
-        val activeMounts = getActiveMountpointsSet()
+        val inodeMap = batchStatInodes(inodePathsToProbe)
+        val existingCanaries = RootShell.pathsExistBatch(canaryPathsToProbe)
+
         games.associate { game ->
             val pkg = game.packageName
+            val escapedPkg = Regex.escape(pkg)
             val verified = if (game.mountPoints.isNotEmpty()) {
                 val activeConfigs = game.mountPoints.filter { it.enabled }
                 activeConfigs.isNotEmpty() && activeConfigs.all { mp ->
-                    val isLibPoint = mp.category == MountPointCategory.APP_PACKAGE && (mp.targetPath.contains("/lib") || mp.id.startsWith("lib_"))
+                    val cleanSrc = mp.sourcePath.trimEnd('/')
+                    val cleanTgt = mp.targetPath.trimEnd('/')
+                    val cat = mp.resolveCategory()
                     val isExternalCat = mp.isExternalStorageCategory() ||
-                        (mp.category == MountPointCategory.CACHE_SHADERS && (mp.targetPath.contains("/Android/") || mp.targetPath.contains("/data/media/") || mp.targetPath.contains("/storage/")))
+                        (cat == MountPointCategory.CACHE_SHADERS && (cleanTgt.contains("/Android/") || cleanTgt.contains("/data/media/") || cleanTgt.contains("/storage/")))
+
                     if (isExternalCat) {
-                        val rel = extractRelativePath(mp.targetPath)
-                        val userId = resolveUserId(mp.targetPath)
-                        val checkTarget = "/storage/emulated/$userId/$rel"
-                        val isMounted = activeMounts.contains(checkTarget) ||
-                            activeMounts.contains("/mnt/runtime/default/emulated/$userId/$rel") ||
-                            activeMounts.contains("/mnt/runtime/write/emulated/$userId/$rel") ||
-                            activeMounts.contains(mp.targetPath)
-                        val hasCanary = existing.contains("$checkTarget/.mountx_canary") ||
-                            existing.contains("${mp.targetPath}/.mountx_canary")
-                        isMounted && hasCanary
-                    } else if (mp.category == MountPointCategory.APP_PACKAGE) {
-                        val baseTarget = mp.targetPath.trimEnd('/')
-                        activeMounts.any { m ->
-                            if (isLibPoint) m.startsWith("/data/app/") && (m == baseTarget || m.endsWith("/$pkg/lib") || (m.contains("/$pkg-") && m.contains("/lib")))
-                            else m == baseTarget || (m.startsWith("/data/app/") && m.contains("/$pkg-") && !m.contains("/lib"))
+                        val rel = extractRelativePath(cleanTgt).trimEnd('/')
+                        val userId = resolveUserId(cleanTgt)
+                        val checkTarget = if (rel.isNotBlank()) "/storage/emulated/$userId/$rel" else cleanTgt
+                        val mntUserRoot = "/mnt/user/$userId/emulated"
+                        val mntUserTarget = "/mnt/user/$userId/emulated/$userId/$rel"
+                        val rtDefaultTarget = "/mnt/runtime/default/emulated/$userId/$rel"
+                        val rtWriteTarget = "/mnt/runtime/write/emulated/$userId/$rel"
+
+                        // 1. User-facing /storage/emulated (or runtime default fallback) must be mounted in PID 1
+                        val primaryMounted = if (hasStorageEmulatedRoot && rel.isNotBlank()) {
+                            activeMounts.contains(checkTarget)
+                        } else {
+                            activeMounts.contains(checkTarget) ||
+                                activeMounts.contains(rtDefaultTarget) ||
+                                activeMounts.contains(rtWriteTarget) ||
+                                activeMounts.contains(cleanTgt)
                         }
-                    } else if (mp.category == MountPointCategory.PRIVATE_INTERNAL) {
-                        val userId = resolveUserId(mp.targetPath)
-                        activeMounts.contains(mp.targetPath) ||
-                            activeMounts.contains("/data/data/$pkg") ||
-                            activeMounts.contains("/data/user/$userId/$pkg") ||
-                            activeMounts.contains("/data_mirror/data_ce/null/$userId/$pkg")
+                        if (!primaryMounted) return@all false
+
+                        // 2. When Android 11+ FUSE /mnt/user/<uid>/emulated is active, target must be mounted there too
+                        if (rel.isNotBlank() && activeMounts.contains(mntUserRoot)) {
+                            if (!activeMounts.contains(mntUserTarget)) return@all false
+                        }
+
+                        // 3. Anti-shadowing live visibility check: POSIX inode equality or canary presence on primary user view
+                        val probeTarget = if (hasStorageEmulatedRoot && rel.isNotBlank()) checkTarget else cleanTgt
+                        val srcIno = inodeMap[cleanSrc]
+                        val dstIno = inodeMap[probeTarget]
+                        val inodeMatched = srcIno != null && dstIno != null && srcIno == dstIno
+                        val canaryMatched = existingCanaries.contains("$cleanSrc/.mountx_canary") &&
+                            existingCanaries.contains("$probeTarget/.mountx_canary")
+                        if (!inodeMatched && !canaryMatched) return@all false
+
+                        // 4. Zygote mount namespace parity check (when Zygote mountinfo is readable)
+                        if (rel.isNotBlank() && zygoteMounts.isNotEmpty()) {
+                            val zOk = when {
+                                zygoteMounts.contains(mntUserRoot) -> zygoteMounts.contains(mntUserTarget)
+                                zygoteMounts.contains("/mnt/runtime/write/emulated") -> zygoteMounts.contains(rtWriteTarget)
+                                zygoteMounts.contains("/mnt/runtime/default/emulated") -> zygoteMounts.contains(rtDefaultTarget)
+                                else -> true
+                            }
+                            if (!zOk) return@all false
+                        }
+                        true
+                    } else if (cat == MountPointCategory.APP_PACKAGE) {
+                        val wantLib = mp.isLibTarget()
+                        val pkgPattern = Regex("(?:^|/)$escapedPkg(?:-|/|\\z)")
+                        val matchedTarget = activeMounts.firstOrNull { m ->
+                            m.startsWith("/data/app/") &&
+                                pkgPattern.containsMatchIn(m) &&
+                                (m.endsWith("/lib") || m.contains("/lib/")) == wantLib
+                        } ?: return@all false
+                        if (zygoteMounts.isNotEmpty() && !zygoteMounts.contains(matchedTarget)) return@all false
+                        if (mp.isEffectivelyVirtualContainer() || cleanSrc.endsWith(".img", ignoreCase = true)) {
+                            true
+                        } else {
+                            val abi = if (wantLib) {
+                                extractAbiFromLibPath(matchedTarget) ?: extractAbiFromLibPath(cleanTgt)
+                            } else null
+                            val effectiveSrc = if (wantLib && !abi.isNullOrBlank() && !cleanSrc.endsWith("/$abi")) {
+                                "$cleanSrc/$abi"
+                            } else {
+                                cleanSrc
+                            }
+                            val srcIno = inodeMap[effectiveSrc] ?: inodeMap[cleanSrc]
+                            val dstIno = inodeMap[matchedTarget]
+                            srcIno != null && dstIno != null && srcIno == dstIno
+                        }
+                    } else if (cat == MountPointCategory.PRIVATE_INTERNAL) {
+                        val userId = resolveUserId(cleanTgt)
+                        val matchedTarget = listOf(
+                            cleanTgt,
+                            "/data/user/$userId/$pkg",
+                            "/data/data/$pkg"
+                        ).firstOrNull { activeMounts.contains(it) } ?: return@all false
+                        if (zygoteMounts.isNotEmpty() && !zygoteMounts.contains(matchedTarget)) return@all false
+                        if (mp.isEffectivelyVirtualContainer() || cleanSrc.endsWith(".img", ignoreCase = true)) {
+                            true
+                        } else {
+                            val srcIno = inodeMap[cleanSrc]
+                            val dstIno = inodeMap[matchedTarget]
+                            srcIno != null && dstIno != null && srcIno == dstIno
+                        }
                     } else {
-                        val userId = resolveUserId(mp.targetPath)
-                        activeMounts.contains(mp.targetPath) ||
-                            activeMounts.contains("/data/user/$userId/$pkg/cache") ||
-                            activeMounts.contains("/data/data/$pkg/cache")
+                        val userId = resolveUserId(cleanTgt)
+                        val matchedTarget = listOf(
+                            cleanTgt,
+                            "/data/user/$userId/$pkg/cache",
+                            "/data/data/$pkg/cache"
+                        ).firstOrNull { activeMounts.contains(it) } ?: return@all false
+                        if (zygoteMounts.isNotEmpty() && !zygoteMounts.contains(matchedTarget)) return@all false
+                        if (mp.isEffectivelyVirtualContainer() || cleanSrc.endsWith(".img", ignoreCase = true)) {
+                            true
+                        } else {
+                            val srcIno = inodeMap[cleanSrc]
+                            val dstIno = inodeMap[matchedTarget]
+                            srcIno != null && dstIno != null && srcIno == dstIno
+                        }
                     }
                 }
             } else {
-                val dataCanary = "/storage/emulated/0/Android/data/$pkg/.mountx_canary"
+                val dataView = "/storage/emulated/0/Android/data/$pkg"
+                val dataCanary = "$dataView/.mountx_canary"
                 val obbCanary = "/storage/emulated/0/Android/obb/$pkg/.mountx_canary"
-                val isDataMounted = activeMounts.contains("/storage/emulated/0/Android/data/$pkg") ||
-                    activeMounts.contains("/mnt/runtime/default/emulated/0/Android/data/$pkg")
-                isDataMounted && (existing.contains(dataCanary) || existing.contains(obbCanary))
+                val isDataMounted = if (hasStorageEmulatedRoot) {
+                    activeMounts.contains(dataView)
+                } else {
+                    activeMounts.contains(dataView) || activeMounts.contains("/mnt/runtime/default/emulated/0/Android/data/$pkg")
+                }
+                isDataMounted && (existingCanaries.contains(dataCanary) || existingCanaries.contains(obbCanary))
             }
             pkg to verified
         }

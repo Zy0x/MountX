@@ -744,16 +744,18 @@ class AppsViewModel @Inject constructor(
                             )
                             gameRepository.updateGame(updated)
 
-                            // Unmount ONLY the moved points across all namespaces
+                            // Unmount ONLY the moved points across all namespaces (safely, without -f)
                             for (moved in effectivePoints) {
                                 MountManager.sweepUnmountTarget(moved.targetPath)
                                 val rel = MountManager.extractRelativePath(moved.targetPath)
                                 if (rel.isNotBlank()) {
+                                    val paths = mutableListOf<String>()
                                     for (uid in MountManager.getActiveUserIds()) {
                                         for (ns in MountManager.getTargetNamespaces(uid)) {
-                                            RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                                            paths.add("$ns/$rel")
                                         }
                                     }
+                                    MountManager.unmountSafeAcrossNamespaces(paths)
                                 }
                             }
 

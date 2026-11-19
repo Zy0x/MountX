@@ -299,15 +299,18 @@ class AppRepository @Inject constructor(
                         ).getOrThrow()
                     } else {
                         onProgress(0.5f, "Melepaskan mount sistem...")
+                        val pathsToClean = mutableListOf<String>()
                         for (point in game.mountPoints) {
                             val ptUserId = app.mountx.root.MountManager.resolveUserId(point.targetPath)
                             val rel = app.mountx.root.MountManager.extractRelativePath(point.targetPath)
-                            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                                RootShell.exec("umount -f -l \"$ns/emulated/$ptUserId/$rel\" 2>/dev/null")
-                                RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/mnt/user/$ptUserId", "/mnt/installer/$ptUserId", "/mnt/androidwritable/$ptUserId", "/mnt/pass_through/$ptUserId", "/storage")) {
+                                pathsToClean.add("$ns/emulated/$ptUserId/$rel")
+                                pathsToClean.add("$ns/$rel")
                             }
-                            RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
+                            pathsToClean.add("/data/media/$ptUserId/$rel")
+                            pathsToClean.add(point.targetPath)
                         }
+                        app.mountx.root.MountManager.unmountSafeAcrossNamespaces(pathsToClean)
                         val gameUserId = game.mountPoints.firstOrNull()?.let { app.mountx.root.MountManager.resolveUserId(it.targetPath) } ?: 0
                         // Recreate clean valid empty directories so app won't force close if opened
                         RootShell.exec("mkdir -p \"/data/media/$gameUserId/Android/data/$packageName\"")
@@ -349,15 +352,19 @@ class AppRepository @Inject constructor(
                     }
 
                     onProgress(0.5f, context.getString(app.mountx.R.string.dialog_delete_purging_data))
+                    val purgeUnmountPaths = mutableListOf<String>()
                     for (point in game.mountPoints) {
                         val ptUserId = app.mountx.root.MountManager.resolveUserId(point.targetPath)
                         val rel = app.mountx.root.MountManager.extractRelativePath(point.targetPath)
-                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                            RootShell.exec("umount -f -l \"$ns/emulated/$ptUserId/$rel\" 2>/dev/null")
-                            RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/mnt/user/$ptUserId", "/mnt/installer/$ptUserId", "/mnt/androidwritable/$ptUserId", "/mnt/pass_through/$ptUserId", "/storage")) {
+                            purgeUnmountPaths.add("$ns/emulated/$ptUserId/$rel")
+                            purgeUnmountPaths.add("$ns/$rel")
                         }
-                        RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
-
+                        purgeUnmountPaths.add("/data/media/$ptUserId/$rel")
+                        purgeUnmountPaths.add(point.targetPath)
+                    }
+                    app.mountx.root.MountManager.unmountSafeAcrossNamespaces(purgeUnmountPaths)
+                    for (point in game.mountPoints) {
                         // Delete physical source data from MicroSD
                         if (point.sourcePath.isNotBlank() && point.sourcePath != "/" && point.sourcePath != sdBase) {
                             RootShell.exec("rm -rf \"${point.sourcePath}\" 2>/dev/null")
@@ -564,19 +571,29 @@ class AppRepository @Inject constructor(
         activeMounts: Set<String>
     ): String? {
         val cleanTarget = mp.targetPath.trimEnd('/')
-        if (cleanTarget.isNotBlank() && activeMounts.contains(cleanTarget)) return cleanTarget
-
         val rel = extractEmulatedRelativePath(cleanTarget)
         if (rel.isNotBlank()) {
             val uid = Regex("^/(?:storage/emulated|data/media|mnt/user)/(\\d+)/")
                 .find(cleanTarget)?.groupValues?.getOrNull(1) ?: "0"
+            val storageTarget = "/storage/emulated/$uid/$rel"
+            val mntUserRoot = "/mnt/user/$uid/emulated"
+            val mntUserTarget = "/mnt/user/$uid/emulated/$uid/$rel"
+            if (activeMounts.contains(mntUserRoot) && !activeMounts.contains(mntUserTarget)) {
+                return null
+            }
+            if (activeMounts.contains("/storage/emulated")) {
+                return if (activeMounts.contains(storageTarget)) storageTarget else null
+            }
             val candidates = listOf(
-                "/storage/emulated/$uid/$rel",
-                "/data/media/$uid/$rel",
-                "/mnt/runtime/default/emulated/$uid/$rel"
+                storageTarget,
+                "/mnt/runtime/default/emulated/$uid/$rel",
+                "/data/media/$uid/$rel"
             )
             candidates.firstOrNull { activeMounts.contains(it) }?.let { return it }
+            return null
         }
+
+        if (cleanTarget.isNotBlank() && activeMounts.contains(cleanTarget)) return cleanTarget
 
         val escapedPkg = Regex.escape(packageName)
         return when (mp.resolveCategory()) {
@@ -611,7 +628,8 @@ class AppRepository @Inject constructor(
         val cleanSource = mp.sourcePath.trimEnd('/')
         if (mp.isEffectivelyVirtualContainer() ||
             cleanSource.endsWith(".img", ignoreCase = true) ||
-            cleanSource.isBlank()
+            cleanSource.isBlank() ||
+            (mp.resolveCategory() == MountPointCategory.CACHE_SHADERS && !mp.targetPath.contains("/Android/"))
         ) {
             return null
         }
@@ -681,12 +699,20 @@ class AppRepository @Inject constructor(
         val targetObb = "/storage/emulated/0/Android/obb/${game.packageName}"
         val relData = extractEmulatedRelativePath(targetData)
         val relObb = "Android/obb/${game.packageName}"
-        val isDataMounted = activeMounts.contains(targetData.trimEnd('/')) ||
-            activeMounts.contains("/data/media/0/$relData") ||
-            activeMounts.contains("/mnt/runtime/default/emulated/0/$relData")
-        val isObbMounted = activeMounts.contains(targetObb.trimEnd('/')) ||
-            activeMounts.contains("/data/media/0/$relObb") ||
-            activeMounts.contains("/mnt/runtime/default/emulated/0/$relObb")
+        val isDataMounted = if (activeMounts.contains("/storage/emulated")) {
+            activeMounts.contains(targetData.trimEnd('/'))
+        } else {
+            activeMounts.contains(targetData.trimEnd('/')) ||
+                activeMounts.contains("/data/media/0/$relData") ||
+                activeMounts.contains("/mnt/runtime/default/emulated/0/$relData")
+        }
+        val isObbMounted = if (activeMounts.contains("/storage/emulated")) {
+            activeMounts.contains(targetObb.trimEnd('/'))
+        } else {
+            activeMounts.contains(targetObb.trimEnd('/')) ||
+                activeMounts.contains("/data/media/0/$relObb") ||
+                activeMounts.contains("/mnt/runtime/default/emulated/0/$relObb")
+        }
         return isDataMounted || isObbMounted
     }
 
@@ -696,6 +722,7 @@ class AppRepository @Inject constructor(
                 RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
                 val games = gameDao.getAllGamesSync()
                 val activeMounts = mountManager.getActiveMountpointsSet()
+                val verifiedMap = mountManager.verifyCanariesBatch(games)
                 val probePaths = mutableSetOf<String>()
                 for (g in games) {
                     if (g.isEnabled && g.mountStatus != MountStatus.NEED_MIGRATION) {
@@ -712,7 +739,8 @@ class AppRepository @Inject constructor(
                             continue
                         }
 
-                        val isFullyMounted = areAllEnabledMountPointsActive(g, activeMounts, existingPaths)
+                        val isFullyMounted = (verifiedMap[g.packageName] == true) &&
+                            areAllEnabledMountPointsActive(g, activeMounts, existingPaths)
 
                         if (isFullyMounted) {
                             gameDao.updateMountStatus(g.packageName, MountStatus.MOUNTED)
@@ -935,6 +963,7 @@ class AppRepository @Inject constructor(
         if (games.isEmpty()) return@withContext
 
         val activeMounts = mountManager.getActiveMountpointsSet()
+        val verifiedCanaries = mountManager.verifyCanariesBatch(games)
         val blkidOut = RootShell.execForOutput("blkid 2>/dev/null")
 
         // Verify if backing block device for SD mount base is physically present in kernel
@@ -945,6 +974,7 @@ class AppRepository @Inject constructor(
         } else ""
 
         val pathsToProbe = mutableSetOf<String>()
+        pathsToProbe.add("/data/adb/modules/MountX/mountpoints.conf")
         if (sdBlockDev.startsWith("/dev/block/")) {
             pathsToProbe.add(sdBlockDev)
             pathsToProbe.add("/sys/class/block/${sdBlockDev.substringAfterLast('/')}")
@@ -973,6 +1003,7 @@ class AppRepository @Inject constructor(
         }
 
         val isSdBaseMounted = (activeMounts.contains(activeSdBase) || existingPaths.contains("$activeSdBase/MountX")) && isSdBlockAlive
+        var enabledStateChanged = false
 
         for (g in games) {
             val targetData = when (g.mode) {
@@ -983,11 +1014,18 @@ class AppRepository @Inject constructor(
             val relData = MountManager.extractRelativePath(targetData)
             val relObb = "Android/obb/${g.packageName}"
 
-            // Precise multi-target mount check with canary anti-shadowing verification
-            val isMounted = areAllEnabledMountPointsActive(g, activeMounts, existingPaths)
+            // Authoritative multi-target mount check: requires /proc/1/mountinfo + /mnt/user + POSIX dev:ino / canary + Zygote namespace
+            val isMounted = (verifiedCanaries[g.packageName] == true) && areAllEnabledMountPointsActive(g, activeMounts, existingPaths)
 
-            // Multi-disk storage check: verify if the specific backing storage is attached
-            val isStorageAttached = if (g.mountPoints.isNotEmpty()) {
+            // Multi-disk storage check: verify if ALL enabled mountPoints have their required backing storage attached
+            val enabledPoints = g.mountPoints.filter { it.enabled }
+            val isStorageAttached = if (enabledPoints.isNotEmpty()) {
+                enabledPoints.all { mp ->
+                    val uuidPresent = mp.diskUuid.isNullOrBlank() || blkidOut.contains(mp.diskUuid, ignoreCase = true)
+                    val pathPresent = existingPaths.contains(mp.sourcePath) && isSdBlockAlive
+                    uuidPresent && (pathPresent || isSdBaseMounted || mp.diskUuid != null)
+                }
+            } else if (g.mountPoints.isNotEmpty()) {
                 g.mountPoints.any { mp ->
                     (mp.diskUuid != null && blkidOut.contains(mp.diskUuid, ignoreCase = true)) ||
                     (existingPaths.contains(mp.sourcePath) && isSdBlockAlive)
@@ -996,17 +1034,22 @@ class AppRepository @Inject constructor(
                 isSdBaseMounted
             }
 
-            if (!isStorageAttached && isMounted) {
-                // Ghost mounts detected with missing backing disk! Clean up zombie mountpoints to prevent app crashes.
-                RootShell.exec("umount -f -l \"$targetData\" 2>/dev/null")
-                RootShell.exec("umount -f -l \"$targetObb\" 2>/dev/null")
-                RootShell.exec("umount -f -l \"/mnt/runtime/default/emulated/0/$relData\" 2>/dev/null")
-                RootShell.exec("umount -f -l \"/mnt/runtime/default/emulated/0/$relObb\" 2>/dev/null")
-                g.mountPoints.filter { it.enabled }.forEach { mp ->
-                    findMatchedActiveMount(mp, g.packageName, activeMounts)?.let { activeTarget ->
-                        RootShell.exec("umount -f -l \"$activeTarget\" 2>/dev/null")
+            if (!isStorageAttached && (isMounted || enabledPoints.any { findMatchedActiveMount(it, g.packageName, activeMounts) != null })) {
+                // Ghost mounts detected with missing backing disk! Clean up zombie mountpoints safely without -f.
+                val ghostPaths = buildList {
+                    add(targetData)
+                    add(targetObb)
+                    for (ns in listOf("/mnt/user/0", "/mnt/installer/0", "/mnt/androidwritable/0", "/mnt/pass_through/0", "/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
+                        add("$ns/emulated/0/$relData")
+                        add("$ns/emulated/0/$relObb")
+                    }
+                    add("/data/media/0/$relData")
+                    add("/data/media/0/$relObb")
+                    enabledPoints.forEach { mp ->
+                        findMatchedActiveMount(mp, g.packageName, activeMounts)?.let { add(it) }
                     }
                 }
+                app.mountx.root.MountManager.unmountSafeAcrossNamespaces(ghostPaths)
             }
 
             val newStatus = when {
@@ -1018,8 +1061,8 @@ class AppRepository @Inject constructor(
                         // Never flag games as NEED_MIGRATION while partition is unmounted.
                         MountStatus.UNMOUNTED
                     } else {
-                        val extData = "/data/sdext2/MountX/Android/data/${g.packageName}"
-                        val extObb = "/data/sdext2/MountX/Android/obb/${g.packageName}"
+                        val extData = "$activeSdBase/MountX/Android/data/${g.packageName}"
+                        val extObb = "$activeSdBase/MountX/Android/obb/${g.packageName}"
                         val hasCustomSd = g.mountPoints.any { existingPaths.contains(it.sourcePath) }
                         val hasSd = hasCustomSd || existingPaths.contains(extData) || existingPaths.contains(extObb)
                         if (hasSd) {
@@ -1049,9 +1092,12 @@ class AppRepository @Inject constructor(
                     mountStatus = MountStatus.MOUNTED,
                     isEnabled = true
                 ))
+                enabledStateChanged = true
             }
         }
-        syncModuleGamelist()
+        if (enabledStateChanged || !existingPaths.contains("/data/adb/modules/MountX/mountpoints.conf")) {
+            syncModuleGamelist()
+        }
         mountNotificationManager.syncActiveMountNotification()
     }
 

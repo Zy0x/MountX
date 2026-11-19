@@ -31,7 +31,8 @@ import javax.inject.Singleton
 @Singleton
 class MountNotificationManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val gameDao: GameDao
+    private val gameDao: GameDao,
+    private val mountManager: MountManager
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val notificationManager = context.getSystemService(NotificationManager::class.java)
@@ -111,20 +112,12 @@ class MountNotificationManager @Inject constructor(
             try {
                 createNotificationChannels()
                 val games = gameDao.getAllGamesSync()
-                val mountedGames = games.filter { it.isEnabled && it.mountStatus == MountStatus.MOUNTED }
-                if (mountedGames.isEmpty()) {
+                val dbMountedGames = games.filter { it.isEnabled && it.mountStatus == MountStatus.MOUNTED }
+                if (dbMountedGames.isEmpty()) {
                     notificationManager.cancel(ACTIVE_NOTIF_ID)
                     return@launch
                 }
                 dismissUnmountedGameWarningNotification()
-
-                // Dynamic Multi-Disk Resolution
-                val gameDisks = resolveMountedGamesDisks(mountedGames)
-                val uniqueDisks = gameDisks.values.distinct()
-
-                val totalBytes = mountedGames.sumOf { it.dataSizeBytes }
-                val formattedSize = if (totalBytes > 0) FormatUtils.formatBytes(totalBytes) else ""
-                val count = mountedGames.size
 
                 val openIntent = Intent(context, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -134,30 +127,17 @@ class MountNotificationManager @Inject constructor(
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
-                // Real-time VFS Mount Integrity & Soft-Restart Recovery
-                val sampleGame = mountedGames.firstOrNull()
-                val isKernelMountAlive = if (sampleGame != null) {
-                    if (sampleGame.mountPoints.isNotEmpty()) {
-                        val enabledPoints = sampleGame.mountPoints.filter { it.enabled }
-                        enabledPoints.isEmpty() || enabledPoints.any { pt ->
-                            val cleanTarget = pt.targetPath.trimEnd('/')
-                            val rel = MountManager.extractRelativePath(pt.targetPath).trimEnd('/')
-                            val grepPattern = if (rel.isNotBlank()) "($cleanTarget|$rel)" else cleanTarget
-                            val mountCount = RootShell.execForOutput("grep -cE '$grepPattern' /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
-                            mountCount > 0
-                        }
-                    } else {
-                        val relPath = "Android/data/${sampleGame.packageName}"
-                        val mountCount = RootShell.execForOutput("grep -c \"$relPath\" /proc/mounts 2>/dev/null").trim().toIntOrNull() ?: 0
-                        mountCount > 0
-                    }
-                } else true
+                // Authoritative Real-time VFS + Zygote + Canary Integrity & Soft-Restart Recovery across ALL mounted apps
+                val verifiedMap = mountManager.verifyCanariesBatch(dbMountedGames)
+                val mountedGames = dbMountedGames.filter { verifiedMap[it.packageName] == true }
+                val unverifiedGames = dbMountedGames.filter { verifiedMap[it.packageName] != true }
 
-                if (!isKernelMountAlive && !RootShell.exists("/dev/.mountx_unmounted")) {
+                if (unverifiedGames.isNotEmpty() && !RootShell.exists("/dev/.mountx_unmounted") && !RootShell.exists("/dev/.mountx_migrating")) {
                     val now = System.currentTimeMillis()
-                    if (now - lastRecoveryAttemptTime > 60_000L) {
+                    if (now - lastRecoveryAttemptTime > 30_000L) {
                         lastRecoveryAttemptTime = now
-                        AppLogger.warn("Notification", "Active mount notification detected VFS mount loss (soft restart). Triggering background recovery...")
+                        val missingNames = unverifiedGames.joinToString(", ") { it.displayName }
+                        AppLogger.warn("Notification", "Active mount notification detected VFS/Zygote mount loss for [$missingNames]. Triggering background recovery...")
                         val recoveringBuilder = NotificationCompat.Builder(context, CHANNEL_ACTIVE_STATUS)
                             .setSmallIcon(R.drawable.ic_notification)
                             .setColor(0xFFFF9100.toInt())
@@ -168,9 +148,22 @@ class MountNotificationManager @Inject constructor(
                         notificationManager.notify(ACTIVE_NOTIF_ID, recoveringBuilder.build())
 
                         MountService.startMountAll(context)
+                        return@launch
                     }
+                }
+
+                if (mountedGames.isEmpty()) {
+                    notificationManager.cancel(ACTIVE_NOTIF_ID)
                     return@launch
                 }
+
+                // Dynamic Multi-Disk Resolution
+                val gameDisks = resolveMountedGamesDisks(mountedGames)
+                val uniqueDisks = gameDisks.values.distinct()
+
+                val totalBytes = mountedGames.sumOf { it.dataSizeBytes }
+                val formattedSize = if (totalBytes > 0) FormatUtils.formatBytes(totalBytes) else ""
+                val count = mountedGames.size
 
                 val unmountAllIntent = Intent(context, MountActionReceiver::class.java).apply {
                     action = MountActionReceiver.ACTION_UNMOUNT_ALL

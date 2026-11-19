@@ -100,6 +100,9 @@ class MountService : Service() {
                         // Clear intentional unmount flag when mounting all games
                         RootShell.exec("rm -f /dev/.mountx_unmounted /dev/.mountx_disk_error 2>/dev/null")
 
+                        // Wait if kernel module service.sh is actively running a mount cycle right now
+                        RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 30_000L, waitForWatchdogUnlockGrace = false)
+
                         val mountRes = storageRepository.mountSdPartition(blockDevice, sdBase)
                         if (mountRes.isSuccess && blockDevice.isBlank()) {
                             // Automatically persist the active block device if it was previously unset

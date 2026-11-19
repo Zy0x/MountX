@@ -233,10 +233,11 @@ class DashboardViewModel @Inject constructor(
 
     fun onAppForegroundResume() {
         val now = System.currentTimeMillis()
-        if (now - lastForegroundResumeTime < 15_000L) return
+        if (now - lastForegroundResumeTime < 5_000L) return
         lastForegroundResumeTime = now
         storageRepository.refreshStorage()
         viewModelScope.launch(Dispatchers.IO) {
+            gameRepository.refreshMountStatuses()
             val sdBase = appPreferences.sdBasePath.first()
             val current = games.value
             gameRepository.calculateDataSizesBatch(current, sdBase)
@@ -287,18 +288,38 @@ class DashboardViewModel @Inject constructor(
             _isRefreshingTelemetry.value = true
             try {
                 val sdBase = appPreferences.sdBasePath.first()
-                val mountsRes = RootShell.exec("cat /proc/mounts 2>/dev/null")
+                val mountsRes = RootShell.exec("cat /proc/1/mountinfo /proc/mounts 2>/dev/null")
                 val mountLines = if (mountsRes.isSuccess) {
                     mountsRes.stdout.filter { line ->
                         line.isNotBlank() && (
-                            line.contains("/data/media/0/Android") ||
+                            line.contains("/storage/emulated/") ||
+                            line.contains("/mnt/user/") ||
+                            line.contains("/mnt/runtime/") ||
+                            line.contains("/data/media/") ||
+                            line.contains("/data/user/") ||
+                            line.contains("/data/app/") ||
+                            line.contains("/data/sdext2") ||
+                            (sdBase.isNotBlank() && line.contains(sdBase))
+                        ) && (
+                            line.contains("MountX") ||
+                            line.contains("/Android/data/") ||
+                            line.contains("/Android/obb/") ||
+                            line.contains("/Android/media/") ||
                             line.contains("/data/sdext2") ||
                             (sdBase.isNotBlank() && line.contains(sdBase))
                         )
                     }.map { line ->
                         val parts = line.trim().split(Regex("\\s+"))
-                        parts.take(3).joinToString(" ")
-                    }
+                        if (parts.size >= 5 && parts[0].all { it.isDigit() }) {
+                            // /proc/1/mountinfo line: <id> <parent> <maj:min> <root> <mountpoint> ... - <fstype> <source> ...
+                            val dashIdx = parts.indexOf("-")
+                            val fsType = if (dashIdx >= 0 && dashIdx + 1 < parts.size) parts[dashIdx + 1] else ""
+                            val srcDev = if (dashIdx >= 0 && dashIdx + 2 < parts.size) parts[dashIdx + 2] else parts[3]
+                            "$srcDev ${parts[4]} $fsType".trim()
+                        } else {
+                            parts.take(3).joinToString(" ")
+                        }
+                    }.distinct()
                 } else emptyList()
 
                 val currentGames = games.value

@@ -18,6 +18,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,17 +38,25 @@ class MountWatchdogDaemon @Inject constructor(
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile
     private var isRegistered = false
+    private val receiverLock = Any()
+    private val canaryMutex = Mutex()
+    @Volatile
     private var lastScreenOnCheckMillis = 0L
-    private val SCREEN_ON_THROTTLE_MS = 30_000L // 30 seconds debounce
+    @Volatile
+    private var lastMediaMountedMillis = 0L
+    private val SCREEN_ON_THROTTLE_MS = 10_000L // 10 seconds debounce across wakeup/unlock/idle-exit
+    private val MEDIA_MOUNTED_THROTTLE_MS = 4_000L
 
     private val eventReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
             when (intent?.action) {
-                Intent.ACTION_SCREEN_ON -> {
-                    // Screen woke up: passive integrity check throttled to max once per 30s
-                    // Also catches post-zygote-restart scenarios where new processes
-                    // may not have inherited the bind mount namespaces.
+                Intent.ACTION_SCREEN_ON,
+                Intent.ACTION_USER_PRESENT,
+                android.os.PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
+                    // Screen woke up, user unlocked, or Doze deep-sleep exited:
+                    // Verify and restore any mounts lost/shadowed during deep sleep or soft restart.
                     val now = System.currentTimeMillis()
                     if (now - lastScreenOnCheckMillis >= SCREEN_ON_THROTTLE_MS) {
                         lastScreenOnCheckMillis = now
@@ -56,7 +66,10 @@ class MountWatchdogDaemon @Inject constructor(
                     }
                 }
                 Intent.ACTION_MEDIA_MOUNTED -> {
-                    // External storage just connected: ensure base partition is mounted, then canary check
+                    // External storage just connected / FUSE restarted: debounce rapid dual broadcasts
+                    val now = System.currentTimeMillis()
+                    if (now - lastMediaMountedMillis < MEDIA_MOUNTED_THROTTLE_MS) return
+                    lastMediaMountedMillis = now
                     scope.launch {
                         val sdBase = appPreferences.sdBasePath.first()
                         val isSdBaseMounted = RootShell.isMountpoint(sdBase)
@@ -77,16 +90,7 @@ class MountWatchdogDaemon @Inject constructor(
                         val sdBase = appPreferences.sdBasePath.first()
                         val isSdBaseMounted = RootShell.isMountpoint(sdBase)
                         val configuredDevice = appPreferences.sdBlockDevice.first().trim()
-                        val parentDev = configuredDevice.removePrefix("/dev/block/").replace(Regex("p[0-9]+$"), "")
-                        val isConfiguredAlive = configuredDevice.isNotBlank() && (
-                            RootShell.exists(configuredDevice) ||
-                            (parentDev.isNotBlank() && (RootShell.exists("/dev/block/$parentDev") || RootShell.exists("/sys/block/$parentDev")))
-                        )
-                        val isGenericDeviceAlive = RootShell.exists("/dev/block/mmcblk0") || RootShell.exists("/sys/block/mmcblk0") ||
-                            RootShell.exists("/dev/block/mmcblk1") || RootShell.exists("/sys/block/mmcblk1") ||
-                            RootShell.exists("/dev/block/sda") || RootShell.exists("/sys/block/sda") ||
-                            RootShell.exists("/dev/block/sdb") || RootShell.exists("/sys/block/sdb")
-                        val isDeviceStillAlive = isConfiguredAlive || isGenericDeviceAlive
+                        val isDeviceStillAlive = RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredDevice)
 
                         if (!isSdBaseMounted && !isDeviceStillAlive) {
                             AppLogger.warn("Watchdog", "MicroSD physically detached. Executing emergency lazy unmount.")
@@ -125,8 +129,13 @@ class MountWatchdogDaemon @Inject constructor(
      * Start the passive event-driven watchdog listener with Android 14/15 export flags.
      */
     fun start() {
-        if (isRegistered) return
-        val screenFilter = IntentFilter(Intent.ACTION_SCREEN_ON)
+        synchronized(receiverLock) {
+            if (isRegistered) return
+            val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(android.os.PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+        }
         val mediaFilter = IntentFilter().apply {
             addAction(Intent.ACTION_MEDIA_EJECT)
             addAction(Intent.ACTION_MEDIA_UNMOUNTED)
@@ -163,82 +172,63 @@ class MountWatchdogDaemon @Inject constructor(
         } catch (e: Exception) {
             AppLogger.error("Watchdog", "Failed to register watchdog receiver: ${e.message}")
         }
+        }
     }
 
     /**
      * Stop the watchdog receiver.
      */
     fun stop() {
-        if (!isRegistered) return
-        try {
-            context.unregisterReceiver(eventReceiver)
-            isRegistered = false
-            AppLogger.info("Watchdog", "Passive integrity watchdog stopped.")
-        } catch (e: Exception) {
-            AppLogger.error("Watchdog", "Error stopping watchdog: ${e.message}")
+        synchronized(receiverLock) {
+            if (!isRegistered) return
+            try {
+                context.unregisterReceiver(eventReceiver)
+                isRegistered = false
+                AppLogger.info("Watchdog", "Passive integrity watchdog stopped.")
+            } catch (e: Exception) {
+                AppLogger.error("Watchdog", "Error stopping watchdog: ${e.message}")
+            }
         }
     }
 
     /**
-     * Passive canary check: verifies whether mounted games still have valid canary visibility.
-     * Re-mounts if Android system_server / vold dropped the mount during deep sleep.
-     * Accurately supports both modular multi-mount points and legacy entries without OBB false-positives.
+     * Passive canary check: verifies whether mounted games still have valid live visibility
+     * across /proc/1/mountinfo, /mnt/user, POSIX dev:ino parity / canary, and Zygote namespace.
+     * Re-mounts immediately if Android system_server / vold / MediaProvider dropped or shadowed a mount
+     * during deep sleep or soft restart, and updates DB status honestly if remount fails.
      */
-    suspend fun checkAndRemountCanaries() {
-        if (RootShell.exists("/dev/.mountx_unmounted")) {
-            AppLogger.info("Watchdog", "User intentional unmount active (/dev/.mountx_unmounted exists), skipping auto-remount.")
-            return
+    suspend fun checkAndRemountCanaries(): Unit = canaryMutex.withLock {
+        if (RootShell.exists("/dev/.mountx_unmounted") || RootShell.exists("/dev/.mountx_migrating")) {
+            AppLogger.info("Watchdog", "User intentional unmount or active migration in progress, skipping auto-remount.")
+            return@withLock
         }
+        // Coordinate with service.sh so we never double-mount concurrently with the kernel watchdog
+        RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 15_000L, waitForWatchdogUnlockGrace = false)
+
         val games = gameDao.getAllGamesSync()
         val mountedGames = games.filter { it.isEnabled && it.mountStatus == MountStatus.MOUNTED }
         if (mountedGames.isEmpty()) return
         val sdBase = appPreferences.sdBasePath.first()
-        val activeMounts = mountManager.getActiveMountpointsSet()
         val canaryResults = mountManager.verifyCanariesBatch(mountedGames)
+        var anyChanged = false
 
         for (game in mountedGames) {
-            val hasCanary = canaryResults[game.packageName] ?: false
-            if (!hasCanary) {
-                val isAlreadyMounted = if (game.mountPoints.isNotEmpty()) {
-                    val activeConfigs = game.mountPoints.filter { it.enabled }
-                    activeConfigs.isNotEmpty() && activeConfigs.all { mp ->
-                        val rel = MountManager.extractRelativePath(mp.targetPath)
-                        activeMounts.contains(mp.targetPath) ||
-                        (rel.isNotBlank() && activeMounts.any { it.endsWith(rel) }) ||
-                        RootShell.isMountpoint(mp.targetPath)
-                    }
+            val isLiveVerified = canaryResults[game.packageName] ?: false
+            if (!isLiveVerified) {
+                AppLogger.warn("Watchdog", "Live mount verification failed (unmounted/shadowed/Zygote-desynced) for ${game.displayName} (${game.packageName}), re-mounting...")
+                val result = mountManager.mountGame(game, sdBase)
+                if (result.isSuccess && mountManager.verifyCanary(game.packageName, game)) {
+                    gameDao.updateMountStatus(game.packageName, MountStatus.MOUNTED)
+                    anyChanged = true
+                    AppLogger.success("Watchdog", "Auto-remounted ${game.displayName} successfully.")
                 } else {
-                    val dataTarget = "/storage/emulated/0/Android/data/${game.packageName}"
-                    val isDataMounted = activeMounts.contains(dataTarget) ||
-                            RootShell.isMountpoint(dataTarget) ||
-                            RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/data/${game.packageName}")
-
-                    val obbSrc = "$sdBase/MountX/Android/obb/${game.packageName}"
-                    val legacyObbSrc = "$sdBase/Android/obb/${game.packageName}"
-                    val hasObbOnSd = RootShell.exists(obbSrc) || RootShell.exists(legacyObbSrc)
-                    if (hasObbOnSd) {
-                        val obbTarget = "/storage/emulated/0/Android/obb/${game.packageName}"
-                        val isObbMounted = activeMounts.contains(obbTarget) ||
-                                RootShell.isMountpoint(obbTarget) ||
-                                RootShell.isMountpoint("/mnt/runtime/default/emulated/0/Android/obb/${game.packageName}")
-                        isDataMounted && isObbMounted
-                    } else {
-                        isDataMounted
-                    }
-                }
-
-                if (!isAlreadyMounted) {
-                    AppLogger.warn("Watchdog", "Canary lost and mount not active for ${game.displayName} (${game.packageName}), re-mounting...")
-                    val result = mountManager.mountGame(game, sdBase)
-                    if (result.isSuccess) {
-                        AppLogger.success("Watchdog", "Auto-remounted ${game.displayName} successfully.")
-                    } else {
-                        AppLogger.error("Watchdog", "Failed auto-remount for ${game.displayName}")
-                    }
-                } else {
-                    AppLogger.info("Watchdog", "Mountpoint still active for ${game.displayName}, skipping duplicate mount.")
+                    AppLogger.error("Watchdog", "Failed auto-remount for ${game.displayName}; refreshing honest status.")
+                    anyChanged = true
                 }
             }
+        }
+        if (anyChanged) {
+            runCatching { appRepository.get().refreshMountStatuses() }
         }
     }
 
@@ -248,7 +238,8 @@ class MountWatchdogDaemon @Inject constructor(
     suspend fun emergencyLazyUnmount() {
         AppLogger.warn("Watchdog", "MicroSD ejection detected! Performing emergency lazy unmount...")
         val sdBase = appPreferences.sdBasePath.first()
-        mountManager.unmountAll(sdBase)
+        mountManager.unmountAll(sdBase, isUserIntentional = false)
+        RootShell.exec("rm -f /dev/.mountx_unmounted 2>/dev/null")
         val games = gameDao.getAllGamesSync()
         for (g in games) {
             if (g.mountStatus == MountStatus.MOUNTED) {
@@ -268,12 +259,15 @@ class MountWatchdogDaemon @Inject constructor(
         gameDao.updateMountStatus(packageName, MountStatus.UNMOUNTED)
 
         // Clear any lingering mountpoint in runtime namespaces to prevent Play Store reinstall errors
-        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-            RootShell.exec("umount -f -l \"$ns/emulated/0/Android/data/$packageName\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"$ns/emulated/0/Android/obb/$packageName\" 2>/dev/null")
+        val stalePaths = buildList {
+            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/mnt/user/0", "/mnt/installer/0", "/mnt/androidwritable/0", "/mnt/pass_through/0", "/storage")) {
+                add("$ns/emulated/0/Android/data/$packageName")
+                add("$ns/emulated/0/Android/obb/$packageName")
+            }
+            add("/data/media/0/Android/data/$packageName")
+            add("/data/media/0/Android/obb/$packageName")
         }
-        RootShell.exec("umount -f -l \"/data/media/0/Android/data/$packageName\" 2>/dev/null")
-        RootShell.exec("umount -f -l \"/data/media/0/Android/obb/$packageName\" 2>/dev/null")
+        app.mountx.root.MountManager.unmountSafeAcrossNamespaces(stalePaths)
 
         // Clean cached icon from memory and disk cache
         app.mountx.ui.components.AppIconManager.removeCachedIcon(context, packageName)
@@ -305,8 +299,8 @@ class MountWatchdogDaemon @Inject constructor(
                 val newApkDir = java.io.File(fullApkPath).parent ?: ""
                 if (newApkDir.isNotBlank() && newApkDir != appPkgMount.targetPath) {
                     AppLogger.warn("Watchdog", "APK directory hash changed for $packageName after update: ${appPkgMount.targetPath} -> $newApkDir")
-                    // Unmount stale old target
-                    RootShell.exec("umount -f -l \"${appPkgMount.targetPath}\" 2>/dev/null")
+                    // Unmount stale old target safely
+                    app.mountx.root.MountManager.unmountSafeAcrossNamespaces(listOf(appPkgMount.targetPath))
                     val updatedMountPoints = game.mountPoints.map { mp ->
                         if (mp.category == app.mountx.data.model.MountPointCategory.APP_PACKAGE) {
                             mp.copy(targetPath = newApkDir)

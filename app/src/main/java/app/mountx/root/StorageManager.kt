@@ -425,40 +425,42 @@ class StorageManager(
 
     /**
      * Self-healing routine to restore unmountable/detached primary emulated storage (/storage/emulated/0).
-     * Cleans up stale child mounts, unmounts jammed runtime namespaces, and triggers Vold sm mount.
+     * First peels dead ENOTCONN FUSE layers & corrupted parent occlusion mounts cleanly (never using `umount -f`),
+     * then only resets runtime FUSE + invokes Vold `sm mount` if `/storage/emulated/0` is still broken.
      */
     suspend fun repairEmulatedStorage(): Boolean = withContext(Dispatchers.IO) {
-        val script = """
-            while read -r _dev _mnt _rest; do
-                case "${'$'}{_mnt}" in
-                    /data/media/*/Android/data/*|/data/media/*/Android/obb/*|\
-                    /data/media/*/Android/media/*|\
-                    /storage/emulated/*/Android/data/*|/storage/emulated/*/Android/obb/*|\
-                    /storage/emulated/*/Android/media/*|\
-                    /mnt/runtime/*/emulated/*/Android/data/*|/mnt/runtime/*/emulated/*/Android/obb/*|\
-                    /mnt/runtime/*/emulated/*/Android/media/*|\
-                    /mnt/user/*/emulated/*/Android/data/*|/mnt/user/*/emulated/*/Android/obb/*|\
-                    /mnt/user/*/emulated/*/Android/media/*|\
-                    /mnt/pass_through/*/emulated/*/Android/data/*|/mnt/pass_through/*/emulated/*/Android/obb/*|\
-                    /mnt/pass_through/*/emulated/*/Android/media/*|\
-                    /mnt/androidwritable/*/emulated/*/Android/data/*|/mnt/androidwritable/*/emulated/*/Android/obb/*|\
-                    /mnt/androidwritable/*/emulated/*/Android/media/*|\
-                    /mnt/installer/*/emulated/*/Android/data/*|/mnt/installer/*/emulated/*/Android/obb/*|\
-                    /mnt/installer/*/emulated/*/Android/media/*)
-                        umount -f -l "${'$'}{_mnt}" 2>/dev/null
-                        ;;
-                esac
-            done < /proc/mounts
+        MountManager.repairDeadFuseAndCorruptedParents()
 
-            umount -l /mnt/runtime/default/emulated 2>/dev/null
-            umount -l /mnt/runtime/read/emulated 2>/dev/null
-            umount -l /mnt/runtime/write/emulated 2>/dev/null
-            umount -l /mnt/runtime/full/emulated 2>/dev/null
-            umount -l /mnt/pass_through/0/emulated 2>/dev/null
-            umount -l /storage/emulated 2>/dev/null
-            umount -l /mnt/user/0/emulated 2>/dev/null
-            umount -l /mnt/installer/0/emulated 2>/dev/null
-            umount -l /mnt/androidwritable/0/emulated 2>/dev/null
+        val probeOut = RootShell.execForOutput(
+            "LC_ALL=C stat -t /storage/emulated /storage/emulated/0 2>&1; stat -f -c %T /storage/emulated 2>/dev/null"
+        )
+        val alreadyHealthy = isEmulatedStorageMounted() &&
+            !probeOut.contains("Transport endpoint", ignoreCase = true) &&
+            !probeOut.lines().lastOrNull().orEmpty().trim().equals("tmpfs", ignoreCase = true)
+        if (alreadyHealthy) {
+            return@withContext true
+        }
+
+        val script = """
+            _mi=/proc/1/mountinfo
+            [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+            awk '{p=${'$'}5; gsub(/\\040/," ",p); if (p ~ /^\/(data\/media|storage\/emulated|mnt\/(runtime\/[^\/]+|user\/[0-9]+|pass_through\/[0-9]+|androidwritable\/[0-9]+|installer\/[0-9]+)\/emulated)\/.*\/Android\/(data|obb|media)(\/|${'$'})/) print length(p), p}' "${'$'}_mi" 2>/dev/null \
+              | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[${'$'}0]++' | while IFS= read -r _mnt; do
+                [ -n "${'$'}_mnt" ] && (umount "${'$'}_mnt" 2>/dev/null || umount -l "${'$'}_mnt" 2>/dev/null)
+            done
+
+            for _em in \
+              /mnt/runtime/default/emulated \
+              /mnt/runtime/read/emulated \
+              /mnt/runtime/write/emulated \
+              /mnt/runtime/full/emulated \
+              /mnt/pass_through/0/emulated \
+              /storage/emulated \
+              /mnt/user/0/emulated \
+              /mnt/installer/0/emulated \
+              /mnt/androidwritable/0/emulated; do
+              umount "${'$'}_em" 2>/dev/null || umount -l "${'$'}_em" 2>/dev/null
+            done
 
             if [ "${'$'}(stat -f -c %T /storage/emulated 2>/dev/null)" = "tmpfs" ]; then
                 rm -rf /storage/emulated/0 2>/dev/null
@@ -467,7 +469,7 @@ class StorageManager(
             sm mount 'emulated;0' 2>/dev/null || sm mount 'emulated:0' 2>/dev/null
             sleep 2
         """.trimIndent()
-        RootShell.exec(script)
+        RootShell.execScript(script)
         isEmulatedStorageMounted()
     }
 
@@ -1535,59 +1537,121 @@ class StorageManager(
             val mountContext = if (hasSdcardfs) "context=u:object_r:sdcardfs:s0" else "context=u:object_r:fuse:s0"
             val hasNtfs3 = procFs.contains("ntfs3")
 
-            // Try primary fsType with optimized streaming flags and application-friendly SELinux context
-            val primaryCmd = when (fsType) {
-                FilesystemType.F2FS -> "mount -t f2fs -o rw,noatime,nodiratime,$mountContext,inline_data,inline_dentry,flush_merge,mode=adaptive \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry,flush_merge,mode=adaptive \"$targetDev\" \"$mountPoint\""
-                FilesystemType.EXT4 -> "mount -t ext4 -o rw,noatime,nodiratime,$mountContext,commit=60,delalloc,data=writeback \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc,data=writeback \"$targetDev\" \"$mountPoint\""
-                FilesystemType.EXFAT -> "mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime \"$targetDev\" \"$mountPoint\""
-                FilesystemType.FAT32 -> "mount -t vfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,nodiratime \"$targetDev\" \"$mountPoint\""
-                FilesystemType.NTFS -> if (hasNtfs3) {
-                    "mount -t ntfs3 -o iocharset=utf8,noatime,prealloc \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount.ntfs -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\""
-                } else {
-                    "mount.ntfs -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\""
+            // Reuse existing superblock via bind mount if targetDev is already mounted elsewhere (avoids SELinux superblock context conflict)
+            val existingBindScript = """
+                _mi=/proc/1/mountinfo
+                [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+                _rdev=${'$'}(readlink -f "$targetDev" 2>/dev/null || echo "$targetDev")
+                _majmin=${'$'}(cat "/sys/class/block/${'$'}{_rdev##*/}/dev" 2>/dev/null)
+                _em=${'$'}(T="$targetDev" RD="${'$'}_rdev" MM="${'$'}_majmin" TGT="$effectiveMountPoint" awk -F ' - ' '{
+                  split(${'$'}1, L, " "); split(${'$'}2, R, " ");
+                  m = L[5]; gsub(/\\040/, " ", m);
+                  if (m != ENVIRON["TGT"] && (R[2] == ENVIRON["T"] || R[2] == ENVIRON["RD"] || (ENVIRON["MM"] != "" && L[3] == ENVIRON["MM"]))) {
+                    print m; exit
+                  }
+                }' "${'$'}_mi" 2>/dev/null)
+                if [ -n "${'$'}_em" ] && [ -d "${'$'}_em" ]; then
+                  mount -o bind "${'$'}_em" "$effectiveMountPoint" 2>/dev/null
+                fi
+            """.trimIndent()
+            RootShell.execScript(existingBindScript)
+
+            var res = if (RootShell.isMountpoint(effectiveMountPoint)) {
+                RootShell.exec("true")
+            } else {
+                // Try primary fsType with optimized streaming flags and application-friendly SELinux context
+                val primaryCmd = when (fsType) {
+                    FilesystemType.F2FS -> "mount -t f2fs -o rw,noatime,nodiratime,$mountContext,inline_data,inline_dentry,flush_merge,mode=adaptive \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t f2fs -o rw,noatime,nodiratime,inline_data,inline_dentry,flush_merge,mode=adaptive \"$targetDev\" \"$effectiveMountPoint\""
+                    FilesystemType.EXT4 -> "mount -t ext4 -o rw,noatime,nodiratime,$mountContext,commit=60,delalloc,data=writeback \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t ext4 -o rw,noatime,nodiratime,commit=60,delalloc,data=writeback \"$targetDev\" \"$effectiveMountPoint\""
+                    FilesystemType.EXFAT -> "mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime \"$targetDev\" \"$effectiveMountPoint\""
+                    FilesystemType.FAT32 -> "mount -t vfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,nodiratime \"$targetDev\" \"$effectiveMountPoint\""
+                    FilesystemType.NTFS -> if (hasNtfs3) {
+                        "mount -t ntfs3 -o iocharset=utf8,noatime,prealloc \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount.ntfs -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\""
+                    } else {
+                        "mount.ntfs -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t ntfs-3g -o rw,big_writes,async,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\""
+                    }
+                    else -> "mount -t ${fsType.command} -o noatime,nodiratime,rw \"$targetDev\" \"$effectiveMountPoint\""
                 }
-                else -> "mount -t ${fsType.command} -o noatime,nodiratime,rw \"$targetDev\" \"$mountPoint\""
+                RootShell.exec(primaryCmd)
             }
-            var res = RootShell.exec(primaryCmd)
-            
+
             // If failed, try comprehensive multi-filesystem fallback chain
-            if (!res.isSuccess) {
-                val fallbackCmd = "mount -t ext4 -o noatime,nodiratime,rw,$mountContext \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ext4 -o noatime,nodiratime,rw \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw,$mountContext \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t ntfs3 -o iocharset=utf8,noatime,prealloc \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount.ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$mountPoint\" 2>/dev/null || mount \"$targetDev\" \"$mountPoint\""
+            if (!res.isSuccess && !RootShell.isMountpoint(effectiveMountPoint)) {
+                val fallbackCmd = "mount -t ext4 -o noatime,nodiratime,rw,$mountContext \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t ext4 -o noatime,nodiratime,rw \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw,$mountContext \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t f2fs -o noatime,rw \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t exfat -o rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t ntfs3 -o iocharset=utf8,noatime,prealloc \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount.ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount -t vfat -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 \"$targetDev\" \"$effectiveMountPoint\" 2>/dev/null || mount \"$targetDev\" \"$effectiveMountPoint\""
                 res = RootShell.exec(fallbackCmd)
             }
 
             if (!RootShell.isMountpoint(effectiveMountPoint)) {
                 error("Failed to mount $targetDev to $effectiveMountPoint: ${res.stderr.joinToString("\n")}")
             }
-            RootShell.exec("${RootShell.makeRprivateCmd(mountPoint)}")
+            RootShell.exec("${RootShell.makeRprivateCmd(effectiveMountPoint)}")
             ToolchainManager.optimizeBlockDeviceQueue(targetDev)
             Unit
         }
     }
 
     /**
-     * Unmount the SD partition.
+     * Safely unmounts a block device and/or mountpoint deepest-first across PID 1 and Zygote namespaces
+     * using `umount || umount -l` (NEVER `-f`, preventing F2FS checkpoint `EIO` corruption).
+     */
+    private suspend fun unmountBlockSafely(blockDevice: String?, mountPoint: String?) {
+        val bdev = blockDevice?.trimEnd('/').orEmpty()
+        val mp = mountPoint?.trimEnd('/').orEmpty()
+        if (bdev.isBlank() && mp.isBlank()) return
+        val script = """
+            _mi=/proc/1/mountinfo
+            [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
+            _bdev="$bdev"
+            _mp="$mp"
+            _rdev=""
+            _mm=""
+            if [ -n "${'$'}_bdev" ]; then
+              _rdev=${'$'}(readlink -f "${'$'}_bdev" 2>/dev/null || echo "${'$'}_bdev")
+              _mm=${'$'}(cat "/sys/class/block/${'$'}{_rdev##*/}/dev" 2>/dev/null)
+            fi
+            _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+            unmount_all_ns() {
+              _t="${'$'}1"
+              [ -n "${'$'}_t" ] || return 0
+              umount "${'$'}_t" 2>/dev/null || umount -l "${'$'}_t" 2>/dev/null
+              for _zp in ${'$'}_zpids; do
+                [ -d "/proc/${'$'}_zp/ns" ] || continue
+                nsenter --mount="/proc/${'$'}_zp/ns/mnt" -- sh -c 'umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null' _ "${'$'}_t" 2>/dev/null
+              done
+            }
+            for _pass in 1 2; do
+              _list=${'$'}(MP="${'$'}_mp" BD="${'$'}_bdev" RD="${'$'}_rdev" MM="${'$'}_mm" awk -F ' - ' '{
+                split(${'$'}1, L, " "); split(${'$'}2, R, " ");
+                m = L[5]; gsub(/\\040/, " ", m);
+                hit = 0;
+                if (ENVIRON["MP"] != "" && (m == ENVIRON["MP"] || index(m, ENVIRON["MP"] "/") == 1)) hit = 1;
+                if (ENVIRON["BD"] != "" && (R[2] == ENVIRON["BD"] || R[2] == ENVIRON["RD"])) hit = 1;
+                if (ENVIRON["MM"] != "" && L[3] == ENVIRON["MM"]) hit = 1;
+                if (hit && m != ENVIRON["MP"]) print length(m), m
+              }' "${'$'}_mi" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[${'$'}0]++')
+              [ -z "${'$'}_list" ] && break
+              echo "${'$'}_list" | while IFS= read -r _t; do
+                unmount_all_ns "${'$'}_t"
+              done
+            done
+            sync
+            if [ -n "${'$'}_mp" ]; then unmount_all_ns "${'$'}_mp"; fi
+            if [ -n "${'$'}_bdev" ]; then
+              umount "${'$'}_bdev" 2>/dev/null || umount -l "${'$'}_bdev" 2>/dev/null
+            fi
+        """.trimIndent()
+        RootShell.execScript(script)
+    }
+
+    /**
+     * Unmount the SD partition safely (no `umount -f`).
      */
     suspend fun unmountSdPartition(mountPoint: String = "/data/sdext2"): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
-                // 1. Unbind any game folders bind-mounted across runtime namespaces
-                val unbindScript = """
-                    for m in $(grep "$mountPoint" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
-                        if [ "${'$'}m" != "$mountPoint" ]; then
-                            umount -f -l "${'$'}m" 2>/dev/null
-                        fi
-                    done
-                    for ns in /proc/[0-9]*/ns/mnt; do
-                        nsenter --mount="${'$'}ns" umount -f -l "$mountPoint" 2>/dev/null
-                    done
-                """.trimIndent()
-                RootShell.execScript(unbindScript)
-                RootShell.exec("sync")
-
-                // 2. Unmount the root SD mount point
+                unmountBlockSafely(blockDevice = null, mountPoint = mountPoint)
                 if (RootShell.isMountpoint(mountPoint)) {
-                    val res = RootShell.exec("umount -f -l \"$mountPoint\" 2>/dev/null")
+                    val res = RootShell.exec("umount \"$mountPoint\" 2>/dev/null || umount -l \"$mountPoint\" 2>/dev/null")
                     if (!res.isSuccess && RootShell.isMountpoint(mountPoint)) {
                         error("Failed to unmount $mountPoint: ${res.stderr.joinToString("\n")}")
                     }
@@ -1606,18 +1670,8 @@ class StorageManager(
             val mnt = partition.mountPoint
 
             if (partition.isTargetMount || mnt == "/data/sdext2") {
-                // If it's the target mount (/data/sdext2), unbind game folders and unmount target
                 unmountSdPartition(mnt ?: "/data/sdext2").getOrThrow()
-                // Clean up any remaining mounts for this block device across all namespaces
-                val mountsRes = RootShell.exec("grep -F \"$blockDev\" /proc/mounts 2>/dev/null")
-                val mountLines = mountsRes.stdout.map { it.trim() }.filter { it.isNotBlank() }
-                for (line in mountLines) {
-                    val m = line.split(Regex("\\s+")).getOrNull(1)
-                    if (!m.isNullOrBlank()) {
-                        RootShell.exec("umount -f -l \"$m\" 2>/dev/null")
-                    }
-                }
-                RootShell.exec("umount -f -l \"$blockDev\" 2>/dev/null")
+                unmountBlockSafely(blockDevice = blockDev, mountPoint = null)
             } else {
                 // 1. If it has an Android Vold volume (public:major,minor), execute sm unmount
                 val mmRes = RootShell.exec("cat /sys/class/block/$devName/dev 2>/dev/null")
@@ -1629,21 +1683,8 @@ class StorageManager(
                     RootShell.exec("sm unmount \"public:$mm\" 2>/dev/null")
                 }
 
-                // 2. Direct Linux umount by mount point if still mounted
-                if (!mnt.isNullOrBlank()) {
-                    RootShell.exec("umount -f -l \"$mnt\" 2>/dev/null")
-                }
-
-                // 3. Direct Linux umount by block device (cleans up any remaining mounts in all namespaces)
-                val mountsRes = RootShell.exec("grep -F \"$blockDev\" /proc/mounts 2>/dev/null")
-                val mountLines = mountsRes.stdout.map { it.trim() }.filter { it.isNotBlank() }
-                for (line in mountLines) {
-                    val m = line.split(Regex("\\s+")).getOrNull(1)
-                    if (!m.isNullOrBlank()) {
-                        RootShell.exec("umount -f -l \"$m\" 2>/dev/null")
-                    }
-                }
-                RootShell.exec("umount -f -l \"$blockDev\" 2>/dev/null")
+                // 2. Direct Linux non-force umount by mountpoint & block device
+                unmountBlockSafely(blockDevice = blockDev, mountPoint = mnt)
             }
             Unit
         }
@@ -1816,23 +1857,23 @@ class StorageManager(
                 onProgress(0.05f, getAppContext().getString(R.string.storage_msg_stopping_app, packageName))
                 RootShell.exec("am force-stop \"$packageName\"")
 
-                // Pre-Flight unmount across all runtime namespaces
+                // Pre-Flight unmount across all runtime namespaces (without -f)
                 for (point in mountPoints) {
                     val ptUserId = MountManager.resolveUserId(point.targetPath)
                     val rel = MountManager.extractRelativePath(point.targetPath)
+                    val toUnmount = mutableListOf(point.targetPath, point.sourcePath)
                     if (point.isExternalStorageCategory() && rel.isNotBlank()) {
-                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                            RootShell.exec("umount -f -l \"$ns/emulated/$ptUserId/$rel\" 2>/dev/null")
-                            RootShell.exec("umount -f -l \"$ns/$rel\" 2>/dev/null")
+                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/mnt/user/$ptUserId", "/mnt/installer/$ptUserId", "/mnt/androidwritable/$ptUserId", "/mnt/pass_through/$ptUserId", "/storage")) {
+                            toUnmount.add("$ns/emulated/$ptUserId/$rel")
+                            toUnmount.add("$ns/$rel")
                         }
-                        RootShell.exec("umount -f -l \"/data/media/$ptUserId/$rel\" 2>/dev/null")
+                        toUnmount.add("/data/media/$ptUserId/$rel")
                     }
-                    RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
-                    RootShell.exec("umount -f -l \"${point.sourcePath}\" 2>/dev/null")
+                    MountManager.unmountSafeAcrossNamespaces(toUnmount)
 
                     if (RootShell.isMountpoint(point.targetPath)) {
                         RootShell.exec("sync")
-                        RootShell.exec("umount -f -l \"${point.targetPath}\" 2>/dev/null")
+                        MountManager.unmountSafeAcrossNamespaces(listOf(point.targetPath))
                         if (RootShell.isMountpoint(point.targetPath)) {
                             throw IllegalStateException(getAppContext().getString(R.string.storage_msg_unmount_failed_abort, point.targetPath))
                         }
@@ -1967,17 +2008,8 @@ class StorageManager(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             // 1. Comprehensive unmount of all mountpoints referencing this block device
-            val procMounts = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
-            for (line in procMounts) {
-                val parts = line.trim().split(Regex("\\s+"))
-                if (parts.size >= 2) {
-                    val dev = parts[0]
-                    val mnt = parts[1]
-                    if (dev == blockDevice || dev.startsWith(blockDevice) || mnt.contains(blockDevice.substringAfterLast('/'))) {
-                        RootShell.exec("umount -f -l \"$mnt\" 2>/dev/null")
-                    }
-                }
-            }
+            // 1. Safely unmount any active mountpoints on this block device deepest-first (no -f)
+            unmountBlockSafely(blockDevice = blockDevice, mountPoint = null)
 
             // 2. Kill any processes keeping open handles on the block device
             RootShell.exec("fuser -k -9 \"$blockDevice\" 2>/dev/null")
@@ -1985,8 +2017,8 @@ class StorageManager(
             // 3. Issue Vold / Framework unmount request to drop Android storage locks
             RootShell.exec("sm unmount \"$blockDevice\" 2>/dev/null")
 
-            // 4. Forceful lazy unmount directly on the block device
-            RootShell.exec("umount -f -l \"$blockDevice\" 2>/dev/null")
+            // 4. Final lazy detach pass on the block device
+            RootShell.exec("umount \"$blockDevice\" 2>/dev/null || umount -l \"$blockDevice\" 2>/dev/null")
 
             // 5. Brief settle delay for kernel VFS release
             delay(250)
@@ -2018,14 +2050,10 @@ class StorageManager(
         runCatching {
             if (partitions.isEmpty()) error(getAppContext().getString(R.string.storage_err_no_partitions_in_scheme))
 
-            // 1. Unmount all partitions currently mounted on this disk
-            val mountsRes = RootShell.exec("grep -F \"$diskPath\" /proc/mounts 2>/dev/null")
-            for (line in mountsRes.stdout) {
-                val mntPoint = line.trim().split(Regex("\\s+")).getOrNull(1)
-                if (!mntPoint.isNullOrBlank()) {
-                    RootShell.exec("umount -f -l \"$mntPoint\" 2>/dev/null")
-                }
-            }
+            // 1. Safely unmount all partitions currently mounted on this disk (no -f)
+            val diskName = diskPath.substringAfterLast('/')
+            val mountsRes = RootShell.exec("awk -v d=\"$diskName\" '{p=\$5; gsub(/\\\\040/,\" \",p); if (index(\$0, d) > 0) print length(p), p}' /proc/1/mountinfo /proc/mounts 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2-")
+            MountManager.unmountSafeAcrossNamespaces(mountsRes.stdout.map { it.trim() }.filter { it.isNotBlank() })
 
             // 2. Wipe existing partition table signatures
             RootShell.exec("sgdisk -Z \"$diskPath\" 2>/dev/null || wipefs -a \"$diskPath\" 2>/dev/null || dd if=/dev/zero of=\"$diskPath\" bs=1M count=8 conv=notrunc 2>/dev/null")
@@ -2596,29 +2624,30 @@ class StorageManager(
         val targetPath = point.targetPath
         val pointUserId = MountManager.resolveUserId(targetPath)
         val relPath = MountManager.extractRelativePath(targetPath)
+        val toUnmount = mutableListOf(targetPath)
         if (point.isExternalStorageCategory() && relPath.isNotBlank()) {
-            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                RootShell.exec("umount -f -l \"$ns/emulated/$pointUserId/$relPath\" 2>/dev/null")
-                RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+            for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/mnt/user/$pointUserId", "/mnt/installer/$pointUserId", "/mnt/androidwritable/$pointUserId", "/mnt/pass_through/$pointUserId", "/storage")) {
+                toUnmount.add("$ns/emulated/$pointUserId/$relPath")
+                toUnmount.add("$ns/$relPath")
             }
-            RootShell.exec("umount -f -l \"/data/media/$pointUserId/$relPath\" 2>/dev/null")
-            if (pointUserId == 0) {
-                RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
-                RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
-            }
+            toUnmount.add("/data/media/$pointUserId/$relPath")
         }
-        RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
         if (point.category == MountPointCategory.PRIVATE_INTERNAL || point.category == MountPointCategory.CACHE_SHADERS || point.targetPath.startsWith("/data/user/") || point.targetPath.startsWith("/data/data/") || point.isEffectivelyVirtualContainer()) {
-            RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName/cache\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/data/data/$packageName/cache\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName/cache\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/$packageName/cache\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/dev/mountx_cache_hold_$packageName\" 2>/dev/null")
+            toUnmount.addAll(
+                listOf(
+                    "/data/user/$pointUserId/$packageName/cache",
+                    "/data/data/$packageName/cache",
+                    "/data_mirror/data_ce/null/$pointUserId/$packageName/cache",
+                    "/data_mirror/data_ce/null/0/$packageName/cache",
+                    "/dev/mountx_cache_hold_$packageName",
+                    "/data/user/$pointUserId/$packageName",
+                    "/data/data/$packageName",
+                    "/data_mirror/data_ce/null/$pointUserId/$packageName",
+                    "/data_mirror/data_ce/null/0/$packageName"
+                )
+            )
+            MountManager.unmountSafeAcrossNamespaces(toUnmount)
             RootShell.exec("rmdir \"/dev/mountx_cache_hold_$packageName\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/data/user/$pointUserId/$packageName\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/data/data/$packageName\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/$pointUserId/$packageName\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/data_mirror/data_ce/null/0/$packageName\" 2>/dev/null")
             val imgName = point.containerImgPath?.let { java.io.File(it).name } ?: "${packageName}_data.img"
             val loopDevs = RootShell.execForOutput("losetup -a 2>/dev/null | grep \"$imgName\" | cut -d':' -f1")
                 .lines().map { it.trim() }.filter { it.isNotBlank() }
@@ -2628,12 +2657,15 @@ class StorageManager(
         } else if (point.category == MountPointCategory.APP_PACKAGE || point.targetPath.startsWith("/data/app")) {
             val apkRootDir = if (targetPath.contains("/lib")) targetPath.substringBefore("/lib") else targetPath
             for (abi in MountManager.KNOWN_ABIS) {
-                RootShell.exec("umount -f -l \"$apkRootDir/lib/$abi\" 2>/dev/null")
+                toUnmount.add("$apkRootDir/lib/$abi")
             }
-            RootShell.exec("umount -f -l \"$apkRootDir/lib\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"/dev/mountx_lib_hold_$packageName\" 2>/dev/null")
+            toUnmount.add("$apkRootDir/lib")
+            toUnmount.add("/dev/mountx_lib_hold_$packageName")
+            toUnmount.add(apkRootDir)
+            MountManager.unmountSafeAcrossNamespaces(toUnmount)
             RootShell.exec("rmdir \"/dev/mountx_lib_hold_$packageName\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"$apkRootDir\" 2>/dev/null")
+        } else {
+            MountManager.unmountSafeAcrossNamespaces(toUnmount)
         }
     }
 
@@ -3544,25 +3576,26 @@ class StorageManager(
                     // Ensure targetPath is still unmounted before processing this category
                     val pointUserId = MountManager.resolveUserId(targetPath)
                     val relPath = MountManager.extractRelativePath(targetPath)
-                    RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+                    MountManager.unmountSafeAcrossNamespaces(listOf(targetPath))
 
                     // Pre-Flight Hard-Lock for TO_INTERNAL: fail-fast if unmount did not succeed
                     if (direction == MoveDirection.TO_INTERNAL) {
                         var retryCount = 0
                         while (RootShell.isMountpoint(targetPath) && retryCount < 3) {
                             retryCount++
-                            AppLogger.warn("StorageManager", "Target $targetPath is still mounted before TO_INTERNAL! Attempting forced lazy unmount (attempt $retryCount)...")
+                            AppLogger.warn("StorageManager", "Target $targetPath is still mounted before TO_INTERNAL! Attempting safe lazy unmount (attempt $retryCount)...")
                             RootShell.exec("sync")
-                            RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+                            val cleanupPaths = mutableListOf(targetPath)
                             MountManager.sweepUnmountTarget(targetPath)
                             if (point.isExternalStorageCategory() && relPath.isNotBlank()) {
                                 MountManager.sweepUnmountTarget("$targetPath/files")
                                 val userNamespaces = MountManager.getTargetNamespaces(pointUserId)
                                 for (ns in userNamespaces) {
-                                    RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
-                                    RootShell.exec("umount -f -l \"$ns/$relPath/files\" 2>/dev/null")
+                                    cleanupPaths.add("$ns/$relPath")
+                                    cleanupPaths.add("$ns/$relPath/files")
                                 }
                             }
+                            MountManager.unmountSafeAcrossNamespaces(cleanupPaths)
                             delay(200)
                         }
 
@@ -3837,28 +3870,27 @@ class StorageManager(
                     "pm list packages -U 2>/dev/null | grep -F \"package:$packageName\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
                 ).output.trim().toIntOrNull() ?: 10000
 
-                // Safety Guard: Unmount target paths across runtime namespaces before migration
+                // Safety Guard: Safely unmount target paths across runtime namespaces before migration (no -f)
+                val preMigrationPaths = mutableListOf<String>()
                 for (targetPath in listOf(internalData, internalObb)) {
                     val relPath = MountManager.extractRelativePath(targetPath)
                     if (relPath.isNotBlank()) {
-                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/storage")) {
-                            RootShell.exec("umount -f -l \"$ns/emulated/0/$relPath\" 2>/dev/null")
-                            RootShell.exec("umount -f -l \"$ns/$relPath\" 2>/dev/null")
+                        for (ns in listOf("/mnt/runtime/default", "/mnt/runtime/read", "/mnt/runtime/write", "/mnt/runtime/full", "/mnt/user/0", "/mnt/installer/0", "/mnt/androidwritable/0", "/mnt/pass_through/0", "/storage")) {
+                            preMigrationPaths.add("$ns/emulated/0/$relPath")
+                            preMigrationPaths.add("$ns/$relPath")
                         }
-                        RootShell.exec("umount -f -l \"/data/media/0/$relPath\" 2>/dev/null")
-                        RootShell.exec("umount -f -l \"/mnt/user/0/primary/$relPath\" 2>/dev/null")
-                        RootShell.exec("umount -f -l \"/mnt/pass_through/0/primary/$relPath\" 2>/dev/null")
+                        preMigrationPaths.add("/data/media/0/$relPath")
                     }
-                    RootShell.exec("umount -f -l \"$targetPath\" 2>/dev/null")
+                    preMigrationPaths.add(targetPath)
                 }
+                MountManager.unmountSafeAcrossNamespaces(preMigrationPaths)
 
                 if (direction == MoveDirection.TO_INTERNAL) {
                     var retryCount = 0
                     while ((RootShell.isMountpoint(internalData) || RootShell.isMountpoint(internalObb)) && retryCount < 3) {
                         retryCount++
                         RootShell.exec("sync")
-                        RootShell.exec("umount -f -l \"$internalData\" 2>/dev/null")
-                        RootShell.exec("umount -f -l \"$internalObb\" 2>/dev/null")
+                        MountManager.unmountSafeAcrossNamespaces(listOf(internalData, internalObb))
                         delay(200)
                     }
                     if (RootShell.isMountpoint(internalData) || RootShell.isMountpoint(internalObb)) {
@@ -4276,33 +4308,10 @@ class StorageManager(
             val mountPoint = partition.mountPoint ?: "/data/sdext2"
             val fsType = partition.fsType
 
-            // 1. Deep unmount: unbind game folders and unmount all references across namespaces safely without killing system processes
-            val unbindScript = """
-                for m in $(grep "$mountPoint" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
-                    if [ "${'$'}m" != "$mountPoint" ]; then
-                        umount -f -l "${'$'}m" 2>/dev/null
-                    fi
-                done
-                for ns in /proc/[0-9]*/ns/mnt; do
-                    nsenter --mount="${'$'}ns" umount -f -l "$mountPoint" 2>/dev/null
-                    nsenter --mount="${'$'}ns" umount -f -l "$blockDevice" 2>/dev/null
-                done
-            """.trimIndent()
-            RootShell.execScript(unbindScript)
-
+            // 1. Deep safe unmount: unbind game folders & unmount all references deepest-first without -f (protect F2FS)
+            unmountBlockSafely(blockDevice = blockDevice, mountPoint = mountPoint)
             RootShell.exec("sync")
             RootShell.exec("echo 3 > /proc/sys/vm/drop_caches 2>/dev/null")
-
-            val mountsRes = RootShell.exec("grep -F \"$blockDevice\" /proc/mounts 2>/dev/null")
-            val mountLines = mountsRes.stdout.map { it.trim() }.filter { it.isNotBlank() }
-            for (line in mountLines) {
-                val mnt = line.split(Regex("\\s+")).getOrNull(1)
-                if (!mnt.isNullOrBlank()) {
-                    RootShell.exec("umount -f -l \"$mnt\" 2>/dev/null")
-                }
-            }
-            RootShell.exec("umount -f -l \"$mountPoint\" 2>/dev/null")
-            RootShell.exec("umount -f -l \"$blockDevice\" 2>/dev/null")
             delay(500)
 
             // 2. Execute fsck diagnostics and repair

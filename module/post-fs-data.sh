@@ -109,8 +109,41 @@ if [ -z "${SD_BLOCK}" ] || [ ! -b "${SD_BLOCK}" ]; then
     exit 0
 fi
 
+_pfs_busybox() {
+    if [ -x /dev/mountx_bin/busybox ]; then
+        echo "/dev/mountx_bin/busybox"
+    elif [ -x "${MODDIR}/bin/busybox" ]; then
+        echo "${MODDIR}/bin/busybox"
+    elif command -v busybox >/dev/null 2>&1; then
+        command -v busybox
+    fi
+}
+
+_pfs_make_rprivate() {
+    local _p="${1%/}"
+    [ -z "${_p}" ] && _p="/"
+    local _bb
+    _bb=$(_pfs_busybox)
+    if [ -n "${_bb}" ]; then
+        "${_bb}" mount --make-rprivate "${_p}" 2>/dev/null && return 0
+    fi
+    mount --make-rprivate "${_p}" 2>/dev/null
+}
+
+_pfs_is_mounted() {
+    local _p="${1%/}"
+    [ -z "${_p}" ] && return 1
+    local _mi="/proc/1/mountinfo"
+    [ ! -r "${_mi}" ] && _mi="/proc/self/mountinfo"
+    if [ -r "${_mi}" ]; then
+        awk -v t="${_p}" '{m=$5; gsub(/\\040/, " ", m); if (m==t) {f=1; exit}} END {exit (f?0:1)}' "${_mi}" 2>/dev/null && return 0
+        return 1
+    fi
+    mountpoint -q "${_p}" 2>/dev/null
+}
+
 # Mount SD_BASE if not already mounted
-if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
+if ! _pfs_is_mounted "${SD_BASE}"; then
     mkdir -p "${SD_BASE}" 2>/dev/null
     detected_fs="${FS_TYPE}"
     if [ -z "${detected_fs}" ] || [ "${detected_fs}" = "auto" ]; then
@@ -127,19 +160,32 @@ if ! mountpoint -q "${SD_BASE}" 2>/dev/null; then
         exfat|vfat) mount -t "${detected_fs}" -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null ;;
         *) mount "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null ;;
     esac
-    mount --make-rprivate "${SD_BASE}" 2>/dev/null
+    _pfs_make_rprivate "${SD_BASE}"
 fi
 
-# Bind-mount only APP_PACKAGE entries
-if mountpoint -q "${SD_BASE}" 2>/dev/null; then
+# Bind-mount only APP_PACKAGE entries (resolving ABI subdir for /lib/<abi> targets)
+if _pfs_is_mounted "${SD_BASE}"; then
     while IFS='|' read -r pkg cat src dst preserve_media disk_uuid user_id || [ -n "${pkg}" ]; do
         pkg=$(echo "${pkg}" | tr -d '\r')
+        cat=$(echo "${cat}" | tr -d '\r')
+        src=$(echo "${src}" | tr -d '\r')
+        dst=$(echo "${dst}" | tr -d '\r')
         case "${pkg}" in ''|\#*) continue ;; esac
         if [ "${cat}" = "APP_PACKAGE" ] && [ -d "${src}" ] && [ -n "${dst}" ]; then
+            _eff_src="${src}"
+            case "${dst}" in
+                */lib/*)
+                    _abi="${dst##*/lib/}"
+                    _abi="${_abi%%/*}"
+                    if [ -n "${_abi}" ] && [ -d "${src}/${_abi}" ]; then
+                        _eff_src="${src}/${_abi}"
+                    fi
+                    ;;
+            esac
             mkdir -p "${dst}" 2>/dev/null
-            if ! mountpoint -q "${dst}" 2>/dev/null; then
-                mount -o bind,ro "${src}" "${dst}" 2>/dev/null || mount -o bind "${src}" "${dst}" 2>/dev/null
-                mount --make-rprivate "${dst}" 2>/dev/null
+            if ! _pfs_is_mounted "${dst}"; then
+                mount -o bind,ro "${_eff_src}" "${dst}" 2>/dev/null || mount -o bind "${_eff_src}" "${dst}" 2>/dev/null
+                _pfs_make_rprivate "${dst}"
             fi
         fi
     done < "${MOUNTPOINTS_FILE}"

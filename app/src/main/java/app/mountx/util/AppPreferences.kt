@@ -74,7 +74,8 @@ class AppPreferences @Inject constructor(
         if (custom != null) {
             custom
         } else {
-            if (RootDetector.cachedInfo?.rootSolution == RootSolution.TEMPROOT) {
+            val cached = RootDetector.cachedInfo
+            if (cached != null && cached.rootSolution == RootSolution.TEMPROOT && !cached.isModuleInstalled) {
                 "/dev/mountx/sdext2"
             } else {
                 "/data/sdext2"

@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import app.mountx.data.db.GameDao
+import app.mountx.data.model.MountStatus
+import app.mountx.data.repository.AppRepository
+import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.AndroidEntryPoint
@@ -25,6 +28,12 @@ class BootReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var gameDao: GameDao
+
+    @Inject
+    lateinit var mountManager: MountManager
+
+    @Inject
+    lateinit var appRepository: AppRepository
 
     companion object {
         @Volatile
@@ -59,9 +68,19 @@ class BootReceiver : BroadcastReceiver() {
                     // Coordinate cleanly with service.sh so boot/unlock mounts never race or double-bind
                     if (autoMount && rootAvailable) {
                         RootShell.awaitServiceMountCycleIfActive(waitForWatchdogUnlockGrace = isUnlock)
+                        appRepository.refreshMountStatuses()
+
                         val isModuleHandled = RootShell.exists("/dev/.mountx_booted")
                         val isInitialMounted = RootShell.exists("/dev/.mountx_initial_mounted")
-                        if (!isModuleHandled || (isUnlock && !isInitialMounted)) {
+                        val enabledGames = gameDao.getAllGamesSync().filter { it.isEnabled }
+                        val verifiedMap = if (enabledGames.isNotEmpty()) {
+                            mountManager.verifyCanariesBatch(enabledGames)
+                        } else emptyMap()
+                        val anyEligibleUnmounted = enabledGames.any { g ->
+                            g.mountStatus != MountStatus.DISK_DETACHED && verifiedMap[g.packageName] != true
+                        }
+
+                        if (!isModuleHandled || (isUnlock && !isInitialMounted) || anyEligibleUnmounted) {
                             // Settling grace period: wait for storage daemon & vold when app is handling mounts
                             var attempts = 0
                             while (attempts < 10) {
