@@ -57,7 +57,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace -Dkotlin.daemon.jvmargs=-Xmx2048m -Dorg.gradle.jvmargs=-Xmx3072m
+        run: ./gradlew assembleRelease --stacktrace -Pkotlin.daemon.jvmargs=-Xmx2560m -Dkotlin.daemon.jvmargs=-Xmx2560m -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=512m -XX:+UseG1GC" --max-workers=2
 
       - name: Extract Version Name
         id: version
