@@ -255,6 +255,7 @@ $pairLines
 __MX_PAIRS__
 __MX_Z_BIND__
                 done
+                killall -TERM usap64 usap32 2>/dev/null || true
             """.trimIndent()
             RootShell.execScript(script)
         }
@@ -1360,7 +1361,9 @@ __MX_ZC__
                                             seContext = cacheContext,
                                             recursiveChcon = !alreadyReady
                                         )
-                                        syncBindTargetsToZygotes(zPairs, isNonPosix = isNonPosix)
+                                        val zygoteCachePairs = zPairs.filter { it.second.startsWith("/data_mirror/") }
+                                            .let { if (it.isNotEmpty() && RootShell.exists(it.first().second)) it else zPairs }
+                                        syncBindTargetsToZygotes(zygoteCachePairs, isNonPosix = isNonPosix)
                                         true
                                     } else {
                                         false
@@ -2011,7 +2014,9 @@ __MX_ZC__
                 recursiveChcon = false
             )
             if (useDirectFolderEngine) {
-                syncBindTargetsToZygotes(peerPairs, isNonPosix = isNonPosix)
+                val zygotePrivPairs = peerPairs.filter { it.second.startsWith("/data_mirror/") }
+                    .let { if (it.isNotEmpty() && RootShell.exists(it.first().second)) it else peerPairs }
+                syncBindTargetsToZygotes(zygotePrivPairs, isNonPosix = isNonPosix)
             } else if (activeLoopDev.isNotBlank()) {
                 syncContainerTargetsToZygotes(activeLoopDev, target, secondaryPeers, preserveExec = false)
             }
@@ -2852,12 +2857,13 @@ EOF_MNTS
                         }
                     } else if (cat == MountPointCategory.PRIVATE_INTERNAL) {
                         val userId = resolveUserId(cleanTgt)
+                        val mirrorTarget = "/data_mirror/data_ce/null/$userId/$pkg"
                         val matchedTarget = listOf(
                             cleanTgt,
                             "/data/user/$userId/$pkg",
                             "/data/data/$pkg"
                         ).firstOrNull { activeMounts.contains(it) } ?: return@all false
-                        if (zygoteMounts.isNotEmpty() && !zygoteMounts.contains(matchedTarget)) return@all false
+                        if (zygoteMounts.isNotEmpty() && !zygoteMounts.contains(matchedTarget) && !zygoteMounts.contains(mirrorTarget)) return@all false
                         if (mp.isEffectivelyVirtualContainer() || cleanSrc.endsWith(".img", ignoreCase = true)) {
                             true
                         } else {
@@ -2867,12 +2873,13 @@ EOF_MNTS
                         }
                     } else {
                         val userId = resolveUserId(cleanTgt)
+                        val mirrorCacheTarget = "/data_mirror/data_ce/null/$userId/$pkg/cache"
                         val matchedTarget = listOf(
                             cleanTgt,
                             "/data/user/$userId/$pkg/cache",
                             "/data/data/$pkg/cache"
                         ).firstOrNull { activeMounts.contains(it) } ?: return@all false
-                        if (zygoteMounts.isNotEmpty() && !zygoteMounts.contains(matchedTarget)) return@all false
+                        if (zygoteMounts.isNotEmpty() && !zygoteMounts.contains(matchedTarget) && !zygoteMounts.contains(mirrorCacheTarget)) return@all false
                         if (mp.isEffectivelyVirtualContainer() || cleanSrc.endsWith(".img", ignoreCase = true)) {
                             true
                         } else {

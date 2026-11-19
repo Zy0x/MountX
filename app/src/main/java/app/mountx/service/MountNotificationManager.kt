@@ -127,12 +127,16 @@ class MountNotificationManager @Inject constructor(
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
 
+                // Wait cleanly for any active module boot/mount lock before auditing or triggering recovery
+                RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 45_000L)
+
                 // Authoritative Real-time VFS + Zygote + Canary Integrity & Soft-Restart Recovery across ALL mounted apps
                 val verifiedMap = mountManager.verifyCanariesBatch(dbMountedGames)
                 val mountedGames = dbMountedGames.filter { verifiedMap[it.packageName] == true }
                 val unverifiedGames = dbMountedGames.filter { verifiedMap[it.packageName] != true }
 
-                if (unverifiedGames.isNotEmpty() && !RootShell.exists("/dev/.mountx_unmounted") && !RootShell.exists("/dev/.mountx_migrating")) {
+                val moduleBusy = RootShell.exists("/dev/.mountx_boot_active") || RootShell.exists("/dev/.mountx_apply.lock")
+                if (unverifiedGames.isNotEmpty() && !moduleBusy && !RootShell.exists("/dev/.mountx_unmounted") && !RootShell.exists("/dev/.mountx_migrating") && !RootShell.exists("/dev/.mountx_disk_error")) {
                     val now = System.currentTimeMillis()
                     if (now - lastRecoveryAttemptTime > 30_000L) {
                         lastRecoveryAttemptTime = now

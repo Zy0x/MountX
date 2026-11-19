@@ -1581,6 +1581,31 @@ class StorageManager(
                 res = RootShell.exec(fallbackCmd)
             }
 
+            // EBUSY lingering RO superblock recovery: attach RO and promote back to RW when block hardware isn't write-protected
+            if (!RootShell.isMountpoint(effectiveMountPoint) && (fsType == FilesystemType.F2FS || fsType == FilesystemType.EXT4)) {
+                val roPromotionRes = RootShell.execScript(
+                    """
+                    _dev="$targetDev"
+                    _mp="$effectiveMountPoint"
+                    _fs="${fsType.command}"
+                    _ctx="$mountContext"
+                    _pd="${'$'}(basename "${'$'}_dev" | sed -E 's/p?[0-9]+${'$'}//')"
+                    _ro=${'$'}(cat "/sys/block/${'$'}_pd/ro" 2>/dev/null | tr -d '\r\n')
+                    [ "${'$'}_ro" = "1" ] && exit 1
+                    if mount -t "${'$'}_fs" -o "ro,noatime,${'$'}_ctx" "${'$'}_dev" "${'$'}_mp" 2>/dev/null || mount -t "${'$'}_fs" -o ro,noatime "${'$'}_dev" "${'$'}_mp" 2>/dev/null; then
+                      if mount -o remount,rw "${'$'}_mp" 2>/dev/null && ! grep -F " ${'$'}_mp " /proc/mounts 2>/dev/null | grep -qE '(^|[[:space:],])ro(${'$'}|[[:space:],])'; then
+                        exit 0
+                      fi
+                      umount -l "${'$'}_mp" 2>/dev/null || true
+                    fi
+                    exit 1
+                    """.trimIndent()
+                )
+                if (roPromotionRes.isSuccess) {
+                    res = roPromotionRes
+                }
+            }
+
             if (!RootShell.isMountpoint(effectiveMountPoint)) {
                 error("Failed to mount $targetDev to $effectiveMountPoint: ${res.stderr.joinToString("\n")}")
             }
@@ -1638,6 +1663,48 @@ class StorageManager(
             if [ -n "${'$'}_mp" ]; then unmount_all_ns "${'$'}_mp"; fi
             if [ -n "${'$'}_bdev" ]; then
               umount "${'$'}_bdev" 2>/dev/null || umount -l "${'$'}_bdev" 2>/dev/null
+            fi
+            # Peel any buried stacked refs across remaining unique mount namespaces (and release sandboxed Zygote children pinning a dead superblock)
+            if [ -n "${'$'}_rdev" ] || [ -n "${'$'}_bdev" ]; then
+              _needle="${'$'}{_rdev:-${'$'}_bdev}"
+              _seen_ns=" "
+              for _mf in ${'$'}(grep -l -F "${'$'}_needle" /proc/[0-9]*/mounts 2>/dev/null); do
+                _pid="${'$'}{_mf#/proc/}"; _pid="${'$'}{_pid%/mounts}"
+                [ -n "${'$'}_pid" ] || continue
+                _ns=${'$'}(readlink "/proc/${'$'}_pid/ns/mnt" 2>/dev/null) || continue
+                case "${'$'}_seen_ns" in *" ${'$'}_ns "*) continue ;; esac
+                _seen_ns="${'$'}_seen_ns${'$'}_ns "
+                D1="${'$'}_needle" /system/bin/nsenter --mount="/proc/${'$'}_pid/ns/mnt" -- /system/bin/sh -s <<'__MX_SM_DETACH__' 2>/dev/null
+                  _p=0
+                  while [ "${'$'}_p" -lt 8 ]; do
+                    _mps=${'$'}(awk '${'$'}1 == ENVIRON["D1"] {print ${'$'}2}' /proc/self/mounts 2>/dev/null | sort -r | uniq)
+                    [ -z "${'$'}_mps" ] && break
+                    for _m in ${'$'}_mps; do umount "${'$'}_m" 2>/dev/null || umount -l "${'$'}_m" 2>/dev/null; done
+                    _p=${'$'}((_p + 1))
+                  done
+__MX_SM_DETACH__
+              done
+              # If Zygote app sandboxes still hold buried mounts under tmpfs /data/data, recycle ONLY safe non-persistent user app PIDs
+              _z64=${'$'}(pidof zygote64 2>/dev/null)
+              _z32=${'$'}(pidof zygote 2>/dev/null)
+              for _mf in ${'$'}(grep -l -F "${'$'}_needle" /proc/[0-9]*/mounts 2>/dev/null); do
+                _pid="${'$'}{_mf#/proc/}"; _pid="${'$'}{_pid%/mounts}"
+                [ "${'$'}_pid" -gt 2200 ] 2>/dev/null || continue
+                _ppid=${'$'}(awk '/^PPid:/{print ${'$'}2}' "/proc/${'$'}_pid/status" 2>/dev/null)
+                case " ${'$'}{_z64} ${'$'}{_z32} " in
+                  *" ${'$'}{_ppid} "*)
+                    _uid=${'$'}(awk '/^Uid:/{print ${'$'}2}' "/proc/${'$'}_pid/status" 2>/dev/null)
+                    [ "${'$'}{_uid:-0}" -ge 10000 ] 2>/dev/null || continue
+                    _oom=${'$'}(cat "/proc/${'$'}_pid/oom_score_adj" 2>/dev/null)
+                    [ "${'$'}{_oom:-0}" -ge 0 ] 2>/dev/null || continue
+                    _cmd=${'$'}(tr '\0' ' ' < "/proc/${'$'}_pid/cmdline" 2>/dev/null)
+                    case "${'$'}_cmd" in
+                      *system_server*|*webview_zygote*|*_zygote*|*systemui*|*com.android.phone*|*providers.media*|*externalstorage*|*launcher*|*app.mountx*) continue ;;
+                    esac
+                    kill -9 "${'$'}_pid" 2>/dev/null || true
+                    ;;
+                esac
+              done
             fi
         """.trimIndent()
         RootShell.execScript(script)

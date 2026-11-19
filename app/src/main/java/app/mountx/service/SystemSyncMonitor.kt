@@ -216,6 +216,7 @@ class SystemSyncMonitor @Inject constructor(
             healthMonitorJob?.cancel()
             healthMonitorJob = scope.launch {
             var previousErrorState = false
+            var lastIoRecoveryTime = 0L
             while (true) {
                 delay(30_000L)
                 try {
@@ -247,48 +248,67 @@ class SystemSyncMonitor @Inject constructor(
                             handleStorageMounted(context)
                         }
                     } else if (hasMountedGames) {
-                        val isSdBaseMounted = RootShell.isMountpoint(sdBase)
                         val mountedUuids = mountedGames.flatMap { it.mountPoints }.mapNotNull { it.diskUuid }
 
                         // Passive Subsystem / Zygote / Deep-Sleep Integrity Check:
-                        // Verify EVERY mounted game across /proc/1/mountinfo, /mnt/user, POSIX dev:ino parity / canary, and Zygote namespace.
                         if (RootShell.exists("/dev/.mountx_unmounted") || RootShell.exists("/dev/.mountx_migrating")) {
                             // Intentional user unmount or active migration in progress: skip auto-recovery
-                        } else if (!isSdBaseMounted) {
-                            if (RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, mountedUuids)) {
-                                AppLogger.warn("SystemSyncMonitor", "SD_BASE unmounted unexpectedly while games are active. Initiating auto-recovery...")
-                                MountService.startMountAll(context)
-                            }
+                        } else if (RootShell.exists("/dev/.mountx_boot_active") || RootShell.exists("/dev/.mountx_apply.lock")) {
+                            // Never contend with service.sh while it is mounting or recovering mounts
+                            RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 15_000L, waitForWatchdogUnlockGrace = false)
                         } else {
-                            val verifiedMap = mountManager.verifyCanariesBatch(mountedGames)
-                            val unverifiedGames = mountedGames.filter { verifiedMap[it.packageName] != true }
-                            if (unverifiedGames.isNotEmpty()) {
-                                // Wait for service.sh watchdog cycle if it is already recovering right now
-                                RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 15_000L, waitForWatchdogUnlockGrace = false)
-                                val reVerifiedMap = mountManager.verifyCanariesBatch(unverifiedGames)
-                                val stillMissing = unverifiedGames.filter { reVerifiedMap[it.packageName] != true }
-                                if (stillMissing.isNotEmpty()) {
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastCanaryRecoveryTime > 20_000L) {
-                                        lastCanaryRecoveryTime = now
-                                        val missingNames = stillMissing.joinToString(", ") { it.displayName }
-                                        AppLogger.warn("SystemSyncMonitor", "Live mount verification failed for [$missingNames] (deep-sleep/soft-restart/shadowing detected). Initiating auto-recovery...")
-                                        MountService.startMountAll(context)
+                            val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+                            if (!isSdBaseMounted) {
+                                if (RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, mountedUuids)) {
+                                    AppLogger.warn("SystemSyncMonitor", "SD_BASE unmounted unexpectedly while games are active. Initiating auto-recovery...")
+                                    MountService.startMountAll(context)
+                                }
+                            } else {
+                                val verifiedMap = mountManager.verifyCanariesBatch(mountedGames)
+                                val unverifiedGames = mountedGames.filter { verifiedMap[it.packageName] != true }
+                                if (unverifiedGames.isNotEmpty()) {
+                                    RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 15_000L, waitForWatchdogUnlockGrace = false)
+                                    val reVerifiedMap = mountManager.verifyCanariesBatch(unverifiedGames)
+                                    val stillMissing = unverifiedGames.filter { reVerifiedMap[it.packageName] != true }
+                                    if (stillMissing.isNotEmpty()) {
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastCanaryRecoveryTime > 20_000L) {
+                                            lastCanaryRecoveryTime = now
+                                            val missingNames = stillMissing.joinToString(", ") { it.displayName }
+                                            AppLogger.warn("SystemSyncMonitor", "Live mount verification failed for [$missingNames] (deep-sleep/soft-restart/shadowing detected). Initiating auto-recovery...")
+                                            MountService.startMountAll(context)
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        val hasFlag = RootShell.exists("/dev/.mountx_disk_error")
-                        val ioHealth = if (!hasFlag) {
+                        var hasFlag = RootShell.exists("/dev/.mountx_disk_error")
+                        var ioHealth = if (!hasFlag) {
                             RootShell.probeStorageIoHealth(sdBase, configuredBlock)
                         } else "IO_ERROR"
+
+                        // Recoverable shutdown/RO superblock after deep sleep: let service.sh / MountService reset superblock before suspending apps
+                        if (!hasFlag && (ioHealth == "IO_ERROR" || ioHealth == "RO") &&
+                            RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, mountedUuids)
+                        ) {
+                            val now = System.currentTimeMillis()
+                            if (now - lastIoRecoveryTime > 45_000L) {
+                                lastIoRecoveryTime = now
+                                AppLogger.warn("SystemSyncMonitor", "Transient/shutdown storage health ($ioHealth) with live block device; attempting superblock self-heal before error lock...")
+                                MountService.startMountAll(context)
+                                delay(6_000L)
+                                RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 15_000L, waitForWatchdogUnlockGrace = false)
+                                hasFlag = RootShell.exists("/dev/.mountx_disk_error")
+                                ioHealth = if (!hasFlag) RootShell.probeStorageIoHealth(sdBase, configuredBlock) else "IO_ERROR"
+                            }
+                        }
 
                         // Check physical device presence: verify backing block device actually exists
                         val isDiskPhysicallyMissing = if (!hasFlag) {
                             if (ioHealth == "MISSING") {
                                 true
-                            } else if (!isSdBaseMounted) {
+                            } else if (!RootShell.isMountpoint(sdBase)) {
                                 !RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, mountedUuids)
                             } else false
                         } else false

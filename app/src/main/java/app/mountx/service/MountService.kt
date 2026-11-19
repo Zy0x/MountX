@@ -10,8 +10,12 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import app.mountx.R
+import app.mountx.data.db.GameDao
+import app.mountx.data.model.MountStatus
+import app.mountx.data.repository.AppRepository
 import app.mountx.data.repository.GameRepository
 import app.mountx.data.repository.StorageRepository
+import app.mountx.root.MountManager
 import app.mountx.root.RootShell
 import app.mountx.util.AppPreferences
 import dagger.hilt.android.AndroidEntryPoint
@@ -19,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -30,10 +35,19 @@ class MountService : Service() {
     lateinit var gameRepository: GameRepository
 
     @Inject
+    lateinit var appRepository: AppRepository
+
+    @Inject
     lateinit var storageRepository: StorageRepository
 
     @Inject
     lateinit var appPreferences: AppPreferences
+
+    @Inject
+    lateinit var gameDao: GameDao
+
+    @Inject
+    lateinit var mountManager: MountManager
 
     @Inject
     lateinit var watchdogDaemon: MountWatchdogDaemon
@@ -53,11 +67,25 @@ class MountService : Service() {
         const val ACTION_MOUNT_ALL = "app.mountx.ACTION_MOUNT_ALL"
         const val ACTION_UNMOUNT_ALL = "app.mountx.ACTION_UNMOUNT_ALL"
         const val ACTION_BOOST_GAME = "app.mountx.ACTION_BOOST_GAME"
+        const val ACTION_POST_BOOT_SYNC = "app.mountx.ACTION_POST_BOOT_SYNC"
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
+        const val EXTRA_IS_UNLOCK = "extra_is_unlock"
 
         fun startMountAll(context: Context) {
             val intent = Intent(context, MountService::class.java).apply {
                 action = ACTION_MOUNT_ALL
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun startPostBootSync(context: Context, isUnlock: Boolean) {
+            val intent = Intent(context, MountService::class.java).apply {
+                action = ACTION_POST_BOOT_SYNC
+                putExtra(EXTRA_IS_UNLOCK, isUnlock)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -102,6 +130,10 @@ class MountService : Service() {
 
                         // Wait if kernel module service.sh is actively running a mount cycle right now
                         RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 30_000L, waitForWatchdogUnlockGrace = false)
+
+                        if (RootShell.probeStorageIoHealth(sdBase, blockDevice).let { it == "IO_ERROR" || it == "RO" }) {
+                            storageRepository.unmountSdPartition(sdBase)
+                        }
 
                         val mountRes = storageRepository.mountSdPartition(blockDevice, sdBase)
                         if (mountRes.isSuccess && blockDevice.isBlank()) {
@@ -165,6 +197,77 @@ class MountService : Service() {
                 if (!pkg.isNullOrBlank()) {
                     serviceScope.launch {
                         watchdogDaemon.prepareGameForLaunch(pkg)
+                    }
+                }
+            }
+            ACTION_POST_BOOT_SYNC -> {
+                val isUnlock = intent.getBooleanExtra(EXTRA_IS_UNLOCK, false)
+                serviceScope.launch {
+                    try {
+                        mountNotificationManager.createNotificationChannels()
+                        val autoMount = appPreferences.autoMountOnBoot.first()
+                        val rootAvailable = RootShell.isRootAvailable()
+                        val sdBase = appPreferences.sdBasePath.first()
+                        val blockDevice = appPreferences.sdBlockDevice.first()
+
+                        if (autoMount && rootAvailable) {
+                            RootShell.awaitServiceMountCycleIfActive(timeoutMillis = 60_000L, waitForWatchdogUnlockGrace = isUnlock)
+                            val ioHealth = RootShell.probeStorageIoHealth(sdBase, blockDevice)
+                            appRepository.refreshMountStatuses()
+
+                            val isModuleHandled = RootShell.exists("/dev/.mountx_booted")
+                            val isInitialMounted = RootShell.exists("/dev/.mountx_initial_mounted")
+                            val enabledGames = gameDao.getAllGamesSync().filter { it.isEnabled }
+                            val verifiedMap = if (enabledGames.isNotEmpty()) {
+                                mountManager.verifyCanariesBatch(enabledGames)
+                            } else emptyMap()
+                            val anyEligibleUnmounted = enabledGames.any { g ->
+                                g.mountStatus != MountStatus.DISK_DETACHED && verifiedMap[g.packageName] != true
+                            }
+
+                            if ((!isModuleHandled || (isUnlock && !isInitialMounted) || anyEligibleUnmounted || ioHealth == "IO_ERROR" || ioHealth == "RO") &&
+                                !RootShell.exists("/dev/.mountx_unmounted") &&
+                                !RootShell.exists("/dev/.mountx_migrating")
+                            ) {
+                                var attempts = 0
+                                while (attempts < 10) {
+                                    if (RootShell.exists("/storage/emulated/0") ||
+                                        RootShell.isMountpoint("/data/sdext2") ||
+                                        RootShell.isMountpoint("/dev/mountx/sdext2")
+                                    ) {
+                                        break
+                                    }
+                                    delay(500)
+                                    attempts++
+                                }
+                                if (ioHealth == "IO_ERROR" || ioHealth == "RO") {
+                                    storageRepository.unmountSdPartition(sdBase)
+                                }
+                                val mountRes = storageRepository.mountSdPartition(blockDevice, sdBase)
+                                if (mountRes.isSuccess && blockDevice.isBlank()) {
+                                    val activeDev = RootShell.execForOutput("cat /proc/mounts 2>/dev/null").lines()
+                                        .firstOrNull { it.contains(" $sdBase ") }
+                                        ?.trim()?.split(Regex("\\s+"))?.firstOrNull() ?: ""
+                                    if (activeDev.startsWith("/dev/block/")) {
+                                        appPreferences.setSdBlockDevice(activeDev)
+                                    }
+                                }
+                                gameRepository.refreshMountStatuses()
+                                gameRepository.mountAll(sdBase)
+                            }
+                        }
+
+                        val registeredGames = gameDao.getAllGamesSync().filter { it.isEnabled }
+                        if (registeredGames.isNotEmpty() && (!rootAvailable || !autoMount)) {
+                            mountNotificationManager.showUnmountedGameWarningNotification(registeredGames.size)
+                        }
+                    } catch (_: Exception) {
+                        // Safe best-effort boot sync
+                    } finally {
+                        mountNotificationManager.syncActiveMountNotification()
+                        systemSyncMonitor.notifyRefreshAll()
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf(startId)
                     }
                 }
             }

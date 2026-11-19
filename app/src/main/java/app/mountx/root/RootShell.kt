@@ -487,6 +487,17 @@ object RootShell {
                 echo "IO_ERROR"
                 exit 0
             fi
+            # Detect silent VFS write-dead / F2FS SBI_IS_SHUTDOWN (-EIO) superblocks that still serve cached reads
+            _pf="${'$'}_base/.mountx/.rw_probe_app_${'$'}$"
+            mkdir -p "${'$'}_base/.mountx" 2>/dev/null
+            if ! touch "${'$'}_pf" 2>/dev/null; then
+                _pf="${'$'}_base/.mx_rw_probe_app_${'$'}$"
+                if ! touch "${'$'}_pf" 2>/dev/null; then
+                    echo "IO_ERROR"
+                    exit 0
+                fi
+            fi
+            rm -f "${'$'}_pf" 2>/dev/null
             echo "OK"
         """.trimIndent()
 

@@ -308,8 +308,10 @@ _probe_sd_io_healthy() {
     local _base="$2"
     local _max_attempts="${3:-3}"
     local _attempt=0
-    local _mnt_src
-    _mnt_src=$(grep -F " ${_base} " /proc/mounts 2>/dev/null | head -n 1 | awk '{print $1}')
+    local _mnt_line _mnt_src _mnt_opts
+    _mnt_line=$(awk -v t="${_base}" '$2 == t {print $1 "|" $4; exit}' /proc/mounts 2>/dev/null)
+    _mnt_src="${_mnt_line%%|*}"
+    _mnt_opts="${_mnt_line#*|}"
     while [ ${_attempt} -lt "${_max_attempts}" ]; do
         local _ok=1
         if [ -n "${_blk}" ] && [ ! -b "${_blk}" ]; then
@@ -320,6 +322,9 @@ _probe_sd_io_healthy() {
                 [ ! -b "${_mnt_src}" ] && _ok=0
                 ;;
         esac
+        if [ -z "${_mnt_line}" ] || echo "${_mnt_opts}" | grep -qE '(^|,)ro(,|$)'; then
+            _ok=0
+        fi
         if [ ${_ok} -eq 1 ] && [ -n "${_blk}" ]; then
             if ! dd if="${_blk}" of=/dev/null bs=4096 count=1 2>/dev/null; then
                 _ok=0
@@ -330,6 +335,20 @@ _probe_sd_io_healthy() {
                 _ok=0
             elif [ -d "${_base}/MountX" ] && ! ls "${_base}/MountX" >/dev/null 2>&1; then
                 _ok=0
+            else
+                # Kernel write + unlink check catches F2FS SBI_IS_SHUTDOWN (-EIO) & silent write-aborted superblocks
+                local _rw_probe="${_base}/.mountx/.rw_probe_$$"
+                mkdir -p "${_base}/.mountx" 2>/dev/null
+                if touch "${_rw_probe}" 2>/dev/null; then
+                    rm -f "${_rw_probe}" 2>/dev/null
+                else
+                    _rw_probe="${_base}/.mx_rw_probe_$$"
+                    if touch "${_rw_probe}" 2>/dev/null; then
+                        rm -f "${_rw_probe}" 2>/dev/null
+                    else
+                        _ok=0
+                    fi
+                fi
             fi
         fi
         if [ ${_ok} -eq 1 ]; then
@@ -874,6 +893,19 @@ mount_sd() {
                     mounted=1; log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${detected_fs})"
                 elif mount -t "${detected_fs}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
                     mounted=1; log_info "SD mounted (simple opts): ${SD_BLOCK} → ${SD_BASE} (${detected_fs})"
+                elif [ "${detected_fs}" = "f2fs" ] || [ "${detected_fs}" = "ext4" ]; then
+                    local _ro_hw_sys
+                    _ro_hw_sys=$(cat "/sys/block/$(_parent_disk_name "${SD_BLOCK}")/ro" 2>/dev/null | tr -d '\r\n')
+                    if [ "${_ro_hw_sys}" != "1" ] && {
+                        mount -t "${detected_fs}" -o "ro,noatime,nodiratime,${sd_ctx}" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null ||
+                        mount -t "${detected_fs}" -o ro,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null
+                    }; then
+                        if mount -o remount,rw "${SD_BASE}" 2>/dev/null && _probe_sd_io_healthy "${SD_BLOCK}" "${SD_BASE}" 1; then
+                            mounted=1; log_info "SD mounted via RO->RW superblock promotion: ${SD_BLOCK} → ${SD_BASE} (${detected_fs})"
+                        else
+                            umount -l "${SD_BASE}" 2>/dev/null || true
+                        fi
+                    fi
                 fi
             fi
 
@@ -1275,7 +1307,7 @@ bind_mount_to_runtime_namespaces() {
         done
 
         # Inject into active Zygote namespaces only where parent storage root is live non-tmpfs and healthy
-        local _bb_bin
+        local _bb_bin _injected_zygote=0
         _bb_bin=$(_mx_busybox)
         for _zpid in $(pidof zygote64 zygote 2>/dev/null); do
             [ -d "/proc/${_zpid}/ns" ] || continue
@@ -1312,7 +1344,12 @@ bind_mount_to_runtime_namespaces() {
                 fi
             done
 __MX_SH_Z__
+            _injected_zygote=1
         done
+        if [ "${_injected_zygote}" -eq 1 ]; then
+            # Recycle idle USAP worker pool so future app launches never inherit pre-mount namespaces
+            killall -TERM usap64 usap32 2>/dev/null || true
+        fi
 
         # Auto-heal: delete stale verify.fail or partial block download markers from both internal storage and source
         if [ -f "/data/media/${user_id}/${rel}/files/verify.fail" ]; then
@@ -1477,6 +1514,26 @@ load_mountpoints() {
 
     local entries=0
     local _failed_pkgs=" "
+
+    # Pre-flight multi-mountpoint check: if any enabled target of a package needs a missing/unplugged disk UUID,
+    # mark that package skipped BEFORE mounting its earlier targets (prevents OBB bind+unmount thrashing every cycle).
+    local _blkid_snap
+    _blkid_snap=$(blkid 2>/dev/null)
+    while IFS='|' read -r _p_pkg _p_cat _p_src _p_dst _p_pres _p_uuid _p_uid || [ -n "${_p_pkg}" ]; do
+        case "${_p_pkg}" in ''|\#*) continue ;; esac
+        _p_pkg=$(echo "${_p_pkg}" | tr -d '\r')
+        _p_src=$(echo "${_p_src}" | tr -d '\r')
+        _p_uuid=$(echo "${_p_uuid}" | tr -d '\r')
+        [ -z "${_p_pkg}" ] || [ -z "${_p_src}" ] && continue
+        case "${_failed_pkgs}" in *" ${_p_pkg} "*) continue ;; esac
+        if [ -n "${_p_uuid}" ] && [ ! -e "${_p_src}" ]; then
+            if ! echo "${_blkid_snap}" | grep -qiF "${_p_uuid}"; then
+                log_warn "  [${_p_pkg}] Pre-flight: required disk UUID=${_p_uuid} is not attached. Deferring all mounts for ${_p_pkg}."
+                _failed_pkgs="${_failed_pkgs}${_p_pkg} "
+            fi
+        fi
+    done < "${MOUNTPOINTS_FILE}"
+
     while IFS='|' read -r pkg cat src dst preserve_media disk_uuid user_id || [ -n "${pkg}" ]; do
         case "${pkg}" in ''|\#*) continue ;; esac
 
@@ -1868,12 +1925,17 @@ load_mountpoints() {
                         fi
                     fi
                 fi
-                chown -R "${app_uid}:${app_uid}" "${src}" 2>/dev/null
-                chmod 700 "${src}" 2>/dev/null
-                chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
-                find "${src}" -type d -exec chmod 700 {} + 2>/dev/null
-                find "${src}" -type f -exec chmod 600 {} + 2>/dev/null
-                restorecon -FR "${src}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
+                if [ ! -f "${src}/.mountx_perms_ok" ] || [ "$(cat "${src}/.mountx_perms_ok" 2>/dev/null)" != "${app_uid}" ] || [ "$(stat -c '%u' "${src}" 2>/dev/null)" != "${app_uid}" ]; then
+                    chown -R "${app_uid}:${app_uid}" "${src}" 2>/dev/null
+                    chmod 700 "${src}" 2>/dev/null
+                    chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
+                    find "${src}" -type d -exec chmod 700 {} + 2>/dev/null
+                    find "${src}" -type f -exec chmod 600 {} + 2>/dev/null
+                    restorecon -FR "${src}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
+                    printf '%s' "${app_uid}" > "${src}/.mountx_perms_ok" 2>/dev/null
+                    chown "${app_uid}:${app_uid}" "${src}/.mountx_perms_ok" 2>/dev/null
+                    chmod 600 "${src}/.mountx_perms_ok" 2>/dev/null
+                fi
                 # Purge orphaned peer mounts before binding dst so shared peer-group propagation never stacks 2x
                 if ! mx_is_mounted_exact "${dst}"; then
                     unmount_target_everywhere "${dst}" "" "${user_id}"
@@ -1883,7 +1945,7 @@ load_mountpoints() {
                     mx_make_rprivate "${dst}"
                     chown "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
                     chmod 700 "${dst}" 2>/dev/null
-                    restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                    restorecon -F "${dst}" 2>/dev/null || chcon u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
                     if [ -d "/data/data/${pkg}" ]; then
                         if ! mx_is_mounted_exact "/data/data/${pkg}"; then
                             mount -o bind "${dst}" "/data/data/${pkg}" 2>/dev/null
@@ -1932,17 +1994,33 @@ load_mountpoints() {
                         chmod 700 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
                         chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
                     fi
-                    # Ensure active Zygote namespaces also see PRIVATE_INTERNAL on live remount
+                    # Ensure active Zygote namespaces see PRIVATE_INTERNAL on live remount.
+                    # On Android 11+ (/data_mirror present), Zygote uses /data_mirror/data_ce/null/<uid>/<pkg> when
+                    # creating app sandboxes; injecting /data/user/0 & /data/data directly into Zygote buries them under tmpfs in every app.
+                    local _priv_z_injected=0 _z_probe_path="${dst}"
+                    [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}" ] && _z_probe_path="/data_mirror/data_ce/null/${user_id}/${pkg}"
                     for zpid in $(pidof zygote64 2>/dev/null) $(pidof zygote 2>/dev/null); do
                         [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
-                        if ! mx_is_mounted_in_pid "${zpid}" "${dst}"; then
-                            MX_SRC="${src}" MX_DST="${dst}" MX_PKG="${pkg}" MX_UID="${user_id}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -c '
-                                for _zp in "${MX_DST}" "/data/data/${MX_PKG}" "/data_mirror/data_ce/null/${MX_UID}/${MX_PKG}"; do
-                                    [ -d "${_zp}" ] && mount -o bind "${MX_SRC}" "${_zp}" 2>/dev/null
+                        if ! mx_is_mounted_in_pid "${zpid}" "${_z_probe_path}"; then
+                            MX_SRC="${src}" MX_DST="${dst}" MX_PKG="${pkg}" MX_UID="${user_id}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -s <<'__MX_PRIV_Z__' 2>/dev/null
+                                _dm="/data_mirror/data_ce/null/${MX_UID}/${MX_PKG}"
+                                if [ -d "${_dm}" ]; then
+                                    _zlist="${_dm}"
+                                else
+                                    _zlist="${MX_DST} /data/data/${MX_PKG}"
+                                fi
+                                for _zp in ${_zlist}; do
+                                    [ -d "${_zp}" ] || continue
+                                    if ! T="${_zp}" awk '{m=$5; gsub(/\\040/, " ", m); if (m==ENVIRON["T"]) {f=1; exit}} END {exit (f?0:1)}' /proc/self/mountinfo 2>/dev/null; then
+                                        mount -o bind "${MX_SRC}" "${_zp}" 2>/dev/null
+                                    fi
+                                    mount --make-rprivate "${_zp}" 2>/dev/null || true
                                 done
-                            ' 2>/dev/null
+__MX_PRIV_Z__
+                            _priv_z_injected=1
                         fi
                     done
+                    [ "${_priv_z_injected}" -eq 1 ] && killall -TERM usap64 usap32 2>/dev/null || true
                     log_info "  [${pkg}] Engine A Direct Private Data folder mounted: ${src} -> ${dst}"
                     entries=$((entries + 1))
                     continue
@@ -2029,8 +2107,13 @@ load_mountpoints() {
                 mount -o bind "${src}" "${dst}" 2>/dev/null
                 mount -o remount,bind,rw,exec "${dst}" 2>/dev/null || mount -o remount,rw,exec "${dst}" 2>/dev/null
                 mx_make_rprivate "${dst}"
-                chown -R 1000:1000 "${dst}" 2>/dev/null
-                chmod -R 755 "${dst}" 2>/dev/null
+                if [ ! -f "${src}/.mountx_perms_ok" ] || [ "$(cat "${src}/.mountx_perms_ok" 2>/dev/null)" != "1000" ] || [ "$(stat -c '%u' "${src}" 2>/dev/null)" != "1000" ]; then
+                    chown -R 1000:1000 "${dst}" 2>/dev/null
+                    chmod -R 755 "${dst}" 2>/dev/null
+                    printf '%s' "1000" > "${src}/.mountx_perms_ok" 2>/dev/null
+                    chown 1000:1000 "${src}/.mountx_perms_ok" 2>/dev/null
+                    chmod 644 "${src}/.mountx_perms_ok" 2>/dev/null
+                fi
                 touch "${src}/.mountx_canary" 2>/dev/null
                 chmod 644 "${src}/.mountx_canary" 2>/dev/null
                 chown 1000:1000 "${src}/.mountx_canary" 2>/dev/null
@@ -2049,6 +2132,7 @@ load_mountpoints() {
                     auto_heal_apk_native_libs "${pkg}" "${dst}"
                 fi
                 # Ensure active Zygote namespaces also see APP_PACKAGE on live remount
+                local _apk_z_injected=0
                 for zpid in $(pidof zygote64 2>/dev/null) $(pidof zygote 2>/dev/null); do
                     [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
                     if ! mx_is_mounted_in_pid "${zpid}" "${dst}"; then
@@ -2056,9 +2140,12 @@ load_mountpoints() {
                             mkdir -p "${MX_DST}" 2>/dev/null
                             mount -o bind "${MX_SRC}" "${MX_DST}" 2>/dev/null
                             mount -o remount,bind,rw,exec "${MX_DST}" 2>/dev/null || mount -o remount,rw,exec "${MX_DST}" 2>/dev/null
+                            mount --make-rprivate "${MX_DST}" 2>/dev/null || true
                         ' 2>/dev/null
+                        _apk_z_injected=1
                     fi
                 done
+                [ "${_apk_z_injected}" -eq 1 ] && killall -TERM usap64 usap32 2>/dev/null || true
                 pm unsuspend "${pkg}" >/dev/null 2>&1
                 log_info "  [${pkg}] App package bind-mounted directly: ${src} -> ${dst}"
                 entries=$((entries + 1))
@@ -2092,19 +2179,24 @@ load_mountpoints() {
                 local app_uid=$(id -u "${pkg}" 2>/dev/null)
                 [ -z "${app_uid}" ] && app_uid=$(pm list packages -U 2>/dev/null | grep -F "package:${pkg} " | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
                 [ -z "${app_uid}" ] && app_uid="${APP_UID}"
-                chown -R "${app_uid}:${app_uid}" "${src}" 2>/dev/null
-                chmod 700 "${src}" 2>/dev/null
-                chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
-                chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
+                if [ ! -f "${src}/.mountx_perms_ok" ] || [ "$(cat "${src}/.mountx_perms_ok" 2>/dev/null)" != "${app_uid}" ] || [ "$(stat -c '%u' "${src}" 2>/dev/null)" != "${app_uid}" ]; then
+                    chown -R "${app_uid}:${app_uid}" "${src}" 2>/dev/null
+                    chmod 700 "${src}" 2>/dev/null
+                    chmod -R u+rwX,go-rwx "${src}" 2>/dev/null
+                    chcon -R u:object_r:app_data_file:s0 "${src}" 2>/dev/null
+                    printf '%s' "${app_uid}" > "${src}/.mountx_perms_ok" 2>/dev/null
+                    chown "${app_uid}:${app_uid}" "${src}/.mountx_perms_ok" 2>/dev/null
+                    chmod 600 "${src}/.mountx_perms_ok" 2>/dev/null
+                fi
                 if ! mx_is_mounted_exact "${dst}"; then
                     unmount_target_everywhere "${dst}" "" "${user_id}"
                     mount -o bind "${src}" "${dst}" 2>/dev/null
                 fi
                 if mx_is_mounted_exact "${dst}"; then
                     mx_make_rprivate "${dst}"
-                    chown -R "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
+                    chown "${app_uid}:${app_uid}" "${dst}" 2>/dev/null
                     chmod 700 "${dst}" 2>/dev/null
-                    restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
+                    restorecon -F "${dst}" 2>/dev/null || chcon u:object_r:app_data_file:s0 "${dst}" 2>/dev/null
                     if [ -d "/data/data/${pkg}/cache" ]; then
                         if ! mx_is_mounted_exact "/data/data/${pkg}/cache"; then
                             mount -o bind "${src}" "/data/data/${pkg}/cache" 2>/dev/null
@@ -2117,17 +2209,31 @@ load_mountpoints() {
                         fi
                         mx_make_rprivate "/data_mirror/data_ce/null/${user_id}/${pkg}/cache"
                     fi
-                    # Ensure active Zygote namespaces also see CACHE_SHADERS on live remount
+                    # Ensure active Zygote namespaces see CACHE_SHADERS on live remount without burying under tmpfs /data/data
+                    local _cache_z_injected=0 _z_cache_probe="${dst}"
+                    [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}/cache" ] && _z_cache_probe="/data_mirror/data_ce/null/${user_id}/${pkg}/cache"
                     for zpid in $(pidof zygote64 2>/dev/null) $(pidof zygote 2>/dev/null); do
                         [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
-                        if ! mx_is_mounted_in_pid "${zpid}" "${dst}"; then
-                            MX_SRC="${src}" MX_DST="${dst}" MX_PKG="${pkg}" MX_UID="${user_id}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -c '
-                                for _zp in "${MX_DST}" "/data/data/${MX_PKG}/cache" "/data_mirror/data_ce/null/${MX_UID}/${MX_PKG}/cache"; do
-                                    [ -d "${_zp}" ] && mount -o bind "${MX_SRC}" "${_zp}" 2>/dev/null
+                        if ! mx_is_mounted_in_pid "${zpid}" "${_z_cache_probe}"; then
+                            MX_SRC="${src}" MX_DST="${dst}" MX_PKG="${pkg}" MX_UID="${user_id}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -s <<'__MX_CACHE_Z__' 2>/dev/null
+                                _dm="/data_mirror/data_ce/null/${MX_UID}/${MX_PKG}/cache"
+                                if [ -d "${_dm}" ]; then
+                                    _zlist="${_dm}"
+                                else
+                                    _zlist="${MX_DST} /data/data/${MX_PKG}/cache"
+                                fi
+                                for _zp in ${_zlist}; do
+                                    [ -d "${_zp}" ] || continue
+                                    if ! T="${_zp}" awk '{m=$5; gsub(/\\040/, " ", m); if (m==ENVIRON["T"]) {f=1; exit}} END {exit (f?0:1)}' /proc/self/mountinfo 2>/dev/null; then
+                                        mount -o bind "${MX_SRC}" "${_zp}" 2>/dev/null
+                                    fi
+                                    mount --make-rprivate "${_zp}" 2>/dev/null || true
                                 done
-                            ' 2>/dev/null
+__MX_CACHE_Z__
+                            _cache_z_injected=1
                         fi
                     done
+                    [ "${_cache_z_injected}" -eq 1 ] && killall -TERM usap64 usap32 2>/dev/null || true
                     log_info "  [${pkg}] Internal cache shaders bind-mounted directly: ${src} -> ${dst}"
                     entries=$((entries + 1))
                 else
@@ -2149,9 +2255,9 @@ load_mountpoints() {
         esac
 
         # Timeout-proof Occlusion guard before external/media bind mount:
-        # Never hide substantive internal files behind an empty SD dir, AND never false-reject huge SD dirs due to slow du.
+        # Check fast internal target FIRST; only traverse potentially huge external SD directory when internal actually holds data.
         if [ -d "${dst}" ] && ! mx_is_mounted_exact "${check_target}"; then
-            if ! _dir_is_substantive "${src}"; then
+            if _dir_is_substantive "${dst}" && ! _dir_is_substantive "${src}"; then
                 local _ext_dst_kb _ext_src_kb _du_rc
                 _ext_dst_kb=$(du -sk "${dst}" 2>/dev/null | cut -f1)
                 _ext_src_kb=$(du -sk "${src}" 2>/dev/null | cut -f1)
@@ -2371,13 +2477,145 @@ mount_watchdog() {
     log_info "[Watchdog] Starting. PID=${WATCHDOG_SELF_PID}, Zygote64=${ZYGOTE_PID_LAST:-N/A}, MediaProvider=${LAST_MP_PID:-N/A}, inotifywait=$(which inotifywait 2>/dev/null || echo N/A)"
 
     _mx_unmount_game_binds() {
-        local _bnd
-        for _bnd in $(grep -E "(/data/media/0/Android|/storage/emulated/0/Android|/mnt/user/0/emulated/0/Android|/mnt/runtime/(default|read|write|full)/emulated/0/Android)" /proc/mounts 2>/dev/null | cut -d' ' -f2); do
+        local _bnd _target_blk
+        _target_blk=$(_resolve_monitored_blk_dev)
+        # Unmount all active bind targets derived from our monitored block device (deepest paths first, excluding SD_BASE)
+        if [ -n "${_target_blk}" ]; then
+            local _rblk
+            _rblk=$(readlink -f "${_target_blk}" 2>/dev/null || echo "${_target_blk}")
+            for _zp in 1 $(pidof zygote64 zygote 2>/dev/null); do
+                [ "${_zp}" = "1" ] && _mf="/proc/1/mounts" || _mf="/proc/${_zp}/mounts"
+                [ -r "${_mf}" ] || continue
+                for _bnd in $(awk -v d1="${_rblk}" -v d2="${_target_blk}" -v sb="${SD_BASE%/}" '($1 == d1 || $1 == d2) && $2 != sb {print length($2), $2}' "${_mf}" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[$0]++'); do
+                    if [ "${_zp}" = "1" ]; then
+                        umount "${_bnd}" 2>/dev/null || umount -l "${_bnd}" 2>/dev/null
+                    else
+                        nsenter --mount="/proc/${_zp}/ns/mnt" -- /system/bin/sh -c 'umount "$1" 2>/dev/null || umount -l "$1" 2>/dev/null' _ "${_bnd}" 2>/dev/null
+                    fi
+                done
+            done
+        fi
+        # Fallback cleanup for any remaining Android runtime paths
+        for _bnd in $(grep -E "(/data/media/[0-9]+/Android|/storage/emulated/[0-9]+/Android|/mnt/user/[0-9]+/emulated/[0-9]+/Android|/mnt/runtime/(default|read|write|full)/emulated/[0-9]+/Android)" /proc/mounts 2>/dev/null | cut -d' ' -f2 | sort -r | uniq); do
             case "${_bnd}" in
                 */Android/data|*/Android/obb|*/Android/media) continue ;;
             esac
             umount -l "${_bnd}" 2>/dev/null
         done
+    }
+
+    _mx_detach_block_namespaces() {
+        local _blk="$1"
+        local _base="$2"
+        local _rblk _needle _seen_ns _mf _pid _ns _z64 _z32 _ppid _cmd _uid _oom _mpkg _bg=0
+        [ -z "${_blk}" ] && _blk=$(awk -v t="${_base}" '$2 == t {print $1; exit}' /proc/1/mounts 2>/dev/null)
+        [ -z "${_blk}" ] && _blk=$(awk -v t="${_base}" '$2 == t {print $1; exit}' /proc/mounts 2>/dev/null)
+        _rblk=$(readlink -f "${_blk}" 2>/dev/null || echo "${_blk}")
+
+        # Gracefully stop only MountX-managed apps before resetting the block superblock
+        if [ -f "${MOUNTPOINTS_FILE}" ]; then
+            for _mpkg in $(awk -F'|' '!/^#/ && $1 != "" {print $1}' "${MOUNTPOINTS_FILE}" 2>/dev/null | sort -u); do
+                [ -n "${_mpkg}" ] && am force-stop "${_mpkg}" >/dev/null 2>&1 || true
+            done
+        fi
+
+        _mx_unmount_game_binds
+
+        for _zp in 1 $(pidof zygote64 zygote 2>/dev/null); do
+            if [ "${_zp}" = "1" ]; then
+                umount "${_base}" 2>/dev/null || umount -l "${_base}" 2>/dev/null || true
+            elif [ -d "/proc/${_zp}/ns" ]; then
+                nsenter --mount="/proc/${_zp}/ns/mnt" -- /system/bin/sh -c 'umount "$1" 2>/dev/null || umount -l "$1" 2>/dev/null' _ "${_base}" 2>/dev/null || true
+            fi
+        done
+
+        [ -z "${_rblk}" ] && [ -z "${_blk}" ] && return 0
+        _needle="${_rblk:-${_blk}}"
+        _seen_ns=" "
+        for _mf in $(grep -l -F "${_needle}" /proc/[0-9]*/mounts 2>/dev/null); do
+            _pid="${_mf#/proc/}"
+            _pid="${_pid%/mounts}"
+            [ -n "${_pid}" ] || continue
+            _ns=$(readlink "/proc/${_pid}/ns/mnt" 2>/dev/null) || continue
+            case "${_seen_ns}" in *" ${_ns} "*) continue ;; esac
+            _seen_ns="${_seen_ns}${_ns} "
+            (
+                D1="${_needle}" D2="${_blk}" /system/bin/nsenter --mount="/proc/${_pid}/ns/mnt" -- /system/bin/sh -s <<'__MX_DETACH__' 2>/dev/null || true
+                _p=0
+                while [ "${_p}" -lt 8 ]; do
+                    _mps=$(awk '$1 == ENVIRON["D1"] || (ENVIRON["D2"] != "" && $1 == ENVIRON["D2"]) {print $2}' /proc/self/mounts 2>/dev/null | sort -r | uniq)
+                    [ -z "${_mps}" ] && break
+                    for _m in ${_mps}; do
+                        umount "${_m}" 2>/dev/null || umount -l "${_m}" 2>/dev/null || true
+                    done
+                    _p=$((_p + 1))
+                done
+__MX_DETACH__
+            ) &
+            _bg=$((_bg + 1))
+            if [ "${_bg}" -ge 8 ]; then
+                wait
+                _bg=0
+            fi
+        done
+        wait
+
+        # Recycle ONLY non-persistent user app PIDs still pinning buried mounts (NEVER kill SystemUI, Phone, MediaProvider, etc.)
+        _z64=$(pidof zygote64 2>/dev/null)
+        _z32=$(pidof zygote 2>/dev/null)
+        for _mf in $(grep -l -F "${_needle}" /proc/[0-9]*/mounts 2>/dev/null); do
+            _pid="${_mf#/proc/}"
+            _pid="${_pid%/mounts}"
+            [ "${_pid}" -gt 2200 ] 2>/dev/null || continue
+            _ppid=$(awk '/^PPid:/{print $2}' "/proc/${_pid}/status" 2>/dev/null)
+            case " ${_z64} ${_z32} " in
+                *" ${_ppid} "*)
+                    _uid=$(awk '/^Uid:/{print $2}' "/proc/${_pid}/status" 2>/dev/null)
+                    [ "${_uid:-0}" -ge 10000 ] 2>/dev/null || continue
+                    _oom=$(cat "/proc/${_pid}/oom_score_adj" 2>/dev/null)
+                    [ "${_oom:-0}" -ge 0 ] 2>/dev/null || continue
+                    _cmd=$(tr '\0' ' ' < "/proc/${_pid}/cmdline" 2>/dev/null)
+                    case "${_cmd}" in
+                        *system_server*|*webview_zygote*|*_zygote*|*systemui*|*com.android.phone*|*providers.media*|*externalstorage*|*launcher*|*app.mountx*) continue ;;
+                    esac
+                    kill -9 "${_pid}" 2>/dev/null || true
+                    ;;
+            esac
+        done
+        sleep 1
+    }
+
+    _mx_try_safe_fsck_and_remount() {
+        local _blk="$1"
+        local _rem _fstype
+        [ -n "${_blk}" ] && [ -b "${_blk}" ] || return 1
+        _rem=$(grep -l -F "${_blk}" /proc/[0-9]*/mounts 2>/dev/null | wc -l)
+        if [ "${_rem}" -eq 0 ] 2>/dev/null; then
+            _fstype=$(blkid "${_blk}" 2>/dev/null | sed -n 's/.*TYPE="\([^"]*\)".*/\1/p')
+            case "${_fstype}" in
+                f2fs)
+                    if [ -x /system/bin/fsck.f2fs ]; then
+                        log_warn "[Storage] Running preen fsck.f2fs -p on unmounted ${_blk}..."
+                        /system/bin/fsck.f2fs -p "${_blk}" >/dev/null 2>&1 || /system/bin/fsck.f2fs -a "${_blk}" >/dev/null 2>&1
+                    fi
+                    ;;
+                ext4)
+                    if [ -x /system/bin/e2fsck ]; then
+                        log_warn "[Storage] Running preen e2fsck -p on unmounted ${_blk}..."
+                        /system/bin/e2fsck -p "${_blk}" >/dev/null 2>&1
+                    fi
+                    ;;
+                exfat)
+                    if [ -x /system/bin/fsck.exfat ]; then
+                        log_warn "[Storage] Running repair fsck.exfat -y on unmounted ${_blk}..."
+                        /system/bin/fsck.exfat -y "${_blk}" >/dev/null 2>&1
+                    fi
+                    ;;
+            esac
+            mount_sd
+            mx_is_mounted "${SD_BASE}" && _probe_sd_io_healthy "${_blk}" "${SD_BASE}" 2 && return 0
+        fi
+        return 1
     }
 
     _mx_reapply_mounts_after_recovery() {
@@ -2389,8 +2627,7 @@ mount_watchdog() {
         LAST_EMULATED_GEN=$(_emulated_root_generation)
         LAST_MP_PID=$(_get_mediaprovider_pid)
         rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
-        am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
-        am broadcast -a app.mountx.ACTION_MOUNT_ALL -p app.mountx >/dev/null 2>&1
+        (timeout 10 am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1) &
         RECOVERY_STREAK=0
         RO_RECOVERY_ATTEMPTED=0
         CONSECUTIVE_OK=0
@@ -2469,24 +2706,40 @@ mount_watchdog() {
         fi
 
         if [ ${io_error} -eq 1 ]; then
-            log_warn "[Watchdog] Unmounting unresponsive binds & ${SD_BASE} to test deep-sleep/bus recovery..."
-            _mx_unmount_game_binds
-            umount -l "${SD_BASE}" 2>/dev/null
-            sleep 1
+            # Fast-path recovery if block only flipped READ-ONLY (no -EIO shutdown superblock)
+            if [ -n "${blk_dev}" ] && [ -b "${blk_dev}" ] && grep -F " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -qE "(^|[[:space:],])ro($|[[:space:],])"; then
+                local _ro_hw_chk
+                _ro_hw_chk=$(cat "/sys/block/$(_parent_disk_name "${blk_dev}")/ro" 2>/dev/null | tr -d '\r\n')
+                if [ "${_ro_hw_chk}" != "1" ] && mount -o remount,rw "${SD_BASE}" 2>/dev/null; then
+                    if _probe_sd_io_healthy "${blk_dev}" "${SD_BASE}" 1; then
+                        log_info "[Watchdog] ${SD_BASE} recovered back to READ-WRITE instantly via remount!"
+                        rm -f "/dev/.mountx_disk_error" 2>/dev/null
+                        RECOVERY_STREAK=0
+                        RO_RECOVERY_ATTEMPTED=0
+                        return 0
+                    fi
+                fi
+            fi
+
+            # Hold APPLY_LOCK_FILE BEFORE detaching namespaces so companion app never races mid-recovery
+            echo "${WATCHDOG_SELF_PID}" > "${APPLY_LOCK_FILE}" 2>/dev/null
+            log_warn "[Watchdog] Detaching all namespace mounts on ${blk_dev:-unknown} & ${SD_BASE} to clear dead/shutdown superblock..."
+            _mx_detach_block_namespaces "${blk_dev}" "${SD_BASE}"
             blk_dev=$(_resolve_monitored_blk_dev)
             if [ -n "${blk_dev}" ] && [ -b "${blk_dev}" ] && dd if="${blk_dev}" of=/dev/null bs=4096 count=1 2>/dev/null; then
-                log_info "[Watchdog] Block device ${blk_dev} recovered after deep-sleep/bus drop! Remounting ${SD_BASE} cleanly..."
+                log_info "[Watchdog] Block device ${blk_dev} readable after superblock detach. Remounting ${SD_BASE} cleanly..."
                 mount_sd
-                if mx_is_mounted "${SD_BASE}" && _probe_sd_io_healthy "${blk_dev}" "${SD_BASE}" 2; then
-                    log_info "[Watchdog] SD_BASE superblock recovered cleanly on ${blk_dev}. Re-applying bind mounts..."
+                if (mx_is_mounted "${SD_BASE}" && _probe_sd_io_healthy "${blk_dev}" "${SD_BASE}" 2) || _mx_try_safe_fsck_and_remount "${blk_dev}"; then
+                    log_info "[Watchdog] SD_BASE superblock recovered writable & healthy on ${blk_dev}. Re-applying bind mounts..."
                     _mx_reapply_mounts_after_recovery
                     return 0
                 fi
-                umount -l "${SD_BASE}" 2>/dev/null
+                _mx_detach_block_namespaces "${blk_dev}" "${SD_BASE}"
             fi
+            rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
             log_error "[Watchdog] CRITICAL: MicroSD hardware I/O error or physical detachment confirmed!"
             echo "io_error" > "/dev/.mountx_disk_error"
-            am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
+            (timeout 10 am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1) &
             LAST_DISK_ATTACHED=0
             [ -n "${blk_dev}" ] && [ -b "${blk_dev}" ] && LAST_DISK_ATTACHED=1
             _mx_advance_recovery_backoff
@@ -2499,12 +2752,13 @@ mount_watchdog() {
                 if [ -n "${blk_dev}" ] || grep -q "|APP_PACKAGE|" "${MOUNTPOINTS_FILE}" 2>/dev/null; then
                     log_warn "[Watchdog] SD_BASE ${SD_BASE} unmounted and block device ${blk_dev:-unknown} not found. Disk detached."
                     echo "io_error" > "/dev/.mountx_disk_error"
-                    am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1
+                    (timeout 10 am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "io_error" -p app.mountx >/dev/null 2>&1) &
                     LAST_DISK_ATTACHED=0
                     _mx_advance_recovery_backoff
                     return 1
                 fi
             else
+                echo "${WATCHDOG_SELF_PID}" > "${APPLY_LOCK_FILE}" 2>/dev/null
                 log_warn "[Watchdog] SD_BASE ${SD_BASE} lost! Re-mounting ${blk_dev}..."
                 mount_sd
                 if mx_is_mounted "${SD_BASE}"; then
@@ -2512,6 +2766,7 @@ mount_watchdog() {
                     _mx_reapply_mounts_after_recovery
                     return 0
                 else
+                    rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
                     log_error "[Watchdog] SD_BASE re-mount failed."
                     _mx_advance_recovery_backoff
                     return 1
@@ -2521,27 +2776,34 @@ mount_watchdog() {
 
         # Check 1b: Kernel Read-Only Remount Protection Probe (attempt single safe RW recovery unless hw write-protected)
         if mx_is_mounted "${SD_BASE}"; then
-            if grep -F " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -qE "(^|,)ro(,| )"; then
+            if grep -F " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -qE "(^|[[:space:],])ro($|[[:space:],])"; then
                 local _ro_hw=""
                 if [ -n "${blk_dev}" ]; then
                     _ro_hw=$(cat "/sys/block/$(_parent_disk_name "${blk_dev}")/ro" 2>/dev/null | tr -d '\r\n')
                 fi
                 if [ "${_ro_hw}" != "1" ] && [ "${RO_RECOVERY_ATTEMPTED}" -eq 0 ]; then
                     RO_RECOVERY_ATTEMPTED=1
-                    log_warn "[Storage] ${SD_BASE} remounted READ-ONLY; attempting clean unmount + RW remount..."
-                    _mx_unmount_game_binds
-                    umount -l "${SD_BASE}" 2>/dev/null
-                    sleep 1
+                    if mount -o remount,rw "${SD_BASE}" 2>/dev/null && _probe_sd_io_healthy "${blk_dev}" "${SD_BASE}" 1; then
+                        log_info "[Storage] ${SD_BASE} recovered back to READ-WRITE instantly via remount!"
+                        rm -f "/dev/.mountx_disk_error" 2>/dev/null
+                        RECOVERY_STREAK=0
+                        RO_RECOVERY_ATTEMPTED=0
+                        return 0
+                    fi
+                    echo "${WATCHDOG_SELF_PID}" > "${APPLY_LOCK_FILE}" 2>/dev/null
+                    log_warn "[Storage] ${SD_BASE} remounted READ-ONLY; detaching namespaces & attempting clean RW remount..."
+                    _mx_detach_block_namespaces "${blk_dev}" "${SD_BASE}"
                     mount_sd
-                    if mx_is_mounted "${SD_BASE}" && ! grep -F " ${SD_BASE} " /proc/mounts 2>/dev/null | grep -qE "(^|,)ro(,| )"; then
+                    if (mx_is_mounted "${SD_BASE}" && _probe_sd_io_healthy "${blk_dev}" "${SD_BASE}" 2) || _mx_try_safe_fsck_and_remount "${blk_dev}"; then
                         log_info "[Storage] ${SD_BASE} recovered back to READ-WRITE cleanly!"
                         _mx_reapply_mounts_after_recovery
                         return 0
                     fi
+                    rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
                 fi
                 log_error "[Storage] CRITICAL: MicroSD ${SD_BASE} has been remounted READ-ONLY by kernel! Writes will fail with EROFS."
                 echo "ro_error" > "/dev/.mountx_disk_error"
-                am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "ro_error" -p app.mountx >/dev/null 2>&1
+                (timeout 10 am broadcast -a app.mountx.ACTION_DISK_ERROR --es error "ro_error" -p app.mountx >/dev/null 2>&1) &
             else
                 rm -f "/dev/.mountx_disk_error" 2>/dev/null
                 RECOVERY_STREAK=0
@@ -2602,7 +2864,7 @@ mount_watchdog() {
             rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
 
             # Notify the app to re-sync its mount status
-            am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+            (timeout 10 am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1) &
             log_info "[Watchdog] Subsystem/storage restart recovery complete. All mounts re-applied."
             CONSECUTIVE_OK=0
             CHECK_INTERVAL=60
@@ -2701,7 +2963,7 @@ mount_watchdog() {
             LAST_EMULATED_GEN=$(_emulated_root_generation)
             LAST_MP_PID=$(_get_mediaprovider_pid)
             rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
-            am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+            (timeout 10 am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1) &
             CONSECUTIVE_OK=0
             CHECK_INTERVAL=60
             return 0
@@ -2779,7 +3041,7 @@ mount_watchdog() {
             LAST_EMULATED_GEN=$(_emulated_root_generation)
             LAST_MP_PID=$(_get_mediaprovider_pid)
             rm -f "${APPLY_LOCK_FILE}" 2>/dev/null
-            am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1
+            (timeout 10 am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1) &
             CONSECUTIVE_OK=0
             elapsed=0
             continue
@@ -2875,24 +3137,65 @@ main() {
         apply_io_tweaks
     fi
 
-    # Ensure localized subdirectories exist without placing .nomedia on $SD_BASE/MountX
-    mkdir -p "${SD_BASE}/MountX/Android/data" \
-             "${SD_BASE}/MountX/Android/obb" \
-             "${SD_BASE}/MountX/Android/media" \
-             "${SD_BASE}/MountX/containers" 2>/dev/null
-    rm -f "${SD_BASE}/MountX/Android/.nomedia" 2>/dev/null
-    touch "${SD_BASE}/MountX/Android/data/.nomedia" 2>/dev/null
-    touch "${SD_BASE}/MountX/Android/obb/.nomedia" 2>/dev/null
-
-    # Auto-sanitize any misplaced legacy rogue subfolders
-    for _cat in data obb; do
-        for _p in "${SD_BASE}/MountX/Android/${_cat}"/*; do
-            [ ! -d "${_p}" ] && continue
-            rm -rf "${_p}/Android" 2>/dev/null
-            _pn=$(basename "${_p}")
-            [ -d "${_p}/${_pn}" ] && rm -rf "${_p}/${_pn}" 2>/dev/null
+    # Guard against cold-boot Vold/SDHCI reset leaving SD_BASE unmounted or in shutdown -EIO superblock
+    if is_ce_key_unlocked; then
+        if [ ${is_live_reload} -eq 0 ]; then
+            log_info "[Boot] User storage unlocked (CE ready). Waiting for Vold FUSE/sdcardfs settlement..."
+            wait_for_emulated_storage_settled 30
+        fi
+        local _boot_blk _boot_wait=0
+        _boot_blk=$(_resolve_monitored_blk_dev)
+        # Wait up to 6s if Vold is still re-enumerating external MMC/USB node after settlement
+        while [ ${_boot_wait} -lt 6 ]; do
+            if [ -n "${_boot_blk}" ] && [ -b "${_boot_blk}" ] && dd if="${_boot_blk}" of=/dev/null bs=4096 count=1 2>/dev/null; then
+                break
+            fi
+            sleep 1
+            _boot_blk=$(_resolve_monitored_blk_dev)
+            _boot_wait=$((_boot_wait + 1))
         done
-    done
+        if [ -n "${_boot_blk}" ] && [ -b "${_boot_blk}" ]; then
+            if ! mx_is_mounted "${SD_BASE}" || ! _probe_sd_io_healthy "${_boot_blk}" "${SD_BASE}" 2; then
+                log_warn "[Boot] ${SD_BASE} unmounted or non-writable after Vold settle; cleanly resetting superblock & remounting..."
+                for _zp in 1 $(pidof zygote64 zygote 2>/dev/null); do
+                    [ -r "/proc/${_zp}/mounts" ] || continue
+                    for _bm in $(awk -v b="${_boot_blk}" -v sb="${SD_BASE%/}" '$1 == b || $2 == sb {print length($2), $2}' "/proc/${_zp}/mounts" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[$0]++'); do
+                        if [ "${_zp}" = "1" ]; then
+                            umount "${_bm}" 2>/dev/null || umount -l "${_bm}" 2>/dev/null || true
+                        elif [ -d "/proc/${_zp}/ns" ]; then
+                            nsenter --mount="/proc/${_zp}/ns/mnt" -- /system/bin/sh -c 'umount "$1" 2>/dev/null || umount -l "$1" 2>/dev/null' _ "${_bm}" 2>/dev/null || true
+                        fi
+                    done
+                done
+                mount_sd
+            fi
+        fi
+    fi
+
+    # Never create internal stub directories under unmounted SD_BASE! Only prepare MountX layout when SD_BASE is actively mounted & writable.
+    local _layout_blk
+    _layout_blk=$(_resolve_monitored_blk_dev)
+    if mx_is_mounted "${SD_BASE}" && _probe_sd_io_healthy "${_layout_blk:-${SD_BLOCK}}" "${SD_BASE}" 1; then
+        mkdir -p "${SD_BASE}/MountX/Android/data" \
+                 "${SD_BASE}/MountX/Android/obb" \
+                 "${SD_BASE}/MountX/Android/media" \
+                 "${SD_BASE}/MountX/containers" 2>/dev/null
+        rm -f "${SD_BASE}/MountX/Android/.nomedia" 2>/dev/null
+        touch "${SD_BASE}/MountX/Android/data/.nomedia" 2>/dev/null
+        touch "${SD_BASE}/MountX/Android/obb/.nomedia" 2>/dev/null
+
+        # Auto-sanitize any misplaced legacy rogue subfolders
+        for _cat in data obb; do
+            for _p in "${SD_BASE}/MountX/Android/${_cat}"/*; do
+                [ ! -d "${_p}" ] && continue
+                rm -rf "${_p}/Android" 2>/dev/null
+                _pn=$(basename "${_p}")
+                [ -d "${_p}/${_pn}" ] && rm -rf "${_p}/${_pn}" 2>/dev/null
+            done
+        done
+    else
+        log_warn "[Storage] Skipping SD_BASE layout creation: ${SD_BASE} is not mounted RW."
+    fi
 
     # Never mount user/app directories or inject into Zygote while device is on lockscreen (BFU)
     if [ ${is_live_reload} -eq 1 ]; then
@@ -2900,18 +3203,16 @@ main() {
         apply_all_mounts
         touch /dev/.mountx_initial_mounted "${BOOT_FLAG_FILE}" 2>/dev/null
         log_info "MountX live-reload completed at ${BOOT_FLAG_FILE}."
-        (am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1) &
+        (timeout 10 am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1) &
     elif is_ce_key_unlocked; then
         echo "$$" > "${APPLY_LOCK_FILE}" 2>/dev/null
-        log_info "[Boot] User storage unlocked (CE ready). Waiting for Vold FUSE/sdcardfs settlement..."
-        wait_for_emulated_storage_settled 30
         apply_all_mounts
         touch /dev/.mountx_initial_mounted 2>/dev/null
         sleep 3
         verify_post_mount_canaries "Boot"
         touch "${BOOT_FLAG_FILE}" 2>/dev/null
         log_info "MountX boot marker touched at ${BOOT_FLAG_FILE}. Service completed."
-        (am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1) &
+        (timeout 10 am broadcast -a app.mountx.ACTION_SYNC_NOTIFICATION -p app.mountx >/dev/null 2>&1) &
     else
         rm -f /dev/.mountx_initial_mounted 2>/dev/null
         log_info "[Boot] Device is on lockscreen (FBE CE locked). Deferring app mounts until screen unlock to protect system stability."

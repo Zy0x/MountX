@@ -58,54 +58,25 @@ class BootReceiver : BroadcastReceiver() {
                 hasHandledBoot = true
             }
 
+            // Never hold BroadcastReceiver.goAsync() open across long module boot waits (avoids BroadcastQueue ANR)
+            try {
+                MountService.startPostBootSync(context, isUnlock)
+                return
+            } catch (_: Exception) {
+                // Fallback if OEM background FGS launch is restricted (e.g. USER_UNLOCKED before allowlist applies)
+            }
+
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     mountNotificationManager.createNotificationChannels()
                     val autoMount = appPreferences.autoMountOnBoot.first()
-                    val rootAvailable = RootShell.isRootAvailable()
-
-                    // Coordinate cleanly with service.sh so boot/unlock mounts never race or double-bind
-                    if (autoMount && rootAvailable) {
-                        RootShell.awaitServiceMountCycleIfActive(waitForWatchdogUnlockGrace = isUnlock)
-                        appRepository.refreshMountStatuses()
-
-                        val isModuleHandled = RootShell.exists("/dev/.mountx_booted")
-                        val isInitialMounted = RootShell.exists("/dev/.mountx_initial_mounted")
-                        val enabledGames = gameDao.getAllGamesSync().filter { it.isEnabled }
-                        val verifiedMap = if (enabledGames.isNotEmpty()) {
-                            mountManager.verifyCanariesBatch(enabledGames)
-                        } else emptyMap()
-                        val anyEligibleUnmounted = enabledGames.any { g ->
-                            g.mountStatus != MountStatus.DISK_DETACHED && verifiedMap[g.packageName] != true
-                        }
-
-                        if (!isModuleHandled || (isUnlock && !isInitialMounted) || anyEligibleUnmounted) {
-                            // Settling grace period: wait for storage daemon & vold when app is handling mounts
-                            var attempts = 0
-                            while (attempts < 10) {
-                                if (RootShell.exists("/storage/emulated/0") ||
-                                    RootShell.isMountpoint("/data/sdext2") ||
-                                    RootShell.isMountpoint("/dev/mountx/sdext2")
-                                ) {
-                                    break
-                                }
-                                delay(500)
-                                attempts++
-                            }
-                            MountService.startMountAll(context)
-                        }
-                    }
-
-                    // Post-reboot unmounted game launch protection:
-                    // If root is not available (typical of TempRoot after reboot) or auto-mount is off,
-                    // warn the user so they do not open games before executing TempRoot & Mount All.
                     val registeredGames = gameDao.getAllGamesSync().filter { it.isEnabled }
-                    if (registeredGames.isNotEmpty() && (!rootAvailable || !autoMount)) {
+                    if (registeredGames.isNotEmpty() && !autoMount) {
                         mountNotificationManager.showUnmountedGameWarningNotification(registeredGames.size)
+                    } else {
+                        mountNotificationManager.syncActiveMountNotification()
                     }
-
-                    mountNotificationManager.syncActiveMountNotification()
                 } finally {
                     pendingResult.finish()
                 }

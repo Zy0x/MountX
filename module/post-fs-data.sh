@@ -184,7 +184,7 @@ if _pfs_is_mounted "${SD_BASE}"; then
             esac
             mkdir -p "${dst}" 2>/dev/null
             if ! _pfs_is_mounted "${dst}"; then
-                mount -o bind,ro "${_eff_src}" "${dst}" 2>/dev/null || mount -o bind "${_eff_src}" "${dst}" 2>/dev/null
+                mount -o bind "${_eff_src}" "${dst}" 2>/dev/null || mount -o bind,ro "${_eff_src}" "${dst}" 2>/dev/null
                 _pfs_make_rprivate "${dst}"
             fi
         fi
