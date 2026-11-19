@@ -518,22 +518,29 @@ wait_for_emulated_storage_settled() {
     return 0
 }
 
-verify_post_mount_canaries() {
-    local _ctx="$1"
-    [ ! -f "${MOUNTPOINTS_FILE}" ] && return 0
-    local _skip_pkgs=" "
-    local _pkg _cat _src _dst _pm _du _uid _rel _eu
-    while IFS='|' read -r _pkg _cat _src _dst _pm _du _uid || [ -n "${_pkg}" ]; do
-        _pkg=$(echo "${_pkg}" | tr -d '\r')
-        _src=$(echo "${_src}" | tr -d '\r')
-        case "${_pkg}" in ""|\#*) continue ;; esac
-        if [ -n "${_src}" ] && [ ! -e "${_src}" ]; then
-            case "${_skip_pkgs}" in
-                *" ${_pkg} "*) ;;
-                *) _skip_pkgs="${_skip_pkgs}${_pkg} " ;;
+_mx_collect_skipped_pkgs() {
+    [ ! -f "${MOUNTPOINTS_FILE}" ] && { echo " "; return 0; }
+    local _skip=" " _pk _c _s _rest
+    while IFS='|' read -r _pk _c _s _rest || [ -n "${_pk}" ]; do
+        _pk=$(echo "${_pk}" | tr -d '\r')
+        _s=$(echo "${_s}" | tr -d '\r')
+        case "${_pk}" in ""|\#*) continue ;; esac
+        if [ -n "${_s}" ] && [ ! -e "${_s}" ]; then
+            case "${_skip}" in
+                *" ${_pk} "*) ;;
+                *) _skip="${_skip}${_pk} " ;;
             esac
         fi
     done < "${MOUNTPOINTS_FILE}"
+    echo "${_skip}"
+}
+
+verify_post_mount_canaries() {
+    local _ctx="$1"
+    [ ! -f "${MOUNTPOINTS_FILE}" ] && return 0
+    local _skip_pkgs
+    _skip_pkgs=$(_mx_collect_skipped_pkgs)
+    local _pkg _cat _src _dst _pm _du _uid _rel _eu
 
     local _shadowed=0
     while IFS='|' read -r _pkg _cat _src _dst _pm _du _uid || [ -n "${_pkg}" ]; do
@@ -2525,10 +2532,13 @@ mount_watchdog() {
         local shadowed_found=0
         local _verified_pkgs=""
         local active_apps=0
+        local _wd_skip_pkgs
+        _wd_skip_pkgs=$(_mx_collect_skipped_pkgs)
         if [ -f "${MOUNTPOINTS_FILE}" ]; then
             while IFS='|' read -r _p _c _s _d _pm _u _uid || [ -n "${_p}" ]; do
                 case "${_p}" in ''|\#*) continue ;; esac
                 _p=$(echo "${_p}" | tr -d '\r')
+                case "${_wd_skip_pkgs}" in *" ${_p} "*) continue ;; esac
                 _c=$(echo "${_c}" | tr -d '\r')
                 _s=$(echo "${_s}" | tr -d '\r')
                 _d=$(echo "${_d}" | tr -d '\r')

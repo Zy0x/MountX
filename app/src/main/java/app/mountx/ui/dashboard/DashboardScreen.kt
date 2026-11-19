@@ -1168,8 +1168,12 @@ private fun SmartMasterControlCard(
     onToggleGameMount: (GameEntry) -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
-    val hasDetached = diskHealthStatus == app.mountx.data.model.DiskHealthStatus.DISCONNECTED || games.any { it.mountStatus == MountStatus.DISK_DETACHED }
+    val isPrimaryStorageDisconnected = diskHealthStatus == app.mountx.data.model.DiskHealthStatus.DISCONNECTED
+    val attachableGames = games.filter { it.mountStatus != MountStatus.DISK_DETACHED }
+    val allGamesDetached = totalCount > 0 && attachableGames.isEmpty()
+    val hasDetached = isPrimaryStorageDisconnected || allGamesDetached
     val allMounted = !hasDetached && totalCount > 0 && mountedCount == totalCount
+    val allAttachableMounted = !hasDetached && attachableGames.isNotEmpty() && mountedCount == attachableGames.size
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val activeEmerald = if (isDark) BadgeMountedTextDark else BadgeMountedTextLight
     val warnAmber = BadgeMigrationText
@@ -1182,7 +1186,7 @@ private fun SmartMasterControlCard(
             1.dp,
             when {
                 hasDetached -> errCrimson.copy(alpha = 0.5f)
-                allMounted -> activeEmerald.copy(alpha = 0.45f)
+                allMounted || allAttachableMounted -> activeEmerald.copy(alpha = 0.45f)
                 else -> MaterialTheme.colorScheme.outline
             }
         ),
@@ -1210,7 +1214,7 @@ private fun SmartMasterControlCard(
                     color = when {
                         hasDetached -> if (isDark) WarmCrimsonBorderDark.copy(alpha = 0.25f) else WarmCrimsonBorderLight.copy(alpha = 0.2f)
                         totalCount == 0 -> MaterialTheme.colorScheme.surfaceVariant
-                        allMounted -> if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
+                        allMounted || allAttachableMounted -> if (isDark) BadgeMountedBgDark else BadgeMountedBgLight
                         else -> if (isDark) Color(0xFF6366F1).copy(alpha = 0.15f) else Color(0xFF4F46E5).copy(alpha = 0.12f)
                     },
                     border = BorderStroke(
@@ -1218,7 +1222,7 @@ private fun SmartMasterControlCard(
                         when {
                             hasDetached -> if (isDark) WarmCrimsonDark.copy(alpha = 0.5f) else WarmCrimsonLight.copy(alpha = 0.45f)
                             totalCount == 0 -> MaterialTheme.colorScheme.outlineVariant
-                            allMounted -> if (isDark) BadgeMountedTextDark.copy(alpha = 0.4f) else BadgeMountedTextLight.copy(alpha = 0.35f)
+                            allMounted || allAttachableMounted -> if (isDark) BadgeMountedTextDark.copy(alpha = 0.4f) else BadgeMountedTextLight.copy(alpha = 0.35f)
                             else -> if (isDark) Color(0xFF6366F1).copy(alpha = 0.35f) else Color(0xFF4F46E5).copy(alpha = 0.3f)
                         }
                     )
@@ -1228,7 +1232,7 @@ private fun SmartMasterControlCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        if (allMounted) {
+                        if (allMounted || allAttachableMounted) {
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
@@ -1253,7 +1257,7 @@ private fun SmartMasterControlCard(
                             color = when {
                                 hasDetached -> errCrimson
                                 totalCount == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
-                                allMounted -> activeEmerald
+                                allMounted || allAttachableMounted -> activeEmerald
                                 else -> MaterialTheme.colorScheme.primary
                             }
                         )
@@ -1304,7 +1308,7 @@ private fun SmartMasterControlCard(
                 ) {
                     for (game in previewGames) {
                         val isMounted = game.mountStatus == MountStatus.MOUNTED
-                        val isDetached = game.mountStatus == MountStatus.DISK_DETACHED || (hasDetached && isMounted)
+                        val isDetached = game.mountStatus == MountStatus.DISK_DETACHED || (isPrimaryStorageDisconnected && isMounted)
                         val isPending = pendingOperations.contains(game.packageName)
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -1493,7 +1497,7 @@ private fun SmartMasterControlCard(
                     }
                 }
 
-                allMounted -> {
+                allMounted || allAttachableMounted -> {
                     OutlinedButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)

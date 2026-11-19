@@ -227,10 +227,22 @@ class SystemSyncMonitor @Inject constructor(
                     val configuredBlock = runCatching { appPreferences.sdBlockDevice.first() }.getOrDefault("")
 
                     if (hasDetachedGames && !hasMountedGames) {
-                        val detachedUuids = games.filter { it.mountStatus == MountStatus.DISK_DETACHED }
-                            .flatMap { it.mountPoints }
-                            .mapNotNull { it.diskUuid }
-                        if (RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, detachedUuids)) {
+                        val blkidSnap = RootShell.execForOutput("blkid 2>/dev/null")
+                        val isSdBaseMounted = RootShell.isMountpoint(sdBase)
+                        val anyDetachedRecoverable = games.any { g ->
+                            g.mountStatus == MountStatus.DISK_DETACHED && g.isEnabled && (
+                                if (g.mountPoints.any { it.enabled }) {
+                                    g.mountPoints.filter { it.enabled }.all { mp ->
+                                        val uuidOk = mp.diskUuid.isNullOrBlank() || blkidSnap.contains(mp.diskUuid, ignoreCase = true)
+                                        val pathOk = mp.sourcePath.isBlank() || RootShell.exists(mp.sourcePath)
+                                        uuidOk && (pathOk || (mp.diskUuid.isNullOrBlank() && isSdBaseMounted))
+                                    }
+                                } else {
+                                    RootShell.isAnyExternalBackingDiskAlive(sdBase, configuredBlock, emptyList())
+                                }
+                            )
+                        }
+                        if (anyDetachedRecoverable) {
                             AppLogger.info("SystemSyncMonitor", "Health loop detected storage reconnection! Initiating recovery...")
                             handleStorageMounted(context)
                         }
