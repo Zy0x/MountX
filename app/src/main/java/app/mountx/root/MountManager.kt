@@ -92,6 +92,34 @@ class MountManager(
         }
 
         /**
+         * Resolves unique PIDs owning distinct `/proc/<pid>/ns/mnt` namespaces across Zygote and idle (`uid == 0`)
+         * USAP workers without ever signalling/killing `usap64`/`usap32` (external SIGTERM leaves stale
+         * `read_pipe_fd` entries that cause a permanent `POLLHUP` 100% CPU loop in AOSP `ZygoteServer.runSelectLoop()`).
+         */
+        internal val ZYGOTE_MNT_PIDS_SNIPPET = """
+            _zpids=""
+            _zseen=""
+            for _zname in zygote64 zygote usap64 usap32; do
+              for _zcand in ${'$'}(pidof "${'$'}_zname" 2>/dev/null); do
+                [ -e "/proc/${'$'}_zcand/ns/mnt" ] || continue
+                _zuid=${'$'}(awk '/^Uid:/{print ${'$'}2; exit}' "/proc/${'$'}_zcand/status" 2>/dev/null)
+                case "${'$'}_zuid" in
+                  ""|0) ;;
+                  *) continue ;;
+                esac
+                _zns=${'$'}(readlink "/proc/${'$'}_zcand/ns/mnt" 2>/dev/null)
+                [ -n "${'$'}_zns" ] || _zns="pid:${'$'}_zcand"
+                case " ${'$'}_zseen " in
+                  *" ${'$'}_zns "*) continue ;;
+                esac
+                _zseen="${'$'}_zseen ${'$'}_zns"
+                _zpids="${'$'}_zpids ${'$'}_zcand"
+              done
+            done
+            _zpids=${'$'}{_zpids# }
+        """.trimIndent()
+
+        /**
          * Safely cleans any corrupted parent occlusion mounts (`.../Android/(data|obb|media)` backed by MountX)
          * and peels stacked/dead FUSE `ENOTCONN` layers across PID 1 and active Zygote namespaces.
          * Never uses `umount -f` (`MNT_FORCE`) so F2FS superblocks never suffer checkpoint shutdowns (`EIO`).
@@ -101,7 +129,7 @@ class MountManager(
                 _mi=/proc/1/mountinfo
                 [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
                 [ -r "${'$'}_mi" ] || exit 0
-                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+${ZYGOTE_MNT_PIDS_SNIPPET}
                 umount_all_ns() {
                   _t="${'$'}1"
                   [ -n "${'$'}_t" ] || return 0
@@ -179,7 +207,7 @@ class MountManager(
             val nonPosixFlag = if (isNonPosix) "1" else "0"
             val execFlag = if (preserveExec) "1" else "0"
             val script = """
-                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+${ZYGOTE_MNT_PIDS_SNIPPET}
                 [ -n "${'$'}_zpids" ] || exit 0
                 for _zp in ${'$'}_zpids; do
                   [ -d "/proc/${'$'}_zp/ns" ] || continue
@@ -255,7 +283,6 @@ $pairLines
 __MX_PAIRS__
 __MX_Z_BIND__
                 done
-                killall -TERM usap64 usap32 2>/dev/null || true
             """.trimIndent()
             RootShell.execScript(script)
         }
@@ -328,7 +355,7 @@ __MX_Z_BIND__
             val sweepScript = """
                 _mi=/proc/1/mountinfo
                 [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
-                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+${ZYGOTE_MNT_PIDS_SNIPPET}
                 umount_all_ns() {
                   umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null
                   for _zp in ${'$'}_zpids; do
@@ -360,7 +387,7 @@ __MX_Z_BIND__
             val sweepScript = """
                 _mi=/proc/1/mountinfo
                 [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
-                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+${ZYGOTE_MNT_PIDS_SNIPPET}
                 umount_all_ns() {
                   umount "${'$'}1" 2>/dev/null || umount -l "${'$'}1" 2>/dev/null
                   for _zp in ${'$'}_zpids; do
@@ -394,7 +421,7 @@ __MX_Z_BIND__
             val script = """
                 _mi=/proc/1/mountinfo
                 [ -r "${'$'}_mi" ] || _mi=/proc/self/mountinfo
-                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+${ZYGOTE_MNT_PIDS_SNIPPET}
                 while IFS= read -r _p; do
                   [ -n "${'$'}_p" ] || continue
                   _c=0
@@ -573,7 +600,7 @@ __MX_SEC__
             val secLines = secondaryTargets.map { it.trimEnd('/') }.filter { it.isNotBlank() && it != cleanPrim }.distinct().joinToString("\n")
             val execFlag = if (preserveExec) "1" else "0"
             val script = """
-                _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+${ZYGOTE_MNT_PIDS_SNIPPET}
                 [ -n "${'$'}_zpids" ] || exit 0
                 for _zp in ${'$'}_zpids; do
                   [ -d "/proc/${'$'}_zp/ns" ] || continue
@@ -2432,7 +2459,7 @@ __MX_ZC__
                     if [ -f /data/adb/modules/MountX/mountpoints.conf ]; then
                       PACKAGES=${'$'}(grep -vE '^(#|[[:space:]]*${'$'})' /data/adb/modules/MountX/mountpoints.conf 2>/dev/null | cut -d'|' -f1 | tr -d '\r' | sort -u)
                     fi
-                    _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+${ZYGOTE_MNT_PIDS_SNIPPET}
                     for i in 1 2 3 4; do
                       targets=""
                       while IFS='|' read -r dev root mnt; do

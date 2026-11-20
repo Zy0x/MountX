@@ -1634,7 +1634,7 @@ class StorageManager(
               _rdev=${'$'}(readlink -f "${'$'}_bdev" 2>/dev/null || echo "${'$'}_bdev")
               _mm=${'$'}(cat "/sys/class/block/${'$'}{_rdev##*/}/dev" 2>/dev/null)
             fi
-            _zpids=${'$'}(pidof zygote64 zygote 2>/dev/null)
+${MountManager.ZYGOTE_MNT_PIDS_SNIPPET}
             unmount_all_ns() {
               _t="${'$'}1"
               [ -n "${'$'}_t" ] || return 0

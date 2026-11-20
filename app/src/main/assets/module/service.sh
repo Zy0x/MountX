@@ -162,6 +162,31 @@ mx_is_mounted_in_pid() {
     awk -v t="${_p}" '{m=$5; gsub(/\\040/, " ", m); if (m==t) {f=1; exit}} END {exit (f?0:1)}' "${_mi}" 2>/dev/null
 }
 
+# Resolves unique PIDs owning distinct /proc/<pid>/ns/mnt namespaces across Zygote and idle (uid 0)
+# USAP workers without ever signalling/killing usap64/usap32. Idle USAPs normally share Zygote's
+# mnt_namespace, and sending external SIGTERM triggers a permanent POLLHUP busy-loop in ZygoteServer.runSelectLoop().
+_mx_zygote_mnt_pids() {
+    local _seen="" _pname _p _uid_line _ns _out=""
+    for _pname in zygote64 zygote usap64 usap32; do
+        for _p in $(pidof "${_pname}" 2>/dev/null); do
+            [ -e "/proc/${_p}/ns/mnt" ] || continue
+            _uid_line=$(awk '/^Uid:/{print $2; exit}' "/proc/${_p}/status" 2>/dev/null)
+            case "${_uid_line}" in
+                ""|0) ;;
+                *) continue ;;
+            esac
+            _ns=$(readlink "/proc/${_p}/ns/mnt" 2>/dev/null)
+            [ -n "${_ns}" ] || _ns="pid:${_p}"
+            case " ${_seen} " in
+                *" ${_ns} "*) continue ;;
+            esac
+            _seen="${_seen} ${_ns}"
+            _out="${_out} ${_p}"
+        done
+    done
+    echo "${_out# }"
+}
+
 mx_is_mounted() {
     local _p="${1%/}"
     [ -z "${_p}" ] && return 1
@@ -214,7 +239,7 @@ mx_repair_dead_fuse_and_parents() {
     [ ! -r "${_mi}" ] && _mi="/proc/self/mountinfo"
     [ ! -r "${_mi}" ] && return 0
     local _zpids
-    _zpids=$(pidof zygote64 zygote 2>/dev/null)
+    _zpids=$(_mx_zygote_mnt_pids)
 
     _mx_umount_ns() {
         local _pt="${1%/}"
@@ -412,7 +437,7 @@ mx_verify_target_live() {
 
         # 5. Zygote mount namespace check: newly forked apps inherit Zygote's mount table
         local _zpid
-        for _zpid in $(pidof zygote64 zygote 2>/dev/null); do
+        for _zpid in $(_mx_zygote_mnt_pids); do
             [ ! -r "/proc/${_zpid}/mountinfo" ] && continue
             if mx_is_mounted_in_pid "${_zpid}" "/mnt/user/${_uid}/emulated"; then
                 mx_is_mounted_in_pid "${_zpid}" "${_mu}" || return 1
@@ -1131,7 +1156,7 @@ unmount_target_everywhere() {
         do
             _umount_loop "${R}/${rel}"
         done
-        for _zpid in $(pidof zygote64 zygote 2>/dev/null); do
+        for _zpid in $(_mx_zygote_mnt_pids); do
             MX_UID="${user_id}" MX_REL="${rel}" nsenter --mount=/proc/${_zpid}/ns/mnt -- sh -c '
                 for _zr in "/storage/emulated/${MX_UID}" "/mnt/user/${MX_UID}/emulated/${MX_UID}" "/mnt/installer/${MX_UID}/emulated/${MX_UID}" "/mnt/androidwritable/${MX_UID}/emulated/${MX_UID}" "/mnt/runtime/default/emulated/${MX_UID}" "/mnt/runtime/read/emulated/${MX_UID}" "/mnt/runtime/write/emulated/${MX_UID}" "/mnt/runtime/full/emulated/${MX_UID}"; do
                     _i=0
@@ -1156,7 +1181,7 @@ unmount_target_everywhere() {
                     _umount_loop "/data_mirror/data_ce/null/${user_id}/${_sub_after}"
                     _umount_loop "/data/data/${_sub_after}"
                     _umount_loop "/data/user/${user_id}/${_sub_after}"
-                    for zpid in $(pidof zygote64 2>/dev/null) $(pidof zygote 2>/dev/null); do
+                    for zpid in $(_mx_zygote_mnt_pids); do
                         [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
                         MX_UID="${user_id}" MX_SUB="${_sub_after}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -c '
                             for _zp in "/data_mirror/data_ce/null/${MX_UID}/${MX_SUB}" "/data/data/${MX_SUB}" "/data/user/${MX_UID}/${MX_SUB}"; do
@@ -1171,7 +1196,7 @@ unmount_target_everywhere() {
                 fi
                 ;;
             /data/app/*)
-                for zpid in $(pidof zygote64 2>/dev/null) $(pidof zygote 2>/dev/null); do
+                for zpid in $(_mx_zygote_mnt_pids); do
                     [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
                     MX_DST="${dst}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -c '
                         _i=0
@@ -1306,10 +1331,10 @@ bind_mount_to_runtime_namespaces() {
             fi
         done
 
-        # Inject into active Zygote namespaces only where parent storage root is live non-tmpfs and healthy
-        local _bb_bin _injected_zygote=0
+        # Inject into active Zygote/USAP namespaces only where parent storage root is live non-tmpfs and healthy
+        local _bb_bin
         _bb_bin=$(_mx_busybox)
-        for _zpid in $(pidof zygote64 zygote 2>/dev/null); do
+        for _zpid in $(_mx_zygote_mnt_pids); do
             [ -d "/proc/${_zpid}/ns" ] || continue
             MX_UID="${user_id}" MX_REL="${rel}" MX_SRC="${src}" MX_BB="${_bb_bin}" nsenter --mount="/proc/${_zpid}/ns/mnt" -- sh -s <<'__MX_SH_Z__' 2>/dev/null
             _mi="/proc/self/mountinfo"
@@ -1344,12 +1369,7 @@ bind_mount_to_runtime_namespaces() {
                 fi
             done
 __MX_SH_Z__
-            _injected_zygote=1
         done
-        if [ "${_injected_zygote}" -eq 1 ]; then
-            # Recycle idle USAP worker pool so future app launches never inherit pre-mount namespaces
-            killall -TERM usap64 usap32 2>/dev/null || true
-        fi
 
         # Auto-heal: delete stale verify.fail or partial block download markers from both internal storage and source
         if [ -f "/data/media/${user_id}/${rel}/files/verify.fail" ]; then
@@ -1994,12 +2014,12 @@ load_mountpoints() {
                         chmod 700 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
                         chcon u:object_r:user_profile_data_file:s0 "/data/misc/profiles/cur/${user_id}/${pkg}" 2>/dev/null
                     fi
-                    # Ensure active Zygote namespaces see PRIVATE_INTERNAL on live remount.
+                    # Ensure active Zygote/USAP namespaces see PRIVATE_INTERNAL on live remount without signalling USAP workers.
                     # On Android 11+ (/data_mirror present), Zygote uses /data_mirror/data_ce/null/<uid>/<pkg> when
                     # creating app sandboxes; injecting /data/user/0 & /data/data directly into Zygote buries them under tmpfs in every app.
-                    local _priv_z_injected=0 _z_probe_path="${dst}"
+                    local _z_probe_path="${dst}"
                     [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}" ] && _z_probe_path="/data_mirror/data_ce/null/${user_id}/${pkg}"
-                    for zpid in $(pidof zygote64 2>/dev/null) $(pidof zygote 2>/dev/null); do
+                    for zpid in $(_mx_zygote_mnt_pids); do
                         [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
                         if ! mx_is_mounted_in_pid "${zpid}" "${_z_probe_path}"; then
                             MX_SRC="${src}" MX_DST="${dst}" MX_PKG="${pkg}" MX_UID="${user_id}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -s <<'__MX_PRIV_Z__' 2>/dev/null
@@ -2017,10 +2037,8 @@ load_mountpoints() {
                                     mount --make-rprivate "${_zp}" 2>/dev/null || true
                                 done
 __MX_PRIV_Z__
-                            _priv_z_injected=1
                         fi
                     done
-                    [ "${_priv_z_injected}" -eq 1 ] && killall -TERM usap64 usap32 2>/dev/null || true
                     log_info "  [${pkg}] Engine A Direct Private Data folder mounted: ${src} -> ${dst}"
                     entries=$((entries + 1))
                     continue
@@ -2131,9 +2149,8 @@ __MX_PRIV_Z__
                 else
                     auto_heal_apk_native_libs "${pkg}" "${dst}"
                 fi
-                # Ensure active Zygote namespaces also see APP_PACKAGE on live remount
-                local _apk_z_injected=0
-                for zpid in $(pidof zygote64 2>/dev/null) $(pidof zygote 2>/dev/null); do
+                # Ensure active Zygote/USAP namespaces also see APP_PACKAGE on live remount without signalling USAP workers
+                for zpid in $(_mx_zygote_mnt_pids); do
                     [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
                     if ! mx_is_mounted_in_pid "${zpid}" "${dst}"; then
                         MX_SRC="${src}" MX_DST="${dst}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -c '
@@ -2142,10 +2159,8 @@ __MX_PRIV_Z__
                             mount -o remount,bind,rw,exec "${MX_DST}" 2>/dev/null || mount -o remount,rw,exec "${MX_DST}" 2>/dev/null
                             mount --make-rprivate "${MX_DST}" 2>/dev/null || true
                         ' 2>/dev/null
-                        _apk_z_injected=1
                     fi
                 done
-                [ "${_apk_z_injected}" -eq 1 ] && killall -TERM usap64 usap32 2>/dev/null || true
                 pm unsuspend "${pkg}" >/dev/null 2>&1
                 log_info "  [${pkg}] App package bind-mounted directly: ${src} -> ${dst}"
                 entries=$((entries + 1))
@@ -2209,10 +2224,10 @@ __MX_PRIV_Z__
                         fi
                         mx_make_rprivate "/data_mirror/data_ce/null/${user_id}/${pkg}/cache"
                     fi
-                    # Ensure active Zygote namespaces see CACHE_SHADERS on live remount without burying under tmpfs /data/data
-                    local _cache_z_injected=0 _z_cache_probe="${dst}"
+                    # Ensure active Zygote/USAP namespaces see CACHE_SHADERS on live remount without burying under tmpfs /data/data
+                    local _z_cache_probe="${dst}"
                     [ -d "/data_mirror/data_ce/null/${user_id}/${pkg}/cache" ] && _z_cache_probe="/data_mirror/data_ce/null/${user_id}/${pkg}/cache"
-                    for zpid in $(pidof zygote64 2>/dev/null) $(pidof zygote 2>/dev/null); do
+                    for zpid in $(_mx_zygote_mnt_pids); do
                         [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
                         if ! mx_is_mounted_in_pid "${zpid}" "${_z_cache_probe}"; then
                             MX_SRC="${src}" MX_DST="${dst}" MX_PKG="${pkg}" MX_UID="${user_id}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -s <<'__MX_CACHE_Z__' 2>/dev/null
@@ -2230,10 +2245,8 @@ __MX_PRIV_Z__
                                     mount --make-rprivate "${_zp}" 2>/dev/null || true
                                 done
 __MX_CACHE_Z__
-                            _cache_z_injected=1
                         fi
                     done
-                    [ "${_cache_z_injected}" -eq 1 ] && killall -TERM usap64 usap32 2>/dev/null || true
                     log_info "  [${pkg}] Internal cache shaders bind-mounted directly: ${src} -> ${dst}"
                     entries=$((entries + 1))
                 else
@@ -2483,7 +2496,7 @@ mount_watchdog() {
         if [ -n "${_target_blk}" ]; then
             local _rblk
             _rblk=$(readlink -f "${_target_blk}" 2>/dev/null || echo "${_target_blk}")
-            for _zp in 1 $(pidof zygote64 zygote 2>/dev/null); do
+            for _zp in 1 $(_mx_zygote_mnt_pids); do
                 [ "${_zp}" = "1" ] && _mf="/proc/1/mounts" || _mf="/proc/${_zp}/mounts"
                 [ -r "${_mf}" ] || continue
                 for _bnd in $(awk -v d1="${_rblk}" -v d2="${_target_blk}" -v sb="${SD_BASE%/}" '($1 == d1 || $1 == d2) && $2 != sb {print length($2), $2}' "${_mf}" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[$0]++'); do
@@ -2521,7 +2534,7 @@ mount_watchdog() {
 
         _mx_unmount_game_binds
 
-        for _zp in 1 $(pidof zygote64 zygote 2>/dev/null); do
+        for _zp in 1 $(_mx_zygote_mnt_pids); do
             if [ "${_zp}" = "1" ]; then
                 umount "${_base}" 2>/dev/null || umount -l "${_base}" 2>/dev/null || true
             elif [ -d "/proc/${_zp}/ns" ]; then
@@ -3157,7 +3170,7 @@ main() {
         if [ -n "${_boot_blk}" ] && [ -b "${_boot_blk}" ]; then
             if ! mx_is_mounted "${SD_BASE}" || ! _probe_sd_io_healthy "${_boot_blk}" "${SD_BASE}" 2; then
                 log_warn "[Boot] ${SD_BASE} unmounted or non-writable after Vold settle; cleanly resetting superblock & remounting..."
-                for _zp in 1 $(pidof zygote64 zygote 2>/dev/null); do
+                for _zp in 1 $(_mx_zygote_mnt_pids); do
                     [ -r "/proc/${_zp}/mounts" ] || continue
                     for _bm in $(awk -v b="${_boot_blk}" -v sb="${SD_BASE%/}" '$1 == b || $2 == sb {print length($2), $2}' "/proc/${_zp}/mounts" 2>/dev/null | sort -rn -k1,1 | cut -d' ' -f2- | awk '!seen[$0]++'); do
                         if [ "${_zp}" = "1" ]; then
