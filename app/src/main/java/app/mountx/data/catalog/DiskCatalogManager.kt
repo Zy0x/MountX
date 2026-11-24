@@ -225,14 +225,25 @@ class DiskCatalogManager @Inject constructor(
             for (cg in catalog.games) {
                 val isInstalled = installedApps.containsKey(cg.packageName)
                 val isRegistered = registeredPackages.contains(cg.packageName)
-                val hasModernData = hasValidContent("$sdBase/MountX/Android/data/${cg.packageName}", minSizeBytes = 1024L * 1024L)
+                val hasModernData = hasValidContent("$sdBase/MountX/Android/data/${cg.packageName}", minSizeBytes = 32L * 1024L)
                 val hasLegacyData = hasValidContent("$sdBase/Android/data/${cg.packageName}", minSizeBytes = 5L * 1024L * 1024L)
-                val hasModernObb = hasValidContent("$sdBase/MountX/Android/obb/${cg.packageName}", minSizeBytes = 1024L * 1024L)
-                val hasLegacyObb = hasValidContent("$sdBase/Android/obb/${cg.packageName}", minSizeBytes = 1024L * 1024L)
+                val hasModernObb = hasValidContent("$sdBase/MountX/Android/obb/${cg.packageName}", minSizeBytes = 32L * 1024L)
+                val hasLegacyObb = hasValidContent("$sdBase/Android/obb/${cg.packageName}", minSizeBytes = 32L * 1024L)
+                val hasModernMedia = hasValidContent("$sdBase/MountX/Android/media/${cg.packageName}", minSizeBytes = 32L * 1024L)
+                val hasPrivData = hasValidContent("$sdBase/MountX/data/${cg.packageName}", minSizeBytes = 32L * 1024L) ||
+                    RootShell.exists("$sdBase/.mountx/containers/${cg.packageName}_data.img")
+                val hasApkBackup = RootShell.exists("$sdBase/MountX/app/${cg.packageName}/base.apk") ||
+                    RootShell.exists("$sdBase/.mountx/apk_backup/${cg.packageName}/base.apk") ||
+                    RootShell.exists("$sdBase/.mountx/containers/${cg.packageName}_apk.img")
                 val hasCustomMountPoints = cg.mountPoints.any { pt ->
-                    pt.sourcePath.isNotBlank() && hasValidContent(pt.sourcePath, minSizeBytes = 64L * 1024L)
+                    pt.sourcePath.isNotBlank() && (
+                        pt.resolveCategory() == MountPointCategory.APP_PACKAGE && !pt.isLibTarget() &&
+                            (RootShell.exists("${pt.sourcePath.trimEnd('/')}/base.apk") || pt.sourcePath.endsWith(".img")) ||
+                        hasValidContent(pt.sourcePath, minSizeBytes = 32L * 1024L)
+                    )
                 }
-                val hasAnyData = hasModernData || hasLegacyData || hasModernObb || hasLegacyObb || hasCustomMountPoints
+                val hasAnyData = hasModernData || hasLegacyData || hasModernObb || hasLegacyObb ||
+                    hasModernMedia || hasPrivData || hasApkBackup || hasCustomMountPoints
 
                 if (!hasAnyData && !isRegistered) {
                     // App has NO data on SD card and is NOT registered in MountX Room DB.
@@ -259,15 +270,24 @@ class DiskCatalogManager @Inject constructor(
 
                 val needsRestructure = !hasModernData && hasLegacyData
                 val originalPath = if (needsRestructure) "$sdBase/Android/data/${cg.packageName}" else null
+                var resolvedName = installedApps[cg.packageName] ?: cg.displayName
+                if (!isInstalled && (resolvedName.isBlank() || resolvedName == cg.packageName) && hasApkBackup) {
+                    resolvedName = app.mountx.root.AppPackageInspector.inspectSdApkBundle(
+                        context = context,
+                        packageName = cg.packageName,
+                        sdBases = listOf(sdBase),
+                        mountPoints = cg.mountPoints
+                    ).appLabel ?: resolvedName
+                }
 
                 detected[cg.packageName] = DiscoveredGame(
                     packageName = cg.packageName,
-                    displayName = installedApps[cg.packageName] ?: cg.displayName,
+                    displayName = resolvedName.ifBlank { cg.packageName },
                     mode = mode,
                     source = DiscoverySource.CATALOG_ENTRY,
                     isInstalledOnDevice = isInstalled,
                     isAlreadyRegistered = isRegistered,
-                    hasDataOnSd = hasModernData || hasLegacyData,
+                    hasDataOnSd = hasModernData || hasLegacyData || hasPrivData || hasApkBackup,
                     hasObbOnSd = hasModernObb || hasLegacyObb,
                     sizeBytes = cg.lastKnownSizeBytes,
                     canaryPresent = canary,
@@ -283,37 +303,198 @@ class DiskCatalogManager @Inject constructor(
             }
         }
 
-        // 2. Lapisan 1: Standar MountX ($sdBase/MountX/Android/data & obb)
-        val modernDataPkgs = RootShell.execForOutput("ls -1 \"$sdBase/MountX/Android/data\" 2>/dev/null").lines().map { it.trim() }.filter { it.isNotBlank() && !it.startsWith(".") }
-        val modernObbPkgs = RootShell.execForOutput("ls -1 \"$sdBase/MountX/Android/obb\" 2>/dev/null").lines().map { it.trim() }.filter { it.isNotBlank() && !it.startsWith(".") }
-        val allModernPkgs = (modernDataPkgs + modernObbPkgs).distinct()
+        // 2. Lapisan 1: Standar MountX (Data, OBB, Media, Private, Cache, APK/Lib, & Containers)
+        val modernPkgsScript = """
+            for d in \
+                "$sdBase/MountX/Android/data" \
+                "$sdBase/MountX/Android/obb" \
+                "$sdBase/MountX/Android/media" \
+                "$sdBase/MountX/app" \
+                "$sdBase/.mountx/apk_backup" \
+                "$sdBase/MountX/lib" \
+                "$sdBase/MountX/data" \
+                "$sdBase/MountX/cache"; do
+                ls -1 "${'$'}d" 2>/dev/null
+            done
+            ls -1 "$sdBase/.mountx/containers" 2>/dev/null | sed -n 's/_\(data\|cache\|apk\|lib\)\.img$//p'
+        """.trimIndent()
+        val allModernPkgs = RootShell.execScript(modernPkgsScript).stdout
+            .map { it.trim() }
+            .filter { it.isNotBlank() && !it.startsWith(".") && !it.contains("/") && it.contains(".") }
+            .distinct()
         for (cleanPkg in allModernPkgs) {
-            if (cleanPkg.isBlank() || cleanPkg == ".mountx_canary" || cleanPkg == ".nomedia" || cleanPkg.contains("/")) continue
             if (detected.containsKey(cleanPkg)) continue
 
-            val hasData = hasValidContent("$sdBase/MountX/Android/data/$cleanPkg", minSizeBytes = 1024L * 1024L)
-            val hasObb = hasValidContent("$sdBase/MountX/Android/obb/$cleanPkg", minSizeBytes = 1024L * 1024L)
-            if (!hasData && !hasObb) continue
+            val dataPath = "$sdBase/MountX/Android/data/$cleanPkg"
+            val obbPath = "$sdBase/MountX/Android/obb/$cleanPkg"
+            val mediaPath = "$sdBase/MountX/Android/media/$cleanPkg"
+            val privDir = "$sdBase/MountX/data/$cleanPkg"
+            val privImg = "$sdBase/.mountx/containers/${cleanPkg}_data.img"
+            val cacheDir = "$sdBase/MountX/cache/$cleanPkg"
+            val cacheImg = "$sdBase/.mountx/containers/${cleanPkg}_cache.img"
+            val apkDir = "$sdBase/MountX/app/$cleanPkg"
+            val apkBkDir = "$sdBase/.mountx/apk_backup/$cleanPkg"
+            val apkImg = "$sdBase/.mountx/containers/${cleanPkg}_apk.img"
+            val libDir = "$sdBase/MountX/lib/$cleanPkg"
+
+            val hasData = hasValidContent(dataPath, minSizeBytes = 32L * 1024L)
+            val hasObb = hasValidContent(obbPath, minSizeBytes = 32L * 1024L)
+            val hasMedia = hasValidContent(mediaPath, minSizeBytes = 32L * 1024L)
+            val hasPriv = hasValidContent(privDir, minSizeBytes = 32L * 1024L)
+            val hasPrivImg = hasValidContent(privImg, minSizeBytes = 64L * 1024L)
+            val hasCache = hasValidContent(cacheDir, minSizeBytes = 32L * 1024L)
+            val hasCacheImg = hasValidContent(cacheImg, minSizeBytes = 64L * 1024L)
+            val hasApkDir = RootShell.exists("$apkDir/base.apk")
+            val hasApkBk = !hasApkDir && RootShell.exists("$apkBkDir/base.apk")
+            val hasApkImg = hasValidContent(apkImg, minSizeBytes = 64L * 1024L)
+            val hasApk = hasApkDir || hasApkBk || hasApkImg
+            val hasLib = RootShell.exec("find \"$libDir\" -maxdepth 2 -name '*.so' 2>/dev/null | head -n 1").output.trim().isNotBlank()
+
+            if (!hasData && !hasObb && !hasMedia && !hasPriv && !hasPrivImg && !hasCache && !hasCacheImg && !hasApk && !hasLib) continue
+
+            val discoveredMps = mutableListOf<MountPointConfig>()
+            val existingPathsToSize = mutableListOf<String>()
+            if (hasPrivImg) {
+                existingPathsToSize.add(privImg)
+                discoveredMps.add(
+                    MountPointConfig(
+                        id = "private_$cleanPkg",
+                        category = MountPointCategory.PRIVATE_INTERNAL,
+                        sourcePath = privImg,
+                        targetPath = "/data/user/0/$cleanPkg",
+                        enabled = true,
+                        isVirtualContainer = true,
+                        containerImgPath = privImg
+                    )
+                )
+            } else if (hasPriv) {
+                existingPathsToSize.add(privDir)
+                discoveredMps.add(
+                    MountPointConfig(
+                        id = "private_$cleanPkg",
+                        category = MountPointCategory.PRIVATE_INTERNAL,
+                        sourcePath = privDir,
+                        targetPath = "/data/user/0/$cleanPkg",
+                        enabled = true
+                    )
+                )
+            }
+            if (hasCacheImg) {
+                existingPathsToSize.add(cacheImg)
+                discoveredMps.add(
+                    MountPointConfig(
+                        id = "cache_$cleanPkg",
+                        category = MountPointCategory.CACHE_SHADERS,
+                        sourcePath = cacheImg,
+                        targetPath = "/data/user/0/$cleanPkg/cache",
+                        enabled = true,
+                        isVirtualContainer = true,
+                        containerImgPath = cacheImg
+                    )
+                )
+            } else if (hasCache) {
+                existingPathsToSize.add(cacheDir)
+                discoveredMps.add(
+                    MountPointConfig(
+                        id = "cache_$cleanPkg",
+                        category = MountPointCategory.CACHE_SHADERS,
+                        sourcePath = cacheDir,
+                        targetPath = "/data/user/0/$cleanPkg/cache",
+                        enabled = true
+                    )
+                )
+            }
+            if (hasData) {
+                existingPathsToSize.add(dataPath)
+                discoveredMps.add(
+                    MountPointConfig(
+                        id = "external_data",
+                        category = MountPointCategory.EXTERNAL_DATA,
+                        sourcePath = dataPath,
+                        targetPath = "/data/media/0/Android/data/$cleanPkg",
+                        enabled = true
+                    )
+                )
+            }
+            if (hasObb) {
+                existingPathsToSize.add(obbPath)
+                discoveredMps.add(
+                    MountPointConfig(
+                        id = "ext_obb_$cleanPkg",
+                        category = MountPointCategory.OBB_STORAGE,
+                        sourcePath = obbPath,
+                        targetPath = "/data/media/0/Android/obb/$cleanPkg",
+                        enabled = true
+                    )
+                )
+            }
+            if (hasMedia) {
+                existingPathsToSize.add(mediaPath)
+                discoveredMps.add(
+                    MountPointConfig(
+                        id = "ext_media_$cleanPkg",
+                        category = MountPointCategory.MEDIA_DOWNLOADS,
+                        sourcePath = mediaPath,
+                        targetPath = "/data/media/0/Android/media/$cleanPkg",
+                        enabled = true
+                    )
+                )
+            }
+            if (hasApk) {
+                val chosenApkSrc = when {
+                    hasApkImg -> apkImg
+                    hasApkDir -> apkDir
+                    else -> apkBkDir
+                }
+                existingPathsToSize.add(chosenApkSrc)
+                discoveredMps.add(
+                    MountPointConfig(
+                        id = "apk_$cleanPkg",
+                        category = MountPointCategory.APP_PACKAGE,
+                        sourcePath = chosenApkSrc,
+                        targetPath = "/data/app/$cleanPkg",
+                        enabled = false,
+                        isVirtualContainer = hasApkImg,
+                        containerImgPath = if (hasApkImg) apkImg else null
+                    )
+                )
+            }
+            if (hasLib) {
+                existingPathsToSize.add(libDir)
+            }
 
             val isInstalled = installedApps.containsKey(cleanPkg)
             val isRegistered = registeredPackages.contains(cleanPkg)
-            val canary = RootShell.exists("$sdBase/MountX/Android/data/$cleanPkg/$CANARY_FILE")
-            val dataPath = "$sdBase/MountX/Android/data/$cleanPkg"
-            val obbPath = "$sdBase/MountX/Android/obb/$cleanPkg"
-            val sizeKbRes = (if (hasData) RootShell.execForOutput("du -sk \"$dataPath\" 2>/dev/null").split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L else 0L) +
-                (if (hasObb) RootShell.execForOutput("du -sk \"$obbPath\" 2>/dev/null").split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L else 0L)
+            val canary = RootShell.exists("$dataPath/$CANARY_FILE") || RootShell.exists("$privDir/$CANARY_FILE")
+            val totalKb = if (existingPathsToSize.isNotEmpty()) {
+                val arg = existingPathsToSize.joinToString(" ") { "\"$it\"" }
+                RootShell.execForOutput("du -sk $arg 2>/dev/null").lines().sumOf { line ->
+                    line.trim().split(Regex("\\s+")).firstOrNull()?.toLongOrNull() ?: 0L
+                }
+            } else 0L
+
+            var resolvedName = installedApps[cleanPkg] ?: cleanPkg
+            if (!isInstalled && hasApk) {
+                resolvedName = app.mountx.root.AppPackageInspector.inspectSdApkBundle(
+                    context = context,
+                    packageName = cleanPkg,
+                    sdBases = listOf(sdBase),
+                    mountPoints = discoveredMps
+                ).appLabel ?: resolvedName
+            }
 
             detected[cleanPkg] = DiscoveredGame(
                 packageName = cleanPkg,
-                displayName = installedApps[cleanPkg] ?: cleanPkg,
+                displayName = resolvedName,
                 mode = MountMode.PKG,
                 source = DiscoverySource.SHALLOW_SCAN,
                 isInstalledOnDevice = isInstalled,
                 isAlreadyRegistered = isRegistered,
-                hasDataOnSd = hasData,
+                hasDataOnSd = hasData || hasPriv || hasPrivImg || hasApk || hasMedia,
                 hasObbOnSd = hasObb,
-                sizeBytes = sizeKbRes * 1024L,
+                sizeBytes = totalKb * 1024L,
                 canaryPresent = canary,
+                mountPoints = discoveredMps,
                 needsRestructure = false
             )
         }
@@ -527,12 +708,10 @@ class DiskCatalogManager @Inject constructor(
             RootShell.exec("am force-stop \"$pkg\" 2>/dev/null")
 
             // Remove standard and legacy paths on MicroSD
-            RootShell.exec("rm -rf \"$sdBase/MountX/Android/data/$pkg\" 2>/dev/null")
-            RootShell.exec("rm -rf \"$sdBase/MountX/Android/obb/$pkg\" 2>/dev/null")
-            RootShell.exec("rm -rf \"$sdBase/MountX/Android/media/$pkg\" 2>/dev/null")
-            RootShell.exec("rm -rf \"$sdBase/Android/data/$pkg\" 2>/dev/null")
-            RootShell.exec("rm -rf \"$sdBase/Android/obb/$pkg\" 2>/dev/null")
-            RootShell.exec("rm -rf \"$sdBase/Android/media/$pkg\" 2>/dev/null")
+            RootShell.exec("rm -rf \"$sdBase/MountX/Android/data/$pkg\" \"$sdBase/MountX/Android/obb/$pkg\" \"$sdBase/MountX/Android/media/$pkg\" 2>/dev/null")
+            RootShell.exec("rm -rf \"$sdBase/MountX/app/$pkg\" \"$sdBase/MountX/lib/$pkg\" \"$sdBase/MountX/data/$pkg\" \"$sdBase/MountX/cache/$pkg\" \"$sdBase/MountX/cache/${pkg}_oat\" \"$sdBase/.mountx/apk_backup/$pkg\" 2>/dev/null")
+            RootShell.exec("rm -f \"$sdBase/.mountx/containers/${pkg}_data.img\" \"$sdBase/.mountx/containers/${pkg}_cache.img\" \"$sdBase/.mountx/containers/${pkg}_apk.img\" \"$sdBase/.mountx/containers/${pkg}_lib.img\" 2>/dev/null")
+            RootShell.exec("rm -rf \"$sdBase/Android/data/$pkg\" \"$sdBase/Android/obb/$pkg\" \"$sdBase/Android/media/$pkg\" 2>/dev/null")
 
             if (!game.originalPath.isNullOrBlank() && game.originalPath != "/" && game.originalPath != sdBase) {
                 RootShell.exec("rm -rf \"${game.originalPath}\" 2>/dev/null")
@@ -747,10 +926,10 @@ class DiskCatalogManager @Inject constructor(
         val filter = if (isObb) {
             "-name \"*.obb\""
         } else {
-            "! -name \".nomedia\" ! -name \".mountx_canary\" ! -name \"$CANARY_FILE\""
+            "! -name \".nomedia\" ! -name \".mountx_canary\" ! -name \".mountx_perms_ok\" ! -name \"*.lck\" ! -name \"$CANARY_FILE\""
         }
         val cmd = if (requireRegularFiles) {
-            "[ -d \"$path\" ] && [ \"\$(find \"$path\" -maxdepth 3 -type f $filter -size +0c 2>/dev/null | head -1)\" ] && du -sk \"$path\" 2>/dev/null || echo 0"
+            "[ -d \"$path\" ] && [ \"\$(find \"$path\" -type f $filter -size +0c 2>/dev/null | head -1)\" ] && du -sk \"$path\" 2>/dev/null || echo 0"
         } else {
             "[ -d \"$path\" ] && du -sk \"$path\" 2>/dev/null || echo 0"
         }

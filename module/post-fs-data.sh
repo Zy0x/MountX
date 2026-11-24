@@ -163,7 +163,8 @@ if ! _pfs_is_mounted "${SD_BASE}"; then
     _pfs_make_rprivate "${SD_BASE}"
 fi
 
-# Bind-mount only APP_PACKAGE entries (resolving ABI subdir for /lib/<abi> targets)
+# Bind-mount only validated APP_PACKAGE entries read-only with executable bit (resolving ABI subdir for /lib/<abi> targets)
+_pfs_bb=$(_pfs_busybox)
 if _pfs_is_mounted "${SD_BASE}"; then
     while IFS='|' read -r pkg cat src dst preserve_media disk_uuid user_id || [ -n "${pkg}" ]; do
         pkg=$(echo "${pkg}" | tr -d '\r')
@@ -172,20 +173,77 @@ if _pfs_is_mounted "${SD_BASE}"; then
         dst=$(echo "${dst}" | tr -d '\r')
         case "${pkg}" in ''|\#*) continue ;; esac
         if [ "${cat}" = "APP_PACKAGE" ] && [ -d "${src}" ] && [ -n "${dst}" ]; then
-            _eff_src="${src}"
             case "${dst}" in
-                */lib/*)
+                *==deleted==*|*/vmdl*) continue ;;
+            esac
+            _eff_src="${src}"
+            _is_lib=0
+            case "${dst}" in
+                */lib/*|*/lib)
+                    _is_lib=1
                     _abi="${dst##*/lib/}"
                     _abi="${_abi%%/*}"
-                    if [ -n "${_abi}" ] && [ -d "${src}/${_abi}" ]; then
+                    if [ "${_abi}" != "${dst}" ] && [ -n "${_abi}" ] && [ -d "${src}/${_abi}" ]; then
                         _eff_src="${src}/${_abi}"
+                    fi
+                    if [ -z "$(find "${_eff_src}" -maxdepth 2 -name '*.so' 2>/dev/null | head -n 1)" ]; then
+                        continue
+                    fi
+                    ;;
+                *)
+                    if [ ! -f "${_eff_src}/base.apk" ] || [ ! -s "${_eff_src}/base.apk" ]; then
+                        continue
                     fi
                     ;;
             esac
+            # Do not fabricate orphaned /data/app hash directories if Android already removed the parent hash dir
+            if [ ! -d "${dst}" ] && [ ! -d "${dst%/*}" ]; then
+                continue
+            fi
+            _oat_rw=""
+            if [ "${_is_lib}" -eq 0 ]; then
+                [ ! -d "${_eff_src}/oat" ] && mkdir -p "${_eff_src}/oat" 2>/dev/null
+                _oat_rw="${SD_BASE}/MountX/cache/${pkg}_oat"
+                mkdir -p "${_oat_rw}" 2>/dev/null
+                chmod 755 "${_oat_rw}" 2>/dev/null
+                chown 1000:1000 "${_oat_rw}" 2>/dev/null
+                if [ -d "${SD_BASE}/MountX/lib/${pkg}" ]; then
+                    for _lib_sub in "${SD_BASE}/MountX/lib/${pkg}"/*; do
+                        [ -d "${_lib_sub}" ] || continue
+                        _ab=$(basename "${_lib_sub}")
+                        case "${_ab}" in
+                            arm64|arm|armeabi*|x86*|riscv64)
+                                [ ! -d "${_eff_src}/lib/${_ab}" ] && mkdir -p "${_eff_src}/lib/${_ab}" 2>/dev/null
+                                ;;
+                        esac
+                    done
+                fi
+            elif [ ! -d "${dst}" ]; then
+                _parent_apk="${dst%/lib*}"
+                if [ -n "${_parent_apk}" ] && [ "${_parent_apk}" != "${dst}" ] && _pfs_is_mounted "${_parent_apk}" && [ -n "${_pfs_bb}" ]; then
+                    "${_pfs_bb}" mount -o remount,rw,exec,bind "${_parent_apk}" 2>/dev/null || true
+                    mkdir -p "${dst}" 2>/dev/null
+                    "${_pfs_bb}" mount -o remount,ro,exec,bind "${_parent_apk}" 2>/dev/null || true
+                fi
+            fi
             mkdir -p "${dst}" 2>/dev/null
             if ! _pfs_is_mounted "${dst}"; then
-                mount -o bind "${_eff_src}" "${dst}" 2>/dev/null || mount -o bind,ro "${_eff_src}" "${dst}" 2>/dev/null
-                _pfs_make_rprivate "${dst}"
+                if mount -o bind "${_eff_src}" "${dst}" 2>/dev/null; then
+                    if [ -n "${_pfs_bb}" ]; then
+                        "${_pfs_bb}" mount -o remount,ro,exec,bind "${dst}" 2>/dev/null || true
+                    fi
+                    _pfs_make_rprivate "${dst}"
+                fi
+            fi
+            if [ "${_is_lib}" -eq 0 ] && [ -n "${_oat_rw}" ] && [ -d "${_oat_rw}" ] && [ -d "${dst}/oat" ]; then
+                if ! _pfs_is_mounted "${dst}/oat"; then
+                    if mount -o bind "${_oat_rw}" "${dst}/oat" 2>/dev/null; then
+                        if [ -n "${_pfs_bb}" ]; then
+                            "${_pfs_bb}" mount -o remount,rw,exec,bind "${dst}/oat" 2>/dev/null || true
+                        fi
+                        _pfs_make_rprivate "${dst}/oat"
+                    fi
+                fi
             fi
         fi
     done < "${MOUNTPOINTS_FILE}"

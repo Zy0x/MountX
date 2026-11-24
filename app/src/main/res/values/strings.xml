@@ -1560,6 +1560,32 @@
     <string name="notif_unmounted_warning_title">⚠️ MountX: Game Data Disconnected!</string>
     <string name="notif_unmounted_warning_desc">%1$d game(s) unmounted. Run TempRoot &amp; tap Mount All before playing!</string>
     <string name="notif_unmounted_warning_big_desc">%1$d game data folders are disconnected after reboot. To prevent games from re-downloading data or overwriting files, run TempRoot and tap Mount All before launching any games.</string>
+
+    <!-- Direct App Install from MountX & Broken Package Recovery -->
+    <string name="apk_incomplete_reason_no_base">Base APK file (base.apk) not found in MountX storage.</string>
+    <string name="apk_incomplete_reason_corrupt">APK archive in MountX is incomplete or corrupted.</string>
+    <string name="apk_incomplete_reason_missing_splits">App requires split configuration APKs that are missing from MountX.</string>
+    <string name="apk_install_err_container_mount">Failed to mount APK container image on external storage.</string>
+    <string name="apk_install_err_pm_failed">Android installer failed: %1$s</string>
+    <string name="install_step_preparing">Validating APK bundle for %1$s…</string>
+    <string name="install_step_installing">Installing %1$s via Android PackageInstaller…</string>
+    <string name="install_step_reconciling">Synchronizing UID ownership &amp; permissions…</string>
+    <string name="install_step_mounting">Connecting saved MountX app data…</string>
+    <string name="app_detail_apk_ready_title">Not Installed — Complete APK Available in MountX</string>
+    <string name="app_detail_apk_ready_desc">Complete APK bundle (%1$s, %2$s) and %3$s of preserved data were found in MountX. Install now to automatically reconnect all app data.</string>
+    <string name="btn_install_app_from_mountx">Install App Now</string>
+    <string name="app_detail_apk_missing_desc">Preserved data (%1$s) is safe on MicroSD, but the installable APK in MountX is missing or incomplete (%2$s). Please install the app manually, and MountX will automatically reconnect your data.</string>
+    <string name="btn_install_manually_store">Install via Play Store</string>
+    <string name="badge_apk_ready_install">APK Ready</string>
+    <string name="badge_apk_incomplete_manual">Manual Install Needed</string>
+    <string name="op_title_install_sd_apk">Installing App from MountX</string>
+    <string name="op_install_sd_apk_success">%1$s installed successfully and all saved data is ready.</string>
+    <string name="dialog_install_discovered_title">Install %1$s from MountX?</string>
+    <string name="dialog_install_discovered_desc">MountX found a complete APK bundle (%1$s, %2$s) along with %3$s of saved data on external storage. Installing will restore the app cleanly with all its data attached.</string>
+    <string name="dialog_manual_install_title">Manual Installation Required</string>
+    <string name="dialog_manual_install_desc">MountX preserves %1$s of data for %2$s, but no complete APK bundle was found (%3$s). Please install %2$s manually first (for example from Google Play Store or an APK installer), then restore it inside MountX.</string>
+    <string name="btn_import_register_only">Keep in App List</string>
+    <string name="toast_import_registered_pending">%1$s saved to MountX. Install the app manually to reconnect data.</string>
 </resources>
 
 

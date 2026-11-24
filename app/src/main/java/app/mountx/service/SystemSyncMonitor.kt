@@ -583,60 +583,57 @@ class SystemSyncMonitor @Inject constructor(
                 var activeGame = game
 
                 // Self-Healing Package Reconciler:
-                // If user rebooted the device while MicroSD was detached and 100% of the app (including base.apk) was on MicroSD,
-                // PackageManagerService may have dropped the package entry. Automatically re-register from SD base.apk and sync UID!
-                val pmCheck = RootShell.execForOutput("pm path \"$pkg\" 2>/dev/null | head -n 1").trim()
-                if (pmCheck.isBlank()) {
-                    val apkDirCandidates = listOfNotNull(
-                        activeGame.mountPoints.firstOrNull {
-                            it.resolveCategory() == MountPointCategory.APP_PACKAGE && !it.targetPath.contains("/lib")
-                        }?.sourcePath,
-                        "$sdBase/MountX/app/$pkg",
-                        "$sdBase/Android/app/$pkg"
-                    ).distinct()
-
-                    val validSdApkDir = apkDirCandidates.firstOrNull { RootShell.exists("$it/base.apk") }
-                    if (validSdApkDir != null) {
-                        AppLogger.info("SystemSyncMonitor", "Self-Healing Reconciler: Re-registering detached package $pkg from $validSdApkDir...")
-                        val installRes = RootShell.exec("pm install -r -d \"$validSdApkDir\"/*.apk 2>/dev/null")
-                        if (installRes.isSuccess) {
-                            val newApkPath = RootShell.execForOutput("pm path \"$pkg\" 2>/dev/null | head -n 1")
-                                .trim().removePrefix("package:").trim()
-                            val newApkParent = if (newApkPath.isNotBlank()) java.io.File(newApkPath).parent ?: "" else ""
-                            val newUid = RootShell.execForOutput(
-                                "pm list packages -U 2>/dev/null | grep -F \"package:$pkg\" | sed -n 's/.*uid:\\([0-9]*\\).*/\\1/p' | head -n 1"
-                            ).trim().toIntOrNull()
-
-                            if (newUid != null && newUid >= 10000) {
-                                // Sync new UID ownership to Private Data & External Data on MicroSD so save data stays 100% intact
-                                RootShell.exec("chown -R $newUid:$newUid \"$sdBase/MountX/data/$pkg\" \"/data/user/0/$pkg\" 2>/dev/null")
-                                RootShell.exec("chown -R $newUid:1023 \"$sdBase/MountX/Android/data/$pkg\" \"$sdBase/MountX/Android/obb/$pkg\" 2>/dev/null")
+                // If device rebooted while MicroSD was detached and APK was on MicroSD, PMS may drop the package.
+                // Re-register cleanly via AppPackageInspector session installer ONLY when game is active/enabled.
+                if (activeGame.isEnabled && app.mountx.root.AppPackageInspector.queryLivePmApkPath(pkg) == null) {
+                    val apkStatus = app.mountx.root.AppPackageInspector.inspectSdApkBundle(
+                        context = ctx,
+                        packageName = pkg,
+                        sdBases = listOf(sdBase),
+                        mountPoints = activeGame.mountPoints
+                    )
+                    if (apkStatus.isComplete) {
+                        AppLogger.info("SystemSyncMonitor", "Self-Healing Reconciler: Re-registering detached package $pkg from ${apkStatus.sourceDir}...")
+                        val instRes = app.mountx.root.AppPackageInspector.installAppFromSd(
+                            context = ctx,
+                            status = apkStatus,
+                            sdBases = listOf(sdBase)
+                        )
+                        if (instRes.isSuccess) {
+                            val newApkParent = instRes.getOrThrow()
+                            val detectedAbi = MountManager.detectPreferredAbi(
+                                apkDir = newApkParent,
+                                sdLibRoot = "$sdBase/MountX/lib/$pkg",
+                                hintPath = activeGame.mountPoints.firstOrNull { it.isLibTarget() }?.targetPath
+                            )
+                            val updatedPoints = activeGame.mountPoints.map { mp ->
+                                if (mp.resolveCategory() == MountPointCategory.APP_PACKAGE) {
+                                    if (mp.targetPath.contains("/lib") || mp.id.startsWith("lib")) {
+                                        mp.copy(targetPath = "$newApkParent/lib/$detectedAbi")
+                                    } else {
+                                        mp.copy(targetPath = newApkParent)
+                                    }
+                                } else mp
                             }
-                            if (newApkParent.isNotBlank()) {
-                                // Clean newly created internal APK duplicate so bind-mount overlays cleanly without wasting internal storage
-                                RootShell.exec("find \"$newApkParent\" -depth -mindepth 1 -delete 2>/dev/null")
-                                val updatedPoints = activeGame.mountPoints.map { mp ->
-                                    if (mp.resolveCategory() == MountPointCategory.APP_PACKAGE) {
-                                        if (mp.targetPath.contains("/lib") || mp.id.contains("lib")) {
-                                            mp.copy(targetPath = "$newApkParent/lib")
-                                        } else {
-                                            mp.copy(targetPath = newApkParent)
-                                        }
-                                    } else mp
-                                }
-                                activeGame = activeGame.copy(mountPoints = updatedPoints)
-                                gameDao.updateGame(activeGame)
-                            }
-                            AppLogger.success("SystemSyncMonitor", "Self-Healing Reconciler succeeded for $pkg (newUid=$newUid, apkDir=$newApkParent)")
+                            activeGame = activeGame.copy(mountPoints = updatedPoints)
+                            gameDao.updateGame(activeGame)
+                            AppLogger.success("SystemSyncMonitor", "Self-Healing Reconciler succeeded for $pkg (apkDir=$newApkParent)")
                         } else {
-                            AppLogger.warn("SystemSyncMonitor", "Self-Healing Reconciler pm install failed for $pkg: ${installRes.output}")
+                            AppLogger.warn("SystemSyncMonitor", "Self-Healing Reconciler install failed for $pkg: ${instRes.exceptionOrNull()?.message}")
                         }
                     }
                 }
 
                 if (activeGame.mountStatus == MountStatus.DISK_DETACHED || activeGame.mountStatus == MountStatus.MOUNTED || activeGame.mountStatus == MountStatus.UNMOUNTED) {
+                    if (!app.mountx.root.AppPackageInspector.isPackageInstalledHealthyRoot(pkg, listOf(sdBase), activeGame.mountPoints)) {
+                        gameDao.updateMountStatus(pkg, MountStatus.UNMOUNTED)
+                        AppLogger.warn("SystemSyncMonitor", "Skipping remount for $pkg: APK is missing/broken on OS.")
+                        continue
+                    }
                     val result = mountManager.mountGame(activeGame, sdBase)
                     if (result.isSuccess) {
+                        app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(pkg, sdBase)
+                        app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(activeGame, sdBase)
                         RootShell.exec("pm unsuspend \"$pkg\" 2>/dev/null")
                         gameDao.updateMountStatus(pkg, MountStatus.MOUNTED)
                         remountedCount++

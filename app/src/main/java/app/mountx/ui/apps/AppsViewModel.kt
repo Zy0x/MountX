@@ -73,6 +73,9 @@ class AppsViewModel @Inject constructor(
     private val _discoveredGames = MutableStateFlow<List<DiscoveredGame>>(emptyList())
     val discoveredGames: StateFlow<List<DiscoveredGame>> = _discoveredGames.asStateFlow()
 
+    private val _sdApkStatuses = MutableStateFlow<Map<String, app.mountx.root.SdApkInstallStatus>>(emptyMap())
+    val sdApkStatuses: StateFlow<Map<String, app.mountx.root.SdApkInstallStatus>> = _sdApkStatuses.asStateFlow()
+
     private val _isImportingDiscovered = MutableStateFlow(false)
     val isImportingDiscovered: StateFlow<Boolean> = _isImportingDiscovered.asStateFlow()
 
@@ -759,6 +762,10 @@ class AppsViewModel @Inject constructor(
                                 }
                             }
 
+                            if (effectivePoints.any { it.resolveCategory() == app.mountx.data.model.MountPointCategory.APP_PACKAGE && !it.isLibTarget() }) {
+                                RootShell.exec("rm -rf \"$sdBase/.mountx/apk_backup/$packageName\" 2>/dev/null")
+                            }
+
                             // If there are still remaining enabled points, verify & keep them actively mounted
                             if (!allDisabled) {
                                 verifyAndMountAfterMigration(updated, sdBase)
@@ -785,6 +792,9 @@ class AppsViewModel @Inject constructor(
                                 isEnabled = true
                             )
                             gameRepository.updateGame(updated)
+                            if (effectivePoints.any { it.resolveCategory() == app.mountx.data.model.MountPointCategory.APP_PACKAGE && !it.isLibTarget() }) {
+                                app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(packageName, sdBase)
+                            }
                             verifyAndMountAfterMigration(updated, sdBase)
                         }
                     } else {
@@ -874,6 +884,102 @@ class AppsViewModel @Inject constructor(
                 RootShell.exec("rm -f /dev/.mountx_migrating 2>/dev/null")
                 RootShell.exec("am force-stop \"$packageName\" 2>/dev/null")
                 RootShell.exec("pkill -9 -f \"$packageName\" 2>/dev/null || true")
+            }
+        }
+    }
+
+    fun refreshSdApkStatuses() {
+        viewModelScope.launch {
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val installedPkgs = _installedApps.value.map { it.packageName }.toSet()
+                val uninstalledRegistered = games.value.filter { g ->
+                    installedPkgs.isNotEmpty() && !installedPkgs.contains(g.packageName)
+                }
+                val orphans = _discoveredGames.value.filter { !it.isInstalledOnDevice }
+                val candidates = mutableMapOf<String, List<app.mountx.data.model.MountPointConfig>>()
+                uninstalledRegistered.forEach { candidates[it.packageName] = it.mountPoints }
+                orphans.forEach { if (!candidates.containsKey(it.packageName)) candidates[it.packageName] = it.mountPoints }
+
+                if (candidates.isEmpty()) {
+                    if (_sdApkStatuses.value.isNotEmpty()) _sdApkStatuses.value = emptyMap()
+                    return@launch
+                }
+
+                val map = mutableMapOf<String, app.mountx.root.SdApkInstallStatus>()
+                for ((pkg, pts) in candidates) {
+                    map[pkg] = gameRepository.inspectSdApkBundle(pkg, sdBase, pts)
+                }
+                _sdApkStatuses.value = map
+            } catch (e: Exception) {
+                app.mountx.util.AppLogger.warn("GamesVM", "refreshSdApkStatuses error: ${e.message}")
+            }
+        }
+    }
+
+    fun installAppFromSd(
+        packageName: String,
+        discoveredGame: DiscoveredGame? = null,
+        onFinished: ((Boolean, String?) -> Unit)? = null
+    ) {
+        if (_pendingOperations.value.contains(packageName)) return
+        _pendingOperations.update { it + packageName }
+        viewModelScope.launch {
+            try {
+                _isMovingData.value = true
+                val sdBase = appPreferences.sdBasePath.first()
+                val result = gameRepository.installAppFromSd(
+                    packageName = packageName,
+                    sdBase = sdBase,
+                    discoveredGame = discoveredGame
+                ) { prog ->
+                    _operationProgress.value = prog
+                    mountNotificationManager.postOperationProgressNotification(prog)
+                }
+                _isMovingData.value = false
+                if (result.isSuccess) {
+                    val installedEntry = result.getOrThrow()
+                    loadInstalledApps(force = true)
+                    scanDiscoveredGames()
+                    refreshActiveAppUiState(packageName, sdBase)
+                    refreshSdApkStatuses()
+                    val okMsg = context.getString(R.string.op_install_sd_apk_success, installedEntry.displayName)
+                    _moveMessage.value = "SUCCESS"
+                    onFinished?.invoke(true, okMsg)
+                } else {
+                    val errMsg = result.exceptionOrNull()?.message ?: context.getString(R.string.apk_install_err_pm_failed, "Unknown error")
+                    _moveMessage.value = errMsg
+                    val failedProg = OperationProgress(
+                        type = OperationType.MOUNT,
+                        title = context.getString(R.string.op_title_install_sd_apk),
+                        subtitle = packageName,
+                        isFinished = true,
+                        isSuccess = false,
+                        errorMessage = errMsg
+                    )
+                    _operationProgress.value = failedProg
+                    mountNotificationManager.postOperationProgressNotification(failedProg)
+                    onFinished?.invoke(false, errMsg)
+                }
+            } finally {
+                _isMovingData.value = false
+                _pendingOperations.update { it - packageName }
+            }
+        }
+    }
+
+    fun registerDiscoveredPendingGame(game: DiscoveredGame, onFinished: ((Boolean) -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                val sdBase = appPreferences.sdBasePath.first()
+                val ok = gameRepository.registerDiscoveredPendingGame(game, sdBase).isSuccess
+                if (ok) {
+                    scanDiscoveredGames()
+                    refreshSdApkStatuses()
+                }
+                onFinished?.invoke(ok)
+            } catch (_: Exception) {
+                onFinished?.invoke(false)
             }
         }
     }

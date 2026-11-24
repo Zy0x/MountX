@@ -24,9 +24,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -130,7 +134,13 @@ fun AppsScreen(
     val isCleaningCache by viewModel.isCleaningCache.collectAsState()
     val isRefreshingInstalledApps by viewModel.isRefreshingInstalledApps.collectAsState()
     var showCleanAllCacheDialog by remember { mutableStateOf(false) }
+    val sdApkStatuses by viewModel.sdApkStatuses.collectAsState()
     val installedPackageSet = remember(installedApps) { installedApps.map { it.packageName }.toSet() }
+    var selectedDiscoveredOrphan by remember { mutableStateOf<DiscoveredGame?>(null) }
+
+    LaunchedEffect(games, installedPackageSet, discoveredGames) {
+        viewModel.refreshSdApkStatuses()
+    }
 
     val vmSelectedGame by viewModel.selectedGameForDetail.collectAsState()
     var showAddSheet by remember { mutableStateOf(false) }
@@ -342,6 +352,9 @@ fun AppsScreen(
             onUpdateMountPoints = { pts ->
                 viewModel.updateMountPoints(updatedGame.packageName, pts)
             },
+            onInstallFromSd = {
+                viewModel.installAppFromSd(updatedGame.packageName)
+            },
             onDelete = {
                 gameToDelete = updatedGame
                 selectedGameForDetail = null
@@ -403,6 +416,7 @@ fun AppsScreen(
             onDismissDiscovered = { viewModel.dismissDiscovered() },
             onRestructureDiscovered = { showRestructureDialog = true },
             onCleanOrphanDiscovered = { showCleanOrphansDialog = true },
+            onOrphanClick = { selectedDiscoveredOrphan = it },
             searchQuery = searchQuery,
             filterStatus = filterStatus,
             sortOption = sortOption,
@@ -439,6 +453,7 @@ fun AppsScreen(
             },
             onCheckIsGameRunning = { pkg -> viewModel.isGameRunning(pkg) },
             installedPackageSet = installedPackageSet,
+            sdApkStatuses = sdApkStatuses,
             onCleanAllCacheClick = { showCleanAllCacheDialog = true },
             modifier = modifier
         )
@@ -594,6 +609,31 @@ fun AppsScreen(
         )
     }
 
+    selectedDiscoveredOrphan?.let { dg ->
+        DiscoveredOrphanActionDialog(
+            game = dg,
+            apkStatus = sdApkStatuses[dg.packageName],
+            onDismiss = { selectedDiscoveredOrphan = null },
+            onInstallFromSd = {
+                viewModel.installAppFromSd(dg.packageName, discoveredGame = dg)
+            },
+            onRegisterPending = {
+                viewModel.registerDiscoveredPendingGame(dg) { ok ->
+                    if (ok) {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.toast_import_registered_pending, dg.displayName),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            },
+            onDeleteOrphan = {
+                viewModel.deleteDiscoveredGame(dg)
+            }
+        )
+    }
+
     if (showCleanOrphansDialog) {
         val orphans = discoveredGames.filter { !it.isInstalledOnDevice }
         val totalOrphanBytes = orphans.sumOf { it.sizeBytes }
@@ -716,6 +756,135 @@ fun AppsScreen(
     }
 }
 
+@Composable
+private fun DiscoveredOrphanActionDialog(
+    game: DiscoveredGame,
+    apkStatus: app.mountx.root.SdApkInstallStatus?,
+    onDismiss: () -> Unit,
+    onInstallFromSd: () -> Unit,
+    onRegisterPending: () -> Unit,
+    onDeleteOrphan: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val accentReady = if (isDark) Color(0xFF10B981) else Color(0xFF059669)
+    val accentWarn = if (isDark) Color(0xFFF59E0B) else WarmAmberLight
+    val isReady = apkStatus?.isComplete == true
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = if (isReady) Icons.Default.Android else Icons.Default.SportsEsports,
+                contentDescription = null,
+                tint = if (isReady) accentReady else accentWarn
+            )
+        },
+        title = {
+            Text(
+                text = if (isReady) {
+                    stringResource(R.string.dialog_install_discovered_title, game.displayName)
+                } else {
+                    stringResource(R.string.dialog_manual_install_title)
+                },
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = if (isReady) {
+                        val st = apkStatus!!
+                        stringResource(
+                            R.string.dialog_install_discovered_desc,
+                            st.versionName?.let { "v$it" } ?: "APK",
+                            FormatUtils.formatBytes(st.totalApkBytes),
+                            FormatUtils.formatBytes(game.sizeBytes)
+                        )
+                    } else {
+                        val reason = apkStatus?.missingReason
+                            ?: stringResource(R.string.apk_incomplete_reason_no_base)
+                        stringResource(
+                            R.string.dialog_manual_install_desc,
+                            FormatUtils.formatBytes(game.sizeBytes),
+                            game.displayName,
+                            reason
+                        )
+                    },
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp)
+                )
+                Text(
+                    text = game.packageName,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        confirmButton = {
+            if (isReady) {
+                Button(
+                    onClick = {
+                        onDismiss()
+                        onInstallFromSd()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accentReady, contentColor = Color.White)
+                ) {
+                    Icon(imageVector = Icons.Default.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = stringResource(R.string.btn_install_app_from_mountx), fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = {
+                        val pkg = game.packageName
+                        try {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        } catch (_: Exception) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accentWarn, contentColor = Color.White)
+                ) {
+                    Text(text = stringResource(R.string.btn_install_manually_store), fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        onDeleteOrphan()
+                    }
+                ) {
+                    Text(text = stringResource(R.string.portability_btn_delete_single), color = adaptiveCrimson())
+                }
+                if (!isReady) {
+                    TextButton(
+                        onClick = {
+                            onDismiss()
+                            onRegisterPending()
+                        }
+                    ) {
+                        Text(text = stringResource(R.string.btn_import_register_only))
+                    }
+                }
+                OutlinedButton(onClick = onDismiss) {
+                    Text(text = stringResource(R.string.custom_path_cancel))
+                }
+            }
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamesContent(
@@ -747,11 +916,13 @@ fun GamesContent(
     isImportingDiscovered: Boolean = false,
     importDiscoveredProgress: Pair<Int, Int> = Pair(0, 0),
     installedPackageSet: Set<String> = emptySet(),
+    sdApkStatuses: Map<String, app.mountx.root.SdApkInstallStatus> = emptyMap(),
     onCleanAllCacheClick: () -> Unit = {},
     onImportAllDiscovered: () -> Unit = {},
     onDismissDiscovered: () -> Unit = {},
     onRestructureDiscovered: () -> Unit = {},
-    onCleanOrphanDiscovered: () -> Unit = {}
+    onCleanOrphanDiscovered: () -> Unit = {},
+    onOrphanClick: (DiscoveredGame) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var showSortMenu by remember { mutableStateOf(false) }
@@ -1010,12 +1181,14 @@ fun GamesContent(
             if (discoveredGames.isNotEmpty()) {
                 DiscoveredGamesBanner(
                     discoveredGames = discoveredGames,
+                    sdApkStatuses = sdApkStatuses,
                     isImporting = isImportingDiscovered,
                     importProgress = importDiscoveredProgress,
                     onImportAll = onImportAllDiscovered,
                     onDismiss = onDismissDiscovered,
                     onRestructure = onRestructureDiscovered,
-                    onCleanOrphans = onCleanOrphanDiscovered
+                    onCleanOrphans = onCleanOrphanDiscovered,
+                    onOrphanClick = onOrphanClick
                 )
             }
 
@@ -1199,6 +1372,7 @@ fun GamesContent(
                                 game = game,
                                 isPending = pendingOperations.contains(game.packageName),
                                 isInstalledOnDevice = isInstalled,
+                                sdApkStatus = sdApkStatuses[game.packageName],
                                 onToggleMount = {
                                     if (!isInstalled) {
                                         android.widget.Toast.makeText(
@@ -1308,6 +1482,7 @@ fun ModernGameCard(
     game: GameEntry,
     isPending: Boolean = false,
     isInstalledOnDevice: Boolean = true,
+    sdApkStatus: app.mountx.root.SdApkInstallStatus? = null,
     onToggleMount: () -> Unit,
     onCardClick: () -> Unit,
     onCardLongClick: (() -> Unit)? = null
@@ -1396,16 +1571,21 @@ fun ModernGameCard(
                     }
 
                     if (!isInstalledOnDevice) {
+                        val isApkReady = sdApkStatus?.isComplete == true
+                        val badgeColor = if (isApkReady) activeEmerald else warnAmber
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = warnAmber.copy(alpha = 0.16f),
-                            border = BorderStroke(0.8.dp, warnAmber.copy(alpha = 0.5f))
+                            color = badgeColor.copy(alpha = 0.16f),
+                            border = BorderStroke(0.8.dp, badgeColor.copy(alpha = 0.5f))
                         ) {
                             Text(
-                                text = stringResource(R.string.status_apk_not_installed),
+                                text = stringResource(
+                                    if (isApkReady) R.string.badge_apk_ready_install
+                                    else R.string.status_apk_not_installed
+                                ),
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
                                 fontWeight = FontWeight.Bold,
-                                color = warnAmber,
+                                color = badgeColor,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
@@ -1500,12 +1680,14 @@ fun ModernGameCard(
 @Composable
 private fun DiscoveredGamesBanner(
     discoveredGames: List<DiscoveredGame>,
+    sdApkStatuses: Map<String, app.mountx.root.SdApkInstallStatus> = emptyMap(),
     isImporting: Boolean = false,
     importProgress: Pair<Int, Int> = Pair(0, 0),
     onImportAll: () -> Unit,
     onDismiss: () -> Unit,
     onRestructure: () -> Unit = {},
     onCleanOrphans: () -> Unit = {},
+    onOrphanClick: (DiscoveredGame) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -1554,7 +1736,7 @@ private fun DiscoveredGamesBanner(
                 }
             }
 
-            // Mini chips of discovered packages
+            // Mini chips of discovered packages (tap uninstalled entries to install from MountX or see instructions)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1563,16 +1745,40 @@ private fun DiscoveredGamesBanner(
             ) {
                 discoveredGames.forEach { dg ->
                     val isOrphan = !dg.isInstalledOnDevice
+                    val isApkReady = isOrphan && sdApkStatuses[dg.packageName]?.isComplete == true
+                    val chipBg = when {
+                        isApkReady -> activeEmerald.copy(alpha = 0.14f)
+                        isOrphan -> adaptiveCrimson().copy(alpha = 0.12f)
+                        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    }
+                    val chipBorder = when {
+                        isApkReady -> activeEmerald.copy(alpha = 0.45f)
+                        isOrphan -> adaptiveCrimson().copy(alpha = 0.35f)
+                        else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    }
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = if (isOrphan) adaptiveCrimson().copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = BorderStroke(1.dp, if (isOrphan) adaptiveCrimson().copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        color = chipBg,
+                        border = BorderStroke(1.dp, chipBorder),
+                        modifier = if (isOrphan) {
+                            Modifier.clickable { onOrphanClick(dg) }
+                        } else {
+                            Modifier
+                        }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            if (isApkReady) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDownward,
+                                    contentDescription = null,
+                                    tint = activeEmerald,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
                             Text(
                                 text = dg.displayName,
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
@@ -1582,9 +1788,9 @@ private fun DiscoveredGamesBanner(
                             )
                             if (isOrphan) {
                                 Text(
-                                    text = "(${stringResource(R.string.portability_orphan_badge)})",
+                                    text = "(${stringResource(if (isApkReady) R.string.badge_apk_ready_install else R.string.badge_apk_incomplete_manual)})",
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                                    color = adaptiveCrimson()
+                                    color = if (isApkReady) activeEmerald else adaptiveCrimson()
                                 )
                             }
                         }
@@ -1593,15 +1799,17 @@ private fun DiscoveredGamesBanner(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(
                     onClick = onDismiss,
                     enabled = !isImporting,
-                    modifier = Modifier.height(30.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                    modifier = Modifier.heightIn(min = 44.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = stringResource(R.string.portability_btn_dismiss),
@@ -1611,12 +1819,41 @@ private fun DiscoveredGamesBanner(
                 }
 
                 val orphanGames = discoveredGames.filter { !it.isInstalledOnDevice }
+                val readyInstallOrphan = orphanGames.firstOrNull { sdApkStatuses[it.packageName]?.isComplete == true }
+                if (readyInstallOrphan != null) {
+                    Button(
+                        onClick = { onOrphanClick(readyInstallOrphan) },
+                        enabled = !isImporting,
+                        modifier = Modifier.heightIn(min = 44.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = activeEmerald,
+                            contentColor = if (isDark) Color.Black else Color.White
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowDownward,
+                            contentDescription = null,
+                            tint = if (isDark) Color.Black else Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.btn_install_app_from_mountx),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.Black else Color.White
+                            )
+                        )
+                    }
+                }
                 if (orphanGames.isNotEmpty()) {
-                    Spacer(modifier = Modifier.width(6.dp))
                     Button(
                         onClick = onCleanOrphans,
                         enabled = !isImporting,
-                        modifier = Modifier.height(30.dp),
+                        modifier = Modifier.heightIn(min = 44.dp),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = adaptiveCrimson(),
@@ -1624,7 +1861,7 @@ private fun DiscoveredGamesBanner(
                             disabledContainerColor = adaptiveCrimson().copy(alpha = 0.4f),
                             disabledContentColor = Color.White.copy(alpha = 0.6f)
                         ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteSweep,

@@ -202,6 +202,7 @@ fun GameDetailView(
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     onReconcilePermissions: (() -> Unit)? = null,
+    onInstallFromSd: ((app.mountx.root.SdApkInstallStatus) -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -234,6 +235,7 @@ fun GameDetailView(
     onToggleMount = onToggleMount,
     onDeleteCategoryData = onDeleteCategoryData,
     onReconcilePermissions = onReconcilePermissions,
+    onInstallFromSd = onInstallFromSd,
     isRefreshing = isRefreshing,
     onRefresh = onRefresh,
     modifier = modifier
@@ -270,6 +272,7 @@ fun AppDetailView(
     onToggleMount: (() -> Unit)? = null,
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     onReconcilePermissions: (() -> Unit)? = null,
+    onInstallFromSd: ((app.mountx.root.SdApkInstallStatus) -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -312,16 +315,33 @@ fun AppDetailView(
     }
 
     // Resolve app package metadata from PackageManager
-    val packageInfo = remember(game.packageName) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getPackageInfo(game.packageName, PackageManager.PackageInfoFlags.of(0))
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(game.packageName, 0)
-            }
-        } catch (_: Exception) {
-            null
+    val rawPackageInfo = remember(game.packageName, isMoving, moveMessage) {
+        app.mountx.root.AppPackageInspector.resolveHealthyPackageInfo(context, game.packageName)
+    }
+    var rootLiveApkOk by remember(game.packageName) { mutableStateOf(rawPackageInfo != null) }
+    var sdApkStatus by remember(game.packageName) { mutableStateOf<app.mountx.root.SdApkInstallStatus?>(null) }
+    var isInspectingSdApk by remember(game.packageName) { mutableStateOf(false) }
+    val packageInfo = if (rootLiveApkOk) rawPackageInfo else null
+
+    LaunchedEffect(game.packageName, sdBase, breakdown, isMoving, rawPackageInfo) {
+        val pmPath = app.mountx.root.AppPackageInspector.queryLivePmApkPath(game.packageName)
+        val liveOk = rawPackageInfo != null && pmPath != null &&
+            (app.mountx.root.RootShell.exec("[ -f \"$pmPath\" ] && echo 1 || echo 0").output.trim() == "1" ||
+                currentMountPoints.any { it.enabled && it.resolveCategory() == MountPointCategory.APP_PACKAGE })
+        rootLiveApkOk = liveOk
+        if (!liveOk) {
+            isInspectingSdApk = true
+            val diskBases = availableDisks.flatMap { it.partitions.mapNotNull { p -> p.mountPoint } } + sdBase
+            sdApkStatus = app.mountx.root.AppPackageInspector.inspectSdApkBundle(
+                context = context,
+                packageName = game.packageName,
+                sdBases = diskBases.distinct(),
+                mountPoints = currentMountPoints
+            )
+            isInspectingSdApk = false
+        } else {
+            sdApkStatus = null
+            isInspectingSdApk = false
         }
     }
 
@@ -553,39 +573,128 @@ fun AppDetailView(
                 if (packageInfo == null) {
                     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                     val warnAmber = if (isDark) SunsetAmber else WarmAmberLight
+                    val readyEmerald = if (isDark) Color(0xFF10B981) else Color(0xFF059669)
+                    val isApkCompleteReady = sdApkStatus?.isComplete == true
+                    val bannerAccent = if (isApkCompleteReady) readyEmerald else warnAmber
+                    val preservedBytes = maxOf(game.dataSizeBytes, breakdown?.ext2Bytes ?: 0L)
+
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = warnAmber.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, warnAmber.copy(alpha = 0.4f)),
+                        color = bannerAccent.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, bannerAccent.copy(alpha = 0.45f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier.padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                tint = warnAmber,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.app_detail_uninstalled_banner_title),
-                                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
-                                    color = warnAmber
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isApkCompleteReady) Icons.Default.Android else Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = bannerAccent,
+                                    modifier = Modifier.size(22.dp)
                                 )
-                                Text(
-                                    text = stringResource(
-                                        R.string.app_detail_uninstalled_banner_desc,
-                                        FormatUtils.formatBytes(game.dataSizeBytes)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(
+                                            if (isApkCompleteReady) R.string.app_detail_apk_ready_title
+                                            else R.string.app_detail_uninstalled_banner_title
+                                        ),
+                                        style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                                        color = bannerAccent
+                                    )
+                                    val statusDesc = when {
+                                        isApkCompleteReady -> {
+                                            val st = sdApkStatus!!
+                                            stringResource(
+                                                R.string.app_detail_apk_ready_desc,
+                                                st.versionName?.let { "v$it" } ?: "APK",
+                                                FormatUtils.formatBytes(st.totalApkBytes),
+                                                FormatUtils.formatBytes(preservedBytes)
+                                            )
+                                        }
+                                        isInspectingSdApk -> stringResource(R.string.install_step_preparing, game.displayName)
+                                        sdApkStatus != null && !sdApkStatus!!.missingReason.isNullOrBlank() -> {
+                                            stringResource(
+                                                R.string.app_detail_apk_missing_desc,
+                                                FormatUtils.formatBytes(preservedBytes),
+                                                sdApkStatus!!.missingReason!!
+                                            )
+                                        }
+                                        else -> stringResource(
+                                            R.string.app_detail_uninstalled_banner_desc,
+                                            FormatUtils.formatBytes(preservedBytes)
+                                        )
+                                    }
+                                    Text(
+                                        text = statusDesc,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 13.5.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (isApkCompleteReady && onInstallFromSd != null) {
+                                Button(
+                                    onClick = { sdApkStatus?.let { onInstallFromSd(it) } },
+                                    enabled = !isMoving,
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = readyEmerald,
+                                        contentColor = Color.White
                                     ),
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, lineHeight = 13.5.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 44.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDownward,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = stringResource(R.string.btn_install_app_from_mountx),
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                            } else if (!isInspectingSdApk && !isApkCompleteReady) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val pkg = game.packageName
+                                        try {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        } catch (_: Exception) {
+                                            runCatching {
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))
+                                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, warnAmber.copy(alpha = 0.6f)),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 44.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.btn_install_manually_store),
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = warnAmber
+                                    )
+                                }
                             }
                         }
                     }
@@ -2445,7 +2554,7 @@ private fun StorageTabContent(
                     if (!isMounted && !isNeedMigration) {
                         Button(
                             onClick = onMount,
-                            enabled = hasAnyActiveExternalPoint,
+                            enabled = hasAnyActiveExternalPoint && packageInfo != null,
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isDark) Color(0xFF6366F1) else Color(0xFF4F46E5),

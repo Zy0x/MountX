@@ -130,6 +130,7 @@
     <!-- Full-Screen App Picker -->
     <string name="add_app_title">Pilih Aplikasi</string>
     <string name="add_app_search_hint">Cari nama atau paket aplikasi…</string>
+    <string name="add_app_menu_refresh">Segarkan Daftar Aplikasi</string>
     <string name="add_app_menu_show_system">Tampilkan Aplikasi Sistem</string>
     <string name="add_app_menu_hide_system">Sembunyikan Aplikasi Sistem</string>
     <string name="add_app_tag_system">SISTEM</string>
@@ -1543,6 +1544,32 @@
     <string name="notif_unmounted_warning_title">⚠️ MountX: Data Game Belum Terhubung!</string>
     <string name="notif_unmounted_warning_desc">%1$d game belum terhubung. Jalankan TempRoot &amp; ketuk Mount All sebelum bermain!</string>
     <string name="notif_unmounted_warning_big_desc">%1$d folder data game belum terhubung pasca-reboot. Agar game tidak mengunduh ulang data puluhan GB atau menimpa file, aktifkan TempRoot lalu ketuk Mount All sebelum membuka game.</string>
+
+    <!-- Pemasangan Langsung dari MountX & Pemulihan Aplikasi Terlepas -->
+    <string name="apk_incomplete_reason_no_base">Berkas APK utama (base.apk) tidak ditemukan di penyimpanan MountX.</string>
+    <string name="apk_incomplete_reason_corrupt">Arsip APK di MountX tidak lengkap atau rusak.</string>
+    <string name="apk_incomplete_reason_missing_splits">Aplikasi membutuhkan split APK tambahan yang tidak tersedia di MountX.</string>
+    <string name="apk_install_err_container_mount">Gagal memasang kontainer APK dari penyimpanan eksternal.</string>
+    <string name="apk_install_err_pm_failed">Pemasang Android gagal: %1$s</string>
+    <string name="install_step_preparing">Memvalidasi paket APK untuk %1$s…</string>
+    <string name="install_step_installing">Memasang %1$s melalui Android PackageInstaller…</string>
+    <string name="install_step_reconciling">Menyelaraskan kepemilikan UID &amp; izin berkas…</string>
+    <string name="install_step_mounting">Menghubungkan kembali data aplikasi MountX…</string>
+    <string name="app_detail_apk_ready_title">Aplikasi Belum Terpasang — APK Tersedia di MountX</string>
+    <string name="app_detail_apk_ready_desc">Paket APK lengkap (%1$s, %2$s) beserta %3$s data tersimpan tersedia di MountX. Pasang sekarang untuk menghubungkan seluruh data aplikasi secara otomatis.</string>
+    <string name="btn_install_app_from_mountx">Pasang Aplikasi Sekarang</string>
+    <string name="app_detail_apk_missing_desc">Data tersimpan (%1$s) tetap aman di MicroSD, namun berkas APK di MountX tidak tersedia atau tidak lengkap (%2$s). Silakan pasang aplikasi secara manual terlebih dahulu, lalu MountX akan menghubungkan data Anda kembali.</string>
+    <string name="btn_install_manually_store">Pasang lewat Play Store</string>
+    <string name="badge_apk_ready_install">APK Siap Pasang</string>
+    <string name="badge_apk_incomplete_manual">Perlu Pasang Manual</string>
+    <string name="op_title_install_sd_apk">Memasang Aplikasi dari MountX</string>
+    <string name="op_install_sd_apk_success">%1$s berhasil dipasang dan seluruh data tersimpan siap digunakan.</string>
+    <string name="dialog_install_discovered_title">Pasang %1$s dari MountX?</string>
+    <string name="dialog_install_discovered_desc">MountX menemukan paket APK lengkap (%1$s, %2$s) beserta %3$s data tersimpan di penyimpanan eksternal. Memasang akan memulihkan aplikasi lengkap dengan seluruh datanya.</string>
+    <string name="dialog_manual_install_title">Pemasangan Manual Diperlukan</string>
+    <string name="dialog_manual_install_desc">MountX menyimpan %1$s data untuk %2$s, namun berkas APK lengkap tidak tersedia (%3$s). Silakan pasang %2$s secara manual terlebih dahulu (mis. dari Google Play Store atau penginstal APK), lalu pulihkan di MountX.</string>
+    <string name="btn_import_register_only">Simpan ke Daftar</string>
+    <string name="toast_import_registered_pending">%1$s ditambahkan ke daftar MountX. Pasang aplikasi secara manual untuk menyambungkan data.</string>
 </resources>
 
 

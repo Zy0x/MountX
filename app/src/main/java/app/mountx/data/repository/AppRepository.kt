@@ -376,8 +376,8 @@ class AppRepository @Inject constructor(
                     RootShell.exec("rm -rf \"$sdBase/MountX/Android/obb/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/MountX/Android/media/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/MountX/data/$packageName\" 2>/dev/null")
-                    RootShell.exec("rm -rf \"$sdBase/MountX/cache/$packageName\" 2>/dev/null")
-                    RootShell.exec("rm -rf \"$sdBase/MountX/app/$packageName\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/MountX/cache/$packageName\" \"$sdBase/MountX/cache/${packageName}_oat\" 2>/dev/null")
+                    RootShell.exec("rm -rf \"$sdBase/MountX/app/$packageName\" \"$sdBase/.mountx/apk_backup/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -rf \"$sdBase/MountX/lib/$packageName\" 2>/dev/null")
                     RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_data.img\" \"$sdBase/MountX/containers/${packageName}_data.img\" 2>/dev/null")
                     RootShell.exec("rm -f \"$sdBase/.mountx/containers/${packageName}_cache.img\" \"$sdBase/.mountx/containers/${packageName}_apk.img\" \"$sdBase/.mountx/containers/${packageName}_lib.img\" 2>/dev/null")
@@ -408,6 +408,308 @@ class AppRepository @Inject constructor(
         }
     }
 
+    /**
+     * Inspects whether a complete, installable APK bundle exists on external storage for [packageName].
+     */
+    suspend fun inspectSdApkBundle(
+        packageName: String,
+        sdBase: String = "/data/sdext2",
+        mountPoints: List<MountPointConfig>? = null
+    ): app.mountx.root.SdApkInstallStatus = withContext(Dispatchers.IO) {
+        val existingGame = gameDao.getGameByPackage(packageName)
+        val effectivePoints = mountPoints ?: existingGame?.mountPoints ?: emptyList()
+        val bases = getExternalStorageBases(sdBase, existingGame)
+        app.mountx.root.AppPackageInspector.inspectSdApkBundle(context, packageName, bases, effectivePoints)
+    }
+
+    /**
+     * Directly installs an app from its validated APK bundle stored in MountX external storage,
+     * reconciles UID ownership across preserved MountX folders, updates database/module config,
+     * and connects all saved data directories.
+     */
+    suspend fun installAppFromSd(
+        packageName: String,
+        sdBase: String = "/data/sdext2",
+        discoveredGame: DiscoveredGame? = null,
+        onProgress: ((OperationProgress) -> Unit)? = null
+    ): Result<GameEntry> = withContext(Dispatchers.IO) {
+        RootShell.rootExecutionMutex.withLock {
+            runCatching {
+                val existingGame = gameDao.getGameByPackage(packageName)
+                val initialPoints = existingGame?.mountPoints?.ifEmpty { null }
+                    ?: discoveredGame?.mountPoints?.ifEmpty { null }
+                    ?: emptyList()
+                val bases = (getExternalStorageBases(sdBase, existingGame) + listOfNotNull(
+                    discoveredGame?.originalPath?.let { p ->
+                        when {
+                            p.startsWith("/data/sdext2") -> "/data/sdext2"
+                            p.startsWith("/data/sdext_otg") -> "/data/sdext_otg"
+                            p.startsWith("/mnt/media_rw/") -> p.split("/").take(4).joinToString("/")
+                            else -> null
+                        }
+                    }
+                )).distinct()
+
+                val title = context.getString(R.string.op_title_install_sd_apk)
+                val resolvedName = existingGame?.displayName ?: discoveredGame?.displayName ?: packageName
+                val steps = listOf(
+                    context.getString(R.string.install_step_preparing, resolvedName),
+                    context.getString(R.string.install_step_installing, resolvedName),
+                    context.getString(R.string.install_step_reconciling),
+                    context.getString(R.string.install_step_mounting)
+                )
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = app.mountx.data.model.OperationType.MOUNT,
+                        title = title,
+                        subtitle = "$resolvedName • $packageName",
+                        currentStepIndex = 0,
+                        totalSteps = steps.size,
+                        stepDescriptions = steps,
+                        progressPercent = 0.1f
+                    )
+                )
+
+                val apkStatus = app.mountx.root.AppPackageInspector.inspectSdApkBundle(
+                    context = context,
+                    packageName = packageName,
+                    sdBases = bases,
+                    mountPoints = initialPoints
+                )
+                if (!apkStatus.isComplete) {
+                    error(apkStatus.missingReason ?: context.getString(R.string.apk_incomplete_reason_no_base))
+                }
+
+                if (existingGame != null) {
+                    mountManager.unmountGame(existingGame)
+                }
+
+                val newApkDir = app.mountx.root.AppPackageInspector.installAppFromSd(
+                    context = context,
+                    status = apkStatus,
+                    sdBases = bases
+                ) { pct, _ ->
+                    val stepIdx = when {
+                        pct < 0.35f -> 0
+                        pct < 0.70f -> 1
+                        pct < 0.90f -> 2
+                        else -> 3
+                    }
+                    onProgress?.invoke(
+                        OperationProgress(
+                            type = app.mountx.data.model.OperationType.MOUNT,
+                            title = title,
+                            subtitle = "${apkStatus.appLabel ?: resolvedName} • $packageName",
+                            currentStepIndex = stepIdx,
+                            totalSteps = steps.size,
+                            stepDescriptions = steps,
+                            progressPercent = pct.coerceIn(0.1f, 0.9f)
+                        )
+                    )
+                }.getOrThrow()
+
+                val baseSeed = if (initialPoints.isNotEmpty()) initialPoints else {
+                    synthesizeLegacyMountPoints(
+                        GameEntry(
+                            packageName = packageName,
+                            displayName = apkStatus.appLabel ?: resolvedName,
+                            mode = discoveredGame?.mode ?: MountMode.PKG
+                        ),
+                        sdBase
+                    )
+                }
+
+                // Detect all populated SD directories across external bases so nothing preserved gets missed
+                val reconciledPoints = mutableListOf<MountPointConfig>()
+                val existingLibHasSo = bases.any { b ->
+                    RootShell.exec("find \"${b.trimEnd('/')}/MountX/lib/$packageName\" -maxdepth 2 -name '*.so' 2>/dev/null | head -n 1").output.trim().isNotBlank()
+                }
+                val detectedAbi = MountManager.detectPreferredAbi(
+                    apkDir = newApkDir,
+                    sdLibRoot = "${sdBase.trimEnd('/')}/MountX/lib/$packageName",
+                    hintPath = baseSeed.firstOrNull { it.isLibTarget() }?.targetPath
+                )
+
+                for (mp in baseSeed) {
+                    val cat = mp.resolveCategory()
+                    if (cat == MountPointCategory.APP_PACKAGE) {
+                        if (mp.isLibTarget()) {
+                            reconciledPoints.add(
+                                mp.copy(
+                                    targetPath = "$newApkDir/lib/$detectedAbi",
+                                    enabled = mp.enabled && existingLibHasSo
+                                )
+                            )
+                        } else {
+                            reconciledPoints.add(
+                                mp.copy(
+                                    targetPath = newApkDir
+                                )
+                            )
+                        }
+                    } else {
+                        val srcExists = mp.sourcePath.isNotBlank() && RootShell.exists(mp.sourcePath)
+                        val srcSubstantive = srcExists && (
+                            mp.isEffectivelyVirtualContainer() ||
+                                RootShell.exec("find \"${mp.sourcePath}\" -type f -size +0c ! -name '.nomedia' ! -name '.mountx_canary' ! -name '.mountx_perms_ok' ! -name '*.lck' 2>/dev/null | head -n 1").output.trim().isNotBlank()
+                            )
+                        reconciledPoints.add(
+                            mp.copy(
+                                enabled = mp.enabled && srcSubstantive
+                            )
+                        )
+                    }
+                }
+
+                // Add any standard MountX folders present on sdBase not yet represented in reconciledPoints
+                val stdChecks = listOf(
+                    Triple(MountPointCategory.PRIVATE_INTERNAL, "$sdBase/MountX/data/$packageName", "/data/user/0/$packageName"),
+                    Triple(MountPointCategory.CACHE_SHADERS, "$sdBase/MountX/cache/$packageName", "/data/user/0/$packageName/cache"),
+                    Triple(MountPointCategory.EXTERNAL_DATA, "$sdBase/MountX/Android/data/$packageName", "/data/media/0/Android/data/$packageName"),
+                    Triple(MountPointCategory.OBB_STORAGE, "$sdBase/MountX/Android/obb/$packageName", "/data/media/0/Android/obb/$packageName"),
+                    Triple(MountPointCategory.MEDIA_DOWNLOADS, "$sdBase/MountX/Android/media/$packageName", "/data/media/0/Android/media/$packageName")
+                )
+                for ((cat, sPath, tPath) in stdChecks) {
+                    if (reconciledPoints.none { it.resolveCategory() == cat }) {
+                        val hasData = RootShell.exec("find \"$sPath\" -type f -size +0c ! -name '.nomedia' ! -name '.mountx_canary' ! -name '.mountx_perms_ok' ! -name '*.lck' 2>/dev/null | head -n 1").output.trim().isNotBlank()
+                        if (hasData) {
+                            reconciledPoints.add(
+                                MountPointConfig(
+                                    id = "${cat.name.lowercase()}_$packageName",
+                                    category = cat,
+                                    sourcePath = sPath,
+                                    targetPath = tPath,
+                                    enabled = true,
+                                    diskUuid = MountManager.getBlockDeviceUuid(sdBase)
+                                )
+                            )
+                        }
+                    }
+                }
+                val containerDataPath = "${sdBase.trimEnd('/')}/.mountx/containers/${packageName}_data.img"
+                if (RootShell.exists(containerDataPath) && reconciledPoints.none { it.resolveCategory() == MountPointCategory.PRIVATE_INTERNAL }) {
+                    reconciledPoints.add(
+                        MountPointConfig(
+                            id = "private_$packageName",
+                            category = MountPointCategory.PRIVATE_INTERNAL,
+                            sourcePath = containerDataPath,
+                            targetPath = "/data/user/0/$packageName",
+                            enabled = true,
+                            isVirtualContainer = true,
+                            containerImgPath = containerDataPath
+                        )
+                    )
+                }
+
+                val finalName = apkStatus.appLabel ?: existingGame?.displayName ?: discoveredGame?.displayName ?: packageName
+                val entryToMount = (existingGame ?: GameEntry(
+                    packageName = packageName,
+                    displayName = finalName,
+                    mode = discoveredGame?.mode ?: MountMode.PKG,
+                    mountStatus = MountStatus.UNMOUNTED,
+                    isEnabled = true
+                )).copy(
+                    displayName = finalName,
+                    mountPoints = reconciledPoints,
+                    isEnabled = true
+                )
+
+                if (existingGame == null) {
+                    gameDao.insertGame(entryToMount)
+                } else {
+                    gameDao.updateGame(entryToMount)
+                }
+
+                val enabledNonApk = reconciledPoints.filter { it.enabled && it.resolveCategory() != MountPointCategory.APP_PACKAGE }
+                val hasEnabledApkRoot = reconciledPoints.any { it.enabled && it.resolveCategory() == MountPointCategory.APP_PACKAGE && !it.isLibTarget() }
+
+                val mountSuccess = if (reconciledPoints.any { it.enabled }) {
+                    // Only strip newly extracted internal APKs if user explicitly kept APP_PACKAGE on SD and mount succeeds
+                    val mountRes = mountManager.mountGame(entryToMount, sdBase, autoCreateSource = false)
+                    if (mountRes.isSuccess) {
+                        app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(packageName, sdBase)
+                        app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(entryToMount, sdBase)
+                        if (hasEnabledApkRoot && !apkStatus.isVirtualContainer && RootShell.isMountpoint(newApkDir)) {
+                            // Internal duplicate *.apk can safely remain masked or stay intact until next migration;
+                            // avoid deleting internal APK here unless user migrates to SD, preventing any version mismatch.
+                        }
+                        true
+                    } else {
+                        // Fall back to mounting data points cleanly without APP_PACKAGE if APK dir had a version divergence
+                        if (enabledNonApk.isNotEmpty()) {
+                            val dataOnlyGame = entryToMount.copy(
+                                mountPoints = reconciledPoints.map {
+                                    if (it.resolveCategory() == MountPointCategory.APP_PACKAGE) it.copy(enabled = false) else it
+                                }
+                            )
+                            gameDao.updateGame(dataOnlyGame)
+                            mountManager.mountGame(dataOnlyGame, sdBase, autoCreateSource = false).isSuccess
+                        } else false
+                    }
+                } else false
+
+                val refreshed = gameDao.getGameByPackage(packageName) ?: entryToMount
+                val finalEntry = refreshed.copy(
+                    mountStatus = if (mountSuccess) MountStatus.MOUNTED else MountStatus.UNMOUNTED
+                )
+                gameDao.updateGame(finalEntry)
+                syncModuleGamelist()
+                calculateDataSize(packageName, sdBase)
+                syncDiskCatalog(sdBase)
+                mountNotificationManager.syncActiveMountNotification()
+
+                onProgress?.invoke(
+                    OperationProgress(
+                        type = app.mountx.data.model.OperationType.MOUNT,
+                        title = title,
+                        subtitle = finalName,
+                        currentStepIndex = steps.lastIndex,
+                        totalSteps = steps.size,
+                        stepDescriptions = steps,
+                        progressPercent = 1.0f,
+                        isFinished = true,
+                        isSuccess = true
+                    )
+                )
+                finalEntry
+            }
+        }
+    }
+
+    /**
+     * Registers a discovered external app into Room DB as pending manual installation
+     * so its preserved data stays visible and auto-connects once the user installs the app.
+     */
+    suspend fun registerDiscoveredPendingGame(game: DiscoveredGame, sdBase: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val basePts = game.mountPoints.ifEmpty {
+                synthesizeLegacyMountPoints(
+                    GameEntry(packageName = game.packageName, displayName = game.displayName, mode = game.mode),
+                    sdBase
+                )
+            }
+            val existing = gameDao.getGameByPackage(game.packageName)
+            val entry = (existing ?: GameEntry(
+                packageName = game.packageName,
+                displayName = game.displayName,
+                mode = game.mode,
+                mountStatus = MountStatus.UNMOUNTED,
+                dataSizeBytes = game.sizeBytes,
+                isEnabled = false,
+                mountPoints = basePts
+            )).copy(
+                displayName = game.displayName.ifBlank { game.packageName },
+                mountStatus = MountStatus.UNMOUNTED,
+                dataSizeBytes = maxOf(existing?.dataSizeBytes ?: 0L, game.sizeBytes),
+                mountPoints = basePts
+            )
+            if (existing == null) gameDao.insertGame(entry) else gameDao.updateGame(entry)
+            calculateDataSize(game.packageName, sdBase)
+            syncDiskCatalog(sdBase)
+            Unit
+        }
+    }
+
     suspend fun mountGame(
         game: GameEntry,
         sdBase: String = "/data/sdext2",
@@ -419,8 +721,18 @@ class AppRepository @Inject constructor(
                 // on SD and bind-mount them over intact internal APK/Lib/Private/Data.
                 val effectiveGame = game
                 AppLogger.info("Games", "Mounting ${effectiveGame.displayName} (${effectiveGame.packageName}) [${effectiveGame.mode.name}]")
+                val isNonCustomOnly = effectiveGame.mountPoints.none { it.enabled && it.resolveCategory() == MountPointCategory.CUSTOM }
+                if (isNonCustomOnly && !app.mountx.root.AppPackageInspector.isPackageInstalledHealthyRoot(effectiveGame.packageName, listOf(sdBase), effectiveGame.mountPoints)) {
+                    val msg = context.getString(R.string.app_uninstalled_mount_blocked_toast, effectiveGame.displayName)
+                    gameDao.updateMountStatus(effectiveGame.packageName, MountStatus.UNMOUNTED)
+                    AppLogger.warn("Games", "Blocked mount for ${effectiveGame.packageName}: package APK is missing or broken on OS.")
+                    mountNotificationManager.syncActiveMountNotification()
+                    return@withLock Result.failure(IllegalStateException(msg))
+                }
                 val result = mountManager.mountGame(effectiveGame, sdBase, onProgress, autoCreateSource = false)
                 if (result.isSuccess) {
+                    app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(effectiveGame.packageName, sdBase)
+                    app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(effectiveGame, sdBase)
                     gameDao.updateMountStatus(effectiveGame.packageName, MountStatus.MOUNTED)
                     gameDao.updateEnabled(effectiveGame.packageName, true)
                     syncModuleGamelist()
@@ -501,6 +813,8 @@ class AppRepository @Inject constructor(
                     throw mountResult.exceptionOrNull() ?: Exception("Direct mount failed")
                 }
 
+                app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(pkg, targetBase)
+                app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(updatedGame, targetBase)
                 gameDao.updateMountStatus(pkg, MountStatus.MOUNTED)
                 calculateDataSize(pkg, targetBase)
                 syncDiskCatalog(targetBase)
@@ -602,6 +916,8 @@ class AppRepository @Inject constructor(
                 val wantLib = mp.isLibTarget()
                 activeMounts.firstOrNull { m ->
                     m.startsWith("/data/app/") &&
+                        !m.contains("==deleted==") &&
+                        !m.contains("/vmdl") &&
                         pkgPattern.containsMatchIn(m) &&
                         (m.endsWith("/lib") || m.contains("/lib/")) == wantLib
                 }
@@ -739,16 +1055,26 @@ class AppRepository @Inject constructor(
                             continue
                         }
 
+                        if (!app.mountx.root.AppPackageInspector.isPackageInstalledHealthyRoot(g.packageName, listOf(sdBase), g.mountPoints)) {
+                            gameDao.updateMountStatus(g.packageName, MountStatus.UNMOUNTED)
+                            AppLogger.warn("Games", "Skipping ${g.displayName} in mountAll: APK missing or broken on OS")
+                            continue
+                        }
+
                         val isFullyMounted = (verifiedMap[g.packageName] == true) &&
                             areAllEnabledMountPointsActive(g, activeMounts, existingPaths)
 
                         if (isFullyMounted) {
+                            app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(g.packageName, sdBase)
+                            app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(g, sdBase)
                             gameDao.updateMountStatus(g.packageName, MountStatus.MOUNTED)
                             count++
                             continue
                         }
                         val res = mountManager.mountGame(g, sdBase)
                         if (res.isSuccess) {
+                            app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(g.packageName, sdBase)
+                            app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(g, sdBase)
                             gameDao.updateMountStatus(g.packageName, MountStatus.MOUNTED)
                             count++
                         } else {
@@ -1052,8 +1378,13 @@ class AppRepository @Inject constructor(
                 app.mountx.root.MountManager.unmountSafeAcrossNamespaces(ghostPaths)
             }
 
+            val isHealthyInstalled = if (!isMounted && g.mountPoints.none { it.resolveCategory() == MountPointCategory.CUSTOM }) {
+                app.mountx.root.AppPackageInspector.isPackageInstalledHealthyRoot(g.packageName, listOf(activeSdBase), g.mountPoints)
+            } else true
+
             val newStatus = when {
                 !isStorageAttached -> MountStatus.DISK_DETACHED
+                !isHealthyInstalled -> MountStatus.UNMOUNTED
                 isMounted -> MountStatus.MOUNTED
                 else -> {
                     if (!isSdBaseMounted) {
@@ -1887,7 +2218,32 @@ class AppRepository @Inject constructor(
 
         app.mountx.ui.components.AppIconManager.registerAppInfos(apps)
 
+        // Filter out broken ghost package records (e.g., `package:null=pkg` or `==deleted==`) left when
+        // an APK directory disappears from /data/app without root/MicroSD.
+        val registeredGames = gameDao.getAllGamesSync().associateBy { it.packageName }
+        val registeredSourceDirs = apps
+            .filter { appInfo -> registeredGames.containsKey(appInfo.packageName) && app.mountx.root.AppPackageInspector.isSourceDirPlausible(appInfo.sourceDir) }
+            .mapNotNull { it.sourceDir }
+        val verifiedExistingDirs = if (registeredSourceDirs.isNotEmpty() && RootShell.isAvailable) {
+            RootShell.pathsExistBatch(registeredSourceDirs)
+        } else {
+            emptySet()
+        }
+
         val mapped = apps
+            .filter { appInfo ->
+                val src = appInfo.sourceDir
+                if (!app.mountx.root.AppPackageInspector.isSourceDirPlausible(src)) return@filter false
+                val reg = registeredGames[appInfo.packageName]
+                if (reg != null && verifiedExistingDirs.isNotEmpty() && !verifiedExistingDirs.contains(src)) {
+                    val hasEnabledSdApk = reg.mountPoints.any {
+                        it.enabled && it.resolveCategory() == MountPointCategory.APP_PACKAGE && !it.isLibTarget() &&
+                            RootShell.exists("${it.sourcePath.trimEnd('/')}/base.apk")
+                    }
+                    return@filter hasEnabledSdApk
+                }
+                true
+            }
             .map { app ->
                 val isSystem = (app.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
                     (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0

@@ -608,6 +608,9 @@ verify_post_mount_canaries() {
         case "${_cat}" in EXTERNAL_DATA|OBB_STORAGE|MEDIA_DOWNLOADS|GAME_ASSETS) ;; *) continue ;; esac
         [ -z "${_src}" ] || [ -z "${_dst}" ] && continue
         [ ! -d "${_src}" ] && continue
+        if [ -n "${_pkg}" ] && ! is_package_installed "${_pkg}"; then
+            continue
+        fi
         _rel=""
         case "${_dst}" in
             /data/media/[0-9]*/*) _rel="${_dst#/data/media/[0-9]*/}" ;;
@@ -774,6 +777,93 @@ _resolve_monitored_blk_dev() {
     echo ""
 }
 
+_mx_busybox_bin() {
+    if [ -x "${MODULE_DIR}/bin/busybox" ]; then
+        echo "${MODULE_DIR}/bin/busybox"
+    elif [ -x "/dev/mountx_bin/busybox" ]; then
+        echo "/dev/mountx_bin/busybox"
+    elif command -v busybox >/dev/null 2>&1; then
+        command -v busybox
+    fi
+}
+
+# Per-mount read-only / read-write + exec via busybox so parent F2FS/ext4 superblock never flips global RO.
+_mx_bind_remount_ro_exec() {
+    local _tgt="$1"
+    local _bb
+    _bb=$(_mx_busybox_bin)
+    if [ -n "${_bb}" ]; then
+        "${_bb}" mount -o remount,ro,exec,bind "${_tgt}" 2>/dev/null && return 0
+    fi
+    return 1
+}
+
+_mx_bind_remount_rw_exec() {
+    local _tgt="$1"
+    local _bb
+    _bb=$(_mx_busybox_bin)
+    if [ -n "${_bb}" ]; then
+        "${_bb}" mount -o remount,rw,exec,bind "${_tgt}" 2>/dev/null && return 0
+    fi
+    mount -o remount,bind,rw,exec "${_tgt}" 2>/dev/null || mount -o remount,rw,exec "${_tgt}" 2>/dev/null
+}
+
+# Checks whether a directory holds real non-skeleton files (>0B excluding MountX markers & lockfiles)
+_mx_dir_has_real_files() {
+    local _dir="$1"
+    local _min_kb="${2:-48}"
+    [ -d "${_dir}" ] || return 1
+    local _rf _kb
+    _rf=$(find "${_dir}" -type f -size +0c ! -name '.nomedia' ! -name '.mountx_canary' ! -name '.mountx_perms_ok' ! -name '*.lck' 2>/dev/null | head -n 1)
+    [ -z "${_rf}" ] && return 1
+    _kb=$(du -sk "${_dir}" 2>/dev/null | cut -f1)
+    [ "${_kb:-0}" -ge "${_min_kb}" ] 2>/dev/null
+}
+
+# Universal multi-APK + single-APK session installer for Android 10-17 via root pm
+_mx_pm_install_apk_dir() {
+    local _apk_dir="$1"
+    [ -f "${_apk_dir}/base.apk" ] && [ -s "${_apk_dir}/base.apk" ] || return 1
+    local _sid _ok=0 _apk _sz _idx=0 _total_apks=0
+    for _apk in "${_apk_dir}"/*.apk; do
+        [ -f "${_apk}" ] && _total_apks=$((_total_apks + 1))
+    done
+    [ "${_total_apks}" -eq 0 ] && return 1
+    _sid=$(pm install-create -r -d 2>/dev/null | sed -n 's/.*\[\([0-9][0-9]*\)\].*/\1/p' | head -n 1)
+    if [ -n "${_sid}" ]; then
+        _ok=1
+        for _apk in "${_apk_dir}/base.apk" "${_apk_dir}"/*.apk; do
+            [ -f "${_apk}" ] || continue
+            case "${_apk}" in
+                "${_apk_dir}/base.apk") [ "${_idx}" -gt 0 ] && continue ;;
+            esac
+            _sz=$(stat -c '%s' "${_apk}" 2>/dev/null)
+            [ -z "${_sz}" ] && _sz=$(wc -c < "${_apk}" 2>/dev/null | tr -d ' ')
+            if [ -z "${_sz}" ] || [ "${_sz}" -le 0 ] 2>/dev/null; then
+                _ok=0
+                break
+            fi
+            local _bname
+            _bname=$(basename "${_apk}")
+            if ! pm install-write -S "${_sz}" "${_sid}" "${_idx}_${_bname}" "${_apk}" >/dev/null 2>&1; then
+                _ok=0
+                break
+            fi
+            _idx=$((_idx + 1))
+        done
+        if [ "${_ok}" -eq 1 ]; then
+            if pm install-commit "${_sid}" >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+        pm install-abandon "${_sid}" >/dev/null 2>&1 || true
+    fi
+    if [ "${_total_apks}" -eq 1 ]; then
+        pm install -r -d "${_apk_dir}/base.apk" >/dev/null 2>&1 && return 0
+    fi
+    return 1
+}
+
 auto_heal_apk_native_libs() {
     local _pkg="$1"
     local _dst="$2"
@@ -791,12 +881,13 @@ auto_heal_apk_native_libs() {
     _lib_src="${_sd_lib}"
     [ -d "${_sd_lib}/${_abi}" ] && _lib_src="${_sd_lib}/${_abi}"
     log_info "  [${_pkg}] Auto-healing missing native libs: ${_lib_src} -> ${_dst}/lib/${_abi}..."
+    chown -R 1000:1000 "${_lib_src}" 2>/dev/null
+    chmod -R 755 "${_lib_src}" 2>/dev/null
     mkdir -p "${_dst}/lib/${_abi}" 2>/dev/null
-    mount -o bind "${_lib_src}" "${_dst}/lib/${_abi}" 2>/dev/null
-    mount -o remount,bind,rw,exec "${_dst}/lib/${_abi}" 2>/dev/null || mount -o remount,rw,exec "${_dst}/lib/${_abi}" 2>/dev/null
-    mx_make_rprivate "${_dst}/lib/${_abi}"
-    chown -R 1000:1000 "${_dst}/lib/${_abi}" 2>/dev/null
-    chmod -R 755 "${_dst}/lib/${_abi}" 2>/dev/null
+    if mount -o bind "${_lib_src}" "${_dst}/lib/${_abi}" 2>/dev/null; then
+        _mx_bind_remount_ro_exec "${_dst}/lib/${_abi}" || _mx_bind_remount_rw_exec "${_dst}/lib/${_abi}"
+        mx_make_rprivate "${_dst}/lib/${_abi}"
+    fi
 }
 
 is_ce_key_unlocked() {
@@ -1196,13 +1287,23 @@ unmount_target_everywhere() {
                 fi
                 ;;
             /data/app/*)
+                # Always peel writable sub-mounts (oat, lib) before unmounting the read-only APK root
+                local _sub_p _abi_p
+                _umount_loop "${dst}/oat"
+                for _abi_p in "${dst}"/lib/*; do
+                    [ -e "${_abi_p}" ] && _umount_loop "${_abi_p}"
+                done
+                _umount_loop "${dst}/lib"
                 for zpid in $(_mx_zygote_mnt_pids); do
                     [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
                     MX_DST="${dst}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -c '
-                        _i=0
-                        while awk -v t="${MX_DST}" '"'"'{m=$5; gsub(/\\040/, " ", m); if (m==t) {f=1; exit}} END {exit (f?0:1)}'"'"' /proc/self/mountinfo 2>/dev/null && [ ${_i} -lt 16 ]; do
-                            umount "${MX_DST}" 2>/dev/null || umount -l "${MX_DST}" 2>/dev/null || break
-                            _i=$((_i + 1))
+                        for _zt in "${MX_DST}/oat" "${MX_DST}"/lib/* "${MX_DST}/lib" "${MX_DST}"; do
+                            [ -n "${_zt}" ] || continue
+                            _i=0
+                            while awk -v t="${_zt}" '"'"'{m=$5; gsub(/\\040/, " ", m); if (m==t) {f=1; exit}} END {exit (f?0:1)}'"'"' /proc/self/mountinfo 2>/dev/null && [ ${_i} -lt 16 ]; do
+                                umount "${_zt}" 2>/dev/null || umount -l "${_zt}" 2>/dev/null || break
+                                _i=$((_i + 1))
+                            done
                         done
                     ' 2>/dev/null
                 done
@@ -1503,27 +1604,38 @@ is_package_installed() {
     local pkg="$1"
     [ -z "${pkg}" ] && return 1
 
-    # Fast Check 1: App data directory on internal storage
-    if [ -d "/data/data/${pkg}" ] || [ -d "/data/user/0/${pkg}" ]; then
-        return 0
-    fi
-
-    # Fast Check 2: App APK directory in /data/app/
-    if ls -d /data/app/*/"${pkg}"* >/dev/null 2>&1 || ls -d /data/app/"${pkg}"* >/dev/null 2>&1; then
-        return 0
-    fi
-
-    # Check 3: If package manager service is running and responsive
+    # Check 1 (Authoritative): Package Manager Service when online
     if service check package 2>/dev/null | grep -q "found"; then
-        if pm path "${pkg}" >/dev/null 2>&1; then
+        local _pm_apk
+        _pm_apk=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed -n 's/^package://p' | tr -d '\r')
+        case "${_pm_apk}" in
+            ""|*==deleted==*)
+                return 1
+                ;;
+        esac
+        if [ -f "${_pm_apk}" ] || \
+           [ -f "${SD_BASE}/MountX/app/${pkg}/base.apk" ] || \
+           [ -f "${SD_BASE}/Android/app/${pkg}/base.apk" ] || \
+           [ -f "${SD_BASE}/.mountx/containers/${pkg}_apk.img" ] || \
+           [ -f "${SD_BASE}/.mountx/apk_backup/${pkg}/base.apk" ]; then
             return 0
         fi
-        # Package manager is online and confirmed package does not exist
         return 1
     fi
 
-    # PMS is offline/restarting, and app was registered in MountX -> keep it safe!
-    return 0
+    # Check 2 (Boot fallback while PMS offline): Require non-deleted APK dir OR intact SD APK source
+    local _cand_apk
+    for _cand_apk in /data/app/*/"${pkg}"-*/base.apk /data/app/"${pkg}"-*/base.apk /data/app/*/"${pkg}"/base.apk; do
+        [ -f "${_cand_apk}" ] || continue
+        case "${_cand_apk}" in
+            *==deleted==*|*/vmdl*) continue ;;
+        esac
+        return 0
+    done
+    if [ -f "${SD_BASE}/MountX/app/${pkg}/base.apk" ] || [ -f "${SD_BASE}/.mountx/containers/${pkg}_apk.img" ]; then
+        return 0
+    fi
+    return 1
 }
 
 # ── Modern Multi-Target Array (mountpoints.conf) ──────────────────────────────
@@ -1534,15 +1646,20 @@ load_mountpoints() {
 
     local entries=0
     local _failed_pkgs=" "
+    local _pms_online=0
+    service check package 2>/dev/null | grep -q "found" && _pms_online=1
 
-    # Pre-flight multi-mountpoint check: if any enabled target of a package needs a missing/unplugged disk UUID,
-    # mark that package skipped BEFORE mounting its earlier targets (prevents OBB bind+unmount thrashing every cycle).
-    local _blkid_snap
+    # Pre-flight multi-mountpoint check:
+    # 1) Defer packages whose required disk UUID is detached (prevents OBB bind+unmount thrashing).
+    # 2) Self-heal ghost/broken packages (dropped codePath / ==deleted==) BEFORE earlier PRIVATE/DATA rows are skipped.
+    local _blkid_snap _healed_pkgs=" "
     _blkid_snap=$(blkid 2>/dev/null)
     while IFS='|' read -r _p_pkg _p_cat _p_src _p_dst _p_pres _p_uuid _p_uid || [ -n "${_p_pkg}" ]; do
         case "${_p_pkg}" in ''|\#*) continue ;; esac
         _p_pkg=$(echo "${_p_pkg}" | tr -d '\r')
+        _p_cat=$(echo "${_p_cat}" | tr -d '\r')
         _p_src=$(echo "${_p_src}" | tr -d '\r')
+        _p_dst=$(echo "${_p_dst}" | tr -d '\r')
         _p_uuid=$(echo "${_p_uuid}" | tr -d '\r')
         [ -z "${_p_pkg}" ] || [ -z "${_p_src}" ] && continue
         case "${_failed_pkgs}" in *" ${_p_pkg} "*) continue ;; esac
@@ -1550,6 +1667,31 @@ load_mountpoints() {
             if ! echo "${_blkid_snap}" | grep -qiF "${_p_uuid}"; then
                 log_warn "  [${_p_pkg}] Pre-flight: required disk UUID=${_p_uuid} is not attached. Deferring all mounts for ${_p_pkg}."
                 _failed_pkgs="${_failed_pkgs}${_p_pkg} "
+                continue
+            fi
+        fi
+        if [ "${_pms_online}" -eq 1 ] && [ "${_p_cat}" = "APP_PACKAGE" ] && ! echo "${_p_dst}" | grep -q "/lib"; then
+            case "${_healed_pkgs}" in *" ${_p_pkg} "*) continue ;; esac
+            _healed_pkgs="${_healed_pkgs}${_p_pkg} "
+            local _live_check
+            _live_check=$(pm path "${_p_pkg}" 2>/dev/null | head -n 1 | sed -n 's/^package://p' | tr -d '\r')
+            if [ -z "${_live_check}" ] && [ -f "${_p_src}/base.apk" ] && [ -s "${_p_src}/base.apk" ]; then
+                if [ -d "/data/user/0/${_p_pkg}" ] || ls -d /data/app/*/"${_p_pkg}"* >/dev/null 2>&1 || pm list packages -u 2>/dev/null | grep -qxF "package:${_p_pkg}"; then
+                    log_info "  [${_p_pkg}] Pre-flight Self-Healing Reconciler: re-registering detached package from ${_p_src}..."
+                    if _mx_pm_install_apk_dir "${_p_src}"; then
+                        local _new_uid
+                        _new_uid=$(id -u "${_p_pkg}" 2>/dev/null)
+                        [ -z "${_new_uid}" ] && _new_uid=$(pm list packages -U 2>/dev/null | grep -F "package:${_p_pkg} " | sed -n 's/.*uid:\([0-9]*\).*/\1/p' | head -n 1)
+                        if [ -n "${_new_uid}" ]; then
+                            [ -d "${SD_BASE}/MountX/data/${_p_pkg}" ] && chown -R "${_new_uid}:${_new_uid}" "${SD_BASE}/MountX/data/${_p_pkg}" 2>/dev/null && rm -f "${SD_BASE}/MountX/data/${_p_pkg}/.mountx_perms_ok" 2>/dev/null
+                            [ -d "${SD_BASE}/MountX/cache/${_p_pkg}" ] && chown -R "${_new_uid}:${_new_uid}" "${SD_BASE}/MountX/cache/${_p_pkg}" 2>/dev/null && rm -f "${SD_BASE}/MountX/cache/${_p_pkg}/.mountx_perms_ok" 2>/dev/null
+                        fi
+                        log_info "  [${_p_pkg}] Self-Healing Reconciler restored package registration cleanly."
+                    else
+                        log_warn "  [${_p_pkg}] Self-Healing Reconciler install failed; protecting SD data by skipping mounts."
+                        _failed_pkgs="${_failed_pkgs}${_p_pkg} "
+                    fi
+                fi
             fi
         fi
     done < "${MOUNTPOINTS_FILE}"
@@ -1855,11 +1997,28 @@ load_mountpoints() {
                         mx_make_rprivate "${dst}"
                         case "${cat}" in
                             APP_PACKAGE)
-                                mount -o remount,bind,exec "${dst}" 2>/dev/null || mount -o remount,exec "${dst}" 2>/dev/null
+                                local _is_loop_lib=0
+                                case "${dst}" in */lib/*|*/lib) _is_loop_lib=1 ;; esac
                                 chown -R 1000:1000 "${dst}" 2>/dev/null
                                 chmod -R 755 "${dst}" 2>/dev/null
                                 restorecon -FR "${dst}" 2>/dev/null || chcon -R u:object_r:apk_data_file:s0 "${dst}" 2>/dev/null
-                                log_info "  [${pkg}] Loop container mounted (APP_PACKAGE): ${ldev} -> ${dst}"
+                                local _loop_oat_rw="${SD_BASE}/MountX/cache/${pkg}_oat"
+                                if [ "${_is_loop_lib}" -eq 0 ]; then
+                                    [ ! -d "${dst}/oat" ] && mkdir -p "${dst}/oat" 2>/dev/null
+                                    chown 1000:1000 "${dst}/oat" 2>/dev/null
+                                    chmod 755 "${dst}/oat" 2>/dev/null
+                                    mkdir -p "${_loop_oat_rw}" 2>/dev/null
+                                    chown 1000:1000 "${_loop_oat_rw}" 2>/dev/null
+                                    chmod 755 "${_loop_oat_rw}" 2>/dev/null
+                                fi
+                                _mx_bind_remount_ro_exec "${dst}" || _mx_bind_remount_rw_exec "${dst}"
+                                mx_make_rprivate "${dst}"
+                                if [ "${_is_loop_lib}" -eq 0 ] && [ -d "${_loop_oat_rw}" ] && [ -d "${dst}/oat" ]; then
+                                    mount -o bind "${_loop_oat_rw}" "${dst}/oat" 2>/dev/null
+                                    _mx_bind_remount_rw_exec "${dst}/oat"
+                                    mx_make_rprivate "${dst}/oat"
+                                fi
+                                log_info "  [${pkg}] Loop container mounted (APP_PACKAGE RO/exec protected): ${ldev} -> ${dst}"
                                 entries=$((entries + 1))
                                 continue
                                 ;;
@@ -1920,12 +2079,11 @@ load_mountpoints() {
                     continue
                 fi
                 if ! mx_is_mounted "${dst}" && [ -d "${dst}" ]; then
-                    local _src_has_files _dst_kb
-                    _src_has_files=$(ls -A "${src}" 2>/dev/null | grep -vE '^(\.nomedia|\.mountx_canary)$' | head -n 1)
+                    local _dst_kb
                     _dst_kb=$(du -sk "${dst}" 2>/dev/null | cut -f1)
                     [ -z "${_dst_kb}" ] && _dst_kb=0
-                    if [ -z "${_src_has_files}" ] && [ "${_dst_kb}" -gt 128 ] 2>/dev/null; then
-                        log_warn "  [${pkg}] Occlusion guard: refusing to bind empty ${src} over populated internal ${dst} (${_dst_kb}KB)."
+                    if ! _mx_dir_has_real_files "${src}" 48 && [ "${_dst_kb}" -gt 96 ] 2>/dev/null; then
+                        log_warn "  [${pkg}] Occlusion guard: refusing to bind empty/skeleton ${src} over populated internal ${dst} (${_dst_kb}KB)."
                         continue
                     fi
                 fi
@@ -2048,57 +2206,52 @@ __MX_PRIV_Z__
                 fi
                 ;;
             APP_PACKAGE)
-                # Dynamic APK target resolution & Self-Healing Package Reconciler
+                # Dynamic APK target resolution (rejects ==deleted== or broken paths when PMS is online)
                 local real_apk_path
                 real_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed 's/^package://')
-                if [ -z "${real_apk_path}" ] && [ -f "${src}/base.apk" ]; then
-                    log_info "  [${pkg}] Self-Healing Reconciler: re-registering detached package from ${src}..."
-                    pm install -r -d "${src}"/*.apk >/dev/null 2>&1
-                    real_apk_path=$(pm path "${pkg}" 2>/dev/null | head -n 1 | sed 's/^package://')
-                    if [ -n "${real_apk_path}" ]; then
-                        local new_apk_dir=$(dirname "${real_apk_path}")
-                        find "${new_apk_dir}" -depth -mindepth 1 -delete 2>/dev/null
-                        local new_uid=$(id -u "${pkg}" 2>/dev/null)
-                        [ -n "${new_uid}" ] && [ -d "${SD_BASE}/MountX/data/${pkg}" ] && chown -R "${new_uid}:${new_uid}" "${SD_BASE}/MountX/data/${pkg}" 2>/dev/null
-                    fi
+                if [ "${_pms_online:-0}" -eq 1 ]; then
+                    case "${real_apk_path}" in
+                        ""|*==deleted==*)
+                            log_warn "  [${pkg}] APP_PACKAGE target invalid or missing in PMS (${real_apk_path:-none}); skipping mount to keep SD data safe."
+                            continue
+                            ;;
+                    esac
                 fi
                 if [ -n "${real_apk_path}" ]; then
                     local real_apk_dir _resolved_abi
                     real_apk_dir=$(dirname "${real_apk_path}")
-                    if echo "${dst}" | grep -q "/lib"; then
-                        _resolved_abi=$(_detect_lib_abi "${src}" "${real_apk_dir}" "${dst}")
-                        if [ -d "${src}/${_resolved_abi}" ]; then
-                            src="${src}/${_resolved_abi}"
-                        fi
-                        dst="${real_apk_dir}/lib/${_resolved_abi}"
-                    else
-                        dst="${real_apk_dir}"
-                    fi
+                    case "${dst}" in
+                        */lib/*|*/lib)
+                            _resolved_abi=$(_detect_lib_abi "${src}" "${real_apk_dir}" "${dst}")
+                            if [ -d "${src}/${_resolved_abi}" ]; then
+                                src="${src}/${_resolved_abi}"
+                            fi
+                            dst="${real_apk_dir}/lib/${_resolved_abi}"
+                            ;;
+                        *)
+                            dst="${real_apk_dir}"
+                            ;;
+                    esac
                 fi
-                if mx_is_mounted_exact "${dst}" && mx_verify_target_live "${cat}" "${src}" "${dst}" "" "${user_id}"; then
-                    # Two-Stage Promotion: Ensure target has RW & exec permissions after boot completion
-                    mount -o remount,bind,rw,exec "${dst}" 2>/dev/null || mount -o remount,rw,exec "${dst}" 2>/dev/null
-                    mx_make_rprivate "${dst}"
-                    touch "${src}/.mountx_canary" 2>/dev/null
-                    chmod 644 "${src}/.mountx_canary" 2>/dev/null
-                    chown 1000:1000 "${src}/.mountx_canary" 2>/dev/null
-                    auto_heal_apk_native_libs "${pkg}" "${dst}"
-                    pm unsuspend "${pkg}" >/dev/null 2>&1
-                    log_info "  [${pkg}] App package target ${dst} already mounted, promoted to RW/exec."
-                    entries=$((entries + 1))
-                    continue
-                elif mx_is_mounted_exact "${dst}"; then
-                    unmount_target_everywhere "${dst}" "" "${user_id}"
-                fi
+                case "${dst}" in
+                    *==deleted==*|*/vmdl*)
+                        log_warn "  [${pkg}] Refusing to bind APP_PACKAGE onto invalid/deleted path ${dst}."
+                        continue
+                        ;;
+                esac
+                local _is_lib_target=0
+                case "${dst}" in
+                    */lib/*|*/lib) _is_lib_target=1 ;;
+                esac
                 if [ ! -d "${src}" ]; then
                     log_warn "  [${pkg}] APP_PACKAGE source missing: ${src}; skipping."
                     continue
                 fi
-                if ! echo "${dst}" | grep -q "/lib" && [ ! -f "${src}/base.apk" ]; then
+                if [ "${_is_lib_target}" -eq 0 ] && { [ ! -f "${src}/base.apk" ] || [ ! -s "${src}/base.apk" ]; }; then
                     log_warn "  [${pkg}] Occlusion guard: ${src}/base.apk missing; refusing to over-mount APK dir ${dst}."
                     continue
                 fi
-                if echo "${dst}" | grep -q "/lib" && [ -z "$(find "${src}" -name '*.so' 2>/dev/null | head -n 1)" ]; then
+                if [ "${_is_lib_target}" -eq 1 ] && [ -z "$(find "${src}" -maxdepth 2 -name '*.so' 2>/dev/null | head -n 1)" ]; then
                     local _lib_dst_kb=0
                     [ -d "${dst}" ] && _lib_dst_kb=$(du -sk "${dst}" 2>/dev/null | cut -f1)
                     if [ "${_lib_dst_kb:-0}" -gt 64 ] 2>/dev/null; then
@@ -2106,10 +2259,68 @@ __MX_PRIV_Z__
                         continue
                     fi
                 fi
+
+                # Apply ownership, permissions, and canary directly on RW backing store BEFORE read-only bind
+                if [ ! -f "${src}/.mountx_perms_ok" ] || [ "$(cat "${src}/.mountx_perms_ok" 2>/dev/null)" != "1000" ] || [ "$(stat -c '%u' "${src}" 2>/dev/null)" != "1000" ]; then
+                    chown -R 1000:1000 "${src}" 2>/dev/null
+                    chmod -R 755 "${src}" 2>/dev/null
+                    printf '%s' "1000" > "${src}/.mountx_perms_ok" 2>/dev/null
+                    chown 1000:1000 "${src}/.mountx_perms_ok" 2>/dev/null
+                    chmod 644 "${src}/.mountx_perms_ok" 2>/dev/null
+                fi
+                touch "${src}/.mountx_canary" 2>/dev/null
+                chmod 644 "${src}/.mountx_canary" 2>/dev/null
+                chown 1000:1000 "${src}/.mountx_canary" 2>/dev/null
+
+                local _oat_rw="${SD_BASE}/MountX/cache/${pkg}_oat"
+                if [ "${_is_lib_target}" -eq 0 ]; then
+                    [ ! -d "${src}/oat" ] && mkdir -p "${src}/oat" 2>/dev/null
+                    chown 1000:1000 "${src}/oat" 2>/dev/null
+                    chmod 755 "${src}/oat" 2>/dev/null
+                    mkdir -p "${_oat_rw}" 2>/dev/null
+                    chown 1000:1000 "${_oat_rw}" 2>/dev/null
+                    chmod 755 "${_oat_rw}" 2>/dev/null
+                    if [ -d "${SD_BASE}/MountX/lib/${pkg}" ]; then
+                        for _lib_sub in "${SD_BASE}/MountX/lib/${pkg}"/*; do
+                            [ -d "${_lib_sub}" ] || continue
+                            local _ab
+                            _ab=$(basename "${_lib_sub}")
+                            case "${_ab}" in
+                                arm64|arm|armeabi*|x86*|riscv64)
+                                    mkdir -p "${src}/lib/${_ab}" 2>/dev/null
+                                    chown 1000:1000 "${src}/lib" "${src}/lib/${_ab}" 2>/dev/null
+                                    chmod 755 "${src}/lib" "${src}/lib/${_ab}" 2>/dev/null
+                                    ;;
+                            esac
+                        done
+                    fi
+                fi
+
+                if mx_is_mounted_exact "${dst}" && mx_verify_target_live "${cat}" "${src}" "${dst}" "" "${user_id}"; then
+                    # Keep APK dir & libs read-only/exec via busybox per-mount flag so installd cannot purge SD APKs,
+                    # while keeping dst/oat writable/exec for ART dex2oat profiles.
+                    _mx_bind_remount_ro_exec "${dst}" || _mx_bind_remount_rw_exec "${dst}"
+                    mx_make_rprivate "${dst}"
+                    if [ "${_is_lib_target}" -eq 0 ] && [ -d "${_oat_rw}" ] && [ -d "${dst}/oat" ]; then
+                        if ! mx_is_mounted_exact "${dst}/oat"; then
+                            mount -o bind "${_oat_rw}" "${dst}/oat" 2>/dev/null
+                        fi
+                        _mx_bind_remount_rw_exec "${dst}/oat"
+                        mx_make_rprivate "${dst}/oat"
+                    fi
+                    auto_heal_apk_native_libs "${pkg}" "${dst}"
+                    pm unsuspend "${pkg}" >/dev/null 2>&1
+                    log_info "  [${pkg}] App package target ${dst} verified (RO/exec protected + RW oat)."
+                    entries=$((entries + 1))
+                    continue
+                elif mx_is_mounted_exact "${dst}"; then
+                    unmount_target_everywhere "${dst}" "" "${user_id}"
+                fi
+
                 # Preserve internal /lib when mounting APK-only split storage so Lib stays on Internal
                 local _lib_hold="/dev/mountx_lib_hold_${pkg}"
                 local _held_lib=0
-                if ! echo "${dst}" | grep -q "/lib"; then
+                if [ "${_is_lib_target}" -eq 0 ]; then
                     if [ -d "${dst}/lib" ] && [ -n "$(find "${dst}/lib" -name '*.so' 2>/dev/null | head -n 1)" ] && [ -z "$(find "${src}/lib" -name '*.so' 2>/dev/null | head -n 1)" ]; then
                         if [ ! -d "${SD_BASE}/MountX/lib/${pkg}" ] || [ -z "$(find "${SD_BASE}/MountX/lib/${pkg}" -name '*.so' 2>/dev/null | head -n 1)" ]; then
                             umount -l "${_lib_hold}" 2>/dev/null
@@ -2121,27 +2332,33 @@ __MX_PRIV_Z__
                         fi
                     fi
                 fi
-                mkdir -p "${dst}" 2>/dev/null
-                mount -o bind "${src}" "${dst}" 2>/dev/null
-                mount -o remount,bind,rw,exec "${dst}" 2>/dev/null || mount -o remount,rw,exec "${dst}" 2>/dev/null
-                mx_make_rprivate "${dst}"
-                if [ ! -f "${src}/.mountx_perms_ok" ] || [ "$(cat "${src}/.mountx_perms_ok" 2>/dev/null)" != "1000" ] || [ "$(stat -c '%u' "${src}" 2>/dev/null)" != "1000" ]; then
-                    chown -R 1000:1000 "${dst}" 2>/dev/null
-                    chmod -R 755 "${dst}" 2>/dev/null
-                    printf '%s' "1000" > "${src}/.mountx_perms_ok" 2>/dev/null
-                    chown 1000:1000 "${src}/.mountx_perms_ok" 2>/dev/null
-                    chmod 644 "${src}/.mountx_perms_ok" 2>/dev/null
+                if [ "${_is_lib_target}" -eq 1 ] && [ ! -d "${dst}" ]; then
+                    local _parent_apk_dir="${dst%/lib*}"
+                    if [ -n "${_parent_apk_dir}" ] && [ "${_parent_apk_dir}" != "${dst}" ] && ! mkdir -p "${dst}" 2>/dev/null; then
+                        if mx_is_mounted_exact "${_parent_apk_dir}"; then
+                            _mx_bind_remount_rw_exec "${_parent_apk_dir}"
+                            mkdir -p "${dst}" 2>/dev/null
+                            chown 1000:1000 "${_parent_apk_dir}/lib" "${dst}" 2>/dev/null
+                            chmod 755 "${_parent_apk_dir}/lib" "${dst}" 2>/dev/null
+                            _mx_bind_remount_ro_exec "${_parent_apk_dir}"
+                        fi
+                    fi
                 fi
-                touch "${src}/.mountx_canary" 2>/dev/null
-                chmod 644 "${src}/.mountx_canary" 2>/dev/null
-                chown 1000:1000 "${src}/.mountx_canary" 2>/dev/null
+                mkdir -p "${dst}" 2>/dev/null
+                if mount -o bind "${src}" "${dst}" 2>/dev/null; then
+                    _mx_bind_remount_ro_exec "${dst}" || _mx_bind_remount_rw_exec "${dst}"
+                    mx_make_rprivate "${dst}"
+                    if [ "${_is_lib_target}" -eq 0 ] && [ -d "${_oat_rw}" ] && [ -d "${dst}/oat" ]; then
+                        mount -o bind "${_oat_rw}" "${dst}/oat" 2>/dev/null
+                        _mx_bind_remount_rw_exec "${dst}/oat"
+                        mx_make_rprivate "${dst}/oat"
+                    fi
+                fi
                 if [ "${_held_lib}" = "1" ]; then
                     mkdir -p "${dst}/lib" 2>/dev/null
                     if mount -o bind "${_lib_hold}" "${dst}/lib" 2>/dev/null; then
-                        mount -o remount,bind,rw,exec "${dst}/lib" 2>/dev/null || mount -o remount,rw,exec "${dst}/lib" 2>/dev/null
+                        _mx_bind_remount_rw_exec "${dst}/lib"
                         mx_make_rprivate "${dst}/lib"
-                        chown -R 1000:1000 "${dst}/lib" 2>/dev/null
-                        chmod -R 755 "${dst}/lib" 2>/dev/null
                         log_info "  [${pkg}] Preserved internal native libs over APK mount: ${dst}/lib"
                     fi
                     umount -l "${_lib_hold}" 2>/dev/null
@@ -2149,20 +2366,30 @@ __MX_PRIV_Z__
                 else
                     auto_heal_apk_native_libs "${pkg}" "${dst}"
                 fi
-                # Ensure active Zygote/USAP namespaces also see APP_PACKAGE on live remount without signalling USAP workers
+                # Mirror protected RO/exec APK + RW oat into Zygote/USAP namespaces without touching USAP signals
+                local _bb_bin
+                _bb_bin=$(_mx_busybox_bin)
                 for zpid in $(_mx_zygote_mnt_pids); do
                     [ ! -e "/proc/${zpid}/ns/mnt" ] && continue
                     if ! mx_is_mounted_in_pid "${zpid}" "${dst}"; then
-                        MX_SRC="${src}" MX_DST="${dst}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -c '
+                        MX_SRC="${src}" MX_DST="${dst}" MX_OAT="${_oat_rw}" MX_IS_LIB="${_is_lib_target}" MX_BB="${_bb_bin}" nsenter --mount="/proc/${zpid}/ns/mnt" -- /system/bin/sh -c '
                             mkdir -p "${MX_DST}" 2>/dev/null
-                            mount -o bind "${MX_SRC}" "${MX_DST}" 2>/dev/null
-                            mount -o remount,bind,rw,exec "${MX_DST}" 2>/dev/null || mount -o remount,rw,exec "${MX_DST}" 2>/dev/null
-                            mount --make-rprivate "${MX_DST}" 2>/dev/null || true
+                            if mount -o bind "${MX_SRC}" "${MX_DST}" 2>/dev/null; then
+                                if [ -n "${MX_BB}" ]; then
+                                    "${MX_BB}" mount -o remount,ro,exec,bind "${MX_DST}" 2>/dev/null || true
+                                fi
+                                mount --make-rprivate "${MX_DST}" 2>/dev/null || true
+                                if [ "${MX_IS_LIB}" -eq 0 ] && [ -n "${MX_OAT}" ] && [ -d "${MX_OAT}" ] && [ -d "${MX_DST}/oat" ]; then
+                                    mount -o bind "${MX_OAT}" "${MX_DST}/oat" 2>/dev/null
+                                    [ -n "${MX_BB}" ] && "${MX_BB}" mount -o remount,rw,exec,bind "${MX_DST}/oat" 2>/dev/null || true
+                                    mount --make-rprivate "${MX_DST}/oat" 2>/dev/null || true
+                                fi
+                            fi
                         ' 2>/dev/null
                     fi
                 done
                 pm unsuspend "${pkg}" >/dev/null 2>&1
-                log_info "  [${pkg}] App package bind-mounted directly: ${src} -> ${dst}"
+                log_info "  [${pkg}] App package bind-mounted (RO/exec protected): ${src} -> ${dst}"
                 entries=$((entries + 1))
                 continue
                 ;;
@@ -2171,13 +2398,11 @@ __MX_PRIV_Z__
                     log_warn "  [${pkg}] CACHE_SHADERS source missing: ${src}; skipping."
                     continue
                 fi
-                # Occlusion guard: do not over-mount empty SD cache over populated internal cache
+                # Occlusion guard: do not over-mount empty/skeleton SD cache over populated internal cache
                 local _cache_dst_kb=0
                 [ -d "${dst}" ] && ! mx_is_mounted "${dst}" && _cache_dst_kb=$(du -sk "${dst}" 2>/dev/null | cut -f1)
-                local _cache_has_files
-                _cache_has_files=$(ls -A "${src}" 2>/dev/null | grep -vE '^(\.nomedia|\.mountx_canary)$' | head -n 1)
-                if [ -z "${_cache_has_files}" ] && [ "${_cache_dst_kb:-0}" -gt 128 ] 2>/dev/null; then
-                    log_warn "  [${pkg}] Occlusion guard: refusing to bind empty cache ${src} over ${dst} (${_cache_dst_kb}KB)."
+                if ! _mx_dir_has_real_files "${src}" 32 && [ "${_cache_dst_kb:-0}" -gt 128 ] 2>/dev/null; then
+                    log_warn "  [${pkg}] Occlusion guard: refusing to bind empty/skeleton cache ${src} over ${dst} (${_cache_dst_kb}KB)."
                     continue
                 fi
                 # If external storage path (/data/media, /storage/emulated, */Android/*), route via runtime namespaces
@@ -2912,6 +3137,12 @@ __MX_DETACH__
                 [ -z "${_uid}" ] && _uid="0"
                 # Only probe mounts whose source actually exists (ignore disconnected USB drives)
                 [ ! -e "${_s}" ] && continue
+                # Never thrash on uninstalled/broken ghost packages or missing APK sources
+                if [ "${_c}" != "CUSTOM" ] && [ -n "${_p}" ]; then
+                    if ! is_package_installed "${_p}"; then
+                        continue
+                    fi
+                fi
                 local _probe_s="${_s}"
                 local _check_t="${_d}"
                 local _rel=""
@@ -2919,6 +3150,7 @@ __MX_DETACH__
                     local _live_apk _live_dir _probe_abi
                     _live_apk=$(pm path "${_p}" 2>/dev/null | head -n 1 | sed -n 's/^package://p' | tr -d '\r')
                     case "${_live_apk}" in
+                        /*==deleted==*|*/vmdl*) continue ;;
                         /*)
                             _live_dir=$(dirname "${_live_apk}")
                             case "${_d}" in
@@ -2930,23 +3162,42 @@ __MX_DETACH__
                                     else
                                         _check_t="${_live_dir}/$(echo "${_d}" | sed 's|.*/lib|lib|')"
                                     fi
+                                    [ -z "$(find "${_probe_s}" -maxdepth 2 -name '*.so' 2>/dev/null | head -n 1)" ] && continue
                                     ;;
                                 *)
                                     _check_t="${_live_dir}"
+                                    [ ! -f "${_probe_s}/base.apk" ] || [ ! -s "${_probe_s}/base.apk" ] && continue
                                     ;;
                             esac
                             ;;
                         *)
+                            # When PMS is online and has no pm path, skip APP_PACKAGE probe (avoid infinite watchdog loop)
+                            service check package 2>/dev/null | grep -q "found" && continue
                             case "${_d}" in
-                                */lib/*)
+                                */lib/*|*/lib)
                                     _probe_abi="${_d##*/lib/}"
                                     _probe_abi="${_probe_abi%%/*}"
-                                    [ -n "${_probe_abi}" ] && [ -d "${_s}/${_probe_abi}" ] && _probe_s="${_s}/${_probe_abi}"
+                                    [ "${_probe_abi}" != "${_d}" ] && [ -n "${_probe_abi}" ] && [ -d "${_s}/${_probe_abi}" ] && _probe_s="${_s}/${_probe_abi}"
+                                    [ -z "$(find "${_probe_s}" -maxdepth 2 -name '*.so' 2>/dev/null | head -n 1)" ] && continue
+                                    ;;
+                                *)
+                                    [ ! -f "${_probe_s}/base.apk" ] || [ ! -s "${_probe_s}/base.apk" ] && continue
                                     ;;
                             esac
                             ;;
                     esac
+                elif [ "${_c}" = "PRIVATE_INTERNAL" ] || [ "${_c}" = "CACHE_SHADERS" ]; then
+                    if ! mx_is_mounted "${_d}" && [ -d "${_d}" ]; then
+                        local _wd_dst_kb
+                        _wd_dst_kb=$(du -sk "${_d}" 2>/dev/null | cut -f1)
+                        if ! _mx_dir_has_real_files "${_probe_s}" 32 && [ "${_wd_dst_kb:-0}" -gt 96 ] 2>/dev/null; then
+                            continue
+                        fi
+                    fi
                 fi
+                case "${_check_t}" in
+                    *==deleted==*|*/vmdl*) continue ;;
+                esac
                 [ ! -e "${_probe_s}" ] && continue
                 case "${_check_t}" in
                     */Android/*|/data/media/*|/storage/emulated/*|/sdcard/*)

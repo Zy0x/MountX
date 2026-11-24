@@ -1013,6 +1013,12 @@ __MX_ZC__
                 )
                 .distinctBy { it.targetPath.trimEnd('/') }
 
+            if (activeMountPoints.isNotEmpty() && activeMountPoints.none { it.resolveCategory() == MountPointCategory.CUSTOM }) {
+                if (!AppPackageInspector.isPackageInstalledHealthyRoot(game.packageName, listOf(sdBase), activeMountPoints)) {
+                    throw IllegalStateException(ctx.getString(R.string.app_uninstalled_mount_blocked_toast, game.displayName))
+                }
+            }
+
             // Never bind-mount when zero external categories are enabled, when a required source is missing,
             // or when an empty MicroSD folder would occlude populated internal app/APK/lib/private/data dirs.
             if (game.mountPoints.isNotEmpty() && activeMountPoints.isEmpty()) {
@@ -1159,7 +1165,7 @@ __MX_ZC__
                     val srcHasSubstantiveFiles = if (srcExists) {
                         val fastProbe = RootShell.exec(
                             "if [ -n \"\$(find \"${mp.sourcePath}\" -maxdepth 4 -type f -size +128k 2>/dev/null | head -n 1)\" ]; then echo 1; " +
-                                "elif [ \"\$(find \"${mp.sourcePath}\" -maxdepth 4 -type f 2>/dev/null | head -n 6 | wc -l)\" -ge 6 ]; then echo 1; " +
+                                "elif [ \"\$(find \"${mp.sourcePath}\" -maxdepth 4 -type f -size +0c ! -name '.nomedia' ! -name '.mountx_canary' ! -name '.mountx_perms_ok' ! -name '*.lck' 2>/dev/null | head -n 6 | wc -l)\" -ge 6 ]; then echo 1; " +
                                 "else echo 0; fi"
                         )
                         fastProbe.output.trim() == "1"
@@ -2161,7 +2167,22 @@ __MX_ZC__
                             } else {
                                 if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
                             }
-                            unmountSafeAcrossNamespaces(listOfNotNull(effectiveTarget, mp.targetPath, if (currentApkDir.isNotBlank()) "$currentApkDir/lib" else null))
+                            unmountSafeAcrossNamespaces(
+                                buildList {
+                                    if (!mp.targetPath.contains("/lib")) {
+                                        if (currentApkDir.isNotBlank()) {
+                                            add("$currentApkDir/oat")
+                                            add("$currentApkDir/lib")
+                                            MountManager.KNOWN_ABIS.forEach { add("$currentApkDir/lib/$it") }
+                                        }
+                                        add("${mp.targetPath.trimEnd('/')}/oat")
+                                        MountManager.KNOWN_ABIS.forEach { add("${mp.targetPath.trimEnd('/')}/lib/$it") }
+                                    }
+                                    add(effectiveTarget)
+                                    add(mp.targetPath)
+                                    if (currentApkDir.isNotBlank()) add("$currentApkDir/lib")
+                                }.distinct()
+                            )
                             if (mp.isEffectivelyVirtualContainer() || mp.sourcePath.endsWith(".img", ignoreCase = true)) {
                                 val imgPath = mp.containerImgPath?.ifBlank { null } ?: mp.sourcePath
                                 detachLoopDevice(imgPath)
@@ -2352,11 +2373,20 @@ __MX_ZC__
                         if (currentApkDir.isNotBlank()) currentApkDir else mp.targetPath
                     }
                     unmountSafeAcrossNamespaces(
-                        listOfNotNull(
-                            effectiveTarget,
-                            mp.targetPath,
-                            if (currentApkDir.isNotBlank()) "$currentApkDir/lib" else null
-                        )
+                        buildList {
+                            if (!isLib) {
+                                if (currentApkDir.isNotBlank()) {
+                                    add("$currentApkDir/oat")
+                                    MountManager.KNOWN_ABIS.forEach { add("$currentApkDir/lib/$it") }
+                                    add("$currentApkDir/lib")
+                                }
+                                add("${mp.targetPath.trimEnd('/')}/oat")
+                                MountManager.KNOWN_ABIS.forEach { add("${mp.targetPath.trimEnd('/')}/lib/$it") }
+                            }
+                            add(effectiveTarget)
+                            add(mp.targetPath)
+                            if (currentApkDir.isNotBlank()) add("$currentApkDir/lib")
+                        }.distinct()
                     )
                     if (mp.isEffectivelyVirtualContainer() || mp.sourcePath.endsWith(".img", ignoreCase = true)) {
                         val imgPath = mp.containerImgPath?.ifBlank { null } ?: mp.sourcePath
@@ -2763,6 +2793,8 @@ EOF_MNTS
                     val pkgPattern = Regex("(?:^|/)$escapedPkg(?:-|/|\\z)")
                     val matchedTarget = activeMounts.firstOrNull { m ->
                         m.startsWith("/data/app/") &&
+                            !m.contains("==deleted==") &&
+                            !m.contains("/vmdl") &&
                             pkgPattern.containsMatchIn(m) &&
                             (m.endsWith("/lib") || m.contains("/lib/")) == wantLib
                     } ?: cleanTgt
@@ -2777,6 +2809,9 @@ EOF_MNTS
                     if (effectiveSrc.isNotBlank() && !effectiveSrc.endsWith(".img", ignoreCase = true)) {
                         inodePathsToProbe.add(effectiveSrc)
                         inodePathsToProbe.add(cleanSrc)
+                        if (!wantLib) {
+                            canaryPathsToProbe.add("$effectiveSrc/base.apk")
+                        }
                     }
                     if (matchedTarget.isNotBlank()) {
                         inodePathsToProbe.add(matchedTarget)
@@ -2863,6 +2898,8 @@ EOF_MNTS
                         val pkgPattern = Regex("(?:^|/)$escapedPkg(?:-|/|\\z)")
                         val matchedTarget = activeMounts.firstOrNull { m ->
                             m.startsWith("/data/app/") &&
+                                !m.contains("==deleted==") &&
+                                !m.contains("/vmdl") &&
                                 pkgPattern.containsMatchIn(m) &&
                                 (m.endsWith("/lib") || m.contains("/lib/")) == wantLib
                         } ?: return@all false
@@ -2877,6 +2914,9 @@ EOF_MNTS
                                 "$cleanSrc/$abi"
                             } else {
                                 cleanSrc
+                            }
+                            if (!wantLib && !existingCanaries.contains("$effectiveSrc/base.apk")) {
+                                return@all false
                             }
                             val srcIno = inodeMap[effectiveSrc] ?: inodeMap[cleanSrc]
                             val dstIno = inodeMap[matchedTarget]

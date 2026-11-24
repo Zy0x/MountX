@@ -217,6 +217,10 @@ class MountWatchdogDaemon @Inject constructor(
             if (!isLiveVerified) {
                 AppLogger.warn("Watchdog", "Live mount verification failed (unmounted/shadowed/Zygote-desynced) for ${game.displayName} (${game.packageName}), re-mounting...")
                 val result = mountManager.mountGame(game, sdBase)
+                if (result.isSuccess) {
+                    app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(game.packageName, sdBase)
+                    app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(game, sdBase)
+                }
                 if (result.isSuccess && mountManager.verifyCanary(game.packageName, game)) {
                     gameDao.updateMountStatus(game.packageName, MountStatus.MOUNTED)
                     anyChanged = true
@@ -257,6 +261,10 @@ class MountWatchdogDaemon @Inject constructor(
         AppLogger.info("Watchdog", "Registered game $packageName was uninstalled from Android.")
         mountManager.unmountGame(game)
         gameDao.updateMountStatus(packageName, MountStatus.UNMOUNTED)
+        // Mark disabled & update mountpoints.conf so service.sh does not auto-reinstall a user-removed app,
+        // while keeping DB record, MicroSD data, and catalog.json intact for one-tap reinstall or restore.
+        gameDao.updateEnabled(packageName, false)
+        runCatching { appRepository.get().syncModuleConfig() }
 
         // Clear any lingering mountpoint in runtime namespaces to prevent Play Store reinstall errors
         val stalePaths = buildList {
@@ -320,6 +328,8 @@ class MountWatchdogDaemon @Inject constructor(
                 AppLogger.info("Watchdog", "Restoring mounts for updated package: $packageName")
                 val mountRes = mountManager.mountGame(updatedGame, sdBase)
                 if (mountRes.isSuccess) {
+                    app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(packageName, sdBase)
+                    app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(updatedGame, sdBase)
                     gameDao.updateMountStatus(packageName, MountStatus.MOUNTED)
                     AppLogger.success("Watchdog", "Successfully restored mounts for updated package: $packageName")
                 } else {
@@ -341,6 +351,8 @@ class MountWatchdogDaemon @Inject constructor(
             if (!isCanaryOk || game.mountStatus != MountStatus.MOUNTED) {
                 val mountRes = mountManager.mountGame(game, sdBase)
                 if (mountRes.isSuccess) {
+                    app.mountx.root.AppPackageInspector.ensureApkHardlinkBackup(game.packageName, sdBase)
+                    app.mountx.root.AppPackageInspector.applyReadOnlyApkProtection(game, sdBase)
                     gameDao.updateMountStatus(packageName, MountStatus.MOUNTED)
                 }
             }
