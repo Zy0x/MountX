@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
@@ -135,6 +136,8 @@ fun AppsScreen(
     val isRefreshingInstalledApps by viewModel.isRefreshingInstalledApps.collectAsState()
     var showCleanAllCacheDialog by remember { mutableStateOf(false) }
     val sdApkStatuses by viewModel.sdApkStatuses.collectAsState()
+    val suspendedPackages by viewModel.suspendedPackages.collectAsState()
+    val unsuspendingPackage by viewModel.unsuspendingPackage.collectAsState()
     val installedPackageSet = remember(installedApps) { installedApps.map { it.packageName }.toSet() }
     var selectedDiscoveredOrphan by remember { mutableStateOf<DiscoveredGame?>(null) }
 
@@ -355,6 +358,27 @@ fun AppsScreen(
             onInstallFromSd = {
                 viewModel.installAppFromSd(updatedGame.packageName)
             },
+            isSuspended = suspendedPackages.contains(updatedGame.packageName),
+            isUnsuspending = unsuspendingPackage == updatedGame.packageName,
+            onUnsuspend = {
+                val ctx = context
+                val label = updatedGame.displayName.ifBlank { updatedGame.packageName }
+                viewModel.unsuspendApp(updatedGame.packageName) { success, err ->
+                    if (success) {
+                        android.widget.Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.toast_unsuspend_success, label),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        android.widget.Toast.makeText(
+                            ctx,
+                            ctx.getString(R.string.toast_unsuspend_failed, label, err ?: ""),
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            },
             onDelete = {
                 gameToDelete = updatedGame
                 selectedGameForDetail = null
@@ -454,6 +478,7 @@ fun AppsScreen(
             onCheckIsGameRunning = { pkg -> viewModel.isGameRunning(pkg) },
             installedPackageSet = installedPackageSet,
             sdApkStatuses = sdApkStatuses,
+            suspendedPackages = suspendedPackages,
             onCleanAllCacheClick = { showCleanAllCacheDialog = true },
             modifier = modifier
         )
@@ -917,6 +942,7 @@ fun GamesContent(
     importDiscoveredProgress: Pair<Int, Int> = Pair(0, 0),
     installedPackageSet: Set<String> = emptySet(),
     sdApkStatuses: Map<String, app.mountx.root.SdApkInstallStatus> = emptyMap(),
+    suspendedPackages: Set<String> = emptySet(),
     onCleanAllCacheClick: () -> Unit = {},
     onImportAllDiscovered: () -> Unit = {},
     onDismissDiscovered: () -> Unit = {},
@@ -1373,6 +1399,7 @@ fun GamesContent(
                                 isPending = pendingOperations.contains(game.packageName),
                                 isInstalledOnDevice = isInstalled,
                                 sdApkStatus = sdApkStatuses[game.packageName],
+                                isSuspended = suspendedPackages.contains(game.packageName),
                                 onToggleMount = {
                                     if (!isInstalled) {
                                         android.widget.Toast.makeText(
@@ -1483,6 +1510,7 @@ fun ModernGameCard(
     isPending: Boolean = false,
     isInstalledOnDevice: Boolean = true,
     sdApkStatus: app.mountx.root.SdApkInstallStatus? = null,
+    isSuspended: Boolean = false,
     onToggleMount: () -> Unit,
     onCardClick: () -> Unit,
     onCardLongClick: (() -> Unit)? = null
@@ -1588,6 +1616,33 @@ fun ModernGameCard(
                                 color = badgeColor,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
+                        }
+                    }
+
+                    if (isInstalledOnDevice && isSuspended) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = warnAmber.copy(alpha = 0.16f),
+                            border = BorderStroke(0.8.dp, warnAmber.copy(alpha = 0.55f))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = warnAmber,
+                                    modifier = Modifier.size(8.5.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.badge_app_suspended),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = warnAmber
+                                )
+                            }
                         }
                     }
 

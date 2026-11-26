@@ -56,12 +56,47 @@ data class ChangelogRelease(
 
 object ChangelogHistory {
     val releases: List<ChangelogRelease> = listOf(
-        // ── v2.2.48 (Latest) ──
+        // ── v2.2.49 (Latest) ──
+        ChangelogRelease(
+            version = "v2.2.49",
+            releaseDate = "26 Nov 2026",
+            summary = "Auto-Unsuspend Across All Mount Categories (OBB/Data/Private/APK), Watchdog Suspended Self-Heal, Launcher Suspended Indicator Badges & 1-Tap Unlock in App Detail",
+            isLatest = true,
+            categories = listOf(
+                CategoryChange(
+                    category = ChangeCategoryType.ADDED,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Launcher Suspended Status Indicator & 1-Tap Unsuspend Control",
+                            details = listOf(
+                                "Added live suspended-state detection across registered apps combining fast PackageManager FLAG_SUSPENDED probing and authoritative root inspection.",
+                                "Added an inline amber 'Suspended / Dijeda' lock badge directly on app cards in the main Apps list and in the App Detail header row.",
+                                "Added a dedicated Suspended Alert Banner with a 48dp 1-tap 'Unlock App (Unsuspend)' action button in App Detail to immediately restore greyed-out/unavailable launcher apps."
+                            )
+                        )
+                    )
+                ),
+                CategoryChange(
+                    category = ChangeCategoryType.FIXED,
+                    features = listOf(
+                        FeatureChange(
+                            title = "Universal Auto-Unsuspend for OBB & External Data Mounted Apps",
+                            details = listOf(
+                                "Fixed a bug where MountX service.sh only ran pm unsuspend on APP_PACKAGE targets, leaving OBB/EXTERNAL_DATA-only games (such as Genshin Impact and Honkai: Star Rail) stuck in suspended=true after boot or storage recovery.",
+                                "Added post-mount auto-unsuspend across all verified mount categories and Watchdog heartbeat self-healing so active mounted apps never stay locked in the Android launcher."
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+
+        // ── v2.2.48 ──
         ChangelogRelease(
             version = "v2.2.48",
             releaseDate = "04 Nov 2026",
             summary = "Spotify Loop Container, 100% Bilingual Parity, Zero-Reboot Module Sync & Adaptive I/O Booster Stability across eMMC, MicroSD, SSD & UFS Storage",
-            isLatest = true,
+            isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.ADDED,

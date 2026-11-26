@@ -68,6 +68,62 @@ object AppPackageInspector {
     }
 
     /**
+     * Fast, zero-root check whether an app is currently suspended in Android Launcher (`FLAG_SUSPENDED`).
+     */
+    fun isPackageSuspendedFast(context: Context, packageName: String): Boolean {
+        return try {
+            val info = resolveHealthyPackageInfo(context, packageName) ?: return false
+            val flags = info.applicationInfo?.flags ?: return false
+            (flags and android.content.pm.ApplicationInfo.FLAG_SUSPENDED) != 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Authoritative root check for `suspended=true` in PackageManager (`dumpsys package`).
+     */
+    suspend fun isPackageSuspendedRoot(packageName: String, userId: Int = 0): Boolean = withContext(Dispatchers.IO) {
+        val escaped = packageName.replace("\"", "\\\"")
+        val res = RootShell.exec("dumpsys package \"$escaped\" 2>/dev/null | grep -q 'suspended=true' && echo 1 || echo 0")
+        res.output.trim() == "1"
+    }
+
+    /**
+     * Batch-queries suspended state across a set of registered packages in one fast root shell pass.
+     */
+    suspend fun querySuspendedPackagesRoot(packages: Collection<String>): Set<String> = withContext(Dispatchers.IO) {
+        if (packages.isEmpty()) return@withContext emptySet()
+        val wanted = packages.toSet()
+        val res = RootShell.exec(
+            "dumpsys package 2>/dev/null | awk '/^  Package \\[/{pkg=\$2; gsub(/[\\[\\]]/,\"\",pkg)} /suspended=true/{if (pkg != \"\") print pkg}' | sort -u"
+        )
+        if (!res.isSuccess || res.output.isBlank()) return@withContext emptySet()
+        res.output.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && wanted.contains(it) }
+            .toSet()
+    }
+
+    /**
+     * Unsuspends (unlocks) a package in Android Launcher via root `pm unsuspend` and verifies state cleared.
+     */
+    suspend fun unsuspendPackage(packageName: String, userId: Int = 0): Result<Unit> = withContext(Dispatchers.IO) {
+        val escaped = packageName.replace("\"", "\\\"")
+        val cmd = "pm unsuspend --user $userId \"$escaped\" 2>&1 || pm unsuspend \"$escaped\" 2>&1"
+        val res = RootShell.exec(cmd)
+        val stillSuspended = isPackageSuspendedRoot(packageName, userId)
+        if (!stillSuspended) {
+            AppLogger.info("AppPackageInspector", "Unsuspended package $packageName (user $userId)")
+            Result.success(Unit)
+        } else {
+            val detail = res.output.trim().ifBlank { "Package remains suspended" }
+            AppLogger.warn("AppPackageInspector", "Failed to unsuspend $packageName: $detail")
+            Result.failure(IllegalStateException(detail))
+        }
+    }
+
+    /**
      * Root-verified package health check: queries `pm path` and ensures either the internal APK exists
      * or MountX holds an intact SD APK ready for mount.
      */

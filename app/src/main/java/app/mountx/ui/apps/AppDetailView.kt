@@ -203,6 +203,9 @@ fun GameDetailView(
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     onReconcilePermissions: (() -> Unit)? = null,
     onInstallFromSd: ((app.mountx.root.SdApkInstallStatus) -> Unit)? = null,
+    isSuspended: Boolean = false,
+    isUnsuspending: Boolean = false,
+    onUnsuspend: (() -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -236,6 +239,9 @@ fun GameDetailView(
     onDeleteCategoryData = onDeleteCategoryData,
     onReconcilePermissions = onReconcilePermissions,
     onInstallFromSd = onInstallFromSd,
+    isSuspended = isSuspended,
+    isUnsuspending = isUnsuspending,
+    onUnsuspend = onUnsuspend,
     isRefreshing = isRefreshing,
     onRefresh = onRefresh,
     modifier = modifier
@@ -273,6 +279,9 @@ fun AppDetailView(
     onDeleteCategoryData: (String, CategoryDeleteLocation, (Boolean, String?) -> Unit) -> Unit = { _, _, _ -> },
     onReconcilePermissions: (() -> Unit)? = null,
     onInstallFromSd: ((app.mountx.root.SdApkInstallStatus) -> Unit)? = null,
+    isSuspended: Boolean = false,
+    isUnsuspending: Boolean = false,
+    onUnsuspend: (() -> Unit)? = null,
     isRefreshing: Boolean = false,
     onRefresh: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -321,14 +330,26 @@ fun AppDetailView(
     var rootLiveApkOk by remember(game.packageName) { mutableStateOf(rawPackageInfo != null) }
     var sdApkStatus by remember(game.packageName) { mutableStateOf<app.mountx.root.SdApkInstallStatus?>(null) }
     var isInspectingSdApk by remember(game.packageName) { mutableStateOf(false) }
+    var localSuspended by remember(game.packageName, isSuspended) {
+        mutableStateOf(isSuspended || app.mountx.root.AppPackageInspector.isPackageSuspendedFast(context, game.packageName))
+    }
+    var localUnsuspending by remember(game.packageName) { mutableStateOf(false) }
+    val effectiveSuspended = isSuspended || localSuspended
+    val effectiveUnsuspending = isUnsuspending || localUnsuspending
     val packageInfo = if (rootLiveApkOk) rawPackageInfo else null
 
-    LaunchedEffect(game.packageName, sdBase, breakdown, isMoving, rawPackageInfo) {
+    LaunchedEffect(game.packageName, sdBase, breakdown, isMoving, rawPackageInfo, isSuspended, isRefreshing) {
         val pmPath = app.mountx.root.AppPackageInspector.queryLivePmApkPath(game.packageName)
         val liveOk = rawPackageInfo != null && pmPath != null &&
             (app.mountx.root.RootShell.exec("[ -f \"$pmPath\" ] && echo 1 || echo 0").output.trim() == "1" ||
                 currentMountPoints.any { it.enabled && it.resolveCategory() == MountPointCategory.APP_PACKAGE })
         rootLiveApkOk = liveOk
+        localSuspended = if (liveOk) {
+            app.mountx.root.AppPackageInspector.isPackageSuspendedFast(context, game.packageName) ||
+                app.mountx.root.AppPackageInspector.isPackageSuspendedRoot(game.packageName)
+        } else {
+            false
+        }
         if (!liveOk) {
             isInspectingSdApk = true
             val diskBases = availableDisks.flatMap { it.partitions.mapNotNull { p -> p.mountPoint } } + sdBase
@@ -561,6 +582,35 @@ fun AppDetailView(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
+                            if (packageInfo != null && effectiveSuspended) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = warnAmber.copy(alpha = 0.16f),
+                                    border = BorderStroke(0.8.dp, warnAmber.copy(alpha = 0.55f))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = null,
+                                            tint = warnAmber,
+                                            modifier = Modifier.size(9.dp)
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.badge_app_suspended),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 8.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = warnAmber,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -569,6 +619,114 @@ fun AppDetailView(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                     modifier = Modifier.padding(vertical = 1.dp)
                 )
+
+                if (packageInfo != null && effectiveSuspended) {
+                    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                    val warnAmber = if (isDark) SunsetAmber else WarmAmberLight
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = warnAmber.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, warnAmber.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = warnAmber,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.app_detail_suspended_title),
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = warnAmber
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.app_detail_suspended_desc),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 10.5.sp,
+                                            lineHeight = 13.5.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = {
+                                    if (onUnsuspend != null) {
+                                        onUnsuspend()
+                                        localSuspended = false
+                                    } else {
+                                        coroutineScope.launch {
+                                            localUnsuspending = true
+                                            val res = app.mountx.root.AppPackageInspector.unsuspendPackage(game.packageName)
+                                            localUnsuspending = false
+                                            if (res.isSuccess) {
+                                                localSuspended = false
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.toast_unsuspend_success, game.displayName.ifBlank { game.packageName }),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.toast_unsuspend_failed, game.displayName.ifBlank { game.packageName }, res.exceptionOrNull()?.message ?: ""),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !effectiveUnsuspending && !isMoving,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = warnAmber,
+                                    contentColor = Color.Black
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                            ) {
+                                if (effectiveUnsuspending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color.Black
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(
+                                        if (effectiveUnsuspending) R.string.btn_unsuspending_app
+                                        else R.string.btn_unsuspend_app
+                                    ),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                    }
+                }
 
                 if (packageInfo == null) {
                     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f

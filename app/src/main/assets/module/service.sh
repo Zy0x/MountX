@@ -2309,7 +2309,7 @@ __MX_PRIV_Z__
                         mx_make_rprivate "${dst}/oat"
                     fi
                     auto_heal_apk_native_libs "${pkg}" "${dst}"
-                    pm unsuspend "${pkg}" >/dev/null 2>&1
+                    pm unsuspend --user "${user_id}" "${pkg}" >/dev/null 2>&1 || pm unsuspend "${pkg}" >/dev/null 2>&1 || true
                     log_info "  [${pkg}] App package target ${dst} verified (RO/exec protected + RW oat)."
                     entries=$((entries + 1))
                     continue
@@ -2388,7 +2388,7 @@ __MX_PRIV_Z__
                         ' 2>/dev/null
                     fi
                 done
-                pm unsuspend "${pkg}" >/dev/null 2>&1
+                pm unsuspend --user "${user_id}" "${pkg}" >/dev/null 2>&1 || pm unsuspend "${pkg}" >/dev/null 2>&1 || true
                 log_info "  [${pkg}] App package bind-mounted (RO/exec protected): ${src} -> ${dst}"
                 entries=$((entries + 1))
                 continue
@@ -2548,6 +2548,27 @@ __MX_CACHE_Z__
             esac
         done < "${MOUNTPOINTS_FILE}"
     fi
+
+    # Auto-unsuspend every package whose required mountpoints succeeded (covers OBB/EXTERNAL_DATA/PRIVATE/CACHE/APK,
+    # not only APP_PACKAGE) so mounted apps are never left greyed-out/unavailable in the Android launcher.
+    local _unsusp_done=" "
+    while IFS='|' read -r _u_pkg _u_cat _u_src _u_dst _u_pres _u_uuid _u_uid || [ -n "${_u_pkg}" ]; do
+        case "${_u_pkg}" in ''|\#*) continue ;; esac
+        _u_pkg=$(echo "${_u_pkg}" | tr -d '\r')
+        _u_uid=$(echo "${_u_uid}" | tr -d '\r')
+        [ -z "${_u_uid}" ] && _u_uid="0"
+        case "${_failed_pkgs}" in
+            *" ${_u_pkg} "*) continue ;;
+        esac
+        case "${_unsusp_done}" in
+            *" ${_u_pkg}:${_u_uid} "*) continue ;;
+        esac
+        _unsusp_done="${_unsusp_done}${_u_pkg}:${_u_uid} "
+        if dumpsys package "${_u_pkg}" 2>/dev/null | grep -q 'suspended=true'; then
+            pm unsuspend --user "${_u_uid}" "${_u_pkg}" >/dev/null 2>&1 || pm unsuspend "${_u_pkg}" >/dev/null 2>&1 || true
+            log_info "  [${_u_pkg}] Auto-unsuspended package (user ${_u_uid}) after mount verification."
+        fi
+    done < "${MOUNTPOINTS_FILE}"
 
     log_info "Processed ${entries} entry(ies) from mountpoints.conf."
     [ ${entries} -gt 0 ] && return 0 || return 1
@@ -3242,6 +3263,15 @@ __MX_DETACH__
             [ ${CHECK_INTERVAL} -gt ${MAX_INTERVAL} ] && CHECK_INTERVAL=${MAX_INTERVAL}
             log_info "[Watchdog] System stable (${CONSECUTIVE_OK} checks OK). Interval → ${CHECK_INTERVAL}s."
         fi
+
+        # Self-heal any verified mounted app unexpectedly left suspended in launcher
+        for _vp in ${_verified_pkgs}; do
+            [ -z "${_vp}" ] && continue
+            if dumpsys package "${_vp}" 2>/dev/null | grep -q 'suspended=true'; then
+                pm unsuspend --user 0 "${_vp}" >/dev/null 2>&1 || pm unsuspend "${_vp}" >/dev/null 2>&1 || true
+                log_info "[Watchdog] Auto-unsuspended verified mounted app: ${_vp}"
+            fi
+        done
 
         local free_mb
         free_mb=$(df -Pk "${SD_BASE}" 2>/dev/null | awk 'NR==2 {print int($4/1024)}')

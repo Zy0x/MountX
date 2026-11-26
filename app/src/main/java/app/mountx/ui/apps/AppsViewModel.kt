@@ -76,6 +76,12 @@ class AppsViewModel @Inject constructor(
     private val _sdApkStatuses = MutableStateFlow<Map<String, app.mountx.root.SdApkInstallStatus>>(emptyMap())
     val sdApkStatuses: StateFlow<Map<String, app.mountx.root.SdApkInstallStatus>> = _sdApkStatuses.asStateFlow()
 
+    private val _suspendedPackages = MutableStateFlow<Set<String>>(emptySet())
+    val suspendedPackages: StateFlow<Set<String>> = _suspendedPackages.asStateFlow()
+
+    private val _unsuspendingPackage = MutableStateFlow<String?>(null)
+    val unsuspendingPackage: StateFlow<String?> = _unsuspendingPackage.asStateFlow()
+
     private val _isImportingDiscovered = MutableStateFlow(false)
     val isImportingDiscovered: StateFlow<Boolean> = _isImportingDiscovered.asStateFlow()
 
@@ -295,8 +301,13 @@ class AppsViewModel @Inject constructor(
                 }
                 // 3. Sync mount status without global multi-app rescan
                 gameRepository.refreshMountStatuses()
-                // 4. Update live health telemetry
+                // 4. Update live health telemetry & suspended state
                 _appHealth.value = diagnosticManager.getAppHealth(packageName)
+                val isSusp = app.mountx.root.AppPackageInspector.isPackageSuspendedFast(context, packageName) ||
+                    app.mountx.root.AppPackageInspector.isPackageSuspendedRoot(packageName)
+                _suspendedPackages.update { cur ->
+                    if (isSusp) cur + packageName else cur - packageName
+                }
             } catch (e: Exception) {
                 app.mountx.util.AppLogger.error("GamesVM", "refreshAppDetail failed for $packageName: ${e.message}")
             } finally {
@@ -911,8 +922,48 @@ class AppsViewModel @Inject constructor(
                     map[pkg] = gameRepository.inspectSdApkBundle(pkg, sdBase, pts)
                 }
                 _sdApkStatuses.value = map
+                refreshSuspendedPackages()
             } catch (e: Exception) {
                 app.mountx.util.AppLogger.warn("GamesVM", "refreshSdApkStatuses error: ${e.message}")
+            }
+        }
+    }
+
+    fun refreshSuspendedPackages() {
+        viewModelScope.launch {
+            try {
+                val pkgs = apps.value.map { it.packageName }
+                if (pkgs.isEmpty()) {
+                    if (_suspendedPackages.value.isNotEmpty()) _suspendedPackages.value = emptySet()
+                    return@launch
+                }
+                val fast = pkgs.filter { app.mountx.root.AppPackageInspector.isPackageSuspendedFast(context, it) }.toSet()
+                val root = app.mountx.root.AppPackageInspector.querySuspendedPackagesRoot(pkgs)
+                _suspendedPackages.value = fast + root
+            } catch (e: Exception) {
+                app.mountx.util.AppLogger.warn("GamesVM", "refreshSuspendedPackages error: ${e.message}")
+            }
+        }
+    }
+
+    fun unsuspendApp(packageName: String, onComplete: (Boolean, String?) -> Unit) {
+        if (_unsuspendingPackage.value == packageName) return
+        viewModelScope.launch {
+            _unsuspendingPackage.value = packageName
+            try {
+                val res = app.mountx.root.AppPackageInspector.unsuspendPackage(packageName)
+                if (res.isSuccess) {
+                    _suspendedPackages.update { it - packageName }
+                    onComplete(true, null)
+                } else {
+                    onComplete(false, res.exceptionOrNull()?.message)
+                }
+            } catch (e: Exception) {
+                onComplete(false, e.message)
+            } finally {
+                if (_unsuspendingPackage.value == packageName) {
+                    _unsuspendingPackage.value = null
+                }
             }
         }
     }

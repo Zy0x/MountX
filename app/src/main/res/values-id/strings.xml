@@ -1570,6 +1570,13 @@
     <string name="dialog_manual_install_desc">MountX menyimpan %1$s data untuk %2$s, namun berkas APK lengkap tidak tersedia (%3$s). Silakan pasang %2$s secara manual terlebih dahulu (mis. dari Google Play Store atau penginstal APK), lalu pulihkan di MountX.</string>
     <string name="btn_import_register_only">Simpan ke Daftar</string>
     <string name="toast_import_registered_pending">%1$s ditambahkan ke daftar MountX. Pasang aplikasi secara manual untuk menyambungkan data.</string>
+    <string name="badge_app_suspended">Dijeda</string>
+    <string name="app_detail_suspended_title">Aplikasi Dijeda di Launcher</string>
+    <string name="app_detail_suspended_desc">Aplikasi ini sedang berstatus suspended (dijeda) oleh sistem sehingga terlihat abu-abu atau tidak tersedia di launcher. Buka kuncinya sekarang agar dapat dibuka kembali.</string>
+    <string name="btn_unsuspend_app">Buka Kunci Aplikasi (Unsuspend)</string>
+    <string name="btn_unsuspending_app">Membuka kunci…</string>
+    <string name="toast_unsuspend_success">%1$s berhasil dibuka kuncinya dan tersedia kembali di launcher.</string>
+    <string name="toast_unsuspend_failed">Gagal membuka kunci %1$s: %2$s</string>
 </resources>
 
 

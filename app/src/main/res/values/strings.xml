@@ -1586,6 +1586,13 @@
     <string name="dialog_manual_install_desc">MountX preserves %1$s of data for %2$s, but no complete APK bundle was found (%3$s). Please install %2$s manually first (for example from Google Play Store or an APK installer), then restore it inside MountX.</string>
     <string name="btn_import_register_only">Keep in App List</string>
     <string name="toast_import_registered_pending">%1$s saved to MountX. Install the app manually to reconnect data.</string>
+    <string name="badge_app_suspended">Suspended</string>
+    <string name="app_detail_suspended_title">App Suspended in Launcher</string>
+    <string name="app_detail_suspended_desc">This app is currently paused (suspended) by Android, making it greyed out or unavailable in the launcher. Unlock it now so you can open it normally.</string>
+    <string name="btn_unsuspend_app">Unlock App (Unsuspend)</string>
+    <string name="btn_unsuspending_app">Unlocking…</string>
+    <string name="toast_unsuspend_success">%1$s unlocked and restored in launcher.</string>
+    <string name="toast_unsuspend_failed">Failed to unlock %1$s: %2$s</string>
 </resources>
 
 
