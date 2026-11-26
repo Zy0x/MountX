@@ -56,12 +56,34 @@ data class ChangelogRelease(
 
 object ChangelogHistory {
     val releases: List<ChangelogRelease> = listOf(
-        // ── v2.2.49 (Latest) ──
+        // ── v2.2.50 (Latest) ──
+        ChangelogRelease(
+            version = "v2.2.50",
+            releaseDate = "26 Nov 2026",
+            summary = "High-Throughput F2FS MicroSD Mount Pipeline (nodiscard + fsync_mode=nobarrier), 1024KB DMA Burst Unlock & mq-deadline Auto-Mapping",
+            isLatest = true,
+            categories = listOf(
+                CategoryChange(
+                    category = ChangeCategoryType.IMPROVED,
+                    features = listOf(
+                        FeatureChange(
+                            title = "F2FS MicroSD Sustained Write & Read Throughput Boost",
+                            details = listOf(
+                                "Updated post-fs-data.sh and service.sh F2FS mount flags to use nodiscard and fsync_mode=nobarrier with graceful multi-kernel fallbacks, eliminating synchronous consumer SD FTL discard/barrier write stalls (boosted 64MB synced writes from 1.4-8.8 MB/s up to 16 MB/s on Helio G96).",
+                                "Added automatic live F2FS remount upgrade when /data/sdext2 is already mounted with legacy discard or fsync_mode=posix flags.",
+                                "Unlocked hardware block queue max_sectors_kb up to 1024KB (clamped safely to max_hw_sectors_kb) and auto-mapped legacy 'deadline' config to 'mq-deadline' on Linux 4.19+ kernels for unsplit AUTOCMD23 DMA bursts."
+                            )
+                        )
+                    )
+                )
+            )
+        ),
+        // ── v2.2.49 ──
         ChangelogRelease(
             version = "v2.2.49",
             releaseDate = "26 Nov 2026",
             summary = "Auto-Unsuspend Across All Mount Categories (OBB/Data/Private/APK), Watchdog Suspended Self-Heal, Launcher Suspended Indicator Badges & 1-Tap Unlock in App Detail",
-            isLatest = true,
+            isLatest = false,
             categories = listOf(
                 CategoryChange(
                     category = ChangeCategoryType.ADDED,

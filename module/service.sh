@@ -929,6 +929,10 @@ mount_sd() {
     while [ "${attempts}" -lt 5 ]; do
         if mx_is_mounted "${SD_BASE}"; then
             mx_make_rprivate "${SD_BASE}"
+            if grep -E " ${SD_BASE} f2fs " /proc/mounts 2>/dev/null | grep -qE "(^|,)discard(,|$)|fsync_mode=posix"; then
+                mount -o remount,nodiscard,fsync_mode=nobarrier "${SD_BASE}" 2>/dev/null || \
+                mount -o remount,nodiscard "${SD_BASE}" 2>/dev/null || true
+            fi
             log_info "SD already mounted at ${SD_BASE}."
             return 0
         fi
@@ -984,7 +988,7 @@ mount_sd() {
             # Build optimized mount options per filesystem
             local mnt_opts="rw,noatime,nodiratime"
             case "${detected_fs}" in
-                f2fs)  mnt_opts="${mnt_opts},${sd_ctx},inline_data,inline_dentry,flush_merge,mode=adaptive" ;;
+                f2fs)  mnt_opts="${mnt_opts},${sd_ctx},nodiscard,inline_data,inline_dentry,flush_merge,mode=adaptive,fsync_mode=nobarrier" ;;
                 ext4)  mnt_opts="${mnt_opts},${sd_ctx},commit=60,delalloc,data=writeback" ;;
                 ntfs)  mnt_opts="rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000" ;;
                 exfat) mnt_opts="rw,noatime,nodiratime,uid=1023,gid=1023,fmask=0000,dmask=0000,iocharset=utf8" ;;
@@ -1007,6 +1011,8 @@ mount_sd() {
             elif [ "${detected_fs}" != "auto" ]; then
                 if mount -t "${detected_fs}" -o "${mnt_opts}" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
                     mounted=1; log_info "SD mounted: ${SD_BLOCK} → ${SD_BASE} (${detected_fs})"
+                elif [ "${detected_fs}" = "f2fs" ] && mount -t f2fs -o "rw,noatime,nodiratime,${sd_ctx},nodiscard,inline_data,inline_dentry,flush_merge,mode=adaptive" "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
+                    mounted=1; log_info "SD mounted (f2fs nodiscard fallback): ${SD_BLOCK} → ${SD_BASE}"
                 elif mount -t "${detected_fs}" -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null; then
                     mounted=1; log_info "SD mounted (simple opts): ${SD_BLOCK} → ${SD_BASE} (${detected_fs})"
                 elif [ "${detected_fs}" = "f2fs" ] || [ "${detected_fs}" = "ext4" ]; then
@@ -1096,12 +1102,23 @@ apply_io_tweaks() {
         if [ -n "${IO_SCHEDULER}" ] && [ -w "${queue_dir}/scheduler" ]; then
             if grep -qw "${IO_SCHEDULER}" "${queue_dir}/scheduler" 2>/dev/null; then
                 echo "${IO_SCHEDULER}" > "${queue_dir}/scheduler" 2>/dev/null
+            elif [ "${IO_SCHEDULER}" = "deadline" ] && grep -qw "mq-deadline" "${queue_dir}/scheduler" 2>/dev/null; then
+                echo "mq-deadline" > "${queue_dir}/scheduler" 2>/dev/null
             else
                 log_warn "Scheduler '${IO_SCHEDULER}' not supported by ${disk_name}. Keeping kernel default."
             fi
         fi
         [ -w "${queue_dir}/rq_affinity" ] && echo "${RQ_AFFINITY}" > "${queue_dir}/rq_affinity"
         [ -w "${queue_dir}/nr_requests" ] && echo "${NR_REQUESTS}" > "${queue_dir}/nr_requests"
+        if [ -w "${queue_dir}/max_sectors_kb" ] && [ -r "${queue_dir}/max_hw_sectors_kb" ]; then
+            local _hw_max _tgt_max
+            _hw_max=$(cat "${queue_dir}/max_hw_sectors_kb" 2>/dev/null | tr -d '\r\n')
+            if [ -n "${_hw_max}" ] && [ "${_hw_max}" -gt 0 ] 2>/dev/null; then
+                _tgt_max=1024
+                [ "${_hw_max}" -lt "${_tgt_max}" ] && _tgt_max="${_hw_max}"
+                echo "${_tgt_max}" > "${queue_dir}/max_sectors_kb" 2>/dev/null
+            fi
+        fi
         [ -w "${queue_dir}/add_random" ] && echo "0" > "${queue_dir}/add_random"
         [ -w "${queue_dir}/rotational" ] && echo "0" > "${queue_dir}/rotational"
         [ -w "${queue_dir}/nomerges" ] && echo "0" > "${queue_dir}/nomerges"
@@ -1551,7 +1568,9 @@ mount_disk_by_uuid() {
             [ ${mounted} -eq 0 ] && mount -t ntfs -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         f2fs)
-            mount -t f2fs -o rw,noatime,nodiratime,${sd_ctx},inline_data,inline_dentry "${blk_dev}" "${mnt_point}" 2>/dev/null || mount -t f2fs -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
+            mount -t f2fs -o rw,noatime,nodiratime,${sd_ctx},nodiscard,inline_data,inline_dentry,flush_merge,mode=adaptive,fsync_mode=nobarrier "${blk_dev}" "${mnt_point}" 2>/dev/null || \
+            mount -t f2fs -o rw,noatime,nodiratime,${sd_ctx},nodiscard,inline_data,inline_dentry "${blk_dev}" "${mnt_point}" 2>/dev/null || \
+            mount -t f2fs -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1
             ;;
         ext4)
             mount -t ext4 -o rw,noatime,nodiratime,${sd_ctx},commit=60,delalloc "${blk_dev}" "${mnt_point}" 2>/dev/null || mount -t ext4 -o rw,noatime "${blk_dev}" "${mnt_point}" 2>/dev/null && mounted=1

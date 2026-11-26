@@ -155,7 +155,11 @@ if ! _pfs_is_mounted "${SD_BASE}"; then
     fi
 
     case "${detected_fs}" in
-        f2fs) mount -t f2fs -o rw,noatime,nodiratime,${SD_CTX},inline_data,inline_dentry,flush_merge "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null || mount -t f2fs -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null ;;
+        f2fs)
+            mount -t f2fs -o rw,noatime,nodiratime,${SD_CTX},nodiscard,inline_data,inline_dentry,flush_merge,mode=adaptive,fsync_mode=nobarrier "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null || \
+            mount -t f2fs -o rw,noatime,nodiratime,${SD_CTX},nodiscard,inline_data,inline_dentry,flush_merge "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null || \
+            mount -t f2fs -o rw,noatime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null
+            ;;
         ext4) mount -t ext4 -o rw,noatime,nodiratime,${SD_CTX} "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null || mount -t ext4 -o rw,noatime,nodiratime "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null ;;
         exfat|vfat) mount -t "${detected_fs}" -o rw,noatime,uid=1023,gid=1023,fmask=0000,dmask=0000 "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null ;;
         *) mount "${SD_BLOCK}" "${SD_BASE}" 2>/dev/null ;;
