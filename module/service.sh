@@ -105,9 +105,9 @@ log_error() { log "ERROR" "$@"; }
 MOD_VER=$(grep -E '^version=' "${MODULE_DIR}/module.prop" 2>/dev/null | cut -d= -f2 | tr -d '\r\n')
 [ -z "${MOD_VER}" ] && MOD_VER="v2.2.47"
 
-# Log rotation: prevent infinite log growth (> 2MB)
-if [ -f "${LOG_FILE}" ] && [ "$(stat -c%s "${LOG_FILE}" 2>/dev/null || echo 0)" -gt 2097152 ]; then
-    tail -n 500 "${LOG_FILE}" > "${LOG_FILE}.tmp" 2>/dev/null && mv -f "${LOG_FILE}.tmp" "${LOG_FILE}" 2>/dev/null
+# Log rotation: prevent log bloat on cold boot (> 512KB)
+if [ -f "${LOG_FILE}" ] && [ "$(stat -c%s "${LOG_FILE}" 2>/dev/null || echo 0)" -gt 524288 ]; then
+    tail -n 400 "${LOG_FILE}" > "${LOG_FILE}.tmp" 2>/dev/null && mv -f "${LOG_FILE}.tmp" "${LOG_FILE}" 2>/dev/null
 fi
 
 {
@@ -117,14 +117,20 @@ fi
 } >> "${LOG_FILE}"
 
 # ── Universal Mount & Propagation Helpers (Android 10-17 / Toybox+BusyBox) ──
+_MX_BB_CACHED=""
 _mx_busybox() {
-    if [ -x /dev/mountx_bin/busybox ]; then
-        echo "/dev/mountx_bin/busybox"
-    elif [ -n "${MODULE_DIR}" ] && [ -x "${MODULE_DIR}/bin/busybox" ]; then
-        echo "${MODULE_DIR}/bin/busybox"
-    elif command -v busybox >/dev/null 2>&1; then
-        command -v busybox
+    if [ -n "${_MX_BB_CACHED}" ] && [ -x "${_MX_BB_CACHED}" ]; then
+        echo "${_MX_BB_CACHED}"
+        return 0
     fi
+    if [ -x /dev/mountx_bin/busybox ]; then
+        _MX_BB_CACHED="/dev/mountx_bin/busybox"
+    elif [ -n "${MODULE_DIR}" ] && [ -x "${MODULE_DIR}/bin/busybox" ]; then
+        _MX_BB_CACHED="${MODULE_DIR}/bin/busybox"
+    elif command -v busybox >/dev/null 2>&1; then
+        _MX_BB_CACHED=$(command -v busybox)
+    fi
+    [ -n "${_MX_BB_CACHED}" ] && echo "${_MX_BB_CACHED}"
 }
 
 mx_make_rprivate() {
@@ -144,9 +150,17 @@ mx_is_mounted_exact() {
     local _mi="/proc/1/mountinfo"
     [ ! -r "${_mi}" ] && _mi="/proc/self/mountinfo"
     if [ -r "${_mi}" ]; then
+        case "${_p}" in
+            *" "*) ;;
+            *) grep -qF " ${_p} " "${_mi}" 2>/dev/null || return 1 ;;
+        esac
         awk -v t="${_p}" '{m=$5; gsub(/\\040/, " ", m); if (m==t) {f=1; exit}} END {exit (f?0:1)}' "${_mi}" 2>/dev/null
         return $?
     elif [ -r /proc/mounts ]; then
+        case "${_p}" in
+            *" "*) ;;
+            *) grep -qF " ${_p} " /proc/mounts 2>/dev/null || return 1 ;;
+        esac
         awk -v t="${_p}" '{m=$2; gsub(/\\040/, " ", m); if (m==t) {f=1; exit}} END {exit (f?0:1)}' /proc/mounts 2>/dev/null
         return $?
     fi
@@ -1450,25 +1464,49 @@ bind_mount_to_runtime_namespaces() {
         done
 
         # Inject into active Zygote/USAP namespaces only where parent storage root is live non-tmpfs and healthy
+        # Single-pass awk over /proc/self/mountinfo per Zygote PID eliminates 15 redundant awk forks while
+        # preserving identical tmpfs, ENOTCONN, mkdir, bind-mount, and rprivate safety guarantees.
         local _bb_bin
         _bb_bin=$(_mx_busybox)
         for _zpid in $(_mx_zygote_mnt_pids); do
             [ -d "/proc/${_zpid}/ns" ] || continue
             MX_UID="${user_id}" MX_REL="${rel}" MX_SRC="${src}" MX_BB="${_bb_bin}" nsenter --mount="/proc/${_zpid}/ns/mnt" -- sh -s <<'__MX_SH_Z__' 2>/dev/null
             _mi="/proc/self/mountinfo"
-            for _zr in \
-                "/storage/emulated/${MX_UID}" \
-                "/mnt/user/${MX_UID}/emulated/${MX_UID}" \
-                "/mnt/installer/${MX_UID}/emulated/${MX_UID}" \
-                "/mnt/androidwritable/${MX_UID}/emulated/${MX_UID}" \
-                "/mnt/runtime/default/emulated/${MX_UID}" \
-                "/mnt/runtime/read/emulated/${MX_UID}" \
-                "/mnt/runtime/write/emulated/${MX_UID}" \
-                "/mnt/runtime/full/emulated/${MX_UID}"
-            do
+            _candidates=$(awk -F ' - ' -v uid="${MX_UID}" -v rel="${MX_REL}" '
+            BEGIN {
+                n = 0
+                roots[++n] = "/storage/emulated/" uid
+                roots[++n] = "/mnt/user/" uid "/emulated/" uid
+                roots[++n] = "/mnt/installer/" uid "/emulated/" uid
+                roots[++n] = "/mnt/androidwritable/" uid "/emulated/" uid
+                roots[++n] = "/mnt/runtime/default/emulated/" uid
+                roots[++n] = "/mnt/runtime/read/emulated/" uid
+                roots[++n] = "/mnt/runtime/write/emulated/" uid
+                roots[++n] = "/mnt/runtime/full/emulated/" uid
+                for (i = 1; i <= n; i++) {
+                    r = roots[i]
+                    p = r; sub(/\/[^\/]+$/, "", p)
+                    par[i] = p
+                    tgt[i] = r "/" rel
+                }
+            }
+            {
+                split($1, L, " "); split($2, RT, " ")
+                m = L[5]; gsub(/\\040/, " ", m)
+                fst[m] = RT[1]
+                mounted[m] = 1
+            }
+            END {
+                for (i = 1; i <= n; i++) {
+                    r = roots[i]; p = par[i]; t = tgt[i]
+                    f = (r in fst) ? fst[r] : ((p in fst) ? fst[p] : "")
+                    if (f == "" || f == "tmpfs") continue
+                    if (t in mounted) continue
+                    print r
+                }
+            }' "${_mi}" 2>/dev/null)
+            for _zr in ${_candidates}; do
                 [ -d "${_zr}" ] && [ ! -L "${_zr}" ] || continue
-                _fst=$(C="${_zr}" R="${_zr%/*}" awk -F ' - ' '{split($1,L," ");split($2,RT," ");m=L[5];gsub(/\\040/," ",m);if(m==ENVIRON["C"]||m==ENVIRON["R"])f=RT[1]} END{print f}' "${_mi}" 2>/dev/null)
-                case "${_fst}" in ""|tmpfs) continue ;; esac
                 _zst=$(LC_ALL=C stat -t "${_zr}" 2>&1)
                 case "${_zst}" in *"Transport endpoint"*) continue ;; esac
                 _zt="${_zr}/${MX_REL}"
@@ -1477,13 +1515,11 @@ bind_mount_to_runtime_namespaces() {
                     _zpst=$(LC_ALL=C stat -t "${_zpar}" 2>&1)
                     case "${_zpst}" in *"Transport endpoint"*) continue ;; esac
                 fi
-                if ! T="${_zt}" awk '{m=$5; gsub(/\\040/, " ", m); if (m==ENVIRON["T"]) {f=1; exit}} END {exit (f?0:1)}' "${_mi}" 2>/dev/null; then
-                    mkdir -p "${_zt}" 2>/dev/null && mount -o bind "${MX_SRC}" "${_zt}" 2>/dev/null
-                    if [ -n "${MX_BB}" ]; then
-                        "${MX_BB}" mount --make-rprivate "${_zt}" 2>/dev/null
-                    else
-                        mount --make-rprivate "${_zt}" 2>/dev/null
-                    fi
+                mkdir -p "${_zt}" 2>/dev/null && mount -o bind "${MX_SRC}" "${_zt}" 2>/dev/null
+                if [ -n "${MX_BB}" ]; then
+                    "${MX_BB}" mount --make-rprivate "${_zt}" 2>/dev/null
+                else
+                    mount --make-rprivate "${_zt}" 2>/dev/null
                 fi
             done
 __MX_SH_Z__
